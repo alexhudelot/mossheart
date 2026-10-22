@@ -76,6 +76,8 @@ body { color: var(--ink); font: 600 15px/1.3 "Trebuchet MS", "Segoe UI", system-
 #insptitle { font-size: 21px; }
 #inspbody { font-weight: 500; font-size: 14.5px; }
 #inspbody .dim { color: #6b7560; }
+#inspbody .lnk { font-weight: 800; color: #8a5a2a; }
+#inspbody .lnk svg { width: 1.1em; height: 1.1em; vertical-align: -0.2em; }
 #inspbody .lvl { display: inline-block; min-width: 1.6em; font-weight: 800; color: #6a8a3a; }
 #inspector .btn { height: 52px; font-size: 18px; }
 
@@ -127,6 +129,7 @@ body { color: var(--ink); font: 600 15px/1.3 "Trebuchet MS", "Segoe UI", system-
   text-shadow: 0 0 2px #1a260d, 0 0 4px #1a260d, 0 1px 3px #1a260d; }
 #flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 50%, rgba(214, 48, 92, 0.6) 100%); }
 .help { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(8px + var(--sb)); color: #fffb; font-size: 12px; font-weight: 500; text-shadow: 0 0 4px #000; pointer-events: none; white-space: nowrap; }
+#version { position: fixed; right: calc(16px + var(--sr)); bottom: calc(1px + var(--sb)); z-index: 30; font: 500 10px/1 "Trebuchet MS", system-ui, sans-serif; color: #fff8; text-shadow: 0 0 3px #000; pointer-events: none; white-space: nowrap; }
 
 #lost { position: fixed; inset: 0; display: none; place-items: center; background: rgba(7, 8, 6, 0.9); z-index: 20; }
 #lost button { font: 600 16px "Trebuchet MS", system-ui, sans-serif; padding: 12px 22px; border-radius: 10px; border: 1px solid #f6dca0; background: #1d2018; color: #e9e4cf; }
@@ -168,6 +171,7 @@ body { color: var(--ink); font: 600 15px/1.3 "Trebuchet MS", "Segoe UI", system-
   #boonrow { gap: 10px; }
   .veil h2 { font-size: 24px; }
   .help { display: none; }
+  #version { right: calc(10px + var(--sr)); bottom: calc(153px + var(--sb)); font-size: 9px; }
 }
 @media (prefers-reduced-motion: reduce) { .veil, .seed, #heartfill, #bar { animation: none; transition: none; } }
 
@@ -3944,9 +3948,26 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
     }
     // Snap index 0..3 nearest to the current angle (used to pick pre-sorted terrain index ranges).
     snapIndex(theta = this.theta) { return (((Math.round(theta / (Math.PI / 2)) % 4) + 4) % 4); }
+    // frame the valley's island, or the box cam.box = [min, max] when one is set
     fit(w, h) {
+      if (this.box) return this.fitBox(this.box[0], this.box[1], w, h);
       this.zoom = Math.min(w / 37, h / 24.5);
       this.pan = [0, -3.2];
+    }
+    // Frame the world box min..max (T.bounds) at the current turn, with a margin, and take the depth range
+    // from it: X'+Y' about the centre stays within its xy radius times sqrt(2) at any turn, and Z within
+    // the box, with room for volumes and particles above it.
+    fitBox(min, max, w, h, margin = 0.92) {
+      const c = Math.cos(this.theta), s = Math.sin(this.theta), [Cx, Cy] = this.C;
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, r = 0;
+      for (let k = 0; k < 8; k++) {
+        const x = (k & 1 ? max : min)[0] - Cx, y = (k & 2 ? max : min)[1] - Cy, z = (k & 4 ? max : min)[2];
+        const X = c * x - s * y, Y = s * x + c * y, sx = X - Y, sy = z - 0.5 * (X + Y);
+        x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy); r = Math.max(r, Math.hypot(x, y));
+      }
+      this.zoom = margin * Math.min(w / (x1 - x0), h / (y1 - y0));
+      this.pan = [(x0 + x1) / 2, -(y0 + y1) / 2];
+      this.D0 = -Math.SQRT2 * r + min[2] - 2; this.D1 = Math.SQRT2 * r + max[2] + 6;
     }
     // centre the view on a world point
     lookAt(p) {
@@ -3956,11 +3977,11 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
     matrices(w, h) {
       const c = Math.cos(this.theta), s = Math.sin(this.theta), [Cx, Cy] = this.C;
       const R = M4.fromRows([[c, -s, 0, -c * Cx + s * Cy], [s, c, 0, -s * Cx - c * Cy], [0, 0, 1, 0], [0, 0, 0, 1]]);
-      const kx = (this.zoom * 2) / w, ky = (this.zoom * 2) / h, [px, py] = this.pan, dz = 1 / (D1 - D0);
+      const kx = (this.zoom * 2) / w, ky = (this.zoom * 2) / h, [px, py] = this.pan, dz = 1 / (this.D1 - this.D0);
       const P = M4.fromRows([
         [kx, -kx, 0, -px * kx],
         [-0.5 * ky, -0.5 * ky, ky, py * ky],
-        [dz, dz, dz, -D0 * dz],
+        [dz, dz, dz, -this.D0 * dz],
         [0, 0, 0, 1],
       ]);
       const vp = M4.mul(P, R), r3 = Math.sqrt(3);
@@ -4582,26 +4603,37 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
   };
 
   // ---- The bake's view of a map: per tile its top Z (tiles), its height (for comparing neighbours) and
-  // its kind (null: no ground); the water distance; the props as [model, options, x, y, at]; the jar.
-  const FIXED_BOX = { o: [-1, -1, -2.5], size: [26, 26, 10] };
+  // its kind (null: no ground); the water distance (null: none, or whole tiles with wholeWater); the
+  // props as [model, options, x, y, at]; the frame; the bake box (tiles); the map's point lights.
+  const FIXED_BOX = { o: [-1, -1, -2.5], size: [26, 26, 10] }; // a generator map's
   const gridOf = (st, CT) => {
     const m = st.map;
     if (m.v !== undefined) { // a versioned map (the validator refuses any version but 1)
       const kinds = CT.kinds || {}, v = ME.validateMap(m, kinds), f = m.frame || {};
       for (const p of m.props || []) if (Array.isArray(p) && !window.MODELS[p[0]]) v.errors.push("props: no model " + p[0] + " loaded");
-      // what the next steps of the migration bake (M2: the box frame, the bake box, the renderer's extents)
-      if (f.type === "box") v.errors.push("frame: a box frame does not bake yet (M2)");
-      if (f.type === "jar" && f.c && f.c[0] !== f.c[1]) v.errors.push("frame (jar): the renderer centres the jar at x = y until M2");
-      if (m.box && JSON.stringify(m.box) !== JSON.stringify(FIXED_BOX)) v.errors.push("box: the bake box is " + JSON.stringify(FIXED_BOX) + " until M2");
       if (v.errors.length) throw new Error("map " + m.id + ": " + v.errors.join("; "));
       for (const w of v.warnings) ME.log("WARN map " + m.id + ": " + w);
+      // what this bake doesn't read yet, each with the step that brings it (the decision's steps table)
+      const later = {}, note = (what, step) => { later[what] = later[what] || { step, n: 0 }; later[what].n++; };
+      for (const n of new Set(kindNames(m))) {
+        const kd = n !== null && kinds[n];
+        if (!kd) continue;
+        if (kd.recipe === "layer") for (const k of ["mottle", "mottleK", "edge", "stripe"]) if (kd[k] !== undefined) note("kind " + n + ": " + k, "M4");
+        if (kd.grass) note("kind " + n + ": grass", "M4");
+      }
+      for (const p of m.props || []) for (const k of ["rot", "as"]) if (Array.isArray(p) && p[4] && p[4][k] !== undefined) note("props: at." + k, "M3");
+      for (const w in later) ME.log("WARN map " + m.id + ": " + w + " is not baked yet (" + later[w].step + ")" + (later[w].n > 1 ? ", " + later[w].n + " uses" : ""));
       const hs = heights(m), hStep = m.hStep ?? 0.5, z = new Float64Array(hs.length);
       for (let i = 0; i < hs.length; i++) z[i] = hs[i] * hStep;
+      const wd = ME.waterDist(m.water);
       return {
         W: m.W, H: m.H, hv: hs, z, kinds: kindNames(m).map((n) => (n === null ? null : kinds[n])), kindTable: kinds,
-        floorZ: m.floor * hStep, wd: ME.waterDist(m.water),
+        floorZ: m.floor * hStep, wd, wholeWater: !wd,
         props: (m.props || []).map(([name, o, x, y, at]) => [name, o ?? {}, x, y, at || {}]),
-        jar: { C: f.c[0], RI: f.r, foot: f.foot ?? 0.92, glassTop: f.glassTop ?? 3.4, strata: f.strata || [] },
+        frame: f.type === "jar"
+          ? { type: "jar", c: f.c.slice(), r: f.r, foot: f.foot ?? 0.92, glassTop: f.glassTop ?? 3.4, strata: f.strata || [] }
+          : { type: "box", edge: f.edge ?? "cut" },
+        box: v.box, lights: m.lights || [],
       };
     }
     // a generator map: its letters as kinds made of the content's terrain roles (today's constants)
@@ -4622,9 +4654,10 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
       kinds.push(c in LETTER ? LETTER[c] : other);
     }
     return {
-      W, H, hv, z, kinds, kindTable: Object.assign({ other }, LETTER), floorZ: (m.floor ?? -3) * 0.5, wd: m.waterD || null,
+      W, H, hv, z, kinds, kindTable: Object.assign({ other }, LETTER), floorZ: (m.floor ?? -3) * 0.5, wd: m.waterD || null, wholeWater: false,
       props: st.deco.filter(Boolean).map(([name, o, x, y, ex]) => [name, o, x, y, ex || {}]),
-      jar: { C: m.geo.C, RI: m.geo.RI, foot: (st.clip && st.clip.foot) ?? 0.92, glassTop: st.glassZt ?? 3.4, strata: st.strata },
+      frame: { type: "jar", c: [m.geo.C, m.geo.C], r: m.geo.RI, foot: (st.clip && st.clip.foot) ?? 0.92, glassTop: st.glassZt ?? 3.4, strata: st.strata },
+      box: FIXED_BOX, lights: [],
     };
   };
 
@@ -4642,6 +4675,9 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
       r.d0 = kd.depth ? kd.depth[0] : 0.12; r.dd = kd.depth ? kd.depth[1] - kd.depth[0] : 0.34; // bed depth (tiles)
     }
     r.under = m(kd.under);
+    // in a box frame: the drape (a material, or [material, strands]) and the overhang lobes' material
+    const pair = (v) => (typeof v === "string" ? [id(v), id(v)] : Array.isArray(v) ? [id(v[0]), id(v[1] ?? v[0])] : null);
+    r.drape = pair(kd.drape); r.overhang = typeof kd.overhang === "string" ? id(kd.overhang) : 0;
     return r;
   };
 
@@ -4681,10 +4717,12 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
   };
 
   ME.bakeTerrain = async function (st, pal) {
-    const t0 = ME.now(), VS = ME.VS, CT = ME.content, G = gridOf(st, CT), { C, RI } = G.jar;
-    const RG = RI + 0.35, DRUM = G.jar.foot, PL_R = RG + 0.45, PL_ZB = -2.15, PL_ZT = -1.5, ZF = G.floorZ;
-    const O = FIXED_BOX.o, NX = 26 * VS, NY = 26 * VS, NZ = 10 * VS, PLANE = NX * NY;
-    const vox = new Uint8Array(PLANE * NZ), top = new Int16Array(PLANE).fill(-1), layerCol = new Uint8Array(PLANE); // layerCol: columns baked by the layer recipe
+    const t0 = ME.now(), VS = ME.VS, CT = ME.content, G = gridOf(st, CT), F = G.frame, jar = F.type === "jar";
+    // the jar (Momiji's island): a circle of radius RI round (C, CY), over a strata drum and a wooden plinth
+    const C = jar ? F.c[0] : 0, CY = jar ? F.c[1] : 0, RI = jar ? F.r : 0;
+    const RG = RI + 0.35, DRUM = F.foot, PL_R = RG + 0.45, PL_ZB = -2.15, PL_ZT = -1.5, ZF = G.floorZ;
+    const B = G.box, O = B.o.slice(), NX = B.size[0] * VS, NY = B.size[1] * VS, NZ = B.size[2] * VS, PLANE = NX * NY;
+    const vox = new Uint8Array(PLANE * NZ), top = new Int16Array(PLANE).fill(-1), lobe = new Uint8Array(PLANE); // lobe: the material a column hangs over lower neighbours
     const id = (n) => pal.id(n);
     // material ids of the roles (moss, moss2, gravel, stone, rock, earth, pebble, pebble2, wood, brass, litter), then of the kinds
     const M = {}, TR = CT.terrain || {};
@@ -4696,47 +4734,65 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
     const kOf = (Z) => Math.round((Z - O[2]) * VS);
     const kindAt = (x, y) => (x < 0 || y < 0 || x >= G.W || y >= G.H ? null : kinds[y * G.W + x]);
     const recipeAt = (x, y) => { const kd = kindAt(x, y); return kd && kd.recipe; };
-    const wetV = (X, Y) => (G.wd ? G.wd(X, Y) + (P.fbm(X * 1.3, Y * 1.3, 0, 61) - 0.5) * 0.3 : -1);
+    // whole-tile water (a map without shapes): the distance to the nearest tile that isn't water, or to
+    // the map's edge, up to 3 tiles
+    const tileWet = (X, Y) => {
+      const cx = Math.floor(X), cy = Math.floor(Y);
+      let d = 3;
+      for (let y = cy - 3; y <= cy + 3; y++) for (let x = cx - 3; x <= cx + 3; x++) {
+        if (recipeAt(x, y) === "water") continue; // off the map counts as dry
+        d = Math.min(d, Math.hypot(Math.max(x - X, 0, X - x - 1), Math.max(y - Y, 0, Y - y - 1)));
+      }
+      return d;
+    };
+    const wetV = G.wd ? (X, Y) => G.wd(X, Y) + (P.fbm(X * 1.3, Y * 1.3, 0, 61) - 0.5) * 0.3 : G.wholeWater ? tileWet : () => -1;
     // lanes grow their edge towards no ground, carpets, and kinds that ask with fringe
     const fringes = (x, y) => { const kd = kindAt(x, y); return !kd || (kd.fringe ?? kd.recipe === "carpet"); };
     const kPB = kOf(PL_ZB), kPT = kOf(PL_ZT), kD = kOf(DRUM), kF = kOf(ZF);
     let wetCols = 0;
     const trees = TR.litterTree ? G.props.filter((d) => TR.litterTree(d)).map((d) => [d[2] + 0.5, d[3] + 0.5]) : [];
     const c = { VS, X: 0, Y: 0, cx: 0, cy: 0, trees, wetV, fringes }, out = {};
+    const DRAPE = [M.moss, M.moss2], skirt = !jar && F.edge && F.edge.skirt ? id(F.edge.skirt) : 0, e1 = 1 / VS; // e1: the outermost voxel ring of the map
 
     for (let j = 0; j < NY; j++) {
       if ((j & 31) === 0) { ME.progress("terrain columns " + Math.round((j / NY) * 100) + "%", 0.05 + 0.15 * (j / NY)); await ME.tick(); }
       const Y = O[1] + (j + 0.5) / VS;
       for (let i = 0; i < NX; i++) {
-        const X = O[0] + (i + 0.5) / VS, r = Math.hypot(X - C, Y - C), col = j * NX + i;
-        if (r > PL_R) continue;
-        // wooden plinth with a brass trim on its upper outer edge
-        for (let k = kPB; k < kPT; k++) vox[k * PLANE + col] = k === kPT - 1 && r > PL_R - 0.09 ? M.brass : M.wood;
-        top[col] = kPT;
-        if (r > RG - 0.06) continue;
-        // drum: soil strata seen through the glass, a moss lip under the rim, a moss ring on top
-        const U = Math.atan2(Y - C, X - C) * RG, shell = r > RG - 0.06 - 2.5 / VS;
-        for (let k = kPT; k < kD; k++) {
-          let m = M.earth;
-          if (shell) {
-            const Zc = O[2] + (k + 0.5) / VS, sr = G.jar.strata && P.strataAt(G.jar, U, Zc, 1);
-            if (sr) m = id(sr.ramp);
-            if (DRUM - Zc < 0.08 + 0.18 * P.fbm(U * 3, 0.5, 0, 71)) m = M.moss;
+        const X = O[0] + (i + 0.5) / VS, col = j * NX + i;
+        if (jar) {
+          const r = Math.hypot(X - C, Y - CY);
+          if (r > PL_R) continue;
+          // wooden plinth with a brass trim on its upper outer edge
+          for (let k = kPB; k < kPT; k++) vox[k * PLANE + col] = k === kPT - 1 && r > PL_R - 0.09 ? M.brass : M.wood;
+          top[col] = kPT; lobe[col] = M.moss;
+          if (r > RG - 0.06) continue;
+          // drum: soil strata seen through the glass, a moss lip under the rim, a moss ring on top
+          const U = Math.atan2(Y - CY, X - C) * RG, shell = r > RG - 0.06 - 2.5 / VS;
+          for (let k = kPT; k < kD; k++) {
+            let m = M.earth;
+            if (shell) {
+              const Zc = O[2] + (k + 0.5) / VS, sr = F.strata && P.strataAt(F, U, Zc, 1);
+              if (sr) m = id(sr.ramp);
+              if (DRUM - Zc < 0.08 + 0.18 * P.fbm(U * 3, 0.5, 0, 71)) m = M.moss;
+            }
+            vox[k * PLANE + col] = m;
           }
-          vox[k * PLANE + col] = m;
+          if (r > RI - 0.12) vox[(kD - 1) * PLANE + col] = P.fbm(X * 0.45, Y * 0.45, 0, 29) > 0.78 ? M.moss2 : M.moss;
+          top[col] = kD;
+          if (r > RI) continue;
         }
-        if (r > RI - 0.12) vox[(kD - 1) * PLANE + col] = P.fbm(X * 0.45, Y * 0.45, 0, 29) > 0.78 ? M.moss2 : M.moss;
-        top[col] = kD;
         const cx = Math.floor(X), cy = Math.floor(Y), kd = kindAt(cx, cy);
-        if (r > RI || !kd) continue;
+        if (!kd) continue;
         // terrain column: the kind's recipe gives the surface material and micro relief
         out.kT = kOf(G.z[cy * G.W + cx]); out.mTop = 0; out.extra = 0; out.two = false; out.bed = false; out.layer = 0;
         c.X = X; c.Y = Y; c.cx = cx; c.cy = cy;
         RECIPE[kd.recipe](kd, c, out);
         const { kT, mTop, extra, two, bed, layer } = out;
         if (bed) wetCols++;
-        if (layer) layerCol[col] = 1;
-        // drape: a couple of voxels of moss under every lip, with hanging strands
+        // drape: a couple of voxels under every lip, with hanging strands. In the jar, moss on every column
+        // but a layer; in a box, the kind's drape. Lobes likewise: moss in the jar, the kind's overhang in a box.
+        const dr = layer ? null : jar ? DRAPE : kd.drape;
+        lobe[col] = layer ? 0 : jar ? M.moss : kd.overhang;
         let dd = 2;
         const n1 = P.noise(X * 9, Y * 9, 0, 5);
         if (n1 > 0.52) dd += Math.round((n1 - 0.52) * 30);
@@ -4744,9 +4800,11 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
         const kEnd = kT + extra;
         for (let k = kF; k < kEnd; k++) {
           const dz = kEnd - 1 - k;
-          vox[k * PLANE + col] = layer ? (dz < layer ? mTop : kd.under) : dz === 0 || (two && dz === 1) ? mTop : dz <= dd && !bed ? (n1 > 0.7 ? M.moss2 : M.moss) : kd.under;
+          vox[k * PLANE + col] = layer ? (dz < layer ? mTop : kd.under) : dz === 0 || (two && dz === 1) ? mTop : dr && dz <= dd && !bed ? (n1 > 0.7 ? dr[1] : dr[0]) : kd.under;
         }
-        for (let k = kEnd; k < kD; k++) vox[k * PLANE + col] = 0; // beds carved below the drum top
+        if (jar) for (let k = kEnd; k < kD; k++) vox[k * PLANE + col] = 0; // beds carved below the drum top
+        // a box's skirt: the outer faces of the map's edge tiles, under their top voxel, in one material
+        if (skirt && (X < e1 || Y < e1 || X > G.W - e1 || Y > G.H - e1)) for (let k = kF; k < kEnd - 1; k++) vox[k * PLANE + col] = skirt;
         top[col] = kEnd;
       }
     }
@@ -4757,13 +4815,13 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
     let lobes = 0;
     for (let j = 1; j < NY - 1; j++) for (let i = 1; i < NX - 1; i++) {
       const col = j * NX + i, tk = top[col];
-      if (tk < 0 || layerCol[col]) continue; // layers (sand banks) do not overhang
+      if (tk < 0 || !lobe[col]) continue; // layers (sand banks) do not overhang
       const X = O[0] + (i + 0.5) / VS, Y = O[1] + (j + 0.5) / VS;
       for (const [dx, dy] of D4) {
         const nc = col + dx + dy * NX, nk = top[nc];
         if (nk < 0 || tk - nk < 4) continue;
         const len = Math.floor(P.noise(X * 7 + dx * 3.1, Y * 7 + dy * 3.1, 0, 9) * 4.6) - 1;
-        for (let k = tk - len; k < tk; k++) if (!vox[k * PLANE + nc]) { vox[k * PLANE + nc] = M.moss; lobes++; }
+        for (let k = tk - len; k < tk; k++) if (!vox[k * PLANE + nc]) { vox[k * PLANE + nc] = lobe[col]; lobes++; }
       }
     }
 
@@ -4796,7 +4854,7 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
       const cand = [];
       for (let cy = 0; cy < G.H; cy++) for (let cx = 0; cx < G.W; cx++) {
         const kd = kindAt(cx, cy);
-        if (!kd || !kd.lamps || Math.hypot(cx + 0.5 - C, cy + 0.5 - C) > RI - 1.0) continue;
+        if (!kd || !kd.lamps || (jar && Math.hypot(cx + 0.5 - C, cy + 0.5 - CY) > RI - 1.0)) continue;
         let dir = null, kind = null;
         for (const [dx, dy] of D4) {
           const t = recipeAt(cx + dx, cy + dy);
@@ -4820,6 +4878,9 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
         lights.push({ p: lp, r: L.r, col: L.col.slice(), k: L.k, mat: L.mat });
       }
     }
+
+    // The map's point lights (tiles)
+    for (const l of G.lights) lights.push({ p: l.p.slice(), r: l.r, col: l.col.slice(), k: l.k });
 
     // Water: one surface quad per wet tile, falls where a wet tile steps down into lower water.
     const water = [], falls = [];
@@ -4870,7 +4931,8 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
       return out;
     };
     const d1 = down(d0, NX, NY, NZ), d2 = down(d1, NX >> 1, NY >> 1, NZ >> 1);
-    const f = ME.coarseStep(VS), CPU = VS / f, CX = NX / f, CY = NY / f, CZ = 13 * CPU, coarse = new Uint8Array(CX * CY * CZ);
+    // the coarse grid is 3 tiles taller than the box (13 tiles for a generator map), f voxels a cell
+    const f = ME.coarseStep(VS), CPU = VS / f, QX = NX / f, QY = NY / f, QZ = (B.size[2] + 3) * CPU, coarse = new Uint8Array(QX * QY * QZ);
 
     // Beams stand on the tile below their foot point (px3 P.lightAt needs bm.z).
     const beams = (st.light.beams || []).map((b) => Object.assign({}, b, { z: b.z ?? G.z[Math.min(G.H - 1, Math.floor(b.y)) * G.W + Math.min(G.W - 1, Math.floor(b.x))] }));
@@ -4878,13 +4940,18 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
     // Walkable ground: first solid voxel scanning down from zFrom.
 
     const stats = { dims: [NX, NY, NZ], solid, wetCols, lobes, props: propCount, lanterns: lights.length, stampedVoxels: stamped, water: water.length, falls: falls.length, zTop: O[2] + (kMax + 1) / VS, ms: Math.round(ME.now() - t0) };
-    const T = { O, NX, NY, NZ, VS, vox, top, mips: [d1, d2], coarse, cdims: [CX, CY, CZ], CPU, volumes, walkers, water, falls, beams, lights, stats, geo: { C, RI, RG, DRUM, PL_R, PL_ZB, PL_ZT, glassZt: G.jar.glassTop } };
-    ME.coarseFill(T, [0, 0, 0], [CX - 1, CY - 1, NZ / f - 1]); // the cells above the voxel grid stay empty
+    // bounds: the world box in tiles; frame: the map's (jar or box); geo: the jar's measures (null in a box)
+    const bounds = { min: O.slice(), max: [O[0] + B.size[0], O[1] + B.size[1], O[2] + B.size[2]] };
+    const T = { O, NX, NY, NZ, VS, vox, top, mips: [d1, d2], coarse, cdims: [QX, QY, QZ], CPU, volumes, walkers, water, falls, beams, lights, stats, bounds, frame: F,
+      geo: jar ? { C, RI, RG, DRUM, PL_R, PL_ZB, PL_ZT, glassZt: F.glassTop } : null };
+    ME.coarseFill(T, [0, 0, 0], [QX - 1, QY - 1, NZ / f - 1]); // the cells above the voxel grid stay empty
     T.groundAt = ME.groundAt(T);
     return T;
   };
   // the code the bake runs besides bakeTerrain itself (the bake cache key holds its source)
-  ME.bakeTerrain.parts = [ME.validateMap, ME.waterDist, gridOf, resolve, ...Object.values(RECIPE)];
+  // the bake cache key's code: the bake's helpers and its tables (cache.js)
+  ME.bakeTerrain.parts = [ME.validateMap, ME.waterDist, gridOf, resolve, heights, kindNames, rows, impure, ...Object.values(RECIPE),
+    JSON.stringify({ B36, STEPS, RECIPES, FLAGS, AT, FIXED_BOX })];
 
   // The coarse occupancy (docs/decisions/2026-10-20-sun-volume-density.md): one cell is f voxels on a side,
   // f the largest divisor of VS that keeps VS / f >= 8 cells per tile, and at least 2 (f = 2 up to vs=20,
@@ -5224,6 +5291,8 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
 
   ME.bakeGrass = function (T, st, pal) {
     const t0 = ME.now(), map = st.map, VS = T.VS, { NX, NY, O, vox, top } = T, PLANE = NX * NY, H = P.hash;
+    // grass grows on the generator map's moss letters (a v1 map's kinds ask for it from M4 on)
+    if (!map.typ) return { blades: new Float32Array([0, 0, -99, 0]), count: 0, ms: 0 };
     const KV = VS / 16; // blade sizes are tuned in voxels at 16 per tile: the same size in tiles at any density
     const typ = (x, y) => (x < 0 || y < 0 || x >= map.W || y >= map.H ? "_" : map.typ[y][x]);
     const hgt = (x, y) => (typ(x, y) === "_" ? -9 : map.hgt[y][x]);
@@ -5284,11 +5353,14 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
     // extra: anything else the bake depends on (an app's own model list, as a string)
     key(st, extra = "") {
       const code = [ME.bakeTerrain, ...(ME.bakeTerrain.parts || []), ME.coarseStep, ME.coarseFill, ME.greedyMesh, ME.bakeModels, ME.voxelizeModel, ME.stampModel, ME.bakeGrass, ME.modelOf].map(String).join("|");
-      // the content the bake reads: terrain roles (functions as their source), kinds, deco, grass, critters
+      // the content the bake reads: terrain roles (functions as their source), the kinds the map's legend
+      // names (a generator map's letters are kinds made of the terrain roles), deco, grass, critters
       const C = ME.content, src = (k, v) => (typeof v === "function" ? String(v) : v);
-      const content = C ? JSON.stringify([C.terrain, C.kinds, C.volumeDeco, C.defaultMaterial, C.grass, C.critters, C.walkers, C.flipbookFrames], src) : "";
+      const v1 = st.map && st.map.v !== undefined, kinds = {};
+      if (v1 && C && C.kinds) for (const n of Object.values(st.map.legend || {})) if (n !== null && C.kinds[n]) kinds[n] = C.kinds[n];
+      const content = C ? JSON.stringify([C.terrain, kinds, C.volumeDeco, C.defaultMaterial, C.grass, C.critters, C.walkers, C.flipbookFrames], src) : "";
       // a v1 map names the bake, and its game block (route, cover, spawns) is not baked
-      const v1 = st.map && st.map.v !== undefined, s = v1 ? Object.assign({}, st, { map: Object.assign({}, st.map, { game: undefined }) }) : st;
+      const s = v1 ? Object.assign({}, st, { map: Object.assign({}, st.map, { game: undefined }) }) : st;
       return `${ME.VERSION}:${v1 ? st.map.id : st.id}:vs${ME.VS}:${fnv(code + (ME.ASSET_SRC || "") + content + JSON.stringify(s) + extra)}`; // ASSET_SRC: hand-authored asset models (assets/asset-kit.js)
     },
     async get(key) {
@@ -5338,7 +5410,8 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
     // opts.capacity = instances beyond the static props
     constructor(T, st, MB, opts = {}) {
       this.T = T; this.MB = MB; this.VS = T.VS;
-      const map = st.map, cells = cellsOf(map.path[0]), isW = (c) => map.typ[c[1]][c[0]] === "w";
+      const map = st.map, cells = map.path && map.path.length ? cellsOf(map.path[0]) : [], // no route (a v1 map until M4): no walkers
+        isW = (c) => map.typ[c[1]][c[0]] === "w";
       // nominal height per cell; water cells take the higher bank around their crossing plus the bridge rise
       const zc = cells.map((c, i) => {
         if (!isW(c)) return map.hgt[c[1]][c[0]] * 0.5;
@@ -5357,11 +5430,11 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
         }
       }
       const last = cells[cells.length - 1];
-      pts.push([last[0] + 0.5, last[1] + 0.5, T.groundAt(last[0] + 0.5, last[1] + 0.5, zc[zc.length - 1] + 0.6)]);
+      if (last) pts.push([last[0] + 0.5, last[1] + 0.5, T.groundAt(last[0] + 0.5, last[1] + 0.5, zc[zc.length - 1] + 0.6)]);
       const sz = pts.map((_, i) => { let s = 0, w = 0; for (let k = -5; k <= 5; k++) { const p = pts[Math.min(pts.length - 1, Math.max(0, i + k))]; s += p[2]; w++; } return s / w; });
       // never sink below the raw ground (stair noses)
       this.route = pts.map((p, i) => [p[0], p[1], Math.max(p[2], sz[i])]);
-      this.len = (this.route.length - 1) / this.VS;
+      this.len = Math.max(0, this.route.length - 1) / this.VS;
       this.cells = cells;
       this.walkers = [];
       this.setCount(ME.qn("units", 36));
@@ -5378,7 +5451,7 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
     setCount(n) {
       n = Math.max(0, Math.min(500, n | 0));
       const H = window.PX.hash, WT = this.MB.walkerTypes || [];
-      if (!WT.length) n = 0;
+      if (!WT.length || !this.route.length) n = 0;
       this.walkers = Array.from({ length: n }, (_, i) => ({
         type: WT[i % WT.length].type, w: WT[i % WT.length],
         s0: (i / Math.max(1, n)) * this.len,
@@ -7289,6 +7362,12 @@ fn boxOf(V: Vox) -> Box {
       this.instBuf = d.createBuffer({ label: "instances", size: S.sim.inst.byteLength, usage: BU.STORAGE | BU.COPY_DST });
       this.tVB = ME.buffer(d, S.mesh.verts, BU.VERTEX, "terrain vb");
       this.tIB = ME.buffer(d, S.mesh.index, BU.INDEX, "terrain ib");
+      // the frame's extent: the jar's centre, glass radius, glass top, dome height and plinth foot, or the
+      // box's centre, half diagonal, top and floor (a bake from before T.frame is a jar)
+      const F = T.frame || { type: "jar", c: [T.geo.C, T.geo.C] }, g = T.geo, b = T.bounds;
+      this.ext = F.type === "jar"
+        ? { jar: true, c: F.c, R: g.RG, top: g.glassZt, dome: 7.2 * (g.RI / 7), base: g.PL_ZB, foot: g.PL_ZT, RI: g.RI }
+        : { jar: false, c: [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2], R: Math.hypot(b.max[0] - b.min[0], b.max[1] - b.min[1]) / 2, top: b.max[2], dome: 0, base: b.min[2] };
       this.buildWater(); this.buildGlass(); this.buildParticles(); this.buildLights();
       this.grassBuf = ME.buffer(d, S.grass.blades, BU.STORAGE, "grass blades");
       const map = S.st.map;
@@ -7517,8 +7596,11 @@ fn boxOf(V: Vox) -> Box {
     setField(bytes) { this.dev.queue.writeTexture({ texture: this.fieldTex }, bytes, { bytesPerRow: this.fieldDims[0] }, this.fieldDims); }
     setCells(bytes) { const m = this.S.st.map; this.dev.queue.writeTexture({ texture: this.cellTex }, bytes, { bytesPerRow: m.W * 4 }, [m.W, m.H]); }
 
+    // the bell jar's glass (none in a box frame)
     buildGlass() {
-      const g = this.S.T.geo, C = g.C, R = g.RG, zb = g.PL_ZT, zt = g.glassZt, H = 7.2 * (g.RI / 7), SEG = 64, RINGS = 14, v = [], idx = [];
+      const E = this.ext;
+      if (!E.jar) { this.glass = null; return; }
+      const [C, CY] = E.c, R = E.R, zb = E.foot, zt = E.top, H = E.dome, SEG = 64, RINGS = 14, v = [], idx = [];
       for (let r = 0; r <= RINGS + 1; r++) {
         // ring 0 = bottom of the cylinder, ring 1 = top of the cylinder, then up the dome
         const a = r === 0 ? 0 : (r - 1) / RINGS, phi = a * (Math.PI / 2) * 0.985;
@@ -7527,7 +7609,7 @@ fn boxOf(V: Vox) -> Box {
           const th = (s / SEG) * Math.PI * 2, cx = Math.cos(th), sy = Math.sin(th);
           let n = r <= 1 ? [cx, sy, 0] : [cx * Math.cos(phi) / R, sy * Math.cos(phi) / R, Math.sin(phi) / H];
           const l = Math.hypot(...n); n = n.map((q) => q / l);
-          v.push(C + cx * rr, C + sy * rr, z, ...n);
+          v.push(C + cx * rr, CY + sy * rr, z, ...n);
         }
       }
       for (let r = 0; r <= RINGS; r++) for (let s = 0; s < SEG; s++) {
@@ -7624,8 +7706,8 @@ fn boxOf(V: Vox) -> Box {
       u.set(this.lgrid, O.lgrid);
       // canopy texture domain: the island projected along the sun onto the canopy plane (z = 15), with
       // room for the island's height range and the wind sway
-      const geo = T.geo, kL = 1 / Math.max(L[2], 0.2), lxy = Math.hypot(L[0], L[1]) * kL;
-      const cH = geo.RG + 1.2 + 4.2 * lxy, cx = geo.C + (15 - 1.5) * L[0] * kL, cy = geo.C + (15 - 1.5) * L[1] * kL;
+      const E = this.ext, kL = 1 / Math.max(L[2], 0.2), lxy = Math.hypot(L[0], L[1]) * kL;
+      const cH = E.R + 1.2 + 4.2 * lxy, cx = E.c[0] + (15 - 1.5) * L[0] * kL, cy = E.c[1] + (15 - 1.5) * L[1] * kL;
       u.set([cx - cH, cy - cH, 1 / (2 * cH), 0], O.shadow);
       const beams = T.beams.slice(0, 8);
       u.set([0, beams.length, g.sideK ?? 1.3, st.shadowK ?? 0.3], O.shadow2);
@@ -7635,8 +7717,8 @@ fn boxOf(V: Vox) -> Box {
       u.set([this.out[0], this.out[1], 1 / this.out[0], 1 / this.out[1]], O.outres);
       u.set([this.pcount.leaf, this.pcount.fly, this.pcount.mist, Math.min(0.05, dt)], O.part);
       u.set([...this.psrc, cam.D1 - cam.D0], O.psrc);
-      u.set([T.geo.C, T.geo.RG, T.geo.glassZt, 7.2 * (T.geo.RI / 7)], O.geo);
-      u.set([this.frameNo % 64, 18, T.geo.PL_ZB, BLOOM_THRESHOLD], O.misc2);
+      u.set([E.c[0], E.R, E.top, E.dome], O.geo);
+      u.set([this.frameNo % 64, 18, E.base, BLOOM_THRESHOLD], O.misc2);
       u.set([st.light.spriteK ?? 1, s.mottle, 0, 0], O.look4);
       u.set([st.map.W, st.map.H, this.fieldRes, 0], O.field);
       u.set(this.user, O.user);
@@ -7719,7 +7801,7 @@ fn boxOf(V: Vox) -> Box {
       }
       if (s.particles && this.pcount.fly + this.pcount.mist) { r.setPipeline(P.sparks); r.setBindGroup(0, g0.sparks); r.setBindGroup(1, g1.sparks); r.draw(6, this.pcount.fly + this.pcount.mist, 0, this.pcount.leaf); }
       if (sp.nAdd) { r.setPipeline(P.spriteAdd); r.setBindGroup(0, g0.spriteAdd); r.setBindGroup(1, g1.spriteAdd); r.draw(6, sp.nAdd); }
-      if (s.glass) { r.setPipeline(P.glass); r.setBindGroup(0, g0.glass); r.setVertexBuffer(0, this.glass.vb); r.setIndexBuffer(this.glass.ib, "uint32"); r.drawIndexed(this.glass.n); }
+      if (s.glass && this.glass) { r.setPipeline(P.glass); r.setBindGroup(0, g0.glass); r.setVertexBuffer(0, this.glass.vb); r.setIndexBuffer(this.glass.ib, "uint32"); r.drawIndexed(this.glass.n); }
       if (sp.nAlpha) { r.setPipeline(P.spriteAlpha); r.setBindGroup(0, g0.spriteAlpha); r.setBindGroup(1, g1.spriteAlpha); r.draw(6, sp.nAlpha, 0, sp.nAdd); }
       r.end();
       // bloom
@@ -8758,7 +8840,6 @@ fn boxOf(V: Vox) -> Box {
 
   // Ramps and material flags for the new materials; a style's own entries win.
   const RAMPS = {
-    sand: ["#dcc088", 6, 0.3, 0.9, 0.3],
     squirrel: ["#b8622a", 6, 0.12, 0.62, 0.3], squirrelTail: ["#c87434", 6, 0.16, 0.7, 0.3], squirrelLight: ["#ecd2a6", 5, 0.45, 0.92, 0.2], acorn: ["#8a5a2a", 4, 0.15, 0.55],
     birdBody: ["#7c5a40", 5, 0.12, 0.6, 0.25], birdWing: ["#5e4432", 5, 0.08, 0.5, 0.2], birdBreast: ["#e8692c", 5, 0.25, 0.78, 0.3], beak: ["#e0a040", 4, 0.3, 0.75], birdLeg: ["#6a5040", 3, 0.15, 0.5],
     titGreen: ["#8aa046", 5, 0.2, 0.7, 0.3], titBlue: ["#4a82c8", 5, 0.15, 0.7, 0.25], titYellow: ["#f2d24a", 5, 0.35, 0.9, 0.25], titCheek: ["#f4f0e4", 3, 0.6, 0.95],
@@ -8777,8 +8858,15 @@ fn boxOf(V: Vox) -> Box {
     wingOrange: { wrap: 0.7 }, wingBlue: { wrap: 0.7 }, wingYellow: { wrap: 0.7 }, dragonWing: { wrap: 0.8, bias: 0.15 }, beeWing: { wrap: 0.8, bias: 0.15 }, koiFin: { wrap: 0.7 },
     lanternPaper: { em: 1, flat: 1 }, candle: { em: 1, flat: 1 },
   };
+  // Ramps that win over the style's own. The generator's sand (["#e2b878", …, 0.3]) hue-shifts its shade from
+  // ochre the short way round through red, so shaded sand banks drew as a crimson band. The Momiji sand is an
+  // explicit list, dark to light, that stays in warm browns and ochres.
+  const OWN = {
+    sand: ["#6a4a2e", "#80593a", "#977046", "#ad8652", "#c29c62", "#d4b276", "#e2c68e", "#eed8aa"],
+  };
   content.addMaterials = (st) => {
     for (const k in RAMPS) if (!st.ramps[k]) st.ramps[k] = RAMPS[k];
+    Object.assign(st.ramps, OWN);
     for (const k in MATS) if (!st.mats[k]) st.mats[k] = MATS[k];
   };
 })();
@@ -9238,6 +9326,11 @@ fn boxOf(V: Vox) -> Box {
     kgSpore: [["#a070e0", "#b488ec", "#c8a4f4"], EM], kgWillow: [["#78b850", 6, 0.22, 0.75, 0.3], FOL], kgWillowLt: [["#a6d468", 5, 0.35, 0.85, 0.3], FOL],
     kgOrb: [["#28b4d8", "#40c4e4", "#64d4ee", "#8ae2f4"], EM], kgGrub: [["#efe0bf", 5, 0.45, 0.92, 0.2]], kgGrubDk: [["#c8b48c", 4, 0.3, 0.7]], kgRot: [["#8a8a4a", 4, 0.2, 0.6]],
     kgGrubHead: [["#6a4a3a", 4, 0.15, 0.5]], kgMothFur: [["#e2d6ee", 5, 0.5, 0.92, 0.2]], kgMothWing: [["#b096d8", 6, 0.28, 0.8, 0.3]], kgMothDk: [["#5a4878", 4, 0.12, 0.45]],
+    // the second four plants: Briar Vine's hips, Stinkhorn's slime, tip and spores, Moonpetal's silver and
+    // moon, Ghost Lily's petals and blush
+    kgHip: [["#c8322a", 5, 0.2, 0.7, 0.25]], kgGleba: [["#4e4a22", 5, 0.1, 0.45, 0.2]], kgStinkOr: [["#e8782a", 6, 0.25, 0.78, 0.3]], kgStinkGlow: [["#9cd040", "#b0dc58", "#c8ea78"], EM],
+    kgMoonPetal: [["#dce4f4", 4, 0.55, 0.94], { bias: 0.04 }], kgMoon: [["#7e96e4", "#90a6ec", "#a4b6f2", "#b8c6f6"], EM], kgBriar: [["#8a3a2c", 5, 0.16, 0.6, 0.2]],
+    kgLily: [["#f8e8f0", 4, 0.66, 0.98], { bias: 0.2 }], kgLilyPink: [["#f088b8", 5, 0.4, 0.86, 0.2]], kgLilyGlow: [["#f478c0", "#f894cc", "#fcb4dc"], EM],
     kgLeafSick: [["#8a7a40", 6, 0.16, 0.62, 0.3], FOL], kgEyeSpot: [["#3a2a5a", 3, 0.1, 0.4]], kgStone: [["#8e8c84", 6, 0.2, 0.72, 0.2]], kgStoneDk: [["#66645e", 5, 0.14, 0.52]], kgGolemEye: [["#30d8a0", "#48e4b0", "#68eec4"], EM],
     // Shrine Craft
     scStone: [["#a29e92", 6, 0.24, 0.8, 0.15]], scLacquer: [["#c8382c", 6, 0.2, 0.7, 0.25]], scGold: [["#dcaa40", 5, 0.32, 0.86, 0.3]], scBronze: [["#5f8a78", 5, 0.2, 0.66, 0.2]],
@@ -9252,12 +9345,19 @@ fn boxOf(V: Vox) -> Box {
     hsStem: [["#2a4a40", 5, 0.1, 0.45]], hsPetal: [["#f4ecd0", 4, 0.6, 0.95], { bias: 0.15 }], hsCap: [["#c8b0f0", 5, 0.45, 0.88], { bias: 0.15 }],
     hsKodama: [["#eef2e8", 4, 0.7, 0.97]], hsBlight: [["#3a2440", 5, 0.08, 0.42, 0.3]], hsWingDk: [["#2a2a5a", 5, 0.08, 0.4]], hsObsidian: [["#2c2834", 5, 0.06, 0.38, 0.3]],
     hsShell: [["#4a2c52", 6, 0.1, 0.5, 0.3]], hsShellLt: [["#6a4478", 5, 0.2, 0.62, 0.3]], hsMask: [["#e8e2ee", 4, 0.62, 0.95, 0.2]], hsWraith: [["#5c3a78", 6, 0.14, 0.6, 0.3]],
+    // the mould creatures (game/enemies): mould greens and their glow, the snail, the mole, lichen, the mender's mint
+    hsMould: [["#5e7a34", 6, 0.14, 0.62, 0.3]], hsMouldLt: [["#94b456", 5, 0.3, 0.8, 0.3]], hsMouldDk: [["#3a4a24", 4, 0.1, 0.42]], hsMouldGlow: [["#c8e848", "#d4ee68", "#e0f488"], EM],
+    hsSnailBody: [["#b4a68e", 5, 0.4, 0.85, 0.2]], hsSnailShell: [["#8a6440", 6, 0.18, 0.66, 0.3]], hsSnailShellLt: [["#c89a62", 5, 0.35, 0.8, 0.3]],
+    hsMoleFur: [["#584436", 5, 0.12, 0.5, 0.2]], hsMoleFurLt: [["#7a6050", 4, 0.25, 0.62]], hsLichen: [["#8a9a6c", 5, 0.25, 0.7, 0.3]], hsLichenLt: [["#c4cc96", 4, 0.5, 0.86, 0.25]],
+    hsCrab: [["#5a5468", 5, 0.14, 0.55, 0.25]], hsGlowMint: [["#48d898", "#60e4aa", "#84eec0"], EM],
   };
   const RAMPS = {}, MATS = {};
   for (const k in MAT) { RAMPS[k] = MAT[k][0]; if (MAT[k][1]) MATS[k] = MAT[k][1]; }
   Object.assign(ME.LIGHT_COL, {
     kgHeart: [1.0, 0.62, 0.48, 1.6], kgOrb: [0.6, 0.95, 1.0, 0.9], kgSpore: [0.85, 0.62, 1.0, 0.6], kgGolemEye: [0.5, 1.0, 0.85, 0.35],
+    kgStinkGlow: [0.7, 1.0, 0.4, 0.6], kgMoon: [0.62, 0.72, 1.0, 0.8], kgLilyGlow: [1.0, 0.55, 0.8, 0.8],
     scLitGreen: [0.65, 1.0, 0.5, 0.9], scLitViolet: [0.85, 0.62, 1.0, 0.9], scPaperLit: [0.6, 0.95, 1.0, 1.4], scLitWarm: [1.0, 0.72, 0.4, 1.1],
+    hsMouldGlow: [0.8, 1.0, 0.4, 0.5], hsGlowMint: [0.5, 1.0, 0.75, 0.9],
     hsGlowGold: [1.0, 0.82, 0.45, 1.2], hsGlowCyan: [0.55, 0.95, 1.0, 1.2], hsGlowPink: [1.0, 0.55, 0.85, 1.0], hsGlowLime: [0.75, 1.0, 0.4, 0.9], hsVein: [0.9, 0.3, 1.0, 0.7],
   });
 
@@ -9341,14 +9441,15 @@ fn boxOf(V: Vox) -> Box {
 <script>/* ../MossheartEngine/assets/asset-set.js */
 /* Mossheart asset set (the user's pick from the mockups): Koke Garden Heart Tree, Sunpetal and Puffcap,
    the Shrine Craft Thornbloom lantern, the Hotaru Spirit Willow Wisp and blighted enemies.
-     towers   ms_thorn ms_sun ms_puff ms_wisp       o.lv 1..3 (upgrade level), 4-frame idle over o.t
+     towers   ms_thorn ms_sun ms_puff ms_wisp, ms_briar ms_toad ms_moon ms_lily   o.lv 1..3 (upgrade level), 4-frame idle over o.t
      base     ms_heart                               o.hurt 0..2 (healthy, wounded, critical), 4-frame idle
-     enemies  ms_grub ms_beetle ms_moth ms_golem ms_spirit (boss)   4-frame walk / fly cycles
+     enemies  ms_grub ms_beetle ms_moth ms_golem ms_spirit (boss), and the mould creatures ms_snail ms_bloat
+              ms_mite ms_mender ms_midge ms_mole ms_lichen ms_mother (second boss)   4-frame walk / fly cycles
      props    ms_rift (blight spawn) ms_glowcap ms_lamp ms_stone ms_kodama
-   Showrooms: ?gallery=set-towers | set-heart | set-enemies | set-world (a mini level: enemies walk the path,
+   Showrooms: ?gallery=set-towers | set-towers2 | set-heart | set-enemies | set-enemies2 | set-world (a mini level: enemies walk the path,
    add &units=10; &set=cycle:60 loops day and dusk). Built on assets/asset-kit.js. */
 (function () {
-  const ME = window.ME, { S, E, C, B, Y, TAU, add, mul, lerp3, norm, rx, rz, orient, near, nz3, cface, mossPad, stoneMoss, larva, lantern, kodamaFace, model } = ME.assetKit;
+  const ME = window.ME, { S, E, C, B, Y, TAU, add, mul, lerp3, norm, cross, rx, rz, orient, near, nz3, cface, mossPad, stoneMoss, larva, lantern, kodamaFace, model } = ME.assetKit;
   const lv = (o) => Math.max(1, Math.min(3, o.lv || 2)), ph = (o) => (o.t || 0) * TAU;
   const ring = (n, f) => { for (let i = 0; i < n; i++) f((i / n) * TAU, i); };
   // kodama whose head tilts by (dx, dy): the rattle of the idle loop
@@ -9452,6 +9553,145 @@ fn boxOf(V: Vox) -> Box {
     ring(orbs, (a) => { const b = a + w; p.push(S([Math.cos(b) * 0.24, Math.sin(b) * 0.24, fz - 0.12 + 0.04 * Math.sin(b * 2)], 0.025, "hsGlowCyan")); });
     const kf = kodamaFace(heads, spots[0][2]);
     return { prims: p, r: sr * 1.5, h: fz + fr * 2.6, k: 1, detail: (x, y, z, m) => (m === "hsKodama" ? kf(x, y, z) || m : m) };
+  }, 4);
+
+  // ---------------------------------------------------------------- the second four plants
+  // Briar Vine: a wild-rose briar on a root knot, red thorny canes arching out, their tips swaying, each
+  // ending in a leaf tuft (Koke Garden). Level 2 grows rose hips and a runner that ends in a snare loop on
+  // the ground (its snare); level 3 a second runner (its second patch) and a crown rose on a tall cane.
+  model("ms_briar", 1.9, (o) => {
+    const L = lv(o), w = ph(o), nv = L + 1, R0 = [0.26, 0.33, 0.38][L - 1], H0 = [0.4, 0.52, 0.6][L - 1];
+    const p = [mossPad(0.24 + 0.03 * L), E([0, 0, 0.05], [0.11, 0.1, 0.07], "kgBark", { k2: 0.03 })];
+    const thorn = (q, d, s = 1) => p.push(C(q, add(q, mul(norm(d), 0.05 * s)), 0.016 * s, 0.002, "kgThorn"));
+    // a cane from the knot: an arch out along angle a, the tip swaying
+    for (let i = 0; i < nv; i++) {
+      const a = (i / nv) * TAU + 0.5, R = R0 * (i % 2 ? 0.85 : 1), H = H0 * (i % 2 ? 0.8 : 1), ca = Math.cos(a), sa = Math.sin(a), n = 6 + L;
+      let prev = [ca * 0.04, sa * 0.04, 0.08];
+      for (let j = 1; j <= n; j++) {
+        const t = j / n, sw = 0.035 * Math.sin(w + i * 1.9) * t * t, q = [ca * (0.04 + R * t) - sa * sw, sa * (0.04 + R * t) + ca * sw, 0.08 + H * Math.sin(Math.PI * t * 0.85)];
+        p.push(C(prev, q, 0.032 - 0.012 * t, 0.03 - 0.012 * t, "kgBriar", { k2: 0.008 }));
+        if (j < n) thorn(q, [ca * 0.3 - sa * (j % 2 ? 1 : -1), sa * 0.3 + ca * (j % 2 ? 1 : -1), 0.7], 1 - 0.3 * t);
+        if (L > 1 && j === n - 2) p.push(S(add(q, [-sa * 0.03, ca * 0.03, -0.035]), 0.032, "kgHip"));
+        prev = q;
+      }
+      for (const [da, s] of [[0.9, 1], [-0.9, 0.85], [0, 0.75]]) p.push(E(add(prev, [Math.cos(a + da) * 0.035, Math.sin(a + da) * 0.035, 0.01]), [0.05 * s, 0.026 * s, 0.01], "kgLeaf", { R: rz(a + da) }));
+    }
+    // runners on the ground toward the viewer's side, each ending in a snare loop
+    const runners = L === 1 ? [] : L === 2 ? [0.6] : [0.6, -1.0];
+    for (const a of runners) {
+      const ca = Math.cos(a), sa = Math.sin(a);
+      let prev = [ca * 0.08, sa * 0.08, 0.03];
+      for (let j = 1; j <= 5; j++) { const q = [ca * (0.08 + j * 0.065) - sa * 0.02 * Math.sin(j * 1.3), sa * (0.08 + j * 0.065) + ca * 0.02 * Math.sin(j * 1.3), 0.03]; p.push(C(prev, q, 0.02, 0.018, "kgBriar")); if (j % 2) thorn(q, [-sa, ca, 0.8], 0.8); prev = q; }
+      const c = add(prev, [ca * 0.08, sa * 0.08, 0]);
+      ring(8, (b, k) => { const u = [c[0] + Math.cos(b) * 0.08, c[1] + Math.sin(b) * 0.08, 0.03], v = [c[0] + Math.cos(b + TAU / 8) * 0.08, c[1] + Math.sin(b + TAU / 8) * 0.08, 0.03]; p.push(C(u, v, 0.017, 0.017, "kgBriar")); if (k % 2 === 0) thorn(u, [Math.cos(b), Math.sin(b), 1.2], 0.8); });
+    }
+    let top = H0 + 0.12;
+    if (L === 3) {
+      // the crown rose on a tall cane, nodding with the loop
+      const rc = [0.02 + 0.015 * Math.sin(w), 0.02, 0.86];
+      p.push(C([0, 0, 0.08], [0.01, 0.01, 0.45], 0.03, 0.026, "kgBriar"), C([0.01, 0.01, 0.45], rc, 0.026, 0.02, "kgBriar"));
+      thorn([0.005, 0.005, 0.3], [1, 0.2, 0.6]); thorn([0.01, 0.01, 0.55], [-0.4, 1, 0.6]);
+      p.push(E([-0.05, 0.03, 0.6], [0.06, 0.028, 0.008], "kgLeaf", { R: rz(2.4) }), E(add(rc, [0, 0, -0.05]), [0.05, 0.05, 0.02], "kgLeaf"));
+      ring(6, (b) => p.push(E(add(rc, [Math.cos(b) * 0.05, Math.sin(b) * 0.05, 0.01]), [0.055, 0.035, 0.025], "scRose", { R: rz(b), k2: 0.01 })));
+      p.push(S(add(rc, [0, 0, 0.035]), 0.035, "kgRoseLt", { k2: 0.01 }));
+      top = 0.98;
+    }
+    return { prims: p, r: R0 + 0.12 + (L > 1 ? 0.2 : 0), h: top, k: 1, detail: (x, y, z, m, nx, ny, nz) => (m === "kgBark" && nz > 0.3 && nz3(x, y, z, 10, 3) > 0.45 ? "moss" : m) };
+  }, 4);
+
+  // Stinkhorn: a basket stinkhorn, an orange lattice ball hatched from a white egg that has a face (Koke
+  // Garden). The olive slime inside glows, and a spore bomb swells out of the lattice's top over the loop
+  // (what it lobs). Level 2 adds an unhatched sibling egg and a poison puddle, level 3 a small basket beside it.
+  model("ms_toad", 1.9, (o) => {
+    const L = lv(o), w = ph(o), t = o.t || 0, R = [0.13, 0.16, 0.19][L - 1], es = [0.85, 1, 1.1][L - 1];
+    const vc = [0, 0, 0.07 * es], p = [mossPad(0.26 + 0.03 * L), E(vc, [0.15 * es, 0.15 * es, 0.1 * es], "kgSpot", { k2: 0.03 })];
+    const basket = (bc, r, nm, bomb) => {
+      const br = 1 + 0.04 * Math.sin(w), th = 0.012 + 0.03 * r;
+      ring(nm, (a) => { let prev = null; for (let k = 0; k <= 6; k++) { const v = -1.0 + (k / 6) * 2.2, q = [bc[0] + Math.cos(a) * Math.cos(v) * r * br, bc[1] + Math.sin(a) * Math.cos(v) * r * br, bc[2] + Math.sin(v) * r]; if (prev) p.push(C(prev, q, th, th, "kgStinkOr", { k2: 0.006 })); prev = q; } });
+      for (const v of [-0.25, 0.5]) ring(2 * nm, (a) => { const q = (b) => [bc[0] + Math.cos(b) * Math.cos(v) * r * br, bc[1] + Math.sin(b) * Math.cos(v) * r * br, bc[2] + Math.sin(v) * r]; p.push(C(q(a), q(a + Math.PI / nm), th * 0.9, th * 0.9, "kgStinkOr")); });
+      p.push(S(bc, r * 0.5, "kgGleba", { k2: 0.02 }));
+      if (bomb) p.push(S([bc[0], bc[1], bc[2] + r * (0.45 + 0.75 * t)], r * (0.22 + 0.2 * t), "kgStinkGlow"));
+    };
+    basket([0, 0, 0.1 * es + R * 0.8], R, L === 3 ? 8 : 6, true);
+    if (L > 1) {
+      // an unhatched sibling egg, and the poison puddle
+      p.push(E([0.2, -0.14, 0.05], [0.07, 0.07, 0.06], "kgSpot", { k2: 0.02 }), E([-0.06, 0.24, 0.008], [0.12, 0.08, 0.01], "kgStinkGlow"));
+    }
+    if (L === 3) { p.push(E([-0.2, -0.12, 0.04], [0.08, 0.08, 0.05], "kgSpot")); basket([-0.2, -0.12, 0.13], 0.08, 5, false); }
+    return {
+      prims: p, r: 0.38 + 0.03 * L, h: 0.1 * es + R * 2.5 + 0.04, k: 1,
+      detail: (x, y, z, m, nx, ny, nz) => {
+        if (m === "kgSpot" && near([x, y, z], vc, 0.17 * es)) return cface([x - vc[0], y - vc[1], z - vc[2]], 0.13 * es, { ex: 0.42, ey: -0.05, er: 0.2, blush: true, mouth: [0, -0.42, 0.1] }) || (nz3(x, y, z, 20, 6) > 0.68 ? "kgGill" : m);
+        if (m === "kgGleba" && nz3(x, y, z, 18, 2) > 0.7) return "kgStinkGlow";
+        return m;
+      },
+    };
+  }, 4);
+
+  model("ms_moon", 1.9, (o) => {
+    const L = lv(o), w = ph(o), hb = [0.42, 0.54, 0.62][L - 1], br = [0.13, 0.15, 0.17][L - 1], bs = 0.15 + 0.02 * L;
+    const p = [Y([0, 0, 0.06], bs, 0.06, "scStone", { round: 0.03 }), E([0, 0, 0.125], [bs - 0.03, bs - 0.03, 0.012], "moss", { k2: 0.02 })];
+    const bloom = (c, r, n) => {
+      const R = orient(n), u = R.slice(0, 3), v = R.slice(3, 6);
+      ring(5, (a, i) => { const d = add(mul(u, Math.cos(a + 0.03 * Math.sin(w + i))), mul(v, Math.sin(a + 0.03 * Math.sin(w + i)))); p.push(E(add(add(c, mul(d, r * 0.62)), mul(n, 0.02)), [r * 0.62, r * 0.42, 0.014], "kgMoonPetal", { R: orient(norm(add(n, mul(d, -0.35))), d) })); });
+      p.push(S(add(c, mul(n, 0.02)), r * 0.2, "kgMoon"));
+    };
+    const n0 = norm([0.35 + 0.05 * Math.sin(w), 0.3, 1]), bc = [0.03, 0.02, hb];
+    p.push(C([0, 0, 0.12], [0.02, 0.01, hb * 0.6], 0.024, 0.02, "kgStem"), C([0.02, 0.01, hb * 0.6], bc, 0.02, 0.016, "kgStem"));
+    for (const [a, z, s] of [[2.4, 0.2, 1], [-0.7, 0.3, 0.85], [4.0, 0.36, 0.75]].slice(0, L + 1)) { const d = [Math.cos(a), Math.sin(a), 0.15]; p.push(E(add([0, 0, z], mul(norm(d), 0.1 * s)), [0.1 * s, 0.075 * s, 0.01], "kgLeaf", { R: orient([0, 0, 1], d) })); }
+    bloom(bc, br, n0);
+    if (L > 1) { const b2 = [-0.12, -0.06, hb * 0.66]; p.push(C([0, 0, 0.12], b2, 0.018, 0.014, "kgStem")); bloom(b2, br * 0.7, norm([-0.3, 0.2, 1])); }
+    // the moon: a crescent standing in the plane facing the viewer, or (level 3) the full moon
+    const mc = [0.02, 0.02, hb + 0.24 + 0.03 * Math.sin(w)], mr = [0.085, 0.105, 0.1][L - 1], VR = [0.707, -0.707, 0], tilt = 0.12 * Math.sin(w) - 0.3;
+    if (L < 3) {
+      for (let k = 0; k <= 12; k++) {
+        const b = Math.PI + ((k / 12) - 0.5) * 3.6 + tilt, r = mr * 0.42 * Math.sin(((k + 0.5) / 13) * Math.PI) + 0.01;
+        p.push(S(add(mc, add(mul(VR, Math.cos(b) * mr), [0, 0, Math.sin(b) * mr])), r, "kgMoon"));
+      }
+    } else {
+      p.push(S(mc, mr, "kgMoon"));
+      ring(5, (a) => { const b = a + w; p.push(S(add(mc, [Math.cos(b) * 0.2, Math.sin(b) * 0.2, 0.04 * Math.sin(b * 2)]), 0.02, "kgMoon")); });
+    }
+    if (L === 2) ring(16, (a) => p.push(S(add(mc, [Math.cos(a) * mr * 1.5, Math.sin(a) * mr * 1.5, 0]), 0.008, "kgMoon")));
+    const sm = stoneMoss("scStone", 10, 0.5);
+    return { prims: p, r: 0.24 + 0.02 * L, h: mc[2] + mr + 0.08, k: 1, detail: (x, y, z, m, nx, ny, nz) => sm(x, y, z, m, nx, ny, nz) || m };
+  }, 4);
+
+  // Ghost Lily: pale trumpet lilies with a pink blush and glowing stamens, strap leaves round a dark
+  // mossy stone (Hotaru Spirit). The trumpets breathe and the stamens flicker. Level 2 is a bigger bloom
+  // with a bud and ghost motes rising; level 3 two trumpets, as it holds two beams.
+  model("ms_lily", 1.9, (o) => {
+    const L = lv(o), w = ph(o), t = o.t || 0, hb = [0.48, 0.6, 0.66][L - 1], s = [0.85, 1, 1.05][L - 1];
+    const p = [mossPad(0.24 + 0.02 * L), E([0, 0, 0.04], [0.12, 0.1, 0.06], "hsObsidian", { k2: 0.03 })], blooms = [];
+    ring(4 + L, (a, i) => { const d = [Math.cos(a), Math.sin(a)], tip = [d[0] * 0.3, d[1] * 0.3, 0.16 + 0.04 * (i % 2)]; p.push(C([d[0] * 0.04, d[1] * 0.04, 0.06], [d[0] * 0.16, d[1] * 0.16, 0.2], 0.02, 0.016, "hsLeaf"), C([d[0] * 0.16, d[1] * 0.16, 0.2], tip, 0.016, 0.004, "hsLeafLt")); });
+    const trumpet = (base, h, n, sc, ph0) => {
+      const c = add(base, [n[0] * 0.03 + 0.012 * Math.sin(w + ph0), n[1] * 0.03, h]), open = 1 + 0.08 * Math.sin(w + ph0);
+      p.push(C(base, add(base, [0, 0, h * 0.6]), 0.02, 0.017, "hsStem"), C(add(base, [0, 0, h * 0.6]), c, 0.017, 0.014, "hsStem"));
+      const R = orient(n), u = R.slice(0, 3), v = R.slice(3, 6);
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * TAU + ph0, d = add(mul(u, Math.cos(a)), mul(v, Math.sin(a))), dp = norm(add(mul(n, 0.8), mul(d, 0.55 * open))), tg = cross(n, d);
+        p.push(E(add(c, mul(dp, 0.08 * sc)), [0.085 * sc, 0.03 * sc, 0.009], "kgLily", { R: orient(norm(cross(dp, tg)), dp) }));
+        const d2 = norm(add(mul(n, 0.1), d)), tip = add(add(c, mul(dp, 0.15 * sc)), mul(d2, 0.025 * sc));
+        p.push(E(tip, [0.04 * sc, 0.024 * sc, 0.008], "kgLily", { R: orient(norm(cross(d2, tg)), d2) }));
+      }
+      for (let k = 0; k < 3; k++) { const a = (k / 3) * TAU + w * 0.5, d = add(mul(u, Math.cos(a) * 0.025), mul(v, Math.sin(a) * 0.025)), e = add(add(c, mul(n, 0.13 * sc)), d); p.push(C(c, e, 0.004, 0.003, "kgLilyPink"), S(e, 0.012 + 0.005 * Math.max(0, Math.sin(w * 2 + k * 2.1)), "kgLilyGlow")); }
+      p.push(S(add(c, mul(n, 0.02)), 0.022 * sc, "kgLilyGlow"));
+      blooms.push(c);
+      return c;
+    };
+    trumpet([0.02, 0, 0.06], hb, norm([0.55, 0.25, 0.8]), s, 0);
+    if (L === 2) { const b = [-0.08, -0.06, 0.06], bt = [-0.11, -0.07, 0.06 + hb * 0.7]; p.push(C(b, bt, 0.016, 0.012, "hsStem"), E(add(bt, [0, 0, 0.04]), [0.026, 0.026, 0.06], "kgLily")); }
+    if (L === 3) trumpet([-0.08, -0.07, 0.06], hb * 0.8, norm([-0.2, -0.55, 0.8]), s * 0.9, 2.6);
+    // ghost motes rising off the blooms and fading over the loop
+    for (let k = 0; k < L - 1; k++) { const f = (t + k / Math.max(1, L - 1)) % 1, c = blooms[k % blooms.length]; p.push(S(add(c, [0.03 * Math.sin(k * 2.3 + f * 4), 0.03 * Math.cos(k * 2.3), 0.12 + f * 0.3]), 0.02 * (1 - f * 0.6), "kgLilyGlow")); }
+    return {
+      prims: p, r: 0.34, h: hb + 0.32, k: 1,
+      detail: (x, y, z, m, nx, ny, nz) => {
+        if (m === "kgLily") for (const c of blooms) if (near([x, y, z], c, 0.065)) return "kgLilyPink";
+        if (m === "hsObsidian" && nz > 0.3 && nz3(x, y, z, 10, 3) > 0.45) return "moss";
+        return m;
+      },
+    };
   }, 4);
 
   // ================================================================ the Heart Tree
@@ -9588,6 +9828,169 @@ fn boxOf(V: Vox) -> Box {
     };
   }, 4);
 
+  // ---------------------------------------------------------------- the mould creatures (game/enemies)
+  // a creature's legs in alternating tripods: hips at (x, ±y0, z0) for each x, reaching out to ±y1; w the
+  // walk phase. Pushes the prims, in material m with radius r.
+  const tripods = (p, xs, y0, y1, z0, w, m, r = 0.016, stride = 0.04) => {
+    for (const sd of [-1, 1]) xs.forEach((x, i) => {
+      const g = w + ((i % 2) ^ (sd > 0 ? 1 : 0)) * Math.PI, lift = 0.03 * Math.max(0, Math.cos(g));
+      const hip = [x, sd * y0, z0], knee = [x + 0.01, sd * (y0 + y1) / 2 + sd * 0.02, z0 + 0.02 + lift], foot = [x + stride * Math.sin(g), sd * y1, lift * 0.7];
+      p.push(C(hip, knee, r, r * 0.8, m), C(knee, foot, r * 0.8, r * 0.5, m));
+    });
+  };
+
+  // Shellback Snail: a pale slug foot under a big spiral shell, banded and cracked with blight; the foot
+  // ripples forward and the eye stalks sway.
+  model("ms_snail", 2.0, (o) => {
+    const w = ph(o), sq = 0.02 * Math.sin(w), hc = [0.24 + sq, 0, 0.12], sc = [-0.05, 0, 0.23 + 0.008 * Math.sin(w + 1)];
+    const p = [E([0.02, 0, 0.055], [0.27 + sq, 0.11, 0.06], "hsSnailBody", { k2: 0.03 }), S(hc, 0.085, "hsSnailBody", { k2: 0.04 }), E(sc, [0.18, 0.13, 0.18], "hsSnailShell", { k2: 0.02 }), S(add(sc, [0.03, 0, 0.0]), 0.07, "hsSnailShellLt")];
+    for (const sd of [-1, 1]) { const tip = add(hc, [0.07 + 0.015 * Math.sin(w + sd), sd * 0.06, 0.15]); p.push(C(add(hc, [0.02, sd * 0.03, 0.05]), tip, 0.014, 0.01, "hsSnailBody"), S(tip, 0.022, "hsVein")); }
+    return {
+      prims: p, r: 0.34, h: 0.42, k: 1,
+      detail: (x, y, z, m) => {
+        if (m === "hsSnailBody" && near([x, y, z], hc, 0.095)) return cface([x - hc[0], y - hc[1], z - hc[2]], 0.085, { ex: 0.4, ey: 0.05, er: 0.2, eye: "hsVein", hi: false }) || m;
+        if (m === "hsSnailShell" || m === "hsSnailShellLt") {
+          // the spiral seen on the shell's sides: bands where log(r) and the angle in the xz plane line up
+          const dx = x - sc[0], dz = z - sc[2], r = Math.hypot(dx, dz) + 1e-4, a = Math.atan2(dz, dx) / TAU, f = (Math.log(r / 0.18) / 0.55 + a + 10) % 1;
+          if (f < 0.12) return "hsBlight";
+          if (Math.abs(nz3(x, y, z, 9, 6) - 0.5) < 0.02) return "hsVein";
+          return f < 0.5 ? "hsSnailShellLt" : "hsSnailShell";
+        }
+        return m;
+      },
+    };
+  }, 4);
+
+  // Bloat Mould: a swollen mould sack on a grub's little head, its pustules glowing and the sack breathing
+  // as it crawls (the mites inside show as lumps).
+  model("ms_bloat", 2.0, (o) => {
+    const w = ph(o), br = 1 + 0.06 * Math.sin(w), hc = [0.2, 0, 0.11];
+    const p = [E([-0.03, 0, 0.17], [0.2 * br, 0.18 * br, 0.17 / br], "hsMould", { k2: 0.04 }), S(hc, 0.085, "hsMouldLt", { k2: 0.04 })];
+    for (const [x, y, z, r] of [[0.02, 0.14, 0.24, 0.045], [-0.12, -0.1, 0.26, 0.05], [-0.08, 0.12, 0.08, 0.04], [0.06, -0.12, 0.2, 0.04], [-0.18, 0.04, 0.2, 0.04], [-0.04, 0, 0.33, 0.04]]) p.push(S([x * br, y * br, z], r * (1 + 0.15 * Math.sin(w + x * 20)), "hsMouldLt", { k2: 0.01 }));
+    for (const sd of [-1, 1]) for (const x of [0.12, 0, -0.12]) p.push(C([x, sd * 0.12, 0.05], [x + 0.02 * Math.sin(w + x * 9), sd * 0.16, 0.0], 0.022, 0.012, "hsMouldDk"));
+    return {
+      prims: p, r: 0.3, h: 0.38, k: 1,
+      detail: (x, y, z, m) => {
+        if (m === "hsMouldLt" && near([x, y, z], hc, 0.095)) return cface([x - hc[0], y - hc[1], z - hc[2]], 0.085, { ex: 0.42, ey: 0.08, er: 0.22, eye: "hsMouldDk", hi: true, mouth: [0, -0.4, 0.12], mouthM: "hsMouldDk" }) || m;
+        if (m === "hsMouldLt" && nz3(x, y, z, 30, 4) > 0.62) return "hsMouldGlow";
+        if (m === "hsMould") return nz3(x, y, z, 14, 2) > 0.62 ? "hsMouldLt" : Math.abs(nz3(x, y, z, 7, 5) - 0.5) < 0.02 ? "hsMouldGlow" : m;
+        return m;
+      },
+    };
+  }, 4);
+
+  // Mould Mite: a round little mite with a big face and pincers, skittering on six legs.
+  model("ms_mite", 2.0, (o) => {
+    const w = ph(o), hc = [0.13, 0, 0.15], p = [E([-0.03, 0, 0.13], [0.14, 0.12, 0.1], "hsMouldLt", { k2: 0.03 }), S(hc, 0.095, "hsMouldLt", { k2: 0.03 })];
+    for (const sd of [-1, 1]) p.push(C(add(hc, [0.07, sd * 0.04, -0.04]), add(hc, [0.13, sd * 0.015, -0.06]), 0.016, 0.006, "hsMouldDk"));
+    p.push(S([-0.08, 0.04, 0.22], 0.03, "hsMouldGlow"), S([-0.02, -0.06, 0.22], 0.025, "hsMouldGlow"));
+    tripods(p, [0.06, -0.03, -0.12], 0.08, 0.2, 0.1, w, "hsMouldDk", 0.016, 0.05);
+    return { prims: p, r: 0.26, h: 0.26, k: 1, detail: (x, y, z, m) => (m === "hsMouldLt" && near([x, y, z], hc, 0.105) ? cface([x - hc[0], y - hc[1], z - hc[2]], 0.095, { ex: 0.42, ey: 0.1, er: 0.26, hi: true }) || m : m) };
+  }, 4);
+
+  // Rot Mender: a hunched little mould shaman in a mossy cloak and a mushroom hat, swinging a staff with
+  // a mint glow that heals; motes of it circle the mender.
+  model("ms_mender", 2.0, (o) => {
+    const w = ph(o), bob = 0.015 * Math.abs(Math.sin(w)), hc = [0.06, 0, 0.36 + bob];
+    const p = [C([0, 0, 0.02], [0.02, 0, 0.3 + bob], 0.19, 0.1, "hsMould", { k2: 0.04 }), S(hc, 0.11, "hsMask", { k2: 0.02 }), E([0.03, 0, 0.5 + bob], [0.14, 0.14, 0.05], "hsMouldLt", { k2: 0.02 }), E([0.03, 0, 0.47 + bob], [0.11, 0.11, 0.015], "hsMouldGlow")];
+    const hand = [0.12, 0.14, 0.24 + bob], top = [0.16 + 0.04 * Math.sin(w), 0.18, 0.6 + bob];
+    p.push(S(hand, 0.04, "hsMould"), C([0.1, 0.17, 0.02], top, 0.014, 0.012, "hsBarkDk"), S(add(top, [0, 0, 0.04]), 0.045 * (1 + 0.12 * Math.sin(w * 2)), "hsGlowMint"));
+    for (const sd of [-1, 1]) p.push(E([0.02, sd * 0.11, 0.04], [0.06, 0.04, 0.03], "hsMouldDk"));
+    ring(3, (a) => { const b = a + w; p.push(S([Math.cos(b) * 0.28, Math.sin(b) * 0.28, 0.3 + 0.05 * Math.sin(b * 2)], 0.022, "hsGlowMint")); });
+    return {
+      prims: p, r: 0.36, h: 0.72, k: 1,
+      detail: (x, y, z, m) => {
+        if (m === "hsMask") return cface([x - hc[0], y - hc[1], z - hc[2]], 0.11, { ex: 0.38, ey: 0.0, er: 0.2, eye: "hsGlowMint", hi: false, mouth: [0, -0.4, 0.09] }) || m;
+        if (m === "hsMould") return nz3(x, y, z, 12, 3) > 0.6 ? "moss" : m;
+        if (m === "hsMouldLt" && nz3(x, y, z, 20, 5) > 0.66) return "kgSpot";
+        return m;
+      },
+    };
+  }, 4);
+
+  // Midge Swarm: a cloud of tiny dark midges with glinting wings and pink eyes, jittering as it flies.
+  model("ms_midge", 2.0, (o) => {
+    const w = ph(o), p = [];
+    const M = [[0.1, 0.0, 0.42], [-0.08, 0.1, 0.5], [-0.04, -0.12, 0.38], [0.02, 0.06, 0.62], [-0.14, -0.02, 0.56], [0.12, -0.1, 0.55], [0.0, 0.14, 0.34]];
+    M.forEach(([x, y, z], i) => {
+      const c = [x + 0.03 * Math.sin(w + i * 2.1), y + 0.03 * Math.cos(w * 2 + i), z + 0.04 * Math.sin(w + i * 1.3)], beat = 0.4 + 0.5 * Math.abs(Math.sin(w * 2 + i));
+      p.push(E(c, [0.035, 0.022, 0.022], "hsWingDk"), S(add(c, [0.03, 0, 0.005]), 0.016, "hsGlowPink"));
+      for (const sd of [-1, 1]) p.push(E(add(c, [-0.01, sd * 0.035, 0.02 + 0.02 * beat]), [0.03, 0.035, 0.006], "hsCrystal", { R: rx(sd * beat) }));
+    });
+    return { prims: p, r: 0.3, h: 0.72, k: 1 };
+  }, 4);
+
+  // Root Mole: a furry mole with a pink star nose and big pale digging claws, roots and earth on its back,
+  // paddling forward.
+  model("ms_mole", 2.0, (o) => {
+    const w = ph(o), hc = [0.17, 0, 0.13], p = [E([-0.03, 0, 0.13], [0.22, 0.15, 0.13], "hsMoleFur", { k2: 0.04 }), S(hc, 0.1, "hsMoleFur", { k2: 0.05 })];
+    ring(6, (a) => p.push(E(add(hc, [0.1 + Math.cos(a) * 0.012, Math.sin(a) * 0.022, Math.cos(a) * 0.022]), [0.012, 0.018, 0.018], "kgRoseLt")));
+    for (const sd of [-1, 1]) {
+      const g = w + (sd > 0 ? 0 : Math.PI), paw = [0.16 + 0.05 * Math.sin(g), sd * 0.15, 0.03 + 0.025 * Math.max(0, Math.cos(g))];
+      p.push(E(paw, [0.05, 0.04, 0.02], "hsMoleFurLt", { k2: 0.01 }));
+      for (const k of [-1, 0, 1]) p.push(C(add(paw, [0.03, k * 0.018, 0]), add(paw, [0.08, k * 0.024, -0.02]), 0.01, 0.003, "hsMask"));
+      p.push(E([-0.14, sd * 0.12, 0.03], [0.05, 0.035, 0.025], "hsMoleFurLt"));
+    }
+    // roots and a clod of earth on its back
+    p.push(E([-0.07, 0.02, 0.25], [0.08, 0.07, 0.03], "kgBark"), C([-0.12, 0.0, 0.26], [-0.02, 0.06, 0.33], 0.01, 0.005, "kgStem"), C([-0.05, -0.03, 0.27], [0.02, -0.08, 0.31], 0.009, 0.004, "kgStem"));
+    return {
+      prims: p, r: 0.3, h: 0.34, k: 1,
+      detail: (x, y, z, m) => {
+        if (m === "hsMoleFur" && near([x, y, z], hc, 0.11)) return cface([x - hc[0], y - hc[1], z - hc[2]], 0.1, { ex: 0.36, ey: 0.22, er: 0.11, eye: "hsVein", hi: false }) || m;
+        if (m === "hsMoleFur") return Math.abs(y) < 0.018 && z > 0.18 ? "hsVein" : nz3(x, y, z, 26, 3) > 0.62 ? "hsMoleFurLt" : m;
+        return m;
+      },
+    };
+  }, 4);
+
+  // Lichen Crab: a broad crab shell crusted with lichen (its armour) and split by a blight seam, eyes on
+  // stalks, two big claws, scuttling on eight legs.
+  model("ms_lichen", 1.8, (o) => {
+    const w = ph(o), bob = 0.012 * Math.abs(Math.sin(w * 2)), sc = [0, 0, 0.24 + bob];
+    const p = [E(sc, [0.24, 0.3, 0.12], "hsCrab", { k2: 0.03 }), E(add(sc, [0, 0, -0.06]), [0.2, 0.26, 0.06], "hsObsidian", { k2: 0.02 })];
+    for (const sd of [-1, 1]) {
+      const eye = add(sc, [0.2, sd * 0.07, 0.14]);
+      p.push(C(add(sc, [0.16, sd * 0.06, 0.06]), eye, 0.014, 0.012, "hsCrab"), S(eye, 0.03, "hsMouldGlow"));
+      // a big claw, opening and closing
+      const sh = add(sc, [0.12, sd * 0.24, -0.04]), el = [0.34, sd * 0.3, 0.2 + bob], cl = [0.46, sd * 0.24, 0.2 + bob], open = 0.25 + 0.2 * Math.sin(w + sd);
+      p.push(C(sh, el, 0.035, 0.03, "hsCrab"), E(cl, [0.09, 0.05, 0.05], "hsCrab", { R: rz(-sd * 0.5) }));
+      p.push(C(add(cl, [0.05, 0, 0.02]), add(cl, [0.13, -sd * 0.03, 0.02 + open * 0.15]), 0.025, 0.008, "hsLichenLt"), C(add(cl, [0.05, 0, -0.01]), add(cl, [0.13, -sd * 0.04, -0.01]), 0.022, 0.008, "hsLichenLt"));
+    }
+    tripods(p, [0.08, -0.02, -0.11, -0.19], 0.24, 0.42, 0.2 + bob, w * 2, "hsCrab", 0.02, 0.03);
+    return {
+      prims: p, r: 0.52, h: 0.46, k: 1,
+      detail: (x, y, z, m, nx, ny, nz) => {
+        if (m !== "hsCrab" || z < sc[2]) return m;
+        if (Math.abs(y) < 0.016 && nz > 0.6) return "hsVein";
+        const v = nz3(x, y, z, 11, 8);
+        return v > 0.66 ? "hsLichenLt" : v > 0.5 ? "hsLichen" : m;
+      },
+    };
+  }, 4);
+
+  // Mould Mother (the second boss): a vast mould queen, a banded abdomen glowing with pustules dragged
+  // behind a crowned head (a ring of little mushrooms), mites riding her back; the abdomen heaves and the
+  // legs crawl.
+  model("ms_mother", 1.6, (o) => {
+    const w = ph(o), br = 1 + 0.05 * Math.sin(w), hc = [0.36, 0.06, 0.55], ac = [-0.28, 0, 0.36];
+    const p = [E(ac, [0.46 * br, 0.38 * br, 0.34 / br], "hsMould", { k2: 0.06 }), S([0.12, 0.02, 0.42], 0.22, "hsMouldDk", { k2: 0.06 }), S(hc, 0.2, "hsMouldLt", { k2: 0.05 })];
+    ring(9, (a, i) => { const c = add(ac, [Math.cos(a) * 0.4 * br, Math.sin(a) * 0.33 * br, 0.06 + 0.12 * Math.sin(i * 1.7)]); p.push(S(c, 0.045 * (1 + 0.2 * Math.sin(w + i)), "hsMouldGlow")); });
+    // the crown: five little mushrooms round the top of her head
+    ring(5, (a) => { const b = add(hc, [Math.cos(a) * 0.1, Math.sin(a) * 0.1, 0.16]), t = add(b, [Math.cos(a) * 0.04, Math.sin(a) * 0.04, 0.1]); p.push(C(b, t, 0.018, 0.014, "kgSpot"), E(t, [0.05, 0.05, 0.025], "hsMouldLt", { k2: 0.01 }), E(add(t, [0, 0, -0.012]), [0.04, 0.04, 0.008], "hsMouldGlow")); });
+    for (const sd of [-1, 1]) p.push(C(add(hc, [0.15, sd * 0.06, -0.08]), add(hc, [0.25, sd * 0.03, -0.16]), 0.03, 0.01, "hsObsidian"));
+    tripods(p, [0.22, 0.08, -0.06], 0.18, 0.4, 0.3, w, "hsObsidian", 0.035, 0.05);
+    // mites riding her back
+    for (const [x, y] of [[-0.3, 0.12], [-0.45, -0.1]]) { const c = [x, y, ac[2] + 0.33 / br + 0.02 + 0.02 * Math.sin(w + x * 9)]; p.push(E(c, [0.05, 0.04, 0.035], "hsMouldLt"), S(add(c, [0.04, 0, 0.01]), 0.03, "hsMouldLt")); }
+    return {
+      prims: p, r: 0.72, h: 1.0, k: 1,
+      detail: (x, y, z, m) => {
+        if (m === "hsMouldLt" && near([x, y, z], hc, 0.21)) return cface([x - hc[0], y - hc[1], z - hc[2]], 0.2, { ex: 0.38, ey: 0.08, er: 0.2, eye: "hsMouldGlow", hi: false, mouth: [0, -0.42, 0.14], mouthM: "hsMouldDk" }) || m;
+        if (m === "hsMould") { const band = Math.abs(Math.sin((x - ac[0]) * 22)); return band < 0.12 ? "hsMouldDk" : nz3(x, y, z, 10, 4) > 0.64 ? "hsMouldLt" : m; }
+        return m;
+      },
+    };
+  }, 4);
+
   // ================================================================ props
   // blight rift: where enemies enter. A cracked obsidian crater with a glowing pool and crystal shards.
   model("ms_rift", 1.6, () => {
@@ -9620,7 +10023,8 @@ fn boxOf(V: Vox) -> Box {
 
   // ================================================================ showrooms
   const T = ["thorn", "sun", "puff", "wisp"];
-  const towerRow = (L) => [T.map((n) => ["ms_" + n, { lv: L }, n + L]), [2.1, -0.2, -2.5][L - 1], [-3.6, -1.2, 1.2, 3.6]];
+  const T2 = ["briar", "toad", "moon", "lily"];
+  const towerRow = (L, kinds = T) => [kinds.map((n) => ["ms_" + n, { lv: L }, n + L]), [2.1, -0.2, -2.5][L - 1], [-3.6, -1.2, 1.2, 3.6]];
   const ENEMY_WALK = [
     { type: "grub", model: "ms_grub", speed: 0.45, rate: 2.6, gait: "roll" }, { type: "beetle", model: "ms_beetle", speed: 0.38, rate: 3.0, gait: "roll" },
     { type: "moth", model: "ms_moth", speed: 0.6, rate: 3.2, gait: "fly", fly: 0 }, { type: "golem", model: "ms_golem", speed: 0.28, rate: 1.5, gait: "roll" },
@@ -9628,11 +10032,13 @@ fn boxOf(V: Vox) -> Box {
   ];
   Object.assign(ME.ASSET_THEMES, {
     "set-towers": { label: "Towers, levels 1-3", rows: [towerRow(1), towerRow(2), towerRow(3)] },
+    "set-towers2": { label: "The second four plants, levels 1-3", rows: [1, 2, 3].map((L) => towerRow(L, T2)) },
     "set-heart": {
       label: "Heart Tree and props",
       rows: [[[0, 1, 2].map((h) => ["ms_heart", { hurt: h }, "heart" + h]), -1.2, [-3.8, 0, 3.8]], [["rift", "glowcap", "lamp", "stone", "kodama"].map((n) => ["ms_" + n, {}, n]), 2.6, [-3.6, -1.8, 0, 1.8, 3.6]]],
     },
     "set-enemies": { label: "Enemies", rows: [[["grub", "beetle", "moth", "golem", "spirit"].map((n) => ["ms_" + n, {}, n]), 0.4, [-4.2, -2.2, -0.2, 1.8, 4.2]]], zoom: { spirit: 3.4 } },
+    "set-enemies2": { label: "The mould creatures", rows: [[["snail", "bloat", "mite", "mender"].map((n) => ["ms_" + n, {}, n]), 1.6, [-3.6, -1.2, 1.2, 3.6]], [["midge", "mole", "lichen", "mother"].map((n) => ["ms_" + n, {}, n]), -1.4, [-3.6, -1.2, 1.2, 3.8]]], zoom: { mother: 3.4 } },
     // a mini level on the jar's own path: the Heart Tree at the path's end, towers of each level along it,
     // rifts where the blight comes in, props, and the enemies walking (add &units=N)
     "set-world": {
@@ -10103,6 +10509,26 @@ function MA_DSP() {
 
 </script>
 <!-- the game: rules (no engine), art, view, audio, then the app -->
+<script>/* src/version.js */
+/* The game's version, shown small in the bottom-right corner of the menus and the HUD, in the boot
+   failure's details and in How to play. Semver, Game's to bump: the minor on a feature PR, the patch on a
+   fix. `commit` is the commit the build came from: tools\artifact.ps1 stamps main's short hash into the
+   one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
+(function () {
+  const G = (window.MG = window.MG || {});
+  G.VERSION = { v: "0.9.0", name: "Mossheart", commit: "f1db7f2" };
+  G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
+  // the corner label (?shot=1 leaves it out of screenshots)
+  const show = () => {
+    if (new URLSearchParams(location.search).get("shot") === "1" || document.getElementById("version")) return;
+    const el = document.createElement("div");
+    el.id = "version"; el.textContent = G.VERSION.label;
+    document.body.appendChild(el);
+  };
+  if (document.body) show(); else document.addEventListener("DOMContentLoaded", show);
+})();
+
+</script>
 <script>/* src/core/defs.js */
 /* Static game data: plant towers, creatures, wave recipes and roguelike boons (port of Defs, defs.gd).
    Distances and speeds are in tiles (the Godot build used 2-unit tiles, so its numbers are halved here).
@@ -10162,6 +10588,47 @@ function MA_DSP() {
   };
   D.TOWER_ORDER = ["thorn", "puff", "sun", "wisp", "briar", "toad", "moon", "lily"];
   D.MAX_LEVEL = 3;
+
+  // Links: two plants on neighbouring cells (the 8 around) whose kinds make one of these pairs are linked,
+  // and each gets its side of the bonus (`gives[kind]`; a pair of one kind gives both the same). A plant
+  // takes each link once, however many partners it has for it. Bonus keys (Tower.bond):
+  //   dmg, range, rate   +share of the plant's own
+  //   burn     a Thornbloom hit sets the creature smouldering: this share of the hit over 2 s
+  //   pierceChain  a Thornbloom seed leaps on once to the creature nearest, at this share
+  //   chain    a Willow Wisp's light leaps this many more times
+  //   prism    a Sunpetal Lens beam splits to this many more creatures, at 45%
+  //   vsSlow   a Sunpetal Lens hits slowed creatures this much harder
+  //   slow     a Puffcap's slow is this much stronger
+  //   seeds    a Puffcap burst also throws this many pierce seeds at creatures in reach
+  //   patch    a Briar Vine's patches are this much wider
+  //   rot      a Stinkhorn's poison lasts 5 s and every bomb leaves a puddle
+  //   pods     a Stinkhorn's splash slows (by this) for 1 s
+  //   mark     a Moonpetal's mark is this much stronger
+  //   heat     a Ghost Lily heats up this much faster
+  //   moonlit  a Ghost Lily's beam taking a marked creature starts half hot
+  D.LINKS = [
+    { id: "thicket", kinds: ["thorn", "thorn"], name: "Thicket", gives: { thorn: { rate: 0.15 } }, desc: "Both fire 15% faster" },
+    { id: "sunseed", kinds: ["thorn", "sun"], name: "Sunseed", gives: { thorn: { burn: 0.15 }, sun: { range: 0.05 } }, desc: "Thornbloom seeds smoulder (15% of the hit); the Lens reaches 5% further" },
+    { id: "seedpods", kinds: ["thorn", "puff"], name: "Seed Pods", gives: { puff: { seeds: 1 }, thorn: { dmg: 0.05 } }, desc: "Puffcap bursts throw a thorn seed; the Thornbloom hits 5% harder" },
+    { id: "willothorn", kinds: ["thorn", "wisp"], name: "Will-o'-Thorn", gives: { thorn: { pierceChain: 0.6 }, wisp: { dmg: 0.1 } }, desc: "Thornbloom seeds leap on once (60%); the Wisp hits 10% harder" },
+    { id: "twinlens", kinds: ["sun", "sun"], name: "Twin Lenses", gives: { sun: { range: 0.12 } }, desc: "Both reach 12% further" },
+    { id: "sporeglow", kinds: ["sun", "puff"], name: "Spore Glow", gives: { sun: { vsSlow: 0.15 }, puff: { range: 0.05 } }, desc: "The Lens hits slowed creatures 15% harder; the Puffcap reaches 5% further" },
+    { id: "spiritprism", kinds: ["sun", "wisp"], name: "Spirit Prism", gives: { sun: { prism: 1 }, wisp: { dmg: 0.1 } }, desc: "The Lens beam splits to 1 more creature; the Wisp hits 10% harder" },
+    { id: "sporebank", kinds: ["puff", "puff"], name: "Spore Bank", gives: { puff: { slow: 0.05 } }, desc: "Both slow 5% more" },
+    { id: "kindred", kinds: ["wisp", "wisp"], name: "Kindred Lights", gives: { wisp: { chain: 1 } }, desc: "Both leap once more" },
+    { id: "hedge", kinds: ["briar", "briar"], name: "Bramble Hedge", gives: { briar: { patch: 0.3 } }, desc: "Both grow their patches 30% wider" },
+    { id: "rotbed", kinds: ["toad", "toad"], name: "Rot Bed", gives: { toad: { dmg: 0.15 } }, desc: "Both hit 15% harder" },
+    { id: "fullmoon", kinds: ["moon", "moon"], name: "Full Moon", gives: { moon: { mark: 0.15 } }, desc: "Both mark 15% stronger" },
+    { id: "lilypond", kinds: ["lily", "lily"], name: "Lily Pond", gives: { lily: { heat: 0.5 } }, desc: "Both heat up 50% faster" },
+    { id: "thornwall", kinds: ["briar", "thorn"], name: "Thornwall", gives: { briar: { patch: 0.35 }, thorn: { rate: 0.05 } }, desc: "The Briar's patches grow 35% wider; the Thornbloom fires 5% faster" },
+    { id: "thornypods", kinds: ["briar", "toad"], name: "Thorny Pods", gives: { toad: { pods: 0.3 }, briar: { dmg: 0.15 } }, desc: "Stinkhorn splashes slow; the Briar scratches 15% harder" },
+    { id: "rotgarden", kinds: ["toad", "puff"], name: "Rot Garden", gives: { toad: { rot: 1 }, puff: { dmg: 0.05 } }, desc: "Stinkhorn poison lasts 5 s and every bomb leaves a puddle; the Puffcap hits 5% harder" },
+    { id: "eclipse", kinds: ["moon", "sun"], name: "Eclipse", gives: { moon: { mark: 0.2 }, sun: { dmg: 0.05 } }, desc: "Moonpetal marks are 20% stronger; the Lens hits 5% harder" },
+    { id: "moonlit", kinds: ["moon", "lily"], name: "Moonlit Lily", gives: { lily: { moonlit: 1 }, moon: { range: 0.15 } }, desc: "Lily beams start half hot on marked creatures; the Moonpetal reaches 15% further" },
+    { id: "ghostlight", kinds: ["lily", "wisp"], name: "Ghost Light", gives: { lily: { heat: 1 }, wisp: { dmg: 0.1 } }, desc: "The Lily heats up twice as fast; the Wisp hits 10% harder" },
+  ];
+  // the link two kinds make, or null
+  D.linkOf = (a, b) => D.LINKS.find((l) => (l.kinds[0] === a && l.kinds[1] === b) || (l.kinds[0] === b && l.kinds[1] === a)) || null;
 
   // `blight` is how fast a creature corrupts the plants around it, `color` its HUD swatch
   D.ENEMIES = {
@@ -10802,13 +11269,17 @@ function MA_DSP() {
       this.cloudT = 0;
       // a Ghost Lily's beams: { t, uid (the creature held, -1 none), hold (seconds held, the heat) }
       this.rays = [];
+      // its links with neighbouring plants ({ link, other }) and their bonus (Defs.LINKS keys); Game.relink
+      this.links = []; this.bond = {};
       this.refresh();
     }
-    // stats: base * level * boons
+    // stats: base * level * boons * links
     // (each level also changes how the plant plays, so it buys less raw damage than it used to: x1.45)
-    damage() { const S = G.state; return this.def.damage * Math.pow(1.45, this.level - 1) * S.mod("dmg_" + this.kind) * S.mod("dmg_all") * (this.level >= D.MAX_LEVEL ? 1 + S.mod("grove") : 1); }
-    range() { const S = G.state; return this.def.range * (1 + 0.1 * (this.level - 1)) * S.mod("range_" + this.kind) * S.mod("range_all"); }
-    rate() { const S = G.state; return this.def.rate * (1 + 0.15 * (this.level - 1)) * S.mod("rate_" + this.kind) * S.mod("rate_all"); }
+    damage() { const S = G.state; return this.def.damage * Math.pow(1.45, this.level - 1) * S.mod("dmg_" + this.kind) * S.mod("dmg_all") * (this.level >= D.MAX_LEVEL ? 1 + S.mod("grove") : 1) * (1 + (this.bond.dmg || 0)); }
+    range() { const S = G.state; return this.def.range * (1 + 0.1 * (this.level - 1)) * S.mod("range_" + this.kind) * S.mod("range_all") * (1 + (this.bond.range || 0)); }
+    rate() { const S = G.state; return this.def.rate * (1 + 0.15 * (this.level - 1)) * S.mod("rate_" + this.kind) * S.mod("rate_all") * (1 + (this.bond.rate || 0)); }
+    // a Briar Vine patch's radius (Thornwall widens it)
+    patchR() { return PATCH_R * (1 + (this.bond.patch || 0)); }
     upgradeCost() { return G.state.towerCost(Math.floor(this.def.cost * 0.8 * this.level)); }
     sellValue() { return Math.floor(this.invested * 0.6); }
     upgrade() { this.level++; this.refresh(); }
@@ -10836,20 +11307,20 @@ function MA_DSP() {
       if (this.cloudT > 0) this.cloudT -= dt;
       const S = G.state;
       if (this.cooldown > 0 || S.phase === G.Phase.GAME_OVER) return;
-      const { enemies: E, shots } = game, o = this.origin(), R = this.range(), lv = this.level, el = this.element;
+      const { enemies: E, shots } = game, o = this.origin(), R = this.range(), lv = this.level, el = this.element, B = this.bond;
       let target = null, radius = 0;
       if (this.kind === "thorn") {
         const first = E.pickTarget(this.X, this.Y, R, "first");
         if (first >= 0) {
           target = E.centre(first);
-          shots.fire(o, first, this.damage(), this.def.speed, this.def.color, this.kind, 0, [], lv);
+          shots.fire(o, first, this.damage(), this.def.speed, this.def.color, this.kind, B.pierceChain ? 1 : 0, [], lv, B);
           const exclude = [first];
           // (Thousand Needles: at every creature in reach)
           for (let s = 0, n = S.mod("needles") > 0 ? 99 : Math.round(S.mod("split")); s < n; s++) {
             const extra = E.pickTarget(this.X, this.Y, R, "first", exclude);
             if (extra < 0) break;
             exclude.push(extra);
-            shots.fire(o, extra, this.damage(), this.def.speed, this.def.color, this.kind, 0, [], lv);
+            shots.fire(o, extra, this.damage(), this.def.speed, this.def.color, this.kind, B.pierceChain ? 1 : 0, [], lv, B);
           }
         }
       } else if (this.kind === "sun") {
@@ -10861,8 +11332,10 @@ function MA_DSP() {
           const flare = S.mod("flare"), summer = S.mod("summer") > 0, fr = summer ? 1.6 : 0.8;
           const flaring = flare > 0 && ++this.beams % (summer ? 2 : 7 - flare) === 0;
           // level II: the beam burns everything on its line (40%); level III: it dazzles what it hits
-          if (lv >= 2) for (const v of E.onLine(this.X, this.Y, target[0], target[1], 0.3)) if (v !== strong) shots.strike(v, this.damage() * 0.4, el, this.kind);
-          shots.strike(strong, this.damage() * (flaring ? 2 : 1), el, this.kind);
+          // (Spore Glow: slowed creatures take more)
+          const glow = (v) => (B.vsSlow && E.slowT[v] > 0 ? 1 + B.vsSlow : 1);
+          if (lv >= 2) for (const v of E.onLine(this.X, this.Y, target[0], target[1], 0.3)) if (v !== strong) shots.strike(v, this.damage() * 0.4 * glow(v), el, this.kind);
+          shots.strike(strong, this.damage() * (flaring ? 2 : 1) * glow(strong), el, this.kind);
           if (lv >= 3) E.stun(strong, 0.5);
           if (flaring) {
             for (const v of E.inRadius(target[0], target[1], fr)) if (v !== strong) shots.strike(v, this.damage(), el, this.kind);
@@ -10870,7 +11343,7 @@ function MA_DSP() {
           }
           // Dewdrop Prism: the beam splits to the next strongest creatures in reach (Rainbow Lens: to all, at 80%)
           const hit = [strong], rainbow = S.mod("rainbow") > 0;
-          for (let k = 0, n = rainbow ? 99 : S.mod("prism"); k < n; k++) {
+          for (let k = 0, n = rainbow ? 99 : S.mod("prism") + (B.prism || 0); k < n; k++) {
             const next = E.pickTarget(this.X, this.Y, R, "strong", hit);
             if (next < 0) break;
             hit.push(next);
@@ -10883,26 +11356,28 @@ function MA_DSP() {
         if (victims.length) {
           radius = R;
           // level II: the burst pushes them back down the road; level III: every third one puts them to sleep
-          const slow = this.def.slow + S.mod("slow_bonus"), sleep = lv >= 3 && ++this.bursts % 3 === 0;
+          const slow = this.def.slow + S.mod("slow_bonus") + (B.slow || 0), sleep = lv >= 3 && ++this.bursts % 3 === 0;
           for (const v of victims) {
             E.applySlow(v, slow, this.def.slowTime); shots.strike(v, this.damage(), el, this.kind);
             if (lv >= 2) E.push(v, 0.15);
             if (sleep) E.stun(v, 0.7);
           }
+          // (Seed Pods: the burst throws thorn seeds at the creatures nearest the Heart Tree)
+          for (let k = 0, hit = []; k < (B.seeds || 0); k++) { const v = E.pickTarget(this.X, this.Y, R, "first", hit); if (v < 0) break; hit.push(v); shots.fire(o, v, this.damage(), D.TOWERS.thorn.speed, D.TOWERS.thorn.color, "thorn"); }
           if (S.mod("sporestorm") > 0) this.cloudT = 3;
         }
       } else if (this.kind === "wisp") {
         const first = E.pickTarget(this.X, this.Y, R, "first");
         if (first >= 0) {
           target = E.centre(first);
-          shots.fire(o, first, this.damage(), this.def.speed, this.def.color, this.kind, this.def.chain + (lv >= 2 ? 1 : 0) + Math.round(S.mod("chain_bonus")), [], lv);
+          shots.fire(o, first, this.damage(), this.def.speed, this.def.color, this.kind, this.def.chain + (lv >= 2 ? 1 : 0) + Math.round(S.mod("chain_bonus")) + (B.chain || 0), [], lv, B);
         }
       } else if (this.kind === "briar") {
         // the patches scratch and slow what is on them; level II snares a creature stepping on (once in 3 s)
         for (const p of this.patches) {
-          const victims = E.inRadius(p.x, p.y, PATCH_R);
+          const victims = E.inRadius(p.x, p.y, this.patchR());
           if (!victims.length) continue;
-          radius = PATCH_R;
+          radius = this.patchR();
           G.emit("bramble_patch", { pos: [p.x, p.y, p.z], tower: this });
           for (const v of victims) {
             shots.strike(v, this.damage(), el, this.kind); E.applySlow(v, this.def.slow, 0.6);
@@ -10911,7 +11386,7 @@ function MA_DSP() {
         }
       } else if (this.kind === "toad") {
         const first = E.pickTarget(this.X, this.Y, R, "first", null, this.def.minRange);
-        if (first >= 0) { target = E.centre(first); shots.fire(o, first, this.damage(), this.def.speed, this.def.color, this.kind, 0, [], lv); }
+        if (first >= 0) { target = E.centre(first); shots.fire(o, first, this.damage(), this.def.speed, this.def.color, this.kind, 0, [], lv, B); }
       } else if (this.kind === "moon") {
         // marks the toughest (II: the two toughest, III: everything in reach) and stings it a little
         const marked = [];
@@ -10919,7 +11394,7 @@ function MA_DSP() {
         else for (let k = 0; k < lv; k++) { const v = E.pickTarget(this.X, this.Y, R, "strong", marked); if (v < 0) break; marked.push(v); }
         if (marked.length) {
           target = E.centre(marked[0]);
-          for (const v of marked) { G.emit("mark", { from: o, to: E.centre(v), tower: this }); E.mark(v, this.def.mark, 4); shots.strike(v, this.damage(), el, this.kind); }
+          for (const v of marked) { G.emit("mark", { from: o, to: E.centre(v), tower: this }); E.mark(v, this.def.mark + (B.mark || 0), 4); shots.strike(v, this.damage(), el, this.kind); }
         }
       } else if (this.kind === "lily") {
         // each beam holds its creature while it stays in reach, heating up to 3x over 3 s; a new creature
@@ -10931,10 +11406,12 @@ function MA_DSP() {
             const v = E.pickTarget(this.X, this.Y, R, "first", held);
             if (v < 0) { r.t = -1; r.uid = -1; r.hold = lv >= 2 ? r.hold * 0.6 : 0; continue; }
             r.t = v; r.uid = E.uid[v]; r.hold = lv >= 2 ? r.hold * 0.6 : 0; held.push(v);
+            // (Moonlit Lily: a marked creature is taken half hot)
+            if (B.moonlit && E.markT[v] > 0) r.hold = Math.max(r.hold, 1.5);
             target = target || E.centre(v);
           }
           shots.strike(r.t, this.damage() * (1 + 2 * Math.min(1, r.hold / 3)), el, this.kind);
-          r.hold += 1 / this.rate();
+          r.hold += (1 + (B.heat || 0)) / this.rate();
           if (!target) radius = radius || 0.01; // holding: keeps its pace without a new "fire"
         }
       }
@@ -10949,7 +11426,7 @@ function MA_DSP() {
   // ------------------------------------------------------------------ shots
   // Homing seeds, wisps and spore bombs; handles hits, crits, wisp chaining, split shots, piercing seeds
   // and bomb splashes, and the poison puddles bombs leave ({ x, y, z, t (seconds left), dps }).
-  const CAP = 256, CHAIN_RANGE = 1.6, NO_CRIT = new Set(["pulse", "puffball"]);
+  const CAP = 256, CHAIN_RANGE = 1.6, NO_CRIT = new Set(["pulse", "puffball"]), NONE = {};
 
   class Shots {
     constructor(enemies) {
@@ -10959,18 +11436,20 @@ function MA_DSP() {
       this.chains = new Int32Array(CAP); this.kind = new Array(CAP); this.hitList = new Array(CAP); this.col = new Array(CAP);
       // the level of the plant that fired it, and how far it had to go (the view arcs the bombs)
       this.lv = new Uint8Array(CAP); this.d0 = new Float32Array(CAP);
+      // the links' bonus of the plant that fired it (Tower.bond: a seed's smoulder and leap, a bomb's rot and pods)
+      this.bond = new Array(CAP);
       this.free = []; for (let i = CAP - 1; i >= 0; i--) this.free.push(i);
       this.puddles = []; this.puddleT = 0;
     }
     get capacity() { return CAP; }
     clear() { for (let i = 0; i < CAP; i++) if (this.alive[i]) { this.alive[i] = 0; this.free.push(i); } this.puddles = []; }
-    fire(from, enemy, dmg, speed, col, kind, chains = 0, exclude = [], lv = 1) {
+    fire(from, enemy, dmg, speed, col, kind, chains = 0, exclude = [], lv = 1, bond = NONE) {
       if (!this.free.length || enemy < 0) return;
       const i = this.free.pop(), E = this.enemies, c = E.centre(enemy);
       this.alive[i] = 1; this.pos.set(from, i * 3); this.aimP.set(c, i * 3);
       this.target[i] = enemy; this.tuid[i] = E.uid[enemy]; this.speed[i] = speed; this.dmg[i] = dmg;
       this.chains[i] = chains; this.col[i] = col; this.kind[i] = kind; this.hitList[i] = exclude.concat([enemy]);
-      this.lv[i] = lv; this.d0[i] = Math.hypot(c[0] - from[0], c[1] - from[1], c[2] - from[2]) || 1;
+      this.lv[i] = lv; this.bond[i] = bond; this.d0[i] = Math.hypot(c[0] - from[0], c[1] - from[1], c[2] - from[2]) || 1;
     }
     // Rolls crit and applies damage of `element` from a plant of kind `source`; emits "hit" with how it
     // landed (weak or resisted) and whether a projectile (`shot`) carried it. Returns whether it killed.
@@ -10997,13 +11476,13 @@ function MA_DSP() {
     }
     // A spore bomb bursting at `at`: a splash that poisons (25% of the hit per s for 3 s); level II leaves
     // a poison puddle, level III scatters 3 smaller bursts around it
-    splash(at, dmg, lv, cluster = false) {
+    splash(at, dmg, lv, cluster = false, B = NONE) {
       const E = this.enemies, el = D.elementOf("toad"), r = cluster ? SPLASH_R * 0.65 : SPLASH_R;
       G.emit("bomb", { pos: at, radius: r, level: lv });
-      for (const v of E.inRadius(at[0], at[1], r)) { this.strike(v, dmg, el, "toad", true); E.poison(v, dmg * 0.25, 3); }
+      for (const v of E.inRadius(at[0], at[1], r)) { this.strike(v, dmg, el, "toad", true); E.poison(v, dmg * 0.25, B.rot ? 5 : 3); if (B.pods) E.applySlow(v, B.pods, 1); }
       if (cluster) return;
-      if (lv >= 2) this.puddles.push({ x: at[0], y: at[1], z: at[2], t: 3, dps: dmg * 0.3 });
-      if (lv >= 3) for (let k = 0; k < 3; k++) { const a = (k / 3) * Math.PI * 2 + G.state.rng.f(); this.splash([at[0] + Math.cos(a) * 0.75, at[1] + Math.sin(a) * 0.75, at[2]], dmg * 0.4, lv, true); }
+      if (lv >= 2 || B.rot) this.puddles.push({ x: at[0], y: at[1], z: at[2], t: 3, dps: dmg * 0.3 });
+      if (lv >= 3) for (let k = 0; k < 3; k++) { const a = (k / 3) * Math.PI * 2 + G.state.rng.f(); this.splash([at[0] + Math.cos(a) * 0.75, at[1] + Math.sin(a) * 0.75, at[2]], dmg * 0.4, lv, true, B); }
     }
     update(dt) {
       const E = this.enemies;
@@ -11024,20 +11503,23 @@ function MA_DSP() {
     }
     arrive(i) {
       this.alive[i] = 0; this.free.push(i);
-      const E = this.enemies, t = this.target[i], kind = this.kind[i], lv = this.lv[i], o = i * 3;
+      const E = this.enemies, t = this.target[i], kind = this.kind[i], lv = this.lv[i], o = i * 3, B = this.bond[i];
       // a bomb bursts where it lands, its creature gone or not
-      if (kind === "toad") { this.splash([this.aimP[o], this.aimP[o + 1], this.aimP[o + 2]], this.dmg[i], lv); return; }
+      if (kind === "toad") { this.splash([this.aimP[o], this.aimP[o + 1], this.aimP[o + 2]], this.dmg[i], lv, false, B); return; }
       if (!E.isValid(t, this.tuid[i])) return;
       const at = E.centre(t);
-      this.strike(t, this.dmg[i], D.elementOf(kind), kind, true, false, false, lv);
+      const killed = this.strike(t, this.dmg[i], D.elementOf(kind), kind, true, false, false, lv);
+      // (Sunseed: a linked Thornbloom's seed sets the creature smouldering)
+      if (B.burn && !killed) E.ignite(t, (this.dmg[i] * B.burn) / 2);
       // a level II Thornbloom's seed goes on through to the creature behind
       if (kind === "thorn" && lv >= 2) { const next = E.pickTarget(at[0], at[1], 1.0, "first", [t]); if (next >= 0) this.strike(next, this.dmg[i] * 0.5, D.elementOf(kind), kind, true, false, false, lv); }
       // a level III Willow Wisp lures the first creature its light strikes
       if (kind === "wisp" && lv >= 3 && this.hitList[i].length === 1) E.lure(t, 0.8);
       if (this.chains[i] > 0) {
         const next = E.pickTarget(at[0], at[1], CHAIN_RANGE, "first", this.hitList[i]);
-        const k = G.state.mod("choir") > 0 ? 1 : kind === "wisp" && lv >= 2 ? 1 : 0.85;
-        if (next >= 0) this.fire(at, next, this.dmg[i] * k, this.speed[i], this.col[i], kind, this.chains[i] - 1, this.hitList[i], lv);
+        // (a wisp's light fades as it leaps, unless at level II or with Kodama Choir; a Will-o'-Thorn seed leaps at its share)
+        const k = kind === "thorn" ? B.pierceChain || 0.85 : G.state.mod("choir") > 0 || lv >= 2 ? 1 : 0.85;
+        if (next >= 0) this.fire(at, next, this.dmg[i] * k, this.speed[i], this.col[i], kind, this.chains[i] - 1, this.hitList[i], lv, B);
       }
     }
   }
@@ -11097,6 +11579,7 @@ function MA_DSP() {
       t.invested = cost;
       this.towers.push(t);
       this.world.occupied.set(this.world.idx(cx, cy), t);
+      this.relink();
       this.stats.planted[kind] = (this.stats.planted[kind] || 0) + 1;
       G.emit("tower_placed", { kind, pos: [t.X, t.Y, t.Z], tower: t });
       return t;
@@ -11112,9 +11595,28 @@ function MA_DSP() {
       S.earnRaw(t.sellValue());
       this.world.occupied.delete(this.world.idx(t.cx, t.cy));
       this.towers = this.towers.filter((x) => x !== t); this.stats.uprooted++;
+      this.relink();
       G.emit("tower_sold", { pos: [t.X, t.Y, t.Z], tower: t });
     }
     towerAt(cx, cy) { return this.world.towerAt(cx, cy); }
+    // Links (Defs.LINKS): the plants a plant of `kind` at a cell would link with, as { link, other }
+    linksAt(kind, cx, cy) {
+      const out = [];
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const o = (dx || dy) && this.world.towerAt(cx + dx, cy + dy), link = o && D.linkOf(kind, o.kind);
+        if (link) out.push({ link, other: o });
+      }
+      return out;
+    }
+    // every plant's links (tower.links) and the bonus they add up to (tower.bond: each link counted once,
+    // however many partners give it); after any planting, uprooting or restore. Emits "links".
+    relink() {
+      for (const t of this.towers) {
+        t.links = this.linksAt(t.kind, t.cx, t.cy); t.bond = {};
+        for (const link of new Set(t.links.map((l) => l.link))) { const g = link.gives[t.kind]; for (const k in g) t.bond[k] = (t.bond[k] || 0) + g[k]; }
+      }
+      G.emit("links", { count: this.towers.reduce((n, t) => n + t.links.length, 0) / 2 });
+    }
 
     // --- waves
     plan(wave) { if (!this.plans.has(wave)) this.plans.set(wave, D.planWave(wave, S.seed)); return this.plans.get(wave); }
@@ -11368,6 +11870,7 @@ function MA_DSP() {
           if (b.level[i] > b.scar[i] + 0.001) b.active.add(i);
         }
         b.dirty = true;
+        game.relink();
         game.stats = Object.assign(game.stats, JSON.parse(JSON.stringify(d.stats || {})));
         game.time = d.time || 0; game.plans.clear();
         G.emit("dew"); G.emit("heart"); G.emit("wave"); G.emit("mods");
@@ -11403,7 +11906,8 @@ function MA_DSP() {
    mockups) cast in the game's roles, how the level is dressed with it, and the list of flipbooks the
    engine bakes for the game (ME.bakeModels opts.models).
      plants    Thornbloom ms_thorn (Shrine Craft lantern), Sunpetal Lens ms_sun, Puffcap ms_puff (Koke
-               Garden), Willow Wisp ms_wisp (Hotaru Spirit): one flipbook per level (o.lv 1..3)
+               Garden), Willow Wisp ms_wisp (Hotaru Spirit), Briar Vine ms_briar, Stinkhorn ms_toad (a basket
+               stinkhorn), Moonpetal ms_moon, Ghost Lily ms_lily: one flipbook per level (o.lv 1..3)
      creatures Rot Grub ms_grub, Bark Beetle ms_beetle, Dusk Moth ms_moth, Moss Golem ms_golem, Blight
                Spirit ms_spirit (Hotaru Spirit blight)
      the heart ms_heart (Koke Garden) in place of the valley's big maple; hurt 0..2 as it loses vitality
@@ -11431,8 +11935,20 @@ function MA_DSP() {
     moth: { name: "ms_moth", size: 0.7, fine: 1.5, fwd: 0, hover: 0.375, gait: 3.2, flap: true },
     golem: { name: "ms_golem", size: 0.75, fine: 1.25, fwd: 0, hover: 0, gait: 1.5 },
     spirit: { name: "ms_spirit", size: 0.85, fine: 1, fwd: 0, hover: 0.06, gait: 0.9, flap: true },
+    // the mould creatures (game/enemies); sizes from their stand-ins' times Game's look factors
+    snail: { name: "ms_snail", size: 0.88, fine: 1.5, fwd: 0, hover: 0, gait: 2.2 },
+    bloat: { name: "ms_bloat", size: 1.0, fine: 1.5, fwd: 0, hover: 0, gait: 2.4 },
+    mite: { name: "ms_mite", size: 0.5, fine: 1.5, fwd: 0, hover: 0, gait: 4.0 },
+    mender: { name: "ms_mender", size: 0.75, fine: 1.5, fwd: 0, hover: 0, gait: 2.0 },
+    midge: { name: "ms_midge", size: 0.5, fine: 1.5, fwd: 0, hover: 0.34, gait: 4.0, flap: true },
+    mole: { name: "ms_mole", size: 0.84, fine: 1.5, fwd: 0, hover: 0, gait: 2.8 },
+    lichen: { name: "ms_lichen", size: 0.65, fine: 1.25, fwd: 0, hover: 0, gait: 2.0 },
+    mother: { name: "ms_mother", size: 1.0, fine: 1, fwd: 0, hover: 0, gait: 0.8 },
   };
-  G.TOWER_MODELS = { thorn: { name: "ms_thorn", size: 0.72 }, sun: { name: "ms_sun", size: 0.72 }, puff: { name: "ms_puff", size: 0.72 }, wisp: { name: "ms_wisp", size: 0.72 } };
+  G.TOWER_MODELS = {
+    thorn: { name: "ms_thorn", size: 0.72 }, sun: { name: "ms_sun", size: 0.72 }, puff: { name: "ms_puff", size: 0.72 }, wisp: { name: "ms_wisp", size: 0.72 },
+    briar: { name: "ms_briar", size: 0.72 }, toad: { name: "ms_toad", size: 0.72 }, moon: { name: "ms_moon", size: 0.72 }, lily: { name: "ms_lily", size: 0.72 },
+  };
   G.HEART_MODEL = { name: "ms_heart", size: 1.25 };
   // the asset models grow by level themselves; the instance adds only a touch
   G.LEVEL_SCALE = [1, 1.04, 1.08];
@@ -11467,8 +11983,9 @@ function MA_DSP() {
   // opts.models for ME.bakeModels: key -> [model, options, frames]
   G.bakeList = () => {
     const out = {};
-    for (const k in G.CREATURE_MODELS) { const c = G.CREATURE_MODELS[k]; out["e_" + k] = [c.name, { scale: k0(c.name) * c.size, fine: c.fine }, FRAMES]; }
-    for (const k in G.TOWER_MODELS) { const c = G.TOWER_MODELS[k]; for (let lv = 1; lv <= 3; lv++) out["t_" + k + lv] = [c.name, { lv, scale: k0(c.name) * c.size }, FRAMES]; }
+    for (const k in G.CREATURE_MODELS) { if (!G.Defs.ENEMIES[k]) continue; const c = G.CREATURE_MODELS[k]; out["e_" + k] = [c.name, { scale: k0(c.name) * c.size, fine: c.fine }, FRAMES]; }
+    // (only the plants the rules have: a model may land before its plant)
+    for (const k in G.TOWER_MODELS) { if (!G.Defs.TOWERS[k]) continue; const c = G.TOWER_MODELS[k]; for (let lv = 1; lv <= 3; lv++) out["t_" + k + lv] = [c.name, { lv, scale: k0(c.name) * c.size }, FRAMES]; }
     for (const h of [1, 2]) out["heart" + h] = [G.HEART_MODEL.name, heartO(h), FRAMES];
     return out;
   };
@@ -11476,7 +11993,9 @@ function MA_DSP() {
   // Once baked (MB = ME.bakeModels' result): G.models, the frames the view draws and how each creature
   // is posed, and G.body, the sizes the rules need (creature heights and float, plant heights).
   G.bindModels = (MB) => {
-    const gf = MB.extraFrames, K = Object.keys(G.CREATURE_MODELS);
+    const gf = MB.extraFrames;
+    const missing = G.Defs.ENEMY_ORDER.filter((k) => !gf["e_" + k]);
+    if (missing.length) throw new Error("no creature model for " + missing.join(", "));
     const towerFrames = (kind, lv) => gf["t_" + kind + lv];
     G.models = {
       creature: G.Defs.ENEMY_ORDER.map((k) => {
@@ -11493,8 +12012,232 @@ function MA_DSP() {
       hover: G.models.creature.map((c) => c.hover),
       towerH: (kind, lv) => MB.models[towerFrames(kind, lv)[0]].h * G.LEVEL_SCALE[lv - 1],
     };
-    if (K.length !== G.Defs.ENEMY_ORDER.length) throw new Error("creature models and Defs.ENEMY_ORDER differ");
   };
+})();
+
+</script>
+<script>/* src/art/boons.js */
+/* Boon art and the UI kit's icons. The look of every gift of the garden (Defs.BOONS) in play and on its card,
+   for the hook in view/boonfx.js, then the plant, element and creature icons and the links' looks (below).
+   G.BOON_ART[id] = { color, icon, levels }:
+     color   the boon's own colour, [r, g, b] in 0..1. Its particles glow in it, and the card inks its
+             icon, level and pips in it (hud.js darkens it to a readable ink on the paper).
+     icon    an inline SVG on a 24 x 24 grid, drawn in currentColor (strokes, and fills at 28% for the
+             washes), so the card's --bc inks it. Brush-and-ink line, 1.8 wide with round ends, as the
+             paper-and-ink HUD; a fused boon's icon sits in a dotted ring of moss.
+     levels  I, II, III (a fused boon: its one level), each { scale, count, glow, color2, sprite }. A level
+             steps up all three of size, count and glow, and color2 (trails, tips, sparks) warms toward
+             the boon's level III accent, so each level reads at a glance.
+   Each element keeps its own family of colours (thorn greens and embers, sun golds, spore violets, wisp
+   cyans, heart and garden greens and dews), and no two boons of one family share a hue. */
+(function () {
+  const G = (window.MG = window.MG || {});
+  const f1 = (v) => +v.toFixed(2);
+  // --- the icon kit: a frame, the wash and solid fills, and the shapes several icons share
+  const svg = (body) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+  const W = 'fill="currentColor" fill-opacity=".28"', S = 'fill="currentColor" stroke="none"';
+  const fusedSvg = (body) => svg(`<circle cx="12" cy="12" r="11.1" stroke-width="1" stroke-dasharray="0.1 2.3" opacity=".7"/>${body}`);
+  // n strokes from radius r0 to r1 round (x, y), the first at angle a0 (degrees)
+  const rays = (n, r0, r1, x = 12, y = 12, a0 = -90) => {
+    let d = "";
+    for (let k = 0; k < n; k++) { const a = ((a0 + (360 * k) / n) * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a); d += `M${f1(x + c * r0)} ${f1(y + s * r0)}L${f1(x + c * r1)} ${f1(y + s * r1)}`; }
+    return `<path d="${d}"/>`;
+  };
+  // a wisp's flame, a teardrop pointing up, its widest point at (x, y)
+  const flame = (x, y, s, fill = W) => `<path d="M${f1(x)} ${f1(y - 6 * s)}C${f1(x + 3.2 * s)} ${f1(y - 2.5 * s)} ${f1(x + 3.5 * s)} ${f1(y + 1.5 * s)} ${f1(x)} ${f1(y + 3 * s)}C${f1(x - 3.5 * s)} ${f1(y + 1.5 * s)} ${f1(x - 3.2 * s)} ${f1(y - 2.5 * s)} ${f1(x)} ${f1(y - 6 * s)}Z" ${fill}/>`;
+  // a kodama: a rounded head with two eyes and a mouth, (x, y) its middle
+  const kodama = (x, y, s) => `<path d="M${f1(x - 6 * s)} ${f1(y + 6 * s)}C${f1(x - 7 * s)} ${f1(y - 2 * s)} ${f1(x - 4 * s)} ${f1(y - 7 * s)} ${f1(x)} ${f1(y - 7 * s)}C${f1(x + 4 * s)} ${f1(y - 7 * s)} ${f1(x + 7 * s)} ${f1(y - 2 * s)} ${f1(x + 6 * s)} ${f1(y + 6 * s)}Z" ${W}/>` +
+    `<circle cx="${f1(x - 2.5 * s)}" cy="${f1(y - 1 * s)}" r="${f1(1.2 * s)}" ${S}/><circle cx="${f1(x + 2.5 * s)}" cy="${f1(y - 1 * s)}" r="${f1(1.2 * s)}" ${S}/><circle cx="${f1(x)}" cy="${f1(y + 2.5 * s)}" r="${f1(0.9 * s)}" ${S}/>`;
+  // a five-pointed star round (x, y)
+  const star = (x, y, r, fill = W) => {
+    let d = "";
+    for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + (k * Math.PI) / 5, q = k % 2 ? r * 0.42 : r; d += (k ? "L" : "M") + f1(x + Math.cos(a) * q) + " " + f1(y + Math.sin(a) * q); }
+    return `<path d="${d}Z" ${fill}/>`;
+  };
+  // a heart, its notch at (x, y - 5s)
+  const heart = (x, y, s, fill = W) => {
+    const P = (dx, dy) => f1(x + dx * s) + " " + f1(y + dy * s);
+    return `<path d="M${P(0, 8)}C${P(-7, 3)} ${P(-9, -0.5)} ${P(-9, -3.5)}C${P(-9, -6)} ${P(-7, -8)} ${P(-4.5, -8)}C${P(-2.5, -8)} ${P(-1, -6.8)} ${P(0, -5)}C${P(1, -6.8)} ${P(2.5, -8)} ${P(4.5, -8)}C${P(7, -8)} ${P(9, -6)} ${P(9, -3.5)}C${P(9, -0.5)} ${P(7, 3)} ${P(0, 8)}Z" ${fill}/>`;
+  };
+  // five petals round (12, 12)
+  const petals = (ry = 4.2, cy = 6.5) => [0, 72, 144, 216, 288].map((a) => `<ellipse cx="12" cy="${cy}" rx="3" ry="${ry}" transform="rotate(${a} 12 12)" ${W}/>`).join("");
+  const sprout = (x, y) => `<path d="M${x} ${y}V${y - 6}M${x} ${y - 3}C${x - 4} ${y - 3} ${x - 6} ${y - 6} ${x - 6} ${y - 8}C${x - 2} ${y - 8} ${x} ${y - 6} ${x} ${y - 3}Z" ${W}/>`;
+
+  const ICON = {
+    // thorn: Thornbloom's seeds, embers and brambles
+    sharp_thorns: svg(`<path d="M5 20Q9 12 19.5 3.5Q14.5 13 9.5 20Z" ${W}/><path d="M8.6 15.4L5 14.6M11.6 10.8L9.2 8.4M15 7.6L14.4 4.4"/>`),
+    twin_seeds: svg(`<g transform="rotate(-22 8.5 13)"><ellipse cx="8.5" cy="13" rx="3.4" ry="5.4" ${W}/><path d="M8.5 9.6v7"/></g><g transform="rotate(22 15.5 11)"><ellipse cx="15.5" cy="11" rx="3.4" ry="5.4" ${W}/><path d="M15.5 7.6v7"/></g>`),
+    ember_seeds: svg(`<ellipse cx="12" cy="16.5" rx="4.2" ry="4.6" ${W}/><path d="M12 12.5v8"/><path d="M12 2.5C14.8 5.6 15.6 8 13.4 10.6C13 9.2 12.2 8.6 11.6 8.2C11.6 9.6 10.2 10.2 10.6 11.4C8.4 9.4 9.4 5.8 12 2.5Z" ${S}/>`),
+    bramble_hedge: svg(`<path d="M2.5 17C5.5 11.5 8.5 20.5 12 15S18.5 11.5 21.5 16" ${W}/><path d="M6.4 14.2L4.6 12M12 15l.5-2.8M17.4 13.4l1.9-1.9M9 16.8l.6 2.2M15 13.6l-.2 2.6"/><path d="M2.5 21h19" opacity=".5"/>`),
+    // sun: Sunpetal's beams, prisms and flares
+    solar_focus: svg(`<ellipse cx="7" cy="12" rx="2.6" ry="7.5" ${W}/><path d="M9.2 5.2L19 12L9.2 18.8M9.6 12H19"/><circle cx="19.6" cy="12" r="1.9" ${S}/>`),
+    prism: svg(`<path d="M10 4L16.5 18H3.5Z" ${W}/><path d="M1.5 12.5H7.5"/><path d="M14.3 11.8L22 8.2M14.9 13.4H22M15.4 15L22 18.4" stroke-width="1.5"/>`),
+    solar_flare: svg(`<circle cx="12" cy="12" r="4.6" ${W}/>${rays(8, 7, 9.6)}<path d="M15.5 8.5C18 6 20.5 5.5 22 3"/>`),
+    // puff: Puffcap's spores, goo and puffballs
+    spore_cloud: svg(`<path d="M3.5 13C3.5 6.6 20.5 6.6 20.5 13Z" ${W}/><path d="M9.8 13V19.5H14.2V13"/><circle cx="6.5" cy="3.8" r="1.1" ${S}/><circle cx="12" cy="2.6" r="1.1" ${S}/><circle cx="17.5" cy="4.2" r="1.1" ${S}/>`),
+    sticky_spores: svg(`<path d="M3.5 4.5H20.5V8C20.5 10.2 18 10.4 17.6 8.4C17.2 12.4 14.8 12.4 14.4 9C14 15.4 10.8 15.4 10.4 9.6C10 11.6 7.8 11.6 7.4 8.8C7 10.6 3.5 10.4 3.5 8Z" ${W}/><path d="M12.6 16.8C11 19 11 21.2 12.6 21.2C14.2 21.2 14.2 19 12.6 16.8Z" ${S}/>`),
+    puffball: svg(`<circle cx="12" cy="14.5" r="5.8" ${W}/><path d="M9.6 13.4h.01M14 16.2h.01M13.2 12.4h.01" stroke-width="2.4"/><path d="M8.2 7.2L6.6 5.4M15.8 7.2L17.4 5.4M12 7V4.6"/><circle cx="4" cy="11" r="1.4" ${S}/><circle cx="20" cy="11" r="1.4" ${S}/><circle cx="3.6" cy="4.6" r="1" ${S}/><circle cx="20.4" cy="4.6" r="1" ${S}/>`),
+    // wisp: Willow Wisp's chains and the kodama
+    kindred_wisps: svg(`${flame(6, 15.5, 0.95)}${flame(18, 12.5, 0.95)}<path d="M9 13.2L11 10.4L13 13.8L15 11"/>`),
+    haunting: svg(`${kodama(13, 12.5, 1.05)}<path d="M1.8 9.5h2.6M1.4 13.5h2.2M2.2 17.5h2"/>`),
+    // all plants
+    deep_roots: svg(`<path d="M2.5 10.5h19" opacity=".5"/>${sprout(12, 10.5)}<path d="M12 10.5V20.5M12 13.2C9 14.2 7 16.2 5.8 19.5M12 13.2C15 14.2 17 16.2 18.2 19.5M12 16.4C10.6 17.4 10 18.8 9.6 21"/>`),
+    quick_sap: svg(`<path d="M15 2.5C10.8 8.8 9 11.8 9 15A6 6 0 0 0 21 15C21 11.8 19.2 8.8 15 2.5Z" ${W}/><path d="M2 11h4.2M3 15h3.4M2 19h5"/><path d="M13 14.5a2.2 2.2 0 0 0 2.2 2.4" opacity=".7"/>`),
+    overgrowth: svg(`<path d="M12 21.5V14.5"/><path d="M12 16.5C8 16.5 6 13.5 6 11.5C9 11.5 12 13.5 12 16.5ZM12 15.5C16 15.5 18 12.5 18 10.5C15 10.5 12 12.5 12 15.5Z" ${W}/><path d="M3.5 8.5A11 11 0 0 1 20.5 8.5"/><path d="M7 5A7.5 7.5 0 0 1 17 5" opacity=".6"/>`),
+    crit_bloom: svg(`${petals()}${star(12, 12, 3.4, S)}`),
+    // garden: dew, seeds, sunlight and rain
+    dew_collector: svg(`<path d="M12 2.5C10 6 9.4 7.6 9.4 8.8A2.6 2.6 0 0 0 14.6 8.8C14.6 7.6 14 6 12 2.5Z" ${S}/><path d="M2.5 13C5.5 21.5 18.5 21.5 21.5 13C16 15.2 8 15.2 2.5 13Z" ${W}/><path d="M7.5 17.4C10 18.4 14 18.4 16.5 17.4" opacity=".6"/>`),
+    seed_bank: svg(`<path d="M8 8.5C3.8 11.5 3.8 20.5 12 20.5C20.2 20.5 20.2 11.5 16 8.5Z" ${W}/><path d="M8 8.5C9.2 7 14.8 7 16 8.5M9 4.5L12 7L15 4.5"/><ellipse cx="12" cy="14.8" rx="1.7" ry="2.5" ${S}/>`),
+    photosynthesis: svg(`<path d="M3.5 21C3.5 12 9.5 7.5 20.5 7.5C20.5 16 15 21 3.5 21Z" ${W}/><path d="M3.5 21L14 11.5M9 16.2V13M11.8 13.6H15"/><circle cx="5.5" cy="5.5" r="2.2" ${S}/>${rays(8, 3.6, 5, 5.5, 5.5, 0).replace("<path", '<path stroke-width="1.4"')}`),
+    spring_rain: svg(`<path d="M6.5 13.5A3.6 3.6 0 0 1 6.8 6.3A5.2 5.2 0 0 1 16.6 5.4A4.1 4.1 0 0 1 17.8 13.5Z" ${W}/><path d="M7.5 16.5l-1 3M12.5 16.5l-1.2 4.2M17.5 16.5l-1 3"/>`),
+    golden_dew: svg(`<path d="M10.5 4C6.6 9.8 5.5 12.4 5.5 15A5 5 0 0 0 15.5 15C15.5 12.4 14.4 9.8 10.5 4Z" ${W}/><path d="M8.4 14.4a2.2 2.2 0 0 0 2 2.6" opacity=".7"/>${star(18.5, 6.5, 3.8, S)}`),
+    wild_growth: svg(`${sprout(9, 21.5)}<path d="M9 21.5V12"/><path d="M14 11L17 8L20 11M14 16.5L17 13.5L20 16.5"/>`),
+    // heart: the Heart Tree's guards
+    heartwood: svg(`<path d="M12 2.5L20 5.5V11C20 16 16.6 19.5 12 21.5C7.4 19.5 4 16 4 11V5.5Z" ${W}/><circle cx="12" cy="11.4" r="4.4"/><circle cx="12" cy="11.4" r="1.8"/>`),
+    firefly_lanterns: svg(`<path d="M9 4.2H15M12 2V4.2"/><path d="M8 7C5.8 9.2 5.8 14.8 8 17H16C18.2 14.8 18.2 9.2 16 7Z" ${W}/><path d="M7.4 7H16.6M7.4 17H16.6M12 17V20M10 20H14M12 9.6v4.8" /><circle cx="3.6" cy="5" r="1.1" ${S}/><circle cx="20.6" cy="9.4" r="1.1" ${S}/><circle cx="19.4" cy="3" r=".9" ${S}/>`),
+    verdant_pulse: svg(`${heart(12, 12.5, 0.62)}<path d="M5.4 5.6A8.5 8.5 0 0 0 5.4 18.4M18.6 5.6A8.5 8.5 0 0 1 18.6 18.4"/><path d="M2.6 3.6A12 12 0 0 0 2.6 20.4M21.4 3.6A12 12 0 0 1 21.4 20.4" opacity=".5"/>`),
+    // the fused boons, each in its dotted ring
+    wildfire: fusedSvg(`<path d="M3.5 18.5C6 15.2 9 20.5 12 17S18 15.2 20.5 18"/><path d="M8 15C5.8 12 7.8 9.4 9 6.4C10.2 9.4 12.2 10.6 10.8 15Z" ${W}/><path d="M14.6 14C12.6 10 15 7.6 16 4C17.6 7.6 19.4 10 17.2 14Z" ${S}/>`),
+    rainbow: fusedSvg(`<path d="M3.5 17.5A8.5 8.5 0 0 1 20.5 17.5"/><path d="M6.5 17.5A5.5 5.5 0 0 1 17.5 17.5" opacity=".75"/><path d="M9.5 17.5A2.5 2.5 0 0 1 14.5 17.5" opacity=".5"/><path d="M3.5 17.5H20.5" opacity=".4"/>`),
+    sporestorm: fusedSvg(`<path d="M11 12A1 1 0 0 1 13 12A2 2 0 0 1 9 12A3 3 0 0 1 15 12A4 4 0 0 1 7 12A5.5 5.5 0 0 1 18 12"/><circle cx="18.5" cy="6" r="1.2" ${S}/><circle cx="5.5" cy="17.5" r="1.2" ${S}/><circle cx="16.5" cy="18" r=".9" ${S}/><circle cx="6.5" cy="6" r=".9" ${S}/>`),
+    choir: fusedSvg(`${kodama(7.4, 15, 0.55)}${kodama(16.6, 15, 0.55)}${kodama(12, 9, 0.62)}`),
+    needles: fusedSvg(`${rays(12, 3.6, 9.4)}<circle cx="12" cy="12" r="2" ${S}/>`),
+    evergreen: fusedSvg(`<path d="M12 3L16.6 8.6H14.4L18.4 14H15L19 18.8H5L9 14H5.6L9.6 8.6H7.4Z" ${W}/><path d="M12 18.8V21.4"/>${heart(12, 13.6, 0.3, S)}`),
+    starswarm: fusedSvg(`${star(12, 12.5, 5.2)}${star(6, 6.5, 2.2, S)}${star(18.2, 6, 1.8, S)}${star(17.6, 18, 1.6, S)}`),
+    harvest: fusedSvg(`<path d="M12 21V9M12 21L8 10.5M12 21L16 10.5M9.4 16.4H14.6"/><ellipse cx="12" cy="6.4" rx="1.6" ry="2.8" ${S}/><ellipse cx="7.4" cy="8" rx="1.5" ry="2.6" transform="rotate(-20 7.4 8)" ${W}/><ellipse cx="16.6" cy="8" rx="1.5" ry="2.6" transform="rotate(20 16.6 8)" ${W}/>`),
+    summer: fusedSvg(`<circle cx="12" cy="12" r="4.2" ${S}/><circle cx="12" cy="12" r="6.6"/>${rays(12, 8.2, 9.8)}`),
+    grove: fusedSvg(`<circle cx="12" cy="13.6" r="4.8" ${W}/><path d="M12 18.4V21.4M12 15.6l-2-2M12 16.6l2.2-2.2"/><path d="M6.6 8L7.8 3.6L10.2 6.4L12 3L13.8 6.4L16.2 3.6L17.4 8Z"/>`),
+    bloom: fusedSvg(`${petals(3.6, 7.2)}${heart(12, 12.6, 0.36, S)}`),
+  };
+
+  // --- the looks in play: three levels from a sprite, a base size, count and glow, and the accent per level
+  const steps = (sprite, c2, o = {}) => {
+    const s = o.scale ?? 1, n = o.count ?? 2, dn = o.dn ?? 1, g = o.glow ?? 0.35;
+    return [0, 1, 2].map((k) => ({ scale: f1(s * (0.85 + 0.25 * k)), count: n + dn * k, glow: f1(Math.min(1, g + 0.22 * k)), color2: c2[k], sprite }));
+  };
+  const one = (sprite, color2, o = {}) => [{ scale: o.scale ?? 1.8, count: o.count ?? 6, glow: 1, color2, sprite }];
+  const GOLD = [1.0, 0.86, 0.42], WHITE = [1, 1, 0.96];
+
+  const LOOK = {
+    // thorn greens, and the embers
+    sharp_thorns: { color: [0.62, 1.0, 0.38], levels: steps("orb", [[0.42, 0.3, 0.16], [0.85, 0.32, 0.2], [0.92, 0.95, 0.85]]) },
+    twin_seeds: { color: [0.78, 0.98, 0.55], levels: steps("orb", [[0.6, 0.82, 0.4], [0.9, 1.0, 0.6], GOLD], { count: 1 }) },
+    ember_seeds: { color: [1.0, 0.48, 0.14], levels: steps("orb", [[0.38, 0.3, 0.28], [0.6, 0.22, 0.12], [1.0, 0.82, 0.3]]) },
+    bramble_hedge: { color: [0.32, 0.62, 0.24], levels: steps("ring", [[0.5, 0.78, 0.32], [0.7, 0.95, 0.4], [0.9, 0.55, 0.65]], { count: 3, dn: 2 }) },
+    // sun golds
+    solar_focus: { color: [1.0, 0.9, 0.52], levels: steps("beam", [[1, 0.96, 0.8], [1, 0.9, 0.6], WHITE]) },
+    prism: { color: [0.72, 0.86, 1.0], levels: steps("beam", [[0.9, 0.85, 1.0], [0.75, 1.0, 0.95], [1.0, 0.8, 0.9]]) },
+    solar_flare: { color: [1.0, 0.7, 0.2], levels: steps("ring", [[1.0, 0.92, 0.6], [1.0, 0.82, 0.4], WHITE], { count: 3, glow: 0.45 }) },
+    // spore violets
+    spore_cloud: { color: [0.82, 0.66, 1.0], levels: steps("puff", [[0.7, 0.85, 0.55], [0.85, 0.75, 1.0], [1.0, 0.85, 0.95]]) },
+    sticky_spores: { color: [0.62, 0.36, 0.86], levels: steps("orb", [[0.5, 0.3, 0.7], [0.7, 0.45, 0.95], [0.8, 0.95, 0.45]]) },
+    puffball: { color: [0.94, 0.52, 0.86], levels: steps("puff", [[0.95, 0.8, 0.95], [0.85, 0.65, 1.0], GOLD], { count: 3 }) },
+    // wisp cyans
+    kindred_wisps: { color: [0.45, 0.92, 1.0], levels: steps("streak", [[0.7, 0.9, 1.0], [0.6, 1.0, 0.9], WHITE]) },
+    haunting: { color: [0.72, 1.0, 0.86], levels: steps("orb", [[0.4, 0.75, 0.65], [0.6, 0.95, 0.8], [0.95, 1.0, 0.85]]) },
+    // all plants: earth, sap and leaf
+    deep_roots: { color: [0.78, 0.52, 0.26], levels: steps("ring", [[0.6, 0.4, 0.22], [0.82, 0.6, 0.3], GOLD], { glow: 0.4 }) },
+    quick_sap: { color: [1.0, 0.68, 0.22], levels: steps("orb", [[1.0, 0.8, 0.45], [1.0, 0.72, 0.3], [1.0, 0.92, 0.6]]) },
+    overgrowth: { color: [0.42, 0.88, 0.32], levels: steps("ring", [[0.55, 0.85, 0.4], [0.7, 0.95, 0.45], [0.95, 0.9, 0.5]]) },
+    crit_bloom: { color: [1.0, 0.56, 0.74], levels: steps("petal", [[1.0, 0.8, 0.88], [1.0, 0.9, 0.95], GOLD], { count: 2 }) },
+    // garden: dews, seeds, sunlight and rain
+    dew_collector: { color: [0.55, 0.88, 1.0], levels: steps("orb", [[0.75, 0.95, 1.0], [0.6, 0.85, 1.0], GOLD]) },
+    seed_bank: { color: [0.92, 0.76, 0.42], levels: steps("orb", [[0.75, 0.6, 0.35], [0.95, 0.8, 0.45], GOLD], { count: 2 }) },
+    photosynthesis: { color: [0.96, 0.95, 0.46], levels: steps("orb", [[0.7, 0.95, 0.4], [0.9, 1.0, 0.5], GOLD]) },
+    spring_rain: { color: [0.62, 0.8, 1.0], levels: steps("streak", [[0.8, 0.9, 1.0], [0.7, 0.85, 1.0], WHITE]) },
+    golden_dew: { color: [1.0, 0.8, 0.28], levels: steps("orb", [[1.0, 0.9, 0.55], [1.0, 0.85, 0.4], WHITE]) },
+    wild_growth: { color: [0.6, 1.0, 0.36], levels: steps("leaf", [[0.85, 1.0, 0.55], [0.95, 0.95, 0.5], GOLD], { count: 2 }) },
+    // heart: the Heart Tree's greens and lights
+    heartwood: { color: [0.5, 0.86, 0.42], levels: steps("ring", [[0.75, 0.6, 0.38], [0.85, 0.95, 0.6], GOLD]) },
+    firefly_lanterns: { color: [1.0, 0.92, 0.42], levels: steps("orb", [[0.8, 1.0, 0.5], [1.0, 0.95, 0.6], WHITE]) },
+    verdant_pulse: { color: [0.4, 1.0, 0.56], levels: steps("ring", [[0.6, 1.0, 0.7], [0.75, 1.0, 0.6], GOLD], { glow: 0.4 }) },
+    // the fused boons: one level, big and bright, each in its two hues
+    wildfire: { color: [1.0, 0.38, 0.1], levels: one("orb", [1.0, 0.86, 0.3]) },
+    rainbow: { color: [1.0, 0.6, 0.88], levels: one("beam", [0.7, 0.95, 1.0]) },
+    sporestorm: { color: [0.72, 0.42, 1.0], levels: one("puff", [0.52, 0.92, 0.4]) },
+    choir: { color: [0.66, 1.0, 0.96], levels: one("orb", WHITE) },
+    needles: { color: [0.55, 1.0, 0.42], levels: one("streak", [0.92, 1.0, 0.72]) },
+    evergreen: { color: [0.3, 0.92, 0.5], levels: one("leaf", [0.92, 1.0, 0.6]) },
+    starswarm: { color: [1.0, 0.9, 0.42], levels: one("orb", WHITE) },
+    harvest: { color: [1.0, 0.74, 0.18], levels: one("orb", [1.0, 0.96, 0.62]) },
+    summer: { color: [1.0, 0.56, 0.18], levels: one("ring", [1.0, 0.92, 0.5]) },
+    grove: { color: [0.62, 0.95, 0.28], levels: one("leaf", [1.0, 0.88, 0.38]) },
+    bloom: { color: [1.0, 0.52, 0.72], levels: one("ring", [0.62, 1.0, 0.6]) },
+  };
+
+  G.BOON_ART = {};
+  for (const id in LOOK) G.BOON_ART[id] = Object.assign({ icon: ICON[id] || null }, LOOK[id]);
+
+  // --- the UI kit's other icons, in the same hand: the plants (by kind, plus the boons' own `el` values
+  // all, heart and garden), the damage elements (Defs.ELEMENTS) and the creatures (Defs.ENEMY_ORDER)
+  const PLANT = {
+    thorn: `<path d="M12 21.5V10M12 17.5l-2.6-1.4M12 14l2.6-1.4"/><path d="M12 10.5C8.6 10.5 7.4 7.6 8 4C9.6 5.2 10.6 5 12 2.5C13.4 5 14.4 5.2 16 4C16.6 7.6 15.4 10.5 12 10.5Z" ${W}/>`,
+    sun: `${petals(3.6, 6)}<circle cx="12" cy="12" r="3.2" ${S}/><path d="M12 18.4V22"/>`,
+    puff: `<path d="M4 12.5C4 5.5 20 5.5 20 12.5Z" ${W}/><path d="M9.6 12.5V20.5H14.4V12.5"/><circle cx="8.6" cy="9.6" r="1" ${S}/><circle cx="13.4" cy="8.4" r="1" ${S}/><circle cx="16.4" cy="10.6" r=".8" ${S}/>`,
+    wisp: `<path d="M3 3.5C8 3.5 11 6 12 10.5M7 3.8C6.4 7 6.6 10 7.6 13"/>${flame(15, 15.5, 1)}<circle cx="15" cy="16" r="1.2" ${S}/>`,
+    briar: `<path d="M12 21.5C5 21 4.5 14 9 12.5C13.5 11 14.5 16.5 11 17C8.5 17.4 8.6 14 10.5 14.4M12 21.5C18 20 19.5 12 15.5 8C13 5.5 9 6 8 3" ${W}/><path d="M5.2 16.4L3.2 16M15.6 18.6l1.2 2M18.4 12.2l2.2-.6M14 6.6l1.6-1.8"/>`,
+    toad: `<path d="M12 21.5V11"/><path d="M9.2 12C9.2 7.4 10.4 4.5 12 3C13.6 4.5 14.8 7.4 14.8 12Z" ${S}/><path d="M7.5 21.5h9M8.5 11.6L15.5 11.6" opacity=".6"/><path d="M15.5 6.5C17.5 4 20 4 21.5 6" stroke-dasharray="0.1 2.4"/>`,
+    moon: `<path d="M15.5 3.2A9 9 0 1 0 20.8 16A7 7 0 0 1 15.5 3.2Z" ${W}/><path d="M17.4 9.2C16 10.6 16 12.4 17.4 13.8C18.8 12.4 18.8 10.6 17.4 9.2Z" ${S}/>`,
+    lily: `<path d="M12 22V14"/><path d="M12 14C8.4 14 5.8 11 5 6.5C7.6 7.8 9 7.4 10 5C10.6 7.2 11.2 7.6 12 7.6C12.8 7.6 13.4 7.2 14 5C15 7.4 16.4 7.8 19 6.5C18.2 11 15.6 14 12 14Z" ${W}/><path d="M12 7.6V2" stroke-dasharray="0.1 2.6"/>`,
+    all: `<path d="M12 21.5V13"/><path d="M12 13C12 8 9 5 4.5 5C4.5 10 7.5 13 12 13Z" ${W}/><path d="M12 13C12 8 15 5 19.5 5C19.5 10 16.5 13 12 13Z" ${W}/><path d="M12 13C10.4 9.4 10.6 5.8 12 2.5C13.4 5.8 13.6 9.4 12 13Z" ${S}/>`,
+    heart: `${heart(12, 10, 0.8)}<path d="M12 16.4V21.5M12 21.5H8.5M12 21.5H15.5M12 18.5l-2.2-1.6M12 19.4l2.4-1.6"/>`,
+    garden: `<path d="M2.5 18.5C7 15.5 17 15.5 21.5 18.5" ${W}/><path d="M2.5 21.5C7 19 17 19 21.5 21.5" opacity=".55"/>${sprout(7.5, 16.6)}<path d="M7.5 16.6V10.6"/><path d="M16.5 16.4V9.5M16.5 12.5C19.5 12.5 20.5 10 20.5 8.5C18 8.5 16.5 10 16.5 12.5Z" ${W}/><circle cx="12" cy="5" r="1.6" ${S}/>`,
+  };
+  // (Briar Vine, Stinkhorn, Moonpetal and Ghost Lily are the plants #58 adds)
+  G.PLANT_ICONS = {};
+  for (const k in PLANT) G.PLANT_ICONS[k] = svg(PLANT[k]);
+  G.ELEMENT_ICONS = {
+    pierce: svg(`<path d="M12 2.5L15.4 12L12 21.5L8.6 12Z" ${W}/><path d="M12 2.5V21.5" opacity=".6"/><path d="M4.5 9.5L8.4 11.4M19.5 9.5L15.6 11.4"/>`),
+    light: svg(`<circle cx="12" cy="12" r="4.4" ${S}/>${rays(8, 6.8, 10)}`),
+    spore: svg(`<circle cx="12" cy="7.5" r="3.6" ${W}/><circle cx="7" cy="15.5" r="3.6" ${W}/><circle cx="17" cy="15.5" r="3.6" ${W}/><circle cx="12" cy="7.5" r="1.1" ${S}/><circle cx="7" cy="15.5" r="1.1" ${S}/><circle cx="17" cy="15.5" r="1.1" ${S}/>`),
+    spirit: svg(`${flame(12, 14.2, 1.7)}<path d="M12 18.4C9 18.4 8.4 14.8 10.8 13.6C12.8 12.6 14 14.9 12.5 15.7"/>`),
+  };
+  G.ENEMY_ICONS = {
+    grub: svg(`<path d="M5 17.5C3 13 5.5 7 11 6.5C16.5 6 20.5 9.5 19.5 13.5C18.8 16.2 15.5 16 15 13.6C14.5 11 11.5 11.5 10.5 13.5C9.5 15.5 7 19.5 5 17.5Z" ${W}/><path d="M9 7.4L10.8 12M13.4 6.6L13.6 11M16.8 7.8L15.6 11.6"/><circle cx="18.2" cy="12" r=".9" ${S}/>`),
+    beetle: svg(`<path d="M12 6.5C17 6.5 18.5 11 18.5 14C18.5 18.5 15.5 21.5 12 21.5C8.5 21.5 5.5 18.5 5.5 14C5.5 11 7 6.5 12 6.5Z" ${W}/><path d="M12 9V21.5M9.6 6.8C9.4 5 10.4 3.8 12 3.8C13.6 3.8 14.6 5 14.4 6.8M10.4 4.2L8.4 2.2M13.6 4.2L15.6 2.2M5.8 12L3 10.6M5.6 16L2.8 16.6M18.2 12L21 10.6M18.4 16L21.2 16.6"/>`),
+    moth: svg(`<path d="M12 8C9 3.5 3 3 3 7.5C3 11 6.5 12.5 11 12M12 8C15 3.5 21 3 21 7.5C21 11 17.5 12.5 13 12" ${W}/><path d="M11 12.5C8 13.5 5 15.5 6.5 18.5C8 20.5 10.5 18 11.4 15.5M13 12.5C16 13.5 19 15.5 17.5 18.5C16 20.5 13.5 18 12.6 15.5" ${W}/><path d="M12 7.5V17.5M11.2 7L9.4 3.2M12.8 7L14.6 3.2"/>`),
+    golem: svg(`<path d="M6 4.5H18L20 10.5L18.5 21H5.5L4 10.5Z" ${W}/><path d="M8.5 10.6H10.5M13.5 10.6H15.5M9.5 15.5H14.5M4.2 9.5C7 7.6 9 8.6 10.4 6.6M14.6 4.6C15.4 6.4 17.6 6.4 19 8"/>`),
+    spirit: svg(`<path d="M12 2.5C17 6 19.5 10 19 14.5C18.6 18.5 16 21.5 12 21.5C8 21.5 5.4 18.5 5 14.5C4.5 10 7 6 12 2.5Z" ${S} fill-opacity=".85"/><path d="M9.4 13L10.8 14.4M14.6 13L13.2 14.4" stroke="#fffae6" stroke-width="1.6"/><path d="M3 9C1.8 11.5 2.2 14 3.6 16M21 9C22.2 11.5 21.8 14 20.4 16" opacity=".6"/>`),
+    // the creatures of game/enemies
+    snail: svg(`<path d="M2.5 19.5H17.5C19.5 19.5 21 18.4 21.5 16.5" /><circle cx="11" cy="12.5" r="6.5" ${W}/><path d="M11 12.5A1.6 1.6 0 1 1 12.6 14A3.2 3.2 0 1 1 8 11.4A4.8 4.8 0 1 1 15.6 15"/><path d="M18 17.5L19.5 9.5M21 17L22 10.5"/><circle cx="19.5" cy="9" r=".9" ${S}/><circle cx="22" cy="10" r=".9" ${S}/>`),
+    bloat: svg(`<circle cx="12" cy="13" r="7.6" ${W}/><circle cx="9" cy="10.5" r="1.6"/><circle cx="14.6" cy="15.4" r="1.3"/><circle cx="15" cy="9.6" r=".9" ${S}/><path d="M8.4 20.2L7 22M15.6 20.2L17 22"/><circle cx="3" cy="5" r="1.2" ${S}/><circle cx="20.6" cy="4.4" r="1" ${S}/><circle cx="21.4" cy="20.6" r=".9" ${S}/>`),
+    mite: svg(`<ellipse cx="12" cy="13.5" rx="5" ry="4.2" ${W}/><circle cx="12" cy="8.2" r="2.2" ${W}/><path d="M7.4 11.6L3.5 9.5M7 14L3 14M7.6 16.4L4 19M16.6 11.6L20.5 9.5M17 14H21M16.4 16.4L20 19M11 6.4L9.6 3.2M13 6.4L14.4 3.2"/>`),
+    mender: svg(`<path d="M12 9C9 5 3.5 5 3.5 9.5C3.5 12.5 7 14 11 13M12 9C15 5 20.5 5 20.5 9.5C20.5 12.5 17 14 13 13" ${W}/><path d="M12 8V20"/><path d="M12 17.5L9 21M12 17.5L15 21" opacity=".6"/><path d="M12 1.6V5.4M10.1 3.5H13.9" stroke-width="2"/>`),
+    midge: svg(`${[[6, 7, 1], [15, 5, 0.85], [18.5, 13, 1], [9.5, 15, 0.9], [13, 19.5, 0.75], [4, 17, 0.7]].map(([x, y, s]) => `<circle cx="${x}" cy="${y}" r="${f1(1.3 * s)}" ${S}/><path d="M${x} ${y}l${f1(-2 * s)} ${f1(-2.2 * s)}M${x} ${y}l${f1(2 * s)} ${f1(-2.2 * s)}" stroke-width="1.3"/>`).join("")}`),
+    mole: svg(`<path d="M2 20.5C4 15 20 15 22 20.5Z" ${W}/><path d="M6.5 17C6.5 10.5 9 7 12 7C15 7 17.5 10.5 17.5 17" ${W}/><circle cx="12" cy="11" r="1.4" ${S}/><path d="M9.4 9.6h.01M14.6 9.6h.01" stroke-width="2.4"/><path d="M5 18.5L3.6 16.2M6.6 18L6 15.6M19 18.5L20.4 16.2M17.4 18L18 15.6"/>`),
+    lichen: svg(`<ellipse cx="12" cy="14" rx="6.5" ry="4.6" ${W}/><circle cx="10" cy="12.6" r="1.1" ${S}/><circle cx="13.8" cy="14.6" r=".9" ${S}/><circle cx="12.4" cy="11.4" r=".7" ${S}/><path d="M6 12.5C3.5 11 3 7.5 4.5 5.5M4.5 5.5L2.6 6.6M4.5 5.5L5.2 3.4M18 12.5C20.5 11 21 7.5 19.5 5.5M19.5 5.5L21.4 6.6M19.5 5.5L18.8 3.4M7 17.6L4.6 20.4M9.6 18.4L8.6 21.4M17 17.6L19.4 20.4M14.4 18.4L15.4 21.4"/>`),
+    mother: svg(`<path d="M3 20.5C3 12 7 8.5 12 8.5C17 8.5 21 12 21 20.5Z" ${W}/><path d="M7 8.8L7.6 3.5L10 6.6L12 2.5L14 6.6L16.4 3.5L17 8.8"/><path d="M9.4 13.4h.01M14.6 13.4h.01" stroke-width="2.6"/><path d="M9.5 17.2C11 18.2 13 18.2 14.5 17.2"/><circle cx="2.6" cy="11" r="1" ${S}/><circle cx="21.4" cy="11" r="1" ${S}/>`),
+  };
+
+  // --- the links between neighbouring plants (Defs.LINKS, game/links), read by the view as G.LINK_ART[id]:
+  // { color: the vine, color2: the motes running along it, width, motes per direction, mote, icon }. The
+  // vine takes a colour between the two plants', leaning to what the pair does (embers, prisms, rot,
+  // moonlight); the icon is the two plants side by side under an arching vine.
+  const pair = (a, b) => svg(`<path d="M5.5 9C8 4 16 4 18.5 9" stroke-dasharray="0.1 2.2"/><g transform="translate(0 8.5) scale(.5)" stroke-width="2.8">${PLANT[a]}</g><g transform="translate(12 8.5) scale(.5)" stroke-width="2.8">${PLANT[b]}</g>`);
+  const LINK = {
+    //            plants             vine colour          mote colour          width motes mote
+    thicket: [["thorn", "thorn"], [0.5, 0.95, 0.35], [0.9, 1.0, 0.6], 1.2, 2, "streak"],
+    sunseed: [["thorn", "sun"], [1.0, 0.62, 0.22], [1.0, 0.9, 0.5], 1, 2, "orb"],
+    seedpods: [["thorn", "puff"], [0.7, 0.8, 0.55], [0.85, 0.65, 1.0], 1, 2, "puff"],
+    willothorn: [["thorn", "wisp"], [0.5, 1.0, 0.75], [0.6, 0.95, 1.0], 1, 2, "streak"],
+    twinlens: [["sun", "sun"], [1.0, 0.9, 0.45], [1, 1, 0.92], 0.8, 3, "orb"],
+    sporeglow: [["sun", "puff"], [1.0, 0.75, 0.72], [1.0, 0.88, 0.5], 1, 2, "puff"],
+    spiritprism: [["sun", "wisp"], [0.75, 0.95, 1.0], [1.0, 0.8, 0.95], 0.9, 3, "orb"],
+    sporebank: [["puff", "puff"], [0.8, 0.55, 1.0], [0.92, 0.8, 1.0], 1.3, 2, "puff"],
+    kindred: [["wisp", "wisp"], [0.45, 0.95, 1.0], [1, 1, 1], 1, 3, "streak"],
+    hedge: [["briar", "briar"], [0.8, 0.28, 0.25], [0.95, 0.5, 0.4], 1.5, 1, "orb"],
+    rotbed: [["toad", "toad"], [0.62, 0.6, 0.25], [0.7, 1.0, 0.35], 1.2, 2, "puff"],
+    fullmoon: [["moon", "moon"], [0.78, 0.85, 1.0], [1, 1, 1], 0.8, 1, "ring"],
+    lilypond: [["lily", "lily"], [1.0, 0.65, 0.85], [0.7, 0.95, 1.0], 1, 2, "orb"],
+    thornwall: [["briar", "thorn"], [0.6, 0.7, 0.3], [0.9, 0.35, 0.3], 1.4, 2, "streak"],
+    thornypods: [["briar", "toad"], [0.9, 0.45, 0.25], [0.85, 0.32, 0.3], 1.1, 2, "puff"],
+    rotgarden: [["toad", "puff"], [0.75, 0.5, 0.7], [0.7, 1.0, 0.35], 1.1, 3, "puff"],
+    eclipse: [["moon", "sun"], [0.55, 0.5, 0.95], [1.0, 0.85, 0.4], 1, 1, "ring"],
+    moonlit: [["moon", "lily"], [0.85, 0.78, 1.0], [1.0, 0.7, 0.9], 0.9, 2, "orb"],
+    ghostlight: [["lily", "wisp"], [0.85, 0.8, 1.0], [0.5, 0.95, 1.0], 1, 2, "streak"],
+  };
+  G.LINK_ART = {};
+  for (const id in LINK) { const [[a, b], color, color2, width, motes, mote] = LINK[id]; G.LINK_ART[id] = { color, color2, width, motes, mote, icon: pair(a, b) }; }
 })();
 
 </script>
@@ -12098,14 +12841,27 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
      Ghost Lily   its beams, thicker and whiter as they heat up
    and what the levels leave on creatures: stars circling the stunned (dazzled, snared, asleep), blue
    motes trailing the lured, barbs (red points) in the barbed; a gust ring on a level II Puffcap.
+   Links between neighbouring plants (Defs.LINKS) grow as a vine of both colours with motes running along
+   it; a new link bursts and names itself, and a seed about to be planted shows the links it would make.
+   Art's src/art/links.js (or any art file) may set G.LINK_ART, read lazily like G.BOON_ART:
+     G.LINK_ART[id] = { color: [r, g, b] (one colour for the vine; default both plants'), color2 (the motes'),
+                        width (default 1), motes (each way, default 1), mote: "orb" | "puff" | "streak" | "ring",
+                        icon: "<svg viewBox='0 0 24 24'>…</svg>" (currentColor; the inspector's mark) }
+   G.linkLook(id) is the merged look, G.linkIcon(id) the icon or null.
    Follows "fire", "bomb", "mark" and "bramble_patch", and reads tower.patches, tower.rays,
    shots.puddles and the creatures' stunT, backT, markT, poisonT and barbs. GameView owns one: update(dt)
    every simulation step, write(sp) in its sprite pass. */
 (function () {
   const G = window.MG, D = G.Defs, ME = window.ME;
   const K = ME.SPRITE, TAU = Math.PI * 2, MAXP = 900;
-  const col = (kind) => D.TOWERS[kind].color, mul = (c, f) => [c[0] * f, c[1] * f, c[2] * f];
+  const col = (kind) => D.TOWERS[kind].color, mul = (c, f) => [c[0] * f, c[1] * f, c[2] * f], mix = (a, b, u = 0.5) => a.map((v, k) => v + (b[k] - v) * u);
   const STAR = [1.0, 0.92, 0.55], LURE = [0.45, 0.75, 1.0], BARB = [1.0, 0.35, 0.3], POISON = [0.65, 0.95, 0.35];
+  const MOTE = { orb: K.ORB, puff: K.PUFF, streak: K.STREAK, ring: K.RING };
+  G.linkLook = (id) => {
+    const a = (G.LINK_ART && G.LINK_ART[id]) || {};
+    return { color: a.color || null, color2: a.color2 || null, width: a.width || 1, motes: Math.max(1, Math.min(4, a.motes || 1)), mote: MOTE[a.mote] || K.ORB };
+  };
+  G.linkIcon = (id) => (G.LINK_ART && G.LINK_ART[id] && G.LINK_ART[id].icon) || null;
 
   class PlantFx {
     constructor(scene) {
@@ -12122,6 +12878,15 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       on("mark", (e) => this.fx.beam(e.from, e.to, col("moon"), 0.35));
       on("bramble_patch", (e) => {
         for (let k = 0; k < 3; k++) { const a = Math.random() * TAU, r = Math.random() * 0.45; this.add(e.pos[0] + Math.cos(a) * r, e.pos[1] + Math.sin(a) * r, e.pos[2] + 0.02, 0, 0, 1.2, 0.25, 0.025, col("briar"), K.STREAK, -3); }
+      });
+      // a plant planted: each new link bursts at its middle and says its name
+      on("tower_placed", (e) => {
+        const t = e.tower, named = new Set();
+        for (const l of t.links) {
+          const m = [(t.X + l.other.X) / 2, (t.Y + l.other.Y) / 2, (t.Z + l.other.Z) / 2 + 0.3];
+          this.spray(m, 10, col(t.kind), K.ORB, 1.2, 0.6, 0.035, -1); this.spray(m, 10, col(l.other.kind), K.ORB, 1.2, 0.6, 0.035, -1);
+          if (!named.has(l.link)) { named.add(l.link); this.fx.floatText([m[0], m[1], m[2] + 0.4 + 0.3 * (named.size - 1)], l.link.name, mix(col(t.kind), col(l.other.kind))); }
+        }
       });
       on("fire", (e) => {
         if (e.kind === "puff" && e.level >= 2) this.fx.ring([e.base[0], e.base[1], e.base[2] + 0.08], e.radius * 1.15, [0.95, 0.9, 1.0], 0.35, true);
@@ -12165,6 +12930,21 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       for (const p of game.shots.puddles) if (Math.random() < 0.8) { const a = Math.random() * TAU, r = Math.sqrt(Math.random()) * 0.65; this.add(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r, p.z + 0.05, 0, 0, 0.3, 0.7, 0.04, POISON, K.ORB, 0); }
     }
 
+    // a link's vine from a to b, coloured ca at a and cb at b (or in Art's colour), with its motes running
+    // each way; k scales its glow
+    vine(sp, a, b, ca, cb, ph, k, link) {
+      const L = G.linkLook(link.id), w = 0.03 * L.width, m = mix(a, b), lift = 0.06 * Math.sin(ph * 1.3);
+      if (L.color) ca = cb = L.color;
+      m[2] += 0.08 + lift;
+      sp.put(a[0], a[1], a[2], w, m[0], m[1], m[2], K.STREAK, ...mul(ca, 1.3 * k), 1);
+      sp.put(m[0], m[1], m[2], w, b[0], b[1], b[2], K.STREAK, ...mul(cb, 1.3 * k), 1);
+      for (let j = 0; j < 2 * L.motes; j++) {
+        const back = j % 2 === 1, u = (ph * 0.45 + (j >> 1) / L.motes + (back ? 0.5 : 0)) % 1;
+        const p = u < 0.5 ? mix(back ? b : a, m, u * 2) : mix(m, back ? a : b, u * 2 - 1);
+        sp.put(p[0], p[1], p[2] + 0.02, 0.045 * L.width, 0, 0, 0, L.mote, ...mul(L.color2 || (back ? cb : ca), 2.2 * k), 1);
+      }
+    }
+
     write(sp) {
       const game = this.scene.game, t = game.time, E = game.enemies, P = this.P;
       for (let i = 0; i < this.n; i++) {
@@ -12178,9 +12958,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
           const c = col("briar");
           for (const p of tw.patches) {
             sp.put(tw.X, tw.Y, tw.Z + 0.08, 0.035, p.x, p.y, p.z + 0.05, K.STREAK, 0.35, 0.6, 0.25, 1);
-            sp.put(p.x, p.y, p.z + 0.04, 0.62, 0, 0, 0, K.GROUND, ...mul(c, 0.75 + 0.15 * Math.sin(t * 2 + p.s)), 1);
+            sp.put(p.x, p.y, p.z + 0.04, tw.patchR() + 0.02, 0, 0, 0, K.GROUND, ...mul(c, 0.75 + 0.15 * Math.sin(t * 2 + p.s)), 1);
             for (let k = 0; k < 7; k++) {
-              const a = k * 2.4 + p.s, r = 0.15 + 0.32 * ((k * 0.37) % 1), x = p.x + Math.cos(a) * r, y = p.y + Math.sin(a) * r;
+              const a = k * 2.4 + p.s, r = (0.15 + 0.32 * ((k * 0.37) % 1)) * tw.patchR() / 0.6, x = p.x + Math.cos(a) * r, y = p.y + Math.sin(a) * r;
               sp.put(x, y, p.z + 0.24 + 0.04 * Math.sin(t * 3 + k), 0.03, x, y, p.z + 0.02, K.STREAK, ...mul(c, 2.0), 1);
             }
           }
@@ -12194,6 +12974,18 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
             sp.put(to[0], to[1], to[2], 0.08 + 0.1 * heat, 0, 0, 0, K.ORB, c[0] * f, c[1] * f, c[2] * f, 1);
           }
         }
+      }
+      // links: a vine low between the two plants, in both colours, with two motes running along it each way
+      for (const tw of game.towers) for (const l of tw.links) {
+        const o = l.other;
+        if (o.cx * 1000 + o.cy < tw.cx * 1000 + tw.cy) continue; // each pair once
+        this.vine(sp, [tw.X, tw.Y, tw.Z + 0.14], [o.X, o.Y, o.Z + 0.14], col(tw.kind), col(o.kind), t + tw.cx * 0.7 + tw.cy, 1, l.link);
+      }
+      // the seed in hand, over a cell: the links it would make, fainter
+      const sc = this.scene, hv = sc.hover, w = game.world;
+      if (sc.seed && hv && hv.cell && w.inside(hv.cell[0], hv.cell[1]) && !game.towerAt(hv.cell[0], hv.cell[1])) {
+        const [X, Y, Z] = w.cellCentre(hv.cell[0], hv.cell[1]);
+        for (const l of game.linksAt(sc.seed, hv.cell[0], hv.cell[1])) this.vine(sp, [X, Y, Z + 0.14], [l.other.X, l.other.Y, l.other.Z + 0.14], col(sc.seed), col(l.other.kind), t * 1.5, 0.55, l.link);
       }
       // poison puddles, fading as they dry
       for (const p of game.shots.puddles) sp.put(p.x, p.y, p.z + 0.04, 0.75, 0, 0, 0, K.GROUND, ...mul(POISON, 0.45 * Math.min(1, p.t)), 1);
@@ -12696,6 +13488,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("uproot").addEventListener("click", () => this.act.sell());
       $("again").addEventListener("click", () => this.act.restart());
       for (const ev of ["dew", "heart", "wave", "phase", "mods"]) G.on(ev, () => this.refresh());
+      // links change as plants come and go around the one in the inspector
+      G.on("links", () => { if (this.inspected && $("inspector").classList.contains("show") && this.inspected.links) this.inspect(this.inspected); });
       this.refresh();
     }
     clearSeed() { this.selected = ""; this.refresh(); }
@@ -12735,7 +13529,15 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       // what it does at its level, and what growing it would change
       const now = def.levels.slice(0, t.level).map((s, k) => `<span class="lvl">${ROMAN[k + 1]}</span> ${esc(s)}`).join("<br>");
       const next = t.level < D.MAX_LEVEL ? `<br><span class="dim"><span class="lvl">${ROMAN[t.level + 1]}</span> ${esc(def.levels[t.level])}</span>` : "";
-      $("inspbody").innerHTML = `${now}${next}<br>Damage <b>${t.damage().toFixed(0)}</b> · Reach <b>${t.range().toFixed(1)}</b><br>Attacks <b>${t.rate().toFixed(2)}</b> / s<br><span class="dim">${esc(this.matchupsOf(t.kind))}</span>`;
+      // its links (each once, with the plants that give it), or the plants it could link with
+      const by = new Map();
+      for (const l of t.links) { if (!by.has(l.link)) by.set(l.link, new Set()); by.get(l.link).add(D.TOWERS[l.other.kind].name); }
+      const partners = D.LINKS.filter((l) => l.kinds.includes(t.kind)).map((l) => D.TOWERS[l.kinds[0] === t.kind ? l.kinds[1] : l.kinds[0]].name);
+      const links = by.size
+        ? [...by].map(([l, names]) => `<span class="lnk">${G.linkIcon(l.id) || "⟡"} ${esc(l.name)}</span> <span class="dim">with ${esc([...names].join(", "))}</span>: ${esc(l.desc)}`).join("<br>")
+        : `<span class="dim">No links. Plant beside it: ${esc([...new Set(partners)].join(", "))}</span>`;
+      this.inspected = t;
+      $("inspbody").innerHTML = `${now}${next}<br>${links}<br>Damage <b>${t.damage().toFixed(0)}</b> · Reach <b>${t.range().toFixed(1)}</b><br>Attacks <b>${t.rate().toFixed(2)}</b> / s<br><span class="dim">${esc(this.matchupsOf(t.kind))}</span>`;
       const grow = $("grow");
       if (t.level >= D.MAX_LEVEL) { grow.textContent = "Fully grown"; grow.disabled = true; }
       else { grow.textContent = `Grow  (${t.upgradeCost()} dew)`; grow.disabled = !S.canAfford(t.upgradeCost()); }
@@ -12887,6 +13689,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       weak to (▲) and what it resists (▼). Seed cards are marked the same way.</p>
     <p>A steady halo on a creature means it resists the plant hitting it; pulsing veins mean it is weak to it.</p>
     <p>After each wave the garden offers a gift. Every 5th wave brings the Blight Spirit.</p>
+    <p class="dim">${G.VERSION ? G.VERSION.name + " " + G.VERSION.label : ""}</p>
     <p class="dim">Drag to pan, pinch or wheel to zoom, ${ME.keys.text("{KeyQ}/{KeyE} turn. Keys: 1–8 seeds, Space wave, {KeyU} grow, {KeyF} speed, {KeyM} sound, Esc pause.")}</p>`;
 
   class Menu {
@@ -13008,7 +13811,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     const adv = e.advice || null;
     let tips = adv ? adv.tips : [];
     if (!navigator.gpu) tips = ["This browser has no WebGPU. Use Chrome or Edge (desktop or Android 12+), or Safari 26+."];
-    const detail = [e.message, "UA: " + navigator.userAgent].concat(adv ? adv.tried.map((t) => "requestAdapter " + t.opts + " → " + (t.ok ? "ok" : "none") + (t.err ? " (" + t.err + ")" : "")) : []).join("\n");
+    const detail = [e.message, (G.VERSION ? G.VERSION.name + " " + G.VERSION.label : "version unknown"), "UA: " + navigator.userAgent].concat(adv ? adv.tried.map((t) => "requestAdapter " + t.opts + " → " + (t.ok ? "ok" : "none") + (t.err ? " (" + t.err + ")" : "")) : []).join("\n");
     l.style.display = "";
     l.innerHTML = `<div class="box fail-box"><h1>Mossheart</h1><div class="fail">${esc(e.message || String(e))}</div>` +
       (tips.length ? `<ul class="tips">${tips.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : "") +
@@ -14216,7 +15019,7 @@ function MG_SFX(L) {
         placed++;
       }
     }
-    // a free cell where a plant of `kind` reaches the most path, picked among the best few so runs differ
+    // a free cell where a plant of `kind` reaches the most path and links best, picked among the best few so runs differ
     bestCell(kind) {
       const game = this.game, w = game.world;
       if (!this.pathPts) { this.pathPts = []; for (let s = 0; s < w.len; s += 0.5) { const p = w.roadAt(s); this.pathPts.push([p[0], p[1]]); } }
@@ -14226,6 +15029,8 @@ function MG_SFX(L) {
         const X = x + 0.5, Y = y + 0.5;
         let score = 0;
         for (const q of this.pathPts) if ((q[0] - X) ** 2 + (q[1] - Y) ** 2 <= r2) score++;
+        // (and a cell where it links with its neighbours, Defs.LINKS)
+        score += 4 * new Set(game.linksAt(kind, x, y).map((l) => l.link)).size;
         best.push([score + this.rng.f() * 0.5, [x, y]]);
       }
       if (!best.length) return null;
@@ -14569,7 +15374,8 @@ function MG_SFX(L) {
       step(); await gpu.device.queue.onSubmittedWorkDone(); await new Promise((r) => setTimeout(r, 60));
       const avg = (a) => +(a.reduce((p, q) => p + q, 0) / a.length).toFixed(3);
       report({
-        ok: ME.errors.length === 0, adapter: gpu.info, canvas: [canvas.width, canvas.height], render: R.size, bakeMs, models: MB.stats,
+        // (ok also needs the version to be semver: src/version.js)
+        ok: ME.errors.length === 0 && /^\d+\.\d+\.\d+$/.test(G.VERSION.v), version: G.VERSION.label, adapter: gpu.info, canvas: [canvas.width, canvas.height], render: R.size, bakeMs, models: MB.stats,
         frames: N, avgFrameIntervalMs: avg(ints.slice(5)), avgCpuMs: avg(cpus.slice(5)), gpuMs: R.gpuMs,
         game: { wave: S.wave, enemies: game.enemies.count, towers: game.towers.length, dew: S.dew, heart: S.heartHp, corruption: +S.corruption.toFixed(3), sprites: R.sprites.nAdd + R.sprites.nAlpha, volumes: sim.count, looseVoxels: phys.spawned, dusk: +scene.dusk.toFixed(2) },
         errors: ME.errors,
