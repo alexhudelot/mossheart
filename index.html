@@ -13094,7 +13094,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "038b11d" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "d25407d" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -17219,7 +17219,17 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const DRIFT = { rain: 0.12, snow: 14 / 50, petals: 26 / 55, leaves: 0 };
 
   const pick = (odds) => { let r = Math.random() * Object.values(odds).reduce((a, b) => a + b, 0); for (const k in odds) if ((r -= odds[k]) < 0) return k; return "clear"; };
-  const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { return {}; } };
+  // v1: Auto and Dynamic became everyone's default once. An older save (no v) is reset to them on its
+  // first load, and any pick made after that is kept.
+  const VERSION = 1;
+  const load = () => {
+    try {
+      const d = JSON.parse(localStorage.getItem(KEY) || "{}");
+      if (d.v === VERSION) return d;
+      localStorage.setItem(KEY, JSON.stringify({ v: VERSION }));
+    } catch (e) { /* storage blocked */ }
+    return {};
+  };
 
   class Atmos {
     constructor(app) {
@@ -17304,7 +17314,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
     choose(kind, v) {
       if (kind === "mood") this.mood = v; else this.weather = v;
-      if (!ME.qn("selftest", 0) && !ME.qn("autoplay", 0)) try { localStorage.setItem(KEY, JSON.stringify({ mood: this.mood, weather: this.weather })); } catch (e) { /* storage blocked */ }
+      if (!ME.qn("selftest", 0) && !ME.qn("autoplay", 0)) try { localStorage.setItem(KEY, JSON.stringify({ v: VERSION, mood: this.mood, weather: this.weather })); } catch (e) { /* storage blocked */ }
       this.roll();
     }
     setLook(name) { this.look = ME.PRESETS[name] ? name : "cosy"; }
