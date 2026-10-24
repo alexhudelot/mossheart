@@ -80,7 +80,7 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 #boontip.show { display: block; }
 #boontip .rar { font-size: calc(11px * var(--ts)); text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.65; }
 
-/* the camera's turn buttons, the sky button and the glass button, and the sky panel (mood and weather) beside them */
+/* the camera's turn buttons, the sky button, and the sky panel (mood and weather) beside them */
 #viewctl { position: fixed; right: calc(12px + var(--sr)); bottom: calc(22px + 104px * var(--ts) + var(--sb)); display: flex; flex-direction: column; gap: 8px; }
 #sky { position: fixed; z-index: 2; right: calc(78px + var(--sr)); bottom: calc(22px + 104px * var(--ts) + var(--sb)); width: min(420px, calc(100vw - 100px)); padding: 10px 12px; display: none; flex-direction: column; gap: 8px; }
 #sky.show { display: flex; }
@@ -364,7 +364,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   <div id="topright"><span id="fps"></span><button id="sound" class="btn small" title="sound (M)"><span class="lb">♪</span></button><button id="speed" class="btn small" title="speed (F)"><span class="lb">1x</span></button><button id="pausebtn" class="btn small" title="menu (Esc)">☰</button></div>
   <div id="giftbox"><div id="boonbar"></div><div id="boontip" class="panel"></div></div>
   <div id="almanac"><button id="almtog">Almanac ▸</button><div id="almbody"></div></div>
-  <div id="viewctl"><button id="skybtn" class="btn small" title="mood and weather">☁</button><button id="glassbtn" class="btn small on" title="terrarium glass: on" aria-label="Terrarium glass" aria-pressed="true"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 19V11a7 7 0 0 1 14 0v8"/><path d="M3 19h18"/><path d="M9 8.5a3.5 3.5 0 0 1 3-2"/></svg></button><button id="turnl" class="btn small" title="turn left">↺</button><button id="turnr" class="btn small" title="turn right">↻</button></div>
+  <div id="viewctl"><button id="skybtn" class="btn small" title="mood and weather">☁</button><button id="turnl" class="btn small" title="turn left">↺</button><button id="turnr" class="btn small" title="turn right">↻</button></div>
   <div id="sky" class="panel"><div class="skyrow"><b>Mood</b><div class="seg" id="moodseg"></div></div><div class="skyrow"><b>Weather</b><div class="seg" id="wxseg"></div></div></div>
   <div id="hint">Tap a seed, then tap the meadow to plant it</div>
   <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspbody"></div><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div>
@@ -13094,7 +13094,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "c859eb9" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "134e1cd" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -18026,22 +18026,26 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
   // camera: the view eases to the rift when a boss comes (main.js); motion: "reduced" drops the screen shake, the camera moves and the lightning, softens the flashes and thins the weather
   // (it starts as the system's reduced-motion choice); text: the HUD's and the menus' text size, a factor; weather: how strong the sky panel's weather is (atmos.js)
-  // glass: the terrarium glass, "auto" as the quality has it (none on Low), or true/false over it (the HUD glass button and the Settings row)
-  // res: the resolution, the canvas's pixels per CSS pixel: "auto" (the screen's own, up to 2) or "2", "1.5", "1", "0.75" (main.js fitCanvas; ?dpr= pins it)
+  // glass: the terrarium glass, "auto" as the quality has it (none on Low), or true/false over it (the Settings row)
+  // res: the resolution, the canvas's pixels per CSS pixel: "full" (the screen's own, however fine) or "2", "1.5", "1", "0.75" (main.js fitCanvas; ?dpr= pins it)
   const calmOS = !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
   const DEFAULTS = {
     master: 0.7, music: 0.5, sfx: 0.7, ambience: 0.45,
-    quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, camera: true, vs: 24, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, weather: "subtle", glass: "auto", res: "auto",
+    quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, camera: true, vs: 32, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, weather: "subtle", glass: "auto", res: "full",
   };
   const OLD_VOLUMES = { master: 0.9, music: 0.8, sfx: 0.9, ambience: 0.8 };
-  // vs: the voxel density, Ultra (24) unless the player picked one (vsPicked; the device's cap still applies).
-  // Before Ultra became the default every save held vs 16 unless picked, so only another value was a choice.
+  // vs: the voxel density, Extreme (32) unless the player picked one (vsPicked; the device's cap still applies).
+  // Before 24 became the default every save held vs 16 unless picked, so only another value was a choice.
+  // (Extreme at full resolution is the default since 2026-10-24, the user: "default to extreme density and
+  // full resolution ... assume modern flagship phones and devices".)
   const load = () => {
     let raw = {};
     try { raw = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { /* storage blocked */ }
     const s = Object.assign({}, DEFAULTS, raw);
     if (!("vsPicked" in raw)) s.vsPicked = raw.vs !== undefined && raw.vs !== 16;
     if (!s.vsPicked) s.vs = DEFAULTS.vs;
+    // res: "auto" (the screen's own up to 2x) was the default until then, so a save holding it never chose one
+    if (raw.res === "auto") s.res = DEFAULTS.res;
     // the volumes were louder until 2026-10-24 (the user: "default to lower volumes for more subtle
     // atmosphere"); a saved volume still at its old default was never moved, so it takes the new one
     for (const [k, v] of Object.entries(OLD_VOLUMES)) if (raw[k] === v) s[k] = DEFAULTS[k];
@@ -18060,7 +18064,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // and the densest a model may bake (its o.fine x the terrain's VS; docs/decisions/2026-10-20-hero-density.md):
   // 32 on those devices, 64 elsewhere. main.js caps the bake list's fine to it.
   G.HERO_MAX = ME.qn("heromax", mobile || mem <= 4 ? 32 : 64); // (?heromax=32: the phone cap, to test it on a desktop)
-  const VS_NAMES = { 8: "Chunky (8)", 12: "Coarse (12)", 16: "Standard (16)", 20: "Fine (20)", 24: "Ultra (24)", 32: "Extreme (32)", 40: "Ultimate (40)", 48: "Epic (48)", 64: "Maximum (64)" };
+  const VS_NAMES = { 8: "Chunky (8)", 12: "Coarse (12)", 16: "Standard (16)", 20: "Fine (20)", 24: "Superfine (24)", 32: "Extreme (32)", 40: "Ultimate (40)", 48: "Epic (48)", 64: "Maximum (64)" };
   G.vsChoices = () => ME.VS_LEVELS.filter((v) => v <= VS_MAX);
   // before the bake: the saved density, unless ?vs= pins one
   const boot = load();
@@ -18086,14 +18090,24 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   G.levelId = G.pickLevel(boot.level);
   // and the resolution, for main.js's first fitCanvas (apply() keeps it after)
   G.resolution = boot.res;
-  // Presets: a density and a resolution together (the user, 2026-10-24). Not stored: the row shows the one the
-  // two settings match, else Custom. A density over this device's cap steps down to the finest it has.
-  const PRESETS = { low: { vs: 12, res: "1" }, medium: { vs: 16, res: "1.5" }, high: { vs: 20, res: "auto" }, ultra: { vs: 24, res: "auto" } };
+  // Presets: every graphics setting at once, the density, the resolution, the quality, the glass and the
+  // weather's strength (the user, 2026-10-24: "presets that act on all aspects"). Ultra is the defaults. Not
+  // stored: the row shows the one the settings match, else Custom. A density over this device's cap steps down
+  // to the finest it has.
+  const PRESETS = {
+    low: { vs: 16, res: "1", quality: "low", glass: false, weather: "subtle" },
+    medium: { vs: 24, res: "1.5", quality: "medium", glass: "auto", weather: "subtle" },
+    high: { vs: 32, res: "2", quality: "high", glass: "auto", weather: "subtle" },
+    ultra: { vs: 32, res: "full", quality: "high", glass: "auto", weather: "subtle" },
+  };
+  const PRESET_KEYS = ["vs", "res", "quality", "glass", "weather"];
   const PRESET_NAMES = { low: "Low", medium: "Medium", high: "High", ultra: "Ultra" };
   const presetVs = (p) => G.vsChoices().filter((v) => v <= p.vs).pop() || G.vsChoices()[0];
-  // the presets this device has (one where two land on the same pair) and the one the settings match
-  const presets = () => Object.keys(PRESETS).filter((k, i, all) => !all.slice(0, i).some((j) => presetVs(PRESETS[j]) === presetVs(PRESETS[k]) && PRESETS[j].res === PRESETS[k].res));
-  const presetOf = (s) => presets().find((k) => presetVs(PRESETS[k]) === Math.min(VS_MAX, s.vs) && PRESETS[k].res === s.res) || "custom";
+  const presetSet = (k) => Object.assign({}, PRESETS[k], { vs: presetVs(PRESETS[k]) }); // (as this device has it)
+  const same = (a, b) => PRESET_KEYS.every((n) => String(a[n]) === String(b[n]));
+  // the presets this device has (one where two land on the same settings) and the one the settings match
+  const presets = () => Object.keys(PRESETS).filter((k, i, all) => !all.slice(0, i).some((j) => same(presetSet(j), presetSet(k))));
+  const presetOf = (s) => presets().find((k) => same(presetSet(k), Object.assign({}, s, { vs: Math.min(VS_MAX, s.vs) }))) || "custom";
   // GO_KEY: set while a garden picked on the terrarium screen reloads, so it opens straight into play ("id|mode")
   // ("resume" its run, "new" a fresh one in place of it, "begin" a first one)
   const GO_KEY = "mossheart.go";
@@ -18154,7 +18168,6 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       ME.keys.onChange(() => { root.querySelector(".howto").innerHTML = HOWTO(); });
       root.addEventListener("click", (e) => { const b = e.target.closest("[data-a]"); if (b) this.action(b.dataset.a); });
       $("pausebtn").addEventListener("click", () => this.show("pause"));
-      $("glassbtn").addEventListener("click", () => this.set("glass", !this.app.R.set.glass));
       // menus hold the game's keys back; Esc opens the pause menu or steps back out of a menu
       window.addEventListener("keydown", (e) => {
         if (e.target && e.target.tagName === "INPUT" && e.key !== "Escape") return;
@@ -18234,9 +18247,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
 
     // ------------------------------------------------------------------ settings
-    // (a preset sets the density, a reload's worth, and the resolution, at once; Custom only shows)
+    // (a preset sets every graphics setting at once, the density a reload's worth; Custom only shows)
     set(k, v) {
-      if (k === "preset") { if (!PRESETS[v]) return; Object.assign(this.s, { vs: presetVs(PRESETS[v]), res: PRESETS[v].res }); k = "vs"; }
+      if (k === "preset") { if (!PRESETS[v]) return; Object.assign(this.s, presetSet(v)); k = "vs"; }
       else this.s[k] = v;
       if (k === "vs") this.s.vsPicked = true;
       save(this.s); this.apply();
@@ -18247,8 +18260,6 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (!ME.params.has("preset")) { R.applyPreset(s.look); if (this.app.atmos) this.app.atmos.setLook(s.look); }
       if (this.app.atmos) this.app.atmos.setIntensity(s.weather);
       if (s.glass !== "auto") R.set.glass = s.glass;
-      const gb = $("glassbtn"), gl = !!R.set.glass;
-      if (gb) { gb.classList.toggle("on", gl); gb.classList.toggle("off", !gl); gb.setAttribute("aria-pressed", String(gl)); gb.title = gl ? "terrarium glass: on" : "terrarium glass: off"; }
       if (!ME.params.has("scale")) {
         if (s.scale === "auto") R.set.autoScale = !ME.qn("selftest", 0);
         else { R.set.autoScale = false; R.set.scale = +s.scale; }
@@ -18272,7 +18283,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     renderSettings() {
       const s = Object.assign({}, this.s, { vs: Math.min(VS_MAX, this.s.vs), preset: presetOf(this.s) }), body = $("setbody"); // (the density as this device bakes it)
       const dprNow = +(this.app.dpr || 1).toFixed(2);
-      const resNote = ME.params.has("dpr") ? `Pinned to ${dprNow}x by the page address (?dpr=).` : `Pixels drawn per screen pixel (now ${dprNow}x). Auto is the screen's own, up to 2x. Lower runs faster and looks softer.`;
+      const resNote = ME.params.has("dpr") ? `Pinned to ${dprNow}x by the page address (?dpr=).` : `Pixels drawn per screen pixel (now ${dprNow}x). Full is the screen's own, however fine. Lower runs faster and looks softer.`;
       const slider = (k, label) => `<label class="row"><span>${label}</span><input type="range" min="0" max="1" step="0.05" value="${s[k]}" data-k="${k}"><em>${Math.round(s[k] * 100)}%</em></label>`;
       const choice = (k, label, opts) => `<div class="row"><span>${label}</span><div class="seg">${opts.map(([v, t]) => `<button class="${String(s[k]) === String(v) ? "on" : ""}" data-k="${k}" data-v="${v}">${t}</button>`).join("")}</div></div>`;
       const vsNow = ME.VS, vsNote = Math.min(VS_MAX, s.vs) !== vsNow && !ME.vsPinned ? `<div class="note">Takes effect on reload. <button class="btn" data-a="reload">Reload now</button></div>` : ME.vsPinned ? `<div class="note">Pinned to ${vsNow} by the page address (?vs=).</div>` : "";
@@ -18280,20 +18291,20 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         `<h3>Sound</h3>` + slider("master", "Volume") + slider("music", "Music") + slider("sfx", "Effects") + slider("ambience", "Ambience") +
         `<h3>Graphics</h3>` +
         choice("preset", "Preset", presets().map((k) => [k, PRESET_NAMES[k]]).concat(s.preset === "custom" ? [["custom", "Custom"]] : [])) +
-        `<div class="note dim">Sets the voxel density and the resolution together (${presets().map((k) => PRESET_NAMES[k] + " " + presetVs(PRESETS[k]) + " · " + (PRESETS[k].res === "auto" ? "Auto" : PRESETS[k].res + "x")).join(", ")}). Custom once either is changed by hand.</div>` +
-        choice("res", "Resolution", [["auto", "Auto"], ["2", "2x"], ["1.5", "1.5x"], ["1", "1x"], ["0.75", "0.75x"]]) +
+        `<div class="note dim">Sets every graphics setting here at once (${presets().map((k) => { const p = presetSet(k); return PRESET_NAMES[k] + ": " + p.vs + ", " + (p.res === "full" ? "Full" : p.res + "x") + ", quality " + p.quality + (p.glass === false ? ", no glass" : ""); }).join("; ")}; the weather Subtle in all). Ultra is the default. Custom once one is changed by hand.</div>` +
+        choice("vs", "Voxel density", G.vsChoices().map((v) => [v, VS_NAMES[v] || String(v)])) +
+        `<div class="note dim">Voxels per tile edge. Finer looks smoother and bakes longer (now ${vsNow}).${VS_MAX < 24 ? ` This device stops at ${VS_MAX}.` : VS_MAX > 24 ? " Extreme (32) bakes about twice as long as 24 the first time, then loads from the cache." + (VS_MAX > 32 ? " Above it, longer still, with a strong GPU and plenty of memory." : "") : ""}${mobile || mem <= 4 ? " On this device the finer ones bake slowly; if a load fails, the next one steps down a level." : ""}</div>` + vsNote +
+        choice("res", "Resolution", [["full", "Full"], ["2", "2x"], ["1.5", "1.5x"], ["1", "1x"], ["0.75", "0.75x"]]) +
         `<div class="note dim">${resNote}</div>` +
         choice("quality", "Quality", [["low", "Low"], ["medium", "Medium"], ["high", "High"]]) +
         choice("glass", "Glass", [["auto", "Auto"], [true, "On"], [false, "Off"]]) +
-        `<div class="note dim">The terrarium's glass. Auto keeps the quality's (none on Low); the glass button by the turn buttons sets it too.</div>` +
+        `<div class="note dim">The terrarium's glass. Auto keeps the quality's (none on Low).</div>` +
         choice("scale", "Render scale", [["auto", "Auto"], ["0.6", "60%"], ["0.8", "80%"], ["1", "100%"]]) +
+        choice("weather", "Weather", [["off", "Off"], ["subtle", "Subtle"], ["normal", "Normal"], ["heavy", "Heavy"]]) +
+        `<div class="note dim">How strong the weather is (the cloud button by the turn buttons picks which). Off keeps the sky clear.</div>` +
         choice("look", "Light", [["cosy", "Cosy"], ["morning", "Morning"], ["clear", "Clear"]]) +
         `<div class="note dim">The light of the Auto mood. The cloud button by the turn buttons picks the mood and the weather.</div>` +
-        choice("weather", "Weather", [["off", "Off"], ["subtle", "Subtle"], ["normal", "Normal"], ["heavy", "Heavy"]]) +
-        `<div class="note dim">How strong the weather the sky panel picks is. Off keeps the sky clear.</div>` +
         choice("theme", "Theme", [["overgrown", "Overgrown"], ["paper", "Paper"]]) +
-        choice("vs", "Voxel density", G.vsChoices().map((v) => [v, VS_NAMES[v] || String(v)])) +
-        `<div class="note dim">Voxels per tile edge. Finer looks smoother and bakes longer (now ${vsNow}).${VS_MAX < 24 ? ` This device stops at ${VS_MAX}.` : VS_MAX > 24 ? " Extreme (32) bakes about twice as long as Ultra the first time, then loads from the cache." + (VS_MAX > 32 ? " Above it, longer still, with a strong GPU and plenty of memory." : "") : ""}${mobile || mem <= 4 ? " On this device the finer ones bake slowly; if a load fails, the next one steps down a level." : ""}</div>` + vsNote +
         `<h3>Game</h3>` + choice("shake", "Screen shake", [[true, "On"], [false, "Off"]]) + choice("camera", "Camera moves", [[true, "On"], [false, "Off"]]) +
         `<div class="note dim">The view eases to the rift when a boss comes, and back.</div>` + choice("fps", "Show fps", [[true, "On"], [false, "Off"]]) +
         choice("tips", "First-run tips", [[true, "On"], [false, "Off"]]) + `<div class="note dim">A few tips on a fresh run: planting, the almanac, the first wave. They turn off when done.</div>` +
@@ -20144,13 +20155,13 @@ function MG_SFX(L) {
 
     // ------------------------------------------------------------------ camera, HUD, audio
     const cam = T.geo ? new ME.Camera(T.geo.C, T.geo.C) : new ME.Camera(map.W / 2, map.H / 2);
-    // the canvas's pixels per CSS pixel: the settings' Resolution (G.resolution, menu.js), Auto the screen's own
-    // up to 2; ?dpr= pins it (at most the screen's). A new resolution scales the camera's zoom with it, so the
-    // framing stays put
+    // the canvas's pixels per CSS pixel: the settings' Resolution (G.resolution, menu.js), Full the screen's own
+    // however fine (no 2x cap since 2026-10-24: the user's "full resolution"); ?dpr= pins it (at most the
+    // screen's). A new resolution scales the camera's zoom with it, so the framing stays put
     let dprNow = 0;
     const fitCanvas = () => {
-      const res = G.resolution || "auto", own = window.devicePixelRatio || 1;
-      const dpr = ME.params.has("dpr") ? Math.min(own, ME.qn("dpr", 2)) : res === "auto" ? Math.min(own, 2) : +res;
+      const res = G.resolution || "full", own = window.devicePixelRatio || 1;
+      const dpr = ME.params.has("dpr") ? Math.min(own, ME.qn("dpr", 2)) : +res || own;
       if (dprNow && dpr !== dprNow) cam.zoom *= dpr / dprNow;
       dprNow = app.dpr = dpr;
       const w = Math.max(64, Math.round(canvas.clientWidth * dpr)), h = Math.max(64, Math.round(canvas.clientHeight * dpr));
@@ -20166,7 +20177,7 @@ function MG_SFX(L) {
     fitCanvas(); frameView();
     cam.attach(canvas);
     window.addEventListener("resize", fitCanvas);
-    // and when the screen's density changes without a resize (the window dragged to another screen): Auto follows it
+    // and when the screen's density changes without a resize (the window dragged to another screen): Full follows it
     const watchDpr = () => matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener("change", () => { fitCanvas(); watchDpr(); }, { once: true });
     watchDpr();
     document.getElementById("loading").style.display = "none";
