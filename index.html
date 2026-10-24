@@ -13090,7 +13090,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "c8da37b" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "90160dd" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -17056,9 +17056,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 <script>/* src/view/atmos.js */
 /* Atmosphere: the mood (the light) and the weather, picked from the sky panel (the cloud button by the
    camera's turn buttons). Each has Random, which rolls a new one at every wave (and again when tapped).
+   The weather also has Dynamic (a new player's): it follows the run, from the garden's calm sky while
+   building to clouds in a wave, rain in later ones, a storm for a boss, more rain with the Heart Tree under
+   a third and a sun break when a wave is cleared (dynTarget()).
    The choice is the player's and kept on the device ("mossheart.atmos"); ?mood= and ?weather= pin it
    (screenshots), and the bot and the self-test always run Auto and Clear. All of it is looks only:
-   nothing here touches the rules, and the random rolls use Math.random, never the run's seed.
+   nothing here touches the rules, the random rolls use Math.random, never the run's seed, and Dynamic
+   only reads the run's state.
 
    A mood is a look preset (ME.PRESETS; Auto takes the settings' Light), a dusk the view holds (Auto lets
    the dusk follow the battle, scene.js), overrides on the preset (set) and factors after the dusk blend
@@ -17093,7 +17097,23 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     fog: { name: "Fog", f: { shaftK: 0.5, pool: 0.7 }, add: { haze: 0.16, vignette: 0.1 }, engine: ["fog", 1] },
     snow: { name: "Snow", f: { shaftK: 0.4, pool: 0.6, exposure: 1.04 }, add: { haze: 0.06 }, wind: 0.7, fx: "snow", n: 0.7, engine: ["snow", 0.8] },
     petals: { name: "Petals", wind: 1.4, fx: "petals", n: 0.35, engine: ["clear", 1], mix: { petals: 1 } },
+    // Dynamic's own steps between those (not in the panel, nor in Random's odds)
+    mist: { name: "Mist", hidden: true, f: { shaftK: 0.8, pool: 0.85 }, add: { haze: 0.07 }, engine: ["fog", 0.5] },
+    mistcloud: { name: "Misty cloud", hidden: true, f: { shaftK: 0.3, pool: 0.5, exposure: 0.92, bloomK: 0.85 }, add: { haze: 0.1 }, engine: ["fog", 0.8] },
+    drizzle: { name: "Drizzle", hidden: true, f: { shaftK: 0.3, pool: 0.5, exposure: 0.9 }, add: { haze: 0.05 }, wind: 1.3, fx: "rain", n: 0.3, rings: 0.5, engine: ["rain", 0.4] },
+    downpour: { name: "Downpour", hidden: true, f: { shaftK: 0.15, pool: 0.35, exposure: 0.8, bloomK: 0.9 }, add: { haze: 0.06, vignette: 0.08 }, wind: 2, fx: "rain", n: 0.75, rings: 1.6, engine: ["rain", 1] },
+    sunbreak: { name: "Sun break", hidden: true, f: { shaftK: 1.6, pool: 1.2, exposure: 1.04 }, engine: ["clear", 1] },
   };
+  // Dynamic, per garden: the sky while building (calm), in a wave and in the waves from LATE on (Fernglass
+  // keeps its greenhouse mist; a boss, the hurt Heart Tree and a cleared wave are the same everywhere)
+  const DYNAMIC = {
+    momiji: { calm: "clear", wave: "overcast", late: "drizzle" },
+    fernglass: { calm: "mist", wave: "mistcloud", late: "drizzle" },
+  };
+  const LATE = 6;
+  const HURT_IN = 1 / 3, HURT_OUT = 0.45; // the Heart Tree's share of its life where its rain starts, and stops
+  const SETTLE = 3, HOLD = 10, SUN = 6; // s: a new sky waits, the last one stays at least, a sun break lasts
+  const EASE = 1.5, EASE_DYN = 4; // s: the blend toward the weather (slower when it follows the run)
   // how often Random lands on each weather (out of 100)
   const WEATHER_ODDS = { clear: 30, overcast: 14, wind: 10, rain: 15, storm: 6, fog: 10, snow: 6, petals: 9 };
   const MOOD_ROLL = ["cosy", "morning", "clear", "golden", "dusk", "night"];
@@ -17118,13 +17138,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.app = app; this.R = app.R; this.scene = app.scene;
       this.look = ME.q("preset", "cosy"); // the settings' Light (menu.js calls setLook)
       const fixed = ME.qn("selftest", 0) || ME.qn("autoplay", 0), saved = fixed ? {} : load();
-      // the page address first, then the saved choice, then Auto and Random (a new player: weather on,
+      // the page address first, then the saved choice, then Auto and Dynamic (a new player: weather on,
       // gently, at the settings' Subtle; the bot and the self-test run Clear)
-      const first = (table, ...vs) => vs.find((v) => table[v] || v === "random");
+      const first = (table, ...vs) => vs.find((v) => table[v] || v === "random" || (table === WEATHER && v === "dynamic"));
       this.mood = first(MOODS, ME.q("mood", ""), saved.mood) || "auto";
-      this.weather = first(WEATHER, ME.q("weather", ""), saved.weather) || (fixed ? "clear" : "random");
+      this.weather = first(WEATHER, ME.q("weather", ""), saved.weather) || (fixed ? "clear" : "dynamic");
       this.setIntensity("subtle", true); // (menu.js sets the player's)
       this.moodNow = "auto"; this.weatherNow = "clear";
+      // Dynamic's sky now, the one it heads for and since when, how long the sky has held, the sun break left,
+      // whether the Heart Tree's rain is on, and the run it follows (a new one sets its sky at once)
+      this.dyn = { now: "clear", want: "clear", wantFor: 0, held: 0, sun: 0, hurt: false, game: undefined, level: undefined };
       this.roll();
       // the blended state: the lit factors, the wind and each particle kind's strength
       this.cur = Object.assign({ rain: 0, snow: 0, petals: 0, leaves: 0, rings: 0 }, ONE);
@@ -17133,8 +17156,40 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.cv = $("wx"); this.ctx = this.cv ? this.cv.getContext("2d") : null;
       const fit = () => { if (this.cv) { this.cv.width = window.innerWidth; this.cv.height = window.innerHeight; } };
       fit(); window.addEventListener("resize", fit);
-      G.on("wave_start", () => { if (this.mood === "random" || this.weather === "random") this.roll(); });
+      G.on("wave_start", () => { this.dyn.sun = 0; if (this.mood === "random" || this.weather === "random") this.roll(); this.follow(0, true); });
+      G.on("wave_clear", () => { this.dyn.sun = SUN; this.follow(0, true); });
       this.buildPanel();
+    }
+
+    // ------------------------------------------------------------------ Dynamic
+    // the sky the run asks for now (it reads the run's state and the view's boss flag, never the run's rng)
+    dynTarget() {
+      const S = G.state, P = G.Phase, g = DYNAMIC[G.levelId] || DYNAMIC.momiji, d = this.dyn;
+      if (!this.scene.game) return g.calm;
+      // (two thresholds, so a heal or a scratch around a third does not flip the rain on and off)
+      const life = S.heartMax > 0 ? S.heartHp / S.heartMax : 1;
+      d.hurt = S.phase !== P.GAME_OVER && (d.hurt ? life < HURT_OUT : life < HURT_IN);
+      if (d.sun > 0) return "sunbreak";
+      if (S.phase === P.WAVE) return this.scene.bossWave ? "storm" : d.hurt ? "downpour" : S.wave >= LATE ? g.late : g.wave;
+      if (S.phase === P.GAME_OVER) return "downpour";
+      return d.hurt ? "drizzle" : g.calm;
+    }
+    // every frame with Dynamic picked: a new sky once the run has asked for it SETTLE seconds and the last one
+    // has held HOLD; the run's events (a wave starting, a wave cleared) and a new run change it at once
+    follow(dt, now) {
+      if (this.weather !== "dynamic") return;
+      const d = this.dyn, game = this.scene.game;
+      if (game !== d.game || G.levelId !== d.level) { d.game = game; d.level = G.levelId; d.sun = 0; d.hurt = false; now = true; }
+      d.sun = Math.max(0, d.sun - dt); d.held += dt;
+      const t = this.dynTarget();
+      if (t === d.now) { d.want = t; d.wantFor = 0; return; }
+      if (t !== d.want) { d.want = t; d.wantFor = 0; }
+      d.wantFor += dt;
+      if (now || (d.wantFor >= SETTLE && d.held >= HOLD)) {
+        d.now = t; d.held = 0; d.wantFor = 0;
+        this.weatherNow = t;
+        this.toEngine(); this.renderPanel();
+      }
     }
 
     // Random's picks for this wave (a fixed choice is its own pick); the panel shows what Random rolled
@@ -17142,6 +17197,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (this.mood === "random") { let m; do m = MOOD_ROLL[(Math.random() * MOOD_ROLL.length) | 0]; while (m === this.moodNow && MOOD_ROLL.length > 1); this.moodNow = m; }
       else this.moodNow = this.mood;
       if (this.weather === "random") { let w; do w = pick(WEATHER_ODDS); while (w === this.weatherNow); this.weatherNow = w; }
+      else if (this.weather === "dynamic") { const d = this.dyn; d.now = d.want = this.weatherNow = this.dynTarget(); d.held = 0; d.wantFor = 0; }
       else this.weatherNow = this.weather;
       this.toEngine();
       this.renderPanel();
@@ -17174,6 +17230,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // before the view's update and draw: hand it the base and the mood's dusk; blend toward the weather;
     // move the overlay and drop rain rings on the water
     update(dt) {
+      this.follow(dt);
       const m = MOODS[this.moodNow] || MOODS.auto, w = this.shown(), scene = this.scene;
       scene.base = this.base();
       scene.moodDusk = m.dusk;
@@ -17187,7 +17244,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (w.fx) t[w.fx] = w.n * L;
         t.rings = (w.rings || 0) * L;
       }
-      const k = 1 - Math.exp(-dt / 1.5);
+      const k = 1 - Math.exp(-dt / (this.weather === "dynamic" ? EASE_DYN : EASE));
       for (const key in t) this.cur[key] += (t[key] - this.cur[key]) * k;
       if (!engine && w.flash && !this.reduced && (this.nextFlash -= dt) <= 0) { this.flash = Math.min(1, L); this.nextFlash = 5 + Math.random() * 9; }
       this.flash = Math.max(0, this.flash - dt * 2.2);
@@ -17301,17 +17358,18 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
     renderPanel() {
       const row = (kind, list, current, rolled, names) => list.map((v) => {
-        const label = v === "random" ? `⚄ Random${current === "random" ? " · " + names[rolled].name : ""}` : names[v].name;
+        const label = v === "random" ? `⚄ Random${current === "random" ? " · " + names[rolled].name : ""}`
+          : v === "dynamic" ? `↻ Dynamic${current === "dynamic" ? " · " + names[rolled].name : ""}` : names[v].name;
         return `<button class="${current === v ? "on" : ""}" data-k="${kind}" data-v="${v}">${label}</button>`;
       }).join("");
       const m = $("moodseg"), w = $("wxseg");
       if (m) m.innerHTML = row("mood", [...Object.keys(MOODS), "random"], this.mood, this.moodNow, MOODS);
-      if (w) w.innerHTML = row("weather", [...Object.keys(WEATHER), "random"], this.weather, this.weatherNow, WEATHER);
+      if (w) w.innerHTML = row("weather", ["dynamic", ...Object.keys(WEATHER).filter((k) => !WEATHER[k].hidden), "random"], this.weather, this.weatherNow, WEATHER);
       const btn = $("skybtn");
       if (btn) btn.title = `Mood: ${MOODS[this.moodNow].name} · Weather: ${WEATHER[this.weatherNow].name}${this.level > 0 ? "" : " (off in Settings)"}`;
     }
     // for the self-test and the flows: what is showing
-    state() { return { mood: this.mood, moodNow: this.moodNow, weather: this.weather, weatherNow: this.weatherNow, intensity: this.levelName, particles: this.parts.length }; }
+    state() { return { mood: this.mood, moodNow: this.moodNow, weather: this.weather, weatherNow: this.weatherNow, intensity: this.levelName, particles: this.parts.length, want: this.dyn.want, hurt: this.dyn.hurt }; }
   }
   G.Atmos = Atmos;
   G.MOODS = MOODS; G.WEATHER = WEATHER;
