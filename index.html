@@ -13094,7 +13094,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "2682824" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "57362a1" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -14409,10 +14409,16 @@ function MA_DSP() {
     }
     // Calling the next wave early: while a wave runs, the next one's creatures start at once, on top of
     // those still out, for a dew bonus by how much is left to fight (earlyBonus). Up to EARLY_MAX waves at
-    // once, and never into or out of a boss wave (a boss is fought alone). The shield and the boons' timers
-    // carry on from the running wave; all of them are paid for and drafted on the one clear (waveCleared).
-    canCallEarly() {
-      return S.phase === G.Phase.WAVE && this.running > 0 && this.running < EARLY_MAX && !this.plan(S.wave).boss && !this.plan(S.wave + 1).boss;
+    // once since the last clear, and never into or out of a boss wave (a boss is fought alone). The shield and
+    // the boons' timers carry on from the running wave; all of them are paid for and drafted on the one clear
+    // (waveCleared).
+    canCallEarly() { return S.phase === G.Phase.WAVE && this.running > 0 && !this.earlyBlocked(); }
+    // why the next wave can't be called now, for the button (the HUD shows it on it), or "" if it can
+    earlyBlocked() {
+      if (this.plan(S.wave).boss) return "Boss wave: fought alone";
+      if (this.plan(S.wave + 1).boss) return "Boss ahead";
+      if (this.running >= EARLY_MAX) return `${EARLY_MAX} waves running: clear the field`;
+      return "";
     }
     // how much is left to fight, as a share of the newest wave: the creatures still to spawn or on the field
     // (of every running wave, capped at the whole: a split's young count too)
@@ -17751,11 +17757,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
       const building = S.phase === G.Phase.BUILD;
       if (S.phase !== G.Phase.CHOOSE_BOON) $("boons").classList.remove("show");
-      // (while a wave runs: the next one called early, for the bonus it pays now, Game.callEarly)
-      const early = this.game.canCallEarly();
-      $("wavebtn").style.display = building || early ? "" : "none";
-      $("wavebtn").classList.toggle("early", early);
+      // (while a wave runs: the next one called early, for the bonus it pays now, Game.callEarly; when it
+      // can't be, the button stays, greyed, with the reason on it)
+      const waving = S.phase === G.Phase.WAVE && S.wave > 0 && this.game.running > 0, early = this.game.canCallEarly();
+      $("wavebtn").style.display = building || waving ? "" : "none";
+      $("wavebtn").disabled = waving && !early;
+      $("wavebtn").classList.toggle("early", waving);
       if (early) $("wavebtn").querySelector(".lb").innerHTML = `Next wave <small>+${this.game.earlyBonus()} dew</small>`;
+      else if (waving) $("wavebtn").querySelector(".lb").innerHTML = `Next wave <small>${this.game.earlyBlocked()}</small>`;
       else label("wavebtn", `Begin Wave ${S.wave + 1}`);
       $("hint").style.display = S.wave === 0 && building ? "" : "none";
       if (S.phase === G.Phase.GAME_OVER && $("inspector").classList.contains("show")) this.inspect(null);
