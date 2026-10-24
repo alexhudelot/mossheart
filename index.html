@@ -13094,7 +13094,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "4f47431" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "c859eb9" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -14272,8 +14272,11 @@ function MA_DSP() {
 (function () {
   const G = window.MG, D = G.Defs, S = G.state;
 
-  // calling waves early (Game.callEarly): how many may run at once, and the share of a clear bonus paid
-  const EARLY_MAX = 3, EARLY_SHARE = 0.5;
+  // calling waves early (Game.callEarly): how many may run at once. G.EARLY, what a call pays: `pay` x the
+  // dew the called wave's creatures carry, x the share of the running wave still to fight to the power
+  // `pow`, so a call at once pays far more than one late in the wave (Game.earlyBonus; the sim tunes them)
+  const EARLY_MAX = 3;
+  G.EARLY = { pay: 2, pow: 1.5 };
 
   class Game {
     // level: the level description (world.js); body: the sizes the rules need from the art, as data
@@ -14408,8 +14411,12 @@ function MA_DSP() {
       for (const st of this.streams) for (const [k] of st.queue) if (k) left++;
       return Math.min(1, left / Math.max(1, this.plan(S.wave).total));
     }
-    // half the next wave's clear bonus, times that share
-    earlyBonus() { return Math.round(EARLY_SHARE * (18 + S.wave + 1) * this.earlyShare()); }
+    // the dew the next wave's creatures carry (a split's young not counted), times G.EARLY
+    earlyBonus() {
+      let dew = 0;
+      for (const [k] of this.plan(S.wave + 1).spawns) if (k) dew += D.ENEMIES[k].reward;
+      return Math.round(G.EARLY.pay * dew * Math.pow(this.earlyShare(), G.EARLY.pow));
+    }
     callEarly() {
       if (!this.canCallEarly()) return false;
       const bonus = this.earlyBonus();
@@ -19882,9 +19889,9 @@ function MG_SFX(L) {
         this.game.chooseBoon(b);
       }
       if (S.phase === G.Phase.WAVE && this.early >= 0 && S.wave < this.maxWaves && this.game.canCallEarly() && this.game.earlyShare() <= this.early) {
-        this.spend();
         this.hooks.log(`  called wave ${S.wave + 1} early for ${this.game.earlyBonus()} dew`);
         this.game.startWave();
+        this.spend(); // (the bonus goes into plants at once, as a player's would)
       }
       if (S.phase !== G.Phase.BUILD) return;
       if (S.wave >= this.maxWaves) { this.hooks.log(`reached wave ${S.wave}, heart ${S.heartHp}/${S.heartMax}, dew ${S.dew}, plants ${this.game.towers.length}`); this.finish(false); return; }
