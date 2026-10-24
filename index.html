@@ -8694,14 +8694,22 @@ fn boxOf(V: Vox) -> Box {
       const data = new Float32Array(Math.max(1, list.length) * 8);
       list.forEach((l, i) => data.set([...l.p, l.r, ...l.col, l.k], i * 8));
       const GW = Math.round(T.NX / T.VS), GH = Math.round(T.NY / T.VS), ox = T.O[0], oy = T.O[1], grid = new Uint32Array(GW * GH * 8).fill(0xffffffff);
-      for (let cy = 0; cy < GH; cy++) for (let cx = 0; cx < GW; cx++) {
-        const x0 = ox + cx, y0 = oy + cy, near = [];
-        list.forEach((l, i) => {
-          const dx = Math.max(x0 - l.p[0], 0, l.p[0] - x0 - 1), dy = Math.max(y0 - l.p[1], 0, l.p[1] - y0 - 1), d = Math.hypot(dx, dy);
-          if (d < l.r) near.push([d, i]);
-        });
-        near.sort((a, b) => a[0] - b[0]).slice(0, 8).forEach(([, i], k) => (grid[(cy * GW + cx) * 8 + k] = i));
-      }
+      // each light visits only the cells inside its radius (not every cell every light: 80 ms per tower placed
+      // on a big map); lights go in index order, so a cell's ties sort as before
+      const near = new Map();
+      list.forEach((l, i) => {
+        const [px, py] = l.p, r = l.r;
+        const cx0 = Math.max(0, Math.floor(px - r - 1 - ox)), cx1 = Math.min(GW - 1, Math.ceil(px + r - ox));
+        const cy0 = Math.max(0, Math.floor(py - r - 1 - oy)), cy1 = Math.min(GH - 1, Math.ceil(py + r - oy));
+        for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
+          const x0 = ox + cx, y0 = oy + cy;
+          const dx = Math.max(x0 - px, 0, px - x0 - 1), dy = Math.max(y0 - py, 0, py - y0 - 1), d = Math.hypot(dx, dy);
+          if (!(d < r)) continue;
+          const c = cy * GW + cx, a = near.get(c);
+          if (a) a.push([d, i]); else near.set(c, [[d, i]]);
+        }
+      });
+      near.forEach((a, c) => a.sort((p, q) => p[0] - q[0]).slice(0, 8).forEach(([, i], k) => (grid[c * 8 + k] = i)));
       if (!this.lightList) this.lightList = list; // the scene's own lights (critters gather at the lamps)
       this.lgrid = [ox, oy, GW, GH];
       this.dev.queue.writeBuffer(this.lightBuf, 0, data);
@@ -13056,7 +13064,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "2063108" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "e183a84" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -13602,7 +13610,7 @@ function MA_DSP() {
       const D = G.Defs;
       enemies.forEachLive((i) => {
         if (enemies.dist[i] < 0) return;
-        const b = D.ENEMIES[D.ENEMY_ORDER[enemies.kind[i]]].blight;
+        const b = enemies.defOf(i).blight;
         this.stamp(enemies.px[i], enemies.py[i], RADIUS * Math.sqrt(b), RATE * b * step);
       });
       let sum = 0;
@@ -13661,6 +13669,8 @@ function MA_DSP() {
   const Hit = (G.Hit = { PLAIN: 0, WEAK: 1, RESISTED: 2 });
   const BOSS = Uint8Array.from(D.ENEMY_ORDER, (k) => (D.ENEMIES[k].boss ? 1 : 0));
   const HEALER = Uint8Array.from(D.ENEMY_ORDER, (k) => (D.ENEMIES[k].heal ? 1 : 0));
+  // (and each kind's entry by index, so the hot loops need no name lookup)
+  const DEFS = D.ENEMY_ORDER.map((k) => D.ENEMIES[k]);
 
   class Enemies {
     constructor(world, body) {
@@ -13719,6 +13729,7 @@ function MA_DSP() {
       return i;
     }
     kindOf(i) { return D.ENEMY_ORDER[this.kind[i]]; }
+    defOf(i) { return DEFS[this.kind[i]]; }
     isBoss(i) { return BOSS[this.kind[i]] === 1; }
     isValid(i, uid) { return i >= 0 && this.alive[i] === 1 && this.uid[i] === uid; }
     // not yet out of the rift, or under the road: nothing targets or reaches it
@@ -13735,7 +13746,7 @@ function MA_DSP() {
       if (this.slowT[i] > 0) amount *= 1 + G.state.mod("sticky");
       if (this.markT[i] > 0) amount *= 1 + this.markAmt[i];
       if (element >= 0) {
-        const mult = this.affinity[i * 4 + element], a = i * 4 + element, adapt = D.ENEMIES[this.kindOf(i)].adapt;
+        const mult = this.affinity[i * 4 + element], a = i * 4 + element, adapt = this.defOf(i).adapt;
         amount *= mult * (1 - this.armour[a]);
         if (adapt) this.armour[a] = Math.min(MAX_ARMOUR, this.armour[a] + adapt);
         if (mult * (1 - this.armour[a]) > D.WEAK_ABOVE) this.lastHit = Hit.WEAK;
@@ -13755,7 +13766,7 @@ function MA_DSP() {
     }
     // (element: what the killing blow dealt, -1 for none). A Bloat Mould spills its mites where it burst.
     kill(i, element) {
-      const kind = this.kindOf(i), def = D.ENEMIES[kind], reward = def.reward, p = [this.px[i], this.py[i], this.pz[i]];
+      const kind = this.kindOf(i), def = this.defOf(i), reward = def.reward, p = [this.px[i], this.py[i], this.pz[i]];
       const dist = this.dist[i], lat = this.lat[i], hpK = this.hpK[i];
       if (this.slowT[i] > 0 && G.state.mod("puffball") > 0) this.pops.push([p[0], p[1], this.maxHp[i]]);
       this.release(i);
@@ -13776,7 +13787,7 @@ function MA_DSP() {
     // down the road) are shorter on big creatures, like slows; a boss feels a third of them. After one,
     // a creature is steady for a while (steadyT: 2 s after a stun or lure, 0.6 s after a push) and
     // nothing holds or moves it, so plants can't pin a wave in place between them. A shell holds nothing.
-    hold(i, secs) { const s = D.ENEMIES[this.kindOf(i)].size; return BOSS[this.kind[i]] ? secs / 3 : secs / Math.max(s, 1); }
+    hold(i, secs) { const s = this.defOf(i).size; return BOSS[this.kind[i]] ? secs / 3 : secs / Math.max(s, 1); }
     held(i) { return !this.alive[i] || this.steadyT[i] > 0 || this.shell[i] > 0; }
     stun(i, secs) { if (this.held(i)) return; const h = this.hold(i, secs); this.stunT[i] = h; this.steadyT[i] = h + 2; }
     lure(i, secs) { if (this.held(i)) return; const h = this.hold(i, secs); this.backT[i] = h; this.steadyT[i] = h + 2; }
@@ -13798,7 +13809,7 @@ function MA_DSP() {
     // feels about 70% of it, a boss half. A shell feels none of it.
     applySlow(i, amount, duration) {
       if (!this.alive[i] || this.shell[i] > 0) return;
-      const size = D.ENEMIES[this.kindOf(i)].size;
+      const size = this.defOf(i).size;
       this.slowAmt[i] = Math.max(this.slowAmt[i], Math.min(MAX_SLOW, Math.max(0, amount / Math.max(size, 1))));
       this.slowT[i] = Math.max(this.slowT[i], duration);
     }
@@ -13842,7 +13853,7 @@ function MA_DSP() {
       const [bx, by] = W.roadAt(Math.max(0, s - 0.65)), [ax, ay] = W.roadAt(s + 1.35);
       let dx = ax - bx, dy = ay - by, l = Math.hypot(dx, dy);
       if (l < 1e-3) { dx = sx; dy = sy; l = Math.hypot(dx, dy) || 1; }
-      const def = D.ENEMIES[this.kindOf(i)];
+      const def = this.defOf(i);
       const lat = W.latAt(s, this.lat[i]);
       this.px[i] = X - (dy / l) * lat; this.py[i] = Y + (dx / l) * lat;
       const fly = def.fly - this.body.hover[this.kind[i]];
@@ -13884,7 +13895,7 @@ function MA_DSP() {
       const S = G.state, counts = new Int32Array(D.ENEMY_ORDER.length);
       for (let i = 0; i < CAPACITY; i++) {
         if (!this.alive[i]) continue;
-        const kind = this.kindOf(i), def = D.ENEMIES[kind];
+        const kind = this.kindOf(i), def = this.defOf(i);
         if (this.burnT[i] > 0) {
           this.burnT[i] -= dt;
           this.hp[i] -= this.burnDps[i] * dt;
@@ -16933,7 +16944,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const MD = G.models;
       for (let k = 0; k < G.ENEMY_CAPACITY; k++) {
         if (!E.alive[k] || E.hp[k] >= E.maxHp[k] || E.hidden(k)) continue;
-        const f = Math.max(0, E.hp[k] / E.maxHp[k]), sz = Math.min(1.6, Math.max(1, D.ENEMIES[E.kindOf(k)].size)), h = MD.creatureH[E.kind[k]];
+        const f = Math.max(0, E.hp[k] / E.maxHp[k]), sz = Math.min(1.6, Math.max(1, E.defOf(k).size)), h = MD.creatureH[E.kind[k]];
         const col = f > 0.5 ? [1.0 - (f - 0.5) * 2 * 0.45, 0.9, 0.4] : [1.0, 0.35 + f * 1.1, 0.3];
         sp.put(E.px[k], E.py[k], E.pz[k] + h + 0.12, 0, 15 * sz * barPx, 2.6 * barPx, f, K.BAR, col[0], col[1], col[2], 1);
       }
@@ -17295,7 +17306,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("turnr").addEventListener("click", () => this.act.turn(1));
       $("skybtn").addEventListener("click", () => this.act.sky());
       // a gift chip tapped: what it does, until tapped again or tapped elsewhere
-      this.boonKey = null; this.tipFor = "";
+      this.boonArr = null; this.boonN = 0; this.chips = null; this.tipFor = "";
       $("boonbar").addEventListener("click", (e) => { const c = e.target.closest("[data-boon]"); if (c) this.boonTip(c.dataset.boon === this.tipFor ? "" : c.dataset.boon); });
       document.addEventListener("pointerdown", (e) => { if (this.tipFor && !e.target.closest("#boonbar")) this.boonTip(""); });
       $("grow").addEventListener("click", () => this.act.upgrade());
@@ -17318,14 +17329,33 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("almtog").textContent = open ? "Almanac ▾" : `Almanac${this.almSummary ? " · " + this.almSummary : ""} ▸`;
     }
     // the gifts in play, as chips: the boon's icon (Art's, or its glyph) and level, framed by rarity
+    // (S.boons only grows within a run and is a new list on a new or loaded run, so its length and identity
+    // say when the gifts changed; and only the chip that changed is built again, the rest stay as they are:
+    // every dew, wave and phase event used to rebuild the whole bar)
     boonBar() {
-      const owned = D.BOONS.filter((b) => S.boonLevel(b.id) > 0), key = owned.map((b) => b.id + S.boonLevel(b.id)).join(",");
-      if (key === this.boonKey) return;
-      this.boonKey = key;
-      $("boonbar").innerHTML = owned.map((b) => {
-        const lv = Math.min(b.levels.length, S.boonLevel(b.id));
-        return `<button class="bchip r-${b.needs ? "fused" : b.rarity}" data-boon="${b.id}" style="--bc:${ink(G.boonLook(b.id).color)}" title="${esc(b.name)}"><span class="bicon">${G.boonIcon(b.id) || icon("PLANT_ICONS", b.el) || GLYPH[b.el] || "❀"}</span>${b.levels.length > 1 ? `<em>${ROMAN[lv]}</em>` : ""}</button>`;
-      }).join("");
+      if (S.boons === this.boonArr && S.boons.length === this.boonN) return;
+      this.boonArr = S.boons; this.boonN = S.boons.length;
+      const bar = $("boonbar"), had = this.chips, chips = new Map();
+      if (!had) bar.textContent = "";
+      let prev = null;
+      for (const b of D.BOONS) {
+        const n = S.boonLevel(b.id);
+        if (!n) continue;
+        const lv = Math.min(b.levels.length, n), old = had && had.get(b.id);
+        let el = old && old.lv === lv ? old.el : null;
+        if (!el) {
+          const t = document.createElement("template");
+          t.innerHTML = `<button class="bchip r-${b.needs ? "fused" : b.rarity}" data-boon="${b.id}" style="--bc:${ink(G.boonLook(b.id).color)}" title="${esc(b.name)}"><span class="bicon">${G.boonIcon(b.id) || icon("PLANT_ICONS", b.el) || GLYPH[b.el] || "❀"}</span>${b.levels.length > 1 ? `<em>${ROMAN[lv]}</em>` : ""}</button>`;
+          el = t.content.firstChild;
+          if (old) old.el.remove();
+        }
+        const at = prev ? prev.nextSibling : bar.firstChild;
+        if (at !== el) bar.insertBefore(el, at);
+        chips.set(b.id, { el, lv });
+        prev = el;
+      }
+      if (had) for (const [id, c] of had) if (!chips.has(id)) c.el.remove();
+      this.chips = chips;
       if (this.tipFor && !S.boonLevel(this.tipFor)) this.boonTip("");
     }
     boonTip(id) {
@@ -19091,7 +19121,7 @@ function MG_SFX(L) {
       this.cue = ""; this.want = "build"; this.holdUntil = 0; this.cueLog = []; this.turns = {};
       this.chord = SC.FIRST_CHORD; this.chordNotes = this.chord.notes;
       this.tense = false; this.swift = false; this.gameOver = false;
-      this.seen = new Set(); this.stinger = ""; this.lastSparkle = -1; this.lastPing = -1;
+      this.seen = new Set(); this.stinger = ""; this.lastSparkle = -1; this.lastPing = -1; this.lastStrum = -1;
       this.tapeDip = 0; this.tapeSpeed = 1; this.tapeState = 0; this.outroWait = 0;
       for (const ev of ["spawn", "hit", "kill", "tower_placed", "tower_upgraded", "tower_sold", "wave_start", "wave_clear", "boss", "heart_hit", "boon", "game_over"]) G.on(ev, (d) => this.onEvent(ev, d));
       G.on("phase", (d) => this.onPhase(d.phase));
@@ -19212,6 +19242,12 @@ function MG_SFX(L) {
     onEvent(name, data) {
       if (!this.ready || this.gameOver) return;
       const q = this.seq, clock = q.clock, g = clock + q.toGrid(), arp = () => this.arp();
+      // (plants sown, grown or uprooted in one burst, the bot's warm-up or a quick hand, strum once: three
+      // voices for each of them made a long frame)
+      if (name === "tower_placed" || name === "tower_upgraded" || name === "tower_sold") {
+        if (clock - this.lastStrum < 0.1) return;
+        this.lastStrum = clock;
+      }
       switch (name) {
         case "spawn": if (!this.seen.has(data.kind)) { this.seen.add(data.kind); this.stinger = data.kind; } break;
         case "hit":
@@ -19628,11 +19664,19 @@ function MG_SFX(L) {
       // (the middle of the creatures' spread: on a wide lane, off the road line)
       if (!this.pathPts) { this.pathPts = []; for (let s = 0; s < w.len; s += 0.5) { const p = w.roadAt(s), o = w.laneAcross(s)[0], l = Math.hypot(p[3], p[4]) || 1; this.pathPts.push([p[0] - (p[4] / l) * o, p[1] + (p[3] / l) * o]); } }
       const reach = D.TOWERS[kind].range, r2 = reach * reach, best = [];
+      // (how much path a cell reaches never changes, so it is counted once per cell and reach: the warm-up's
+      // burst of placements rescanned every cell against every path point each time)
+      if (!this.cover) this.cover = {};
+      const ck = kind + ":" + reach, cover = this.cover[ck] || (this.cover[ck] = new Int16Array(w.W * w.H).fill(-1));
       for (let y = 0; y < w.H; y++) for (let x = 0; x < w.W; x++) {
         if (!game.canPlace(kind, x, y)) continue;
-        const X = x + 0.5, Y = y + 0.5;
-        let score = 0;
-        for (const q of this.pathPts) if ((q[0] - X) ** 2 + (q[1] - Y) ** 2 <= r2) score++;
+        let score = cover[y * w.W + x];
+        if (score < 0) {
+          const X = x + 0.5, Y = y + 0.5;
+          score = 0;
+          for (const q of this.pathPts) if ((q[0] - X) ** 2 + (q[1] - Y) ** 2 <= r2) score++;
+          cover[y * w.W + x] = score;
+        }
         // (and a cell where it links with its neighbours, Defs.LINKS)
         score += 4 * new Set(game.linksAt(kind, x, y).map((l) => l.link)).size;
         best.push([score + this.rng.f() * 0.5, [x, y]]);
