@@ -10,12 +10,13 @@
 :root {
   --ink: #38452e; --paper: rgba(250, 242, 219, 0.94); --paper2: #fffaf0; --moss: #6b9952; --blossom: #ed8ca8;
   --dewc: #2e7399; --bg: #0b0d09; --shadow: 0 3px 8px rgba(26, 38, 13, 0.28);
+  --ts: 1; /* the text size setting (menu.js) */
   --sl: env(safe-area-inset-left, 0px); --sr: env(safe-area-inset-right, 0px); --st: env(safe-area-inset-top, 0px); --sb: env(safe-area-inset-bottom, 0px);
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
-body { color: var(--ink); font: 600 15px/1.3 "Trebuchet MS", "Segoe UI", system-ui, -apple-system, sans-serif; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "Segoe UI", system-ui, -apple-system, sans-serif; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
 #cv { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 #ui { position: fixed; inset: 0; pointer-events: none; }
 #ui > * { pointer-events: auto; }
@@ -26,25 +27,25 @@ body { color: var(--ink); font: 600 15px/1.3 "Trebuchet MS", "Segoe UI", system-
 .btn:focus-visible { outline: 3px solid #fff6; outline-offset: 2px; }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .btn.pink { border-color: var(--blossom); }
-.btn.small { width: 54px; height: 48px; font-size: 20px; padding: 0; }
+.btn.small { width: 54px; height: 48px; font-size: calc(20px * var(--ts)); padding: 0; }
 .btn.small.on { background: #e3f0d6; }
 .btn.small.off { color: #9a8f7a; }
 
 #top { position: fixed; left: calc(12px + var(--sl)); top: calc(12px + var(--st)); display: flex; gap: 20px; align-items: center; padding: 8px 16px; }
-#hearttxt { font-size: 16px; }
+#hearttxt { font-size: calc(16px * var(--ts)); }
 .hbar { width: 150px; height: 12px; background: #d9d1b8; border-radius: 7px; overflow: hidden; margin-top: 3px; }
 #heartfill { height: 100%; width: 100%; background: var(--blossom); border-radius: 7px; transition: width 0.25s; }
-#dew { color: var(--dewc); font-size: 22px; }
-#wave { font-size: 22px; }
+#dew { color: var(--dewc); font-size: calc(22px * var(--ts)); }
+#wave { font-size: calc(22px * var(--ts)); }
 #topright { position: fixed; right: calc(12px + var(--sr)); top: calc(12px + var(--st)); display: flex; gap: 8px; align-items: center; pointer-events: none; }
 #topright > * { pointer-events: auto; }
-#fps { color: #fffd; font: 12px ui-monospace, Consolas, monospace; text-shadow: 0 0 4px #000; margin-right: 6px; pointer-events: none; }
+#fps { color: #fffd; font: calc(12px * var(--ts)) ui-monospace, Consolas, monospace; text-shadow: 0 0 4px #000; margin-right: 6px; pointer-events: none; }
 
 #almanac { position: fixed; right: calc(12px + var(--sr)); top: calc(72px + var(--st)); width: min(340px, calc(100vw - 24px)); max-height: calc(100vh - 400px); overflow: auto;
-  background: rgba(26, 23, 18, 0.78); border: 2px solid #8c6b42; border-radius: 12px; color: #ede6d1; padding: 4px 10px 6px; font-weight: 500; font-size: 13px; }
+  background: rgba(26, 23, 18, 0.78); border: 2px solid #8c6b42; border-radius: 12px; color: #ede6d1; padding: 4px 10px 6px; font-weight: 500; font-size: calc(13px * var(--ts)); }
 /* folded: a small tab with the wave and the creatures it holds */
 #almanac.closed { width: auto; max-width: calc(100vw - 24px); padding: 2px 10px; background: rgba(26, 23, 18, 0.55); border-color: #8c6b4299; }
-#almtog { background: none; border: 0; color: #fadb9e; font: 700 13px/1.7 inherit; font-family: inherit; padding: 0; cursor: pointer; white-space: nowrap; }
+#almtog { background: none; border: 0; color: #fadb9e; font: 700 calc(13px * var(--ts))/1.7 inherit; font-family: inherit; padding: 0; cursor: pointer; white-space: nowrap; }
 #almanac.closed #almtog { color: #e9d6aa; font-weight: 600; }
 #almbody .wv { margin-top: 6px; }
 #almbody .wn { color: #f6dca0; }
@@ -52,8 +53,12 @@ body { color: var(--ink); font: 600 15px/1.3 "Trebuchet MS", "Segoe UI", system-
 #almbody .tr { color: #ffb070; }
 #almbody .ln { margin: 2px 0; }
 #almbody .ln.gone { color: #6f685c; }
-#almbody .det { font-size: 12.5px; margin-left: 16px; color: #d8cfba; }
-#almbody .legend { font-size: 12px; color: #a99f8a; margin-top: 6px; }
+#almbody .det { font-size: calc(12.5px * var(--ts)); margin-left: 16px; color: #d8cfba; }
+/* the UI kit's icons (src/art/boons.js) in the almanac, at the text's size: creatures, wave traits, elements */
+#almbody .sw svg, #almbody .ti svg, #almbody .ei svg { width: 1.15em; height: 1.15em; vertical-align: -0.22em; }
+#almbody .ti, #almbody .ei svg { margin-right: 2px; }
+#almbody .det .ei svg { width: 1.05em; height: 1.05em; }
+#almbody .legend { font-size: calc(12px * var(--ts)); color: #a99f8a; margin-top: 6px; }
 .hide { display: none !important; }
 
 /* the weather overlay (view/atmos.js): over the scene, under the HUD */
@@ -62,86 +67,90 @@ body { color: var(--ink); font: 600 15px/1.3 "Trebuchet MS", "Segoe UI", system-
 #giftbox { position: fixed; left: calc(12px + var(--sl)); top: calc(80px + var(--st)); max-width: min(46vw, 520px); display: flex; flex-direction: column; gap: 6px; align-items: flex-start; pointer-events: none; }
 #boonbar { display: flex; flex-wrap: wrap; gap: 5px; pointer-events: auto; }
 #boonbar:empty { display: none; }
-.bchip { display: inline-flex; align-items: center; gap: 2px; height: 32px; min-width: 32px; padding: 0 6px; font: inherit; font-size: 12px; color: var(--ink); background: var(--paper);
+.bchip { display: inline-flex; align-items: center; gap: 2px; height: 32px; min-width: 32px; padding: 0 6px; font: inherit; font-size: calc(12px * var(--ts)); color: var(--ink); background: var(--paper);
   border: 2px solid #6f9a4a; border-radius: 10px; box-shadow: 0 2px 5px rgba(26, 38, 13, 0.25); cursor: pointer; touch-action: manipulation; }
-.bchip .bicon { font-size: 17px; line-height: 1; color: var(--bc); }
+.bchip .bicon { font-size: calc(17px * var(--ts)); line-height: 1; color: var(--bc); }
 .bchip .bicon svg { width: 18px; height: 18px; display: block; }
 .bchip em { font-style: normal; font-weight: 800; color: var(--bc); filter: brightness(0.7); }
 .bchip.r-rare { border-color: #3d5f9e; }
 .bchip.r-epic { border-color: #d6a32e; box-shadow: 0 0 8px #f2c45a88; }
 .bchip.r-fused { border: 3px double #b5486e; box-shadow: 0 0 8px #e2709a88; }
-#boontip { display: none; max-width: 300px; padding: 7px 10px; font-weight: 500; font-size: 13px; border-width: 2px; border-radius: 12px; pointer-events: auto; }
+#boontip { display: none; max-width: 300px; padding: 7px 10px; font-weight: 500; font-size: calc(13px * var(--ts)); border-width: 2px; border-radius: 12px; pointer-events: auto; }
 #boontip.show { display: block; }
-#boontip .rar { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.65; }
+#boontip .rar { font-size: calc(11px * var(--ts)); text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.65; }
 
 /* the camera's turn buttons and the sky button, and the sky panel (mood and weather) beside them */
-#viewctl { position: fixed; right: calc(12px + var(--sr)); bottom: calc(126px + var(--sb)); display: flex; flex-direction: column; gap: 8px; }
-#sky { position: fixed; z-index: 2; right: calc(78px + var(--sr)); bottom: calc(126px + var(--sb)); width: min(420px, calc(100vw - 100px)); padding: 10px 12px; display: none; flex-direction: column; gap: 8px; }
+#viewctl { position: fixed; right: calc(12px + var(--sr)); bottom: calc(22px + 104px * var(--ts) + var(--sb)); display: flex; flex-direction: column; gap: 8px; }
+#sky { position: fixed; z-index: 2; right: calc(78px + var(--sr)); bottom: calc(22px + 104px * var(--ts) + var(--sb)); width: min(420px, calc(100vw - 100px)); padding: 10px 12px; display: none; flex-direction: column; gap: 8px; }
 #sky.show { display: flex; }
 #sky .skyrow { display: flex; flex-direction: column; gap: 4px; }
-#sky .skyrow > b { font-size: 13px; color: var(--moss); text-transform: uppercase; letter-spacing: 0.06em; }
-#sky .seg button { font-size: 13px; padding: 6px 9px; }
+#sky .skyrow > b { font-size: calc(13px * var(--ts)); color: var(--moss); text-transform: uppercase; letter-spacing: 0.06em; }
+#sky .seg button { font-size: calc(13px * var(--ts)); padding: 6px 9px; }
 
-#hint { position: fixed; left: 50%; top: calc(86px + var(--st)); transform: translateX(-50%); color: #fff; font-size: 21px; text-align: center; pointer-events: none;
+#hint { position: fixed; left: 50%; top: calc(86px + var(--st)); transform: translateX(-50%); color: #fff; font-size: calc(21px * var(--ts)); text-align: center; pointer-events: none;
   text-shadow: 0 0 3px #26401c, 0 0 6px #26401c, 0 2px 8px #26401c; width: min(600px, calc(100vw - 32px)); }
 
 /* eight seed cards: they shrink to stay clear of the wave button, and wrap to two rows on phones */
 #seeds { position: fixed; left: calc(12px + var(--sl)); right: calc(240px + var(--sr)); bottom: calc(12px + var(--sb)); display: flex; gap: 8px; pointer-events: none; }
-.seed { position: relative; flex: 0 1 130px; min-width: 0; height: 104px; padding: 8px 8px 6px; pointer-events: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+.seed { position: relative; flex: 0 1 130px; min-width: 0; height: calc(104px * var(--ts)); padding: 8px 8px 6px; pointer-events: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
   font: inherit; color: var(--ink); background: var(--paper); border: 3px solid var(--acc); border-radius: 16px; box-shadow: var(--shadow); cursor: pointer; touch-action: manipulation; }
-.seed b { max-width: calc(100% - 12px); font-size: 14px; line-height: 1.12; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.seed .el { font-size: 11.5px; color: #6b7560; }
-.seed .cost { color: var(--dewc); font-size: 14px; }
-.seed .tag { font-size: 13px; }
+.seed b { max-width: calc(100% - 12px); font-size: calc(14px * var(--ts)); line-height: 1.12; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seed .el { font-size: calc(11.5px * var(--ts)); color: #6b7560; }
+.seed .cost { color: var(--dewc); font-size: calc(14px * var(--ts)); }
+.seed .tag { font-size: calc(13px * var(--ts)); }
 .seed .tag.up { color: #3f8a2a; }
 .seed .tag.down { color: #b0485a; }
 .seed .dot { position: absolute; right: 9px; top: 9px; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 6px currentColor; }
+.seed .picon { position: absolute; right: 7px; top: 6px; width: 18px; height: 18px; }
+.seed .picon svg, #insptitle .picon svg { width: 100%; height: 100%; display: block; }
+#insptitle .picon { display: inline-block; width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px; }
 .seed.on { background: #fffbe8; transform: translateY(-6px); box-shadow: 0 8px 14px rgba(26, 38, 13, 0.35), 0 0 0 3px #fff8 inset; }
 .seed.poor { opacity: 0.55; }
-#wavebtn { position: fixed; right: calc(12px + var(--sr)); bottom: calc(12px + var(--sb)); width: 210px; height: 104px; font-size: 24px; }
+#wavebtn { position: fixed; right: calc(12px + var(--sr)); bottom: calc(12px + var(--sb)); width: 210px; height: calc(104px * var(--ts)); font-size: calc(24px * var(--ts)); }
 
 #inspector { position: fixed; left: calc(12px + var(--sl)); top: 50%; transform: translateY(-50%); width: 280px; padding: 12px 14px; display: none; flex-direction: column; gap: 8px; }
+#inspector.panel { background: rgb(250, 242, 219); } /* (the paper, opaque: nothing shows through what it says) */
 #inspector.show { display: flex; }
-#insptitle { font-size: 21px; }
-#inspbody { font-weight: 500; font-size: 14.5px; }
+#insptitle { font-size: calc(21px * var(--ts)); }
+#inspbody { font-weight: 500; font-size: calc(14.5px * var(--ts)); }
 #inspbody .dim { color: #6b7560; }
 #inspbody .lnk { font-weight: 800; color: #8a5a2a; }
 #inspbody .lnk svg { width: 1.1em; height: 1.1em; vertical-align: -0.2em; }
 #inspbody .lvl { display: inline-block; min-width: 1.6em; font-weight: 800; color: #6a8a3a; }
-#inspector .btn { height: 52px; font-size: 18px; }
+#inspector .btn { height: 52px; font-size: calc(18px * var(--ts)); }
 
 .veil { position: fixed; inset: 0; display: none; place-items: center; background: rgba(20, 31, 15, 0.45); animation: fade 0.35s; padding: 16px; }
 .veil.show { display: grid; }
 .veil.dark { background: rgba(13, 15, 26, 0.55); animation-duration: 1.2s; }
-.veil h2 { color: #fffae6; font-size: 30px; text-align: center; margin: 0 0 16px; text-shadow: 0 2px 8px #1a260d; }
+.veil h2 { color: #fffae6; font-size: calc(30px * var(--ts)); text-align: center; margin: 0 0 16px; text-shadow: 0 2px 8px #1a260d; }
 .veil .col { display: flex; flex-direction: column; align-items: center; }
 #boonrow { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }
 .boon { width: 250px; min-height: 180px; padding: 16px; display: flex; flex-direction: column; gap: 12px; text-align: center; justify-content: center;
   font: inherit; color: var(--ink); background: var(--paper); border: 3px solid var(--blossom); border-radius: 16px; box-shadow: var(--shadow); cursor: pointer; }
 .boon:hover { background: var(--paper2); transform: translateY(-3px); }
-.boon b { font-size: 21px; }
-.boon span { font-weight: 500; font-size: 16px; }
+.boon b { font-size: calc(21px * var(--ts)); }
+.boon span { font-weight: 500; font-size: calc(16px * var(--ts)); }
 /* boon rarity frames (common moss, rare blue ink, epic gold), the boon's icon or glyph in its colour,
    its level and pips */
 .boon.r-common { border-color: #6f9a4a; }
 .boon.r-rare { border-color: #3d5f9e; box-shadow: var(--shadow), 0 0 0 3px #3d5f9e33; }
 .boon.r-epic { border-color: #d6a32e; box-shadow: var(--shadow), 0 0 18px #f2c45a88; }
-.boon .bicon { font-size: 34px; line-height: 1; color: var(--bc); text-shadow: 0 1px 0 #0003; }
+.boon .bicon { font-size: calc(34px * var(--ts)); line-height: 1; color: var(--bc); text-shadow: 0 1px 0 #0003; }
 .boon .bicon svg { width: 40px; height: 40px; }
 .boon b em { font-style: normal; color: var(--bc); filter: brightness(0.7); }
-.boon .rar { font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.7; }
+.boon .rar { font-size: calc(13px * var(--ts)); letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.7; }
 .boon .pips { display: flex; gap: 6px; justify-content: center; }
 .boon .pips i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--bc); }
 .boon .pips i.on { background: var(--bc); }
 .gifts { margin: 6px 0 2px; line-height: 1.7; }
-.gift { display: inline-block; padding: 0 6px; border-radius: 8px; border: 1.5px solid var(--bc); font-size: 12px; white-space: nowrap; }
+.gift { display: inline-block; padding: 0 6px; border-radius: 8px; border: 1.5px solid var(--bc); font-size: calc(12px * var(--ts)); white-space: nowrap; }
 .gift.r-epic { box-shadow: 0 0 6px #f2c45a88; }
 /* fused boons: a double frame in blossom and gold; the hints at fusions on the other cards; the
    almanac's recipes (the parts owned in full in the boon's ink) */
 .boon.r-fused { border: 4px double #b5486e; background: linear-gradient(160deg, var(--paper) 55%, #f7dfe6); box-shadow: var(--shadow), 0 0 22px #e2709a99, 0 0 0 3px #f2c45a66; }
 .boon.r-fused .rar { text-transform: none; letter-spacing: 0; opacity: 0.85; }
 .boon .rar .have { color: var(--bc); filter: brightness(0.75); font-weight: 700; }
-.boon .hint { font-size: 13px; font-weight: 600; color: #8a4a66; background: #f3e4ea; border-radius: 8px; padding: 2px 6px; }
+.boon .hint { font-size: calc(13px * var(--ts)); font-weight: 600; color: #8a4a66; background: #f3e4ea; border-radius: 8px; padding: 2px 6px; }
 .boon .hint.ready { color: #fff; background: #b5486e; }
 .gift.r-fused { border-style: double; border-width: 3px; box-shadow: 0 0 6px #e2709a88; }
 .fu { margin-left: 10px; }
@@ -149,26 +158,26 @@ body { color: var(--ink); font: 600 15px/1.3 "Trebuchet MS", "Segoe UI", system-
 .fu .have { text-decoration: underline; }
 .card { padding: 20px 24px; text-align: center; width: min(480px, calc(100vw - 32px)); }
 .card h2 { color: var(--ink); text-shadow: none; }
-.card p { font-size: 19px; font-weight: 500; }
-.card .btn { width: 100%; height: 66px; font-size: 24px; }
+.card p { font-size: calc(19px * var(--ts)); font-weight: 500; }
+.card .btn { width: 100%; height: 66px; font-size: calc(24px * var(--ts)); }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
 #floats { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
-.float { position: absolute; left: 0; top: 0; font: 800 17px/1 "Trebuchet MS", system-ui, sans-serif; white-space: nowrap; opacity: 0; will-change: transform, opacity;
+.float { position: absolute; left: 0; top: 0; font: 800 calc(17px * var(--ts))/1 "Trebuchet MS", system-ui, sans-serif; white-space: nowrap; opacity: 0; will-change: transform, opacity;
   text-shadow: 0 0 2px #1a260d, 0 0 4px #1a260d, 0 1px 3px #1a260d; }
 #flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 50%, rgba(214, 48, 92, 0.6) 100%); }
-.help { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(8px + var(--sb)); color: #fffb; font-size: 12px; font-weight: 500; text-shadow: 0 0 4px #000; pointer-events: none; white-space: nowrap; }
-#version { position: fixed; right: calc(16px + var(--sr)); bottom: calc(1px + var(--sb)); z-index: 30; font: 500 10px/1 "Trebuchet MS", system-ui, sans-serif; color: #fff8; text-shadow: 0 0 3px #000; pointer-events: none; white-space: nowrap; }
+.help { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(8px + var(--sb)); color: #fffb; font-size: calc(12px * var(--ts)); font-weight: 500; text-shadow: 0 0 4px #000; pointer-events: none; white-space: nowrap; }
+#version { position: fixed; right: calc(16px + var(--sr)); bottom: calc(1px + var(--sb)); z-index: 30; font: 500 calc(10px * var(--ts))/1 "Trebuchet MS", system-ui, sans-serif; color: #fff8; text-shadow: 0 0 3px #000; pointer-events: none; white-space: nowrap; }
 
 #lost { position: fixed; inset: 0; display: none; place-items: center; background: rgba(7, 8, 6, 0.9); z-index: 20; }
-#lost button { font: 600 16px "Trebuchet MS", system-ui, sans-serif; padding: 12px 22px; border-radius: 10px; border: 1px solid #f6dca0; background: #1d2018; color: #e9e4cf; }
+#lost button { font: 600 calc(16px * var(--ts)) "Trebuchet MS", system-ui, sans-serif; padding: 12px 22px; border-radius: 10px; border: 1px solid #f6dca0; background: #1d2018; color: #e9e4cf; }
 #loading { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg); padding: 0 16px; color: #e9e4cf; }
 #loading .box { width: min(440px, 100%); text-align: center; }
-#loading h1 { font: 700 30px "Trebuchet MS", system-ui, sans-serif; letter-spacing: 0.04em; margin: 0 0 4px; color: #f6dca0; }
+#loading h1 { font: 700 calc(30px * var(--ts)) "Trebuchet MS", system-ui, sans-serif; letter-spacing: 0.04em; margin: 0 0 4px; color: #f6dca0; }
 #loading p { color: #9a967f; margin: 0 0 18px; font-weight: 500; }
 #track { height: 6px; background: #1d2018; border-radius: 3px; overflow: hidden; }
 #bar { height: 100%; width: 0; background: linear-gradient(90deg, #6f9a3a, #e0b25c); transition: width 0.15s; }
-#bartxt { margin-top: 8px; color: #9a967f; font: 12px ui-monospace, Consolas, monospace; }
+#bartxt { margin-top: 8px; color: #9a967f; font: calc(12px * var(--ts)) ui-monospace, Consolas, monospace; }
 .fail { color: #ff9b7a; white-space: pre-wrap; line-height: 1.5; }
 .fail small { display: block; color: #9a967f; margin-top: 10px; }
 #log, #result { display: none; }
@@ -176,76 +185,96 @@ body { color: var(--ink); font: 600 15px/1.3 "Trebuchet MS", "Segoe UI", system-
 @media (max-width: 760px) {
   #top { gap: 10px; padding: 6px 10px; border-radius: 13px; left: calc(6px + var(--sl)); top: calc(6px + var(--st)); }
   .hbar { width: 84px; }
-  #hearttxt { font-size: 13px; }
-  #dew, #wave { font-size: 16px; }
+  #hearttxt { font-size: calc(13px * var(--ts)); }
+  #dew, #wave { font-size: calc(16px * var(--ts)); }
   #topright { right: calc(6px + var(--sr)); top: calc(6px + var(--st)); }
-  .btn.small { width: 44px; height: 42px; font-size: 17px; }
-  #fps { position: fixed; right: calc(8px + var(--sr)); top: calc(52px + var(--st)); margin: 0; font-size: 11px; }
-  #almanac { top: calc(70px + var(--st)); right: calc(6px + var(--sr)); max-height: 40vh; font-size: 12.5px; }
+  .btn.small { width: 44px; height: 42px; font-size: calc(17px * var(--ts)); }
+  #fps { position: fixed; right: calc(8px + var(--sr)); top: calc(52px + var(--st)); margin: 0; font-size: calc(11px * var(--ts)); }
+  #almanac { top: calc(70px + var(--st)); right: calc(6px + var(--sr)); max-height: 40vh; font-size: calc(12.5px * var(--ts)); }
   #giftbox { left: calc(6px + var(--sl)); top: calc(52px + var(--st)); max-width: calc(100vw - 190px); }
   .bchip { height: 28px; min-width: 28px; padding: 0 4px; border-radius: 9px; }
-  .bchip .bicon { font-size: 15px; }
+  .bchip .bicon { font-size: calc(15px * var(--ts)); }
   .bchip .bicon svg { width: 15px; height: 15px; }
-  #boontip { max-width: calc(100vw - 24px); font-size: 12.5px; }
+  #boontip { max-width: calc(100vw - 24px); font-size: calc(12.5px * var(--ts)); }
   body.alm-open #giftbox { display: none; } /* the open almanac lists the gifts */
-  #viewctl { right: calc(6px + var(--sr)); bottom: calc(214px + var(--sb)); gap: 6px; }
-  #sky { right: calc(58px + var(--sr)); bottom: calc(214px + var(--sb)); width: calc(100vw - 70px - var(--sl) - var(--sr)); padding: 8px 10px; }
-  #sky .seg button { font-size: 12.5px; padding: 5px 7px; }
-  #hint { top: auto; bottom: calc(360px + var(--sb)); font-size: 17px; }
+  #viewctl { right: calc(6px + var(--sr)); bottom: calc(30px + 184px * var(--ts) + var(--sb)); gap: 6px; }
+  #sky { right: calc(58px + var(--sr)); bottom: calc(30px + 184px * var(--ts) + var(--sb)); width: calc(100vw - 70px - var(--sl) - var(--sr)); padding: 8px 10px; }
+  #sky .seg button { font-size: calc(12.5px * var(--ts)); padding: 5px 7px; }
+  #hint { top: auto; bottom: calc(176px + 184px * var(--ts) + var(--sb)); font-size: calc(17px * var(--ts)); }
   #seeds { left: calc(6px + var(--sl)); right: calc(6px + var(--sr)); bottom: calc(6px + var(--sb)); gap: 6px; flex-wrap: wrap; }
-  .seed { flex: 1 1 calc(25% - 6px); height: 64px; padding: 5px 6px 4px; border-radius: 13px; }
+  .seed { flex: 1 1 calc(25% - 6px); height: calc(64px * var(--ts)); padding: 5px 6px 4px; border-radius: 13px; }
   .seed .el { display: none; }
-  .seed b { font-size: 12.5px; }
-  .seed .cost, .seed .tag { font-size: 11.5px; }
+  .seed b { font-size: calc(12.5px * var(--ts)); max-width: calc(100% - 18px); } /* (clear of the plant's icon) */
+  .seed .cost, .seed .tag { font-size: calc(11.5px * var(--ts)); }
   .seed .dot { width: 9px; height: 9px; right: 6px; top: 6px; }
-  #wavebtn { right: calc(6px + var(--sr)); bottom: calc(148px + var(--sb)); width: 156px; height: 56px; font-size: 18px; border-radius: 13px; }
-  #inspector { left: calc(6px + var(--sl)); top: auto; bottom: calc(212px + var(--sb)); transform: none; width: min(320px, calc(100vw - 12px)); padding: 10px 12px; gap: 6px; }
-  #inspector .btn { height: 44px; font-size: 16px; }
-  #insptitle { font-size: 18px; }
-  #inspbody { font-size: 13px; }
+  .seed .picon { width: 14px; height: 14px; right: 5px; top: 5px; }
+  #wavebtn { right: calc(6px + var(--sr)); bottom: calc(20px + 128px * var(--ts) + var(--sb)); width: calc(156px * var(--ts)); white-space: nowrap; height: calc(56px * var(--ts)); font-size: calc(18px * var(--ts)); border-radius: 13px; }
+  #inspector { left: calc(6px + var(--sl)); top: auto; bottom: calc(28px + 184px * var(--ts) + var(--sb)); max-height: calc(100vh - 58px - 260px * var(--ts) - var(--st) - var(--sb)); transform: none; width: min(320px, calc(100vw - 12px)); padding: 10px 12px; gap: 6px; }
+  #inspector .btn { flex: none; height: 44px; font-size: calc(16px * var(--ts)); }
+  #insptitle { font-size: calc(18px * var(--ts)); }
+  #inspbody { font-size: calc(13px * var(--ts)); min-height: 0; overflow-y: auto; } /* (the text scrolls, Grow and Uproot stay in view) */
   .boon { width: min(320px, calc(100vw - 32px)); min-height: 0; padding: 12px; gap: 6px; }
-  .boon b { font-size: 18px; }
-  .boon span { font-size: 14px; }
+  .boon b { font-size: calc(18px * var(--ts)); }
+  .boon span { font-size: calc(14px * var(--ts)); }
   #boonrow { gap: 10px; }
-  .veil h2 { font-size: 24px; }
+  .veil h2 { font-size: calc(24px * var(--ts)); }
   .help { display: none; }
-  #version { right: calc(10px + var(--sr)); bottom: calc(153px + var(--sb)); font-size: 9px; }
+  #version { right: calc(10px + var(--sr)); bottom: calc(25px + 128px * var(--ts) + var(--sb)); font-size: calc(9px * var(--ts)); }
 }
 @media (prefers-reduced-motion: reduce) { .veil, .seed, #heartfill, #bar { animation: none; transition: none; } }
+body.calm .veil, body.calm .seed, body.calm #heartfill, body.calm #bar { animation: none; transition: none; } /* (the Motion setting) */
 
-/* menus (view/menu.js): title, pause, settings, how to play; the boot failure screen */
+/* menus (view/menu.js): title, level selection, pause, settings, how to play; the boot failure screen */
 .menu { z-index: 10; overflow: auto; }
 body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
 #title { background: linear-gradient(180deg, rgba(11, 13, 9, 0.15), rgba(11, 13, 9, 0.6)); }
 #title h1 { font: 700 clamp(44px, 11vw, 76px)/1 "Trebuchet MS", system-ui, sans-serif; letter-spacing: 0.04em; color: #f6dca0; margin: 0; text-shadow: 0 3px 14px #1a260d, 0 0 2px #1a260d; }
 #title .sub { color: #fffae6; margin: 8px 0 26px; font-weight: 500; text-align: center; text-shadow: 0 1px 6px #1a260d; }
 #title .btn.big { width: min(300px, calc(100vw - 48px)); }
-.btn.big { display: block; width: 100%; height: 58px; font-size: 21px; margin: 0 0 10px; }
+.btn.big { display: block; width: 100%; height: 58px; font-size: calc(21px * var(--ts)); margin: 0 0 10px; }
 .card.wide { width: min(560px, calc(100vw - 32px)); text-align: left; max-height: calc(100vh - 32px); overflow: auto; }
 .card.wide h2 { text-align: center; }
-#setbody h3 { font-size: 16px; color: var(--moss); margin: 14px 0 6px; text-transform: uppercase; letter-spacing: 0.06em; }
+#setbody h3 { font-size: calc(16px * var(--ts)); color: var(--moss); margin: 14px 0 6px; text-transform: uppercase; letter-spacing: 0.06em; }
 #setbody .row { display: flex; align-items: center; gap: 10px; min-height: 42px; }
-#setbody .row > span { width: 120px; flex: none; }
+#setbody .row > span { width: calc(120px * var(--ts)); flex: none; }
 #setbody input[type=range] { flex: 1; accent-color: var(--moss); height: 28px; }
 #setbody .row em { width: 44px; text-align: right; font-style: normal; color: #6b7560; }
 .seg { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; }
-.seg button { font: inherit; font-size: 14px; color: var(--ink); background: #efe6c9; border: 2px solid #cdbf98; border-radius: 10px; padding: 7px 10px; cursor: pointer; touch-action: manipulation; }
+.seg button { font: inherit; font-size: calc(14px * var(--ts)); color: var(--ink); background: #efe6c9; border: 2px solid #cdbf98; border-radius: 10px; padding: 7px 10px; cursor: pointer; touch-action: manipulation; }
 .seg button.on { background: #e3f0d6; border-color: var(--moss); }
-#setbody .note { font-size: 13px; font-weight: 500; margin: 2px 0 6px 130px; }
-#setbody .note .btn { font-size: 14px; padding: 4px 10px; border-radius: 10px; margin-left: 6px; }
+#setbody .note { font-size: calc(13px * var(--ts)); font-weight: 500; margin: 2px 0 6px calc(10px + 120px * var(--ts)); }
+#setbody .note .btn { font-size: calc(14px * var(--ts)); padding: 4px 10px; border-radius: 10px; margin-left: 6px; }
 .dim { color: #6b7560; }
-.howto p { font-weight: 500; font-size: 15.5px; margin: 0 0 10px; }
+.howto p { font-weight: 500; font-size: calc(15.5px * var(--ts)); margin: 0 0 10px; }
 .fail-box { text-align: left; }
 .fail-box h1 { text-align: center; }
 .tips { color: #e9e4cf; font-weight: 500; padding-left: 20px; line-height: 1.45; }
 .fail-box details { color: #9a967f; margin: 8px 0 14px; }
-.fail-box pre { white-space: pre-wrap; word-break: break-all; font: 11px ui-monospace, Consolas, monospace; }
-.fail-box .btn { padding: 8px 14px; font-size: 15px; }
+.fail-box pre { white-space: pre-wrap; word-break: break-all; font: calc(11px * var(--ts)) ui-monospace, Consolas, monospace; }
+.fail-box .btn { padding: 8px 14px; font-size: calc(15px * var(--ts)); }
 @media (max-width: 760px) {
-  #setbody .row > span { width: 92px; font-size: 14px; }
+  #setbody .row > span { width: calc(92px * var(--ts)); font-size: calc(14px * var(--ts)); }
   #setbody .note { margin-left: 0; }
-  .btn.big { height: 50px; font-size: 18px; }
+  .btn.big { height: 50px; font-size: calc(18px * var(--ts)); }
 }
+
+/* the level selection screen (menu.js renderLevels): one card per garden, its miniature turning. The
+   classes are the hooks a menu theme restyles; the miniature's layers are placed by menu.js */
+.card.wide.lvpanel { width: min(760px, calc(100vw - 32px)); }
+.lvcards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 14px; margin: 0 0 16px; }
+.lvcard { display: flex; flex-direction: column; text-align: left; font: inherit; color: var(--ink); background: var(--paper2); border: 3px solid var(--moss); border-radius: 16px; padding: 0; overflow: hidden; cursor: pointer; box-shadow: var(--shadow); touch-action: manipulation; }
+.lvcard:hover, .lvcard.here { border-color: var(--blossom); }
+.lvcard:active { transform: translateY(1px); }
+.lvcard:focus-visible { outline: 3px solid #fff6; outline-offset: 2px; }
+.lvmini { position: relative; display: block; aspect-ratio: 4 / 3; background: var(--bg); }
+.lvmini i { position: absolute; inset: 0; background-repeat: no-repeat; }
+.lvmini.none { display: grid; place-items: center; background: radial-gradient(ellipse at 50% 62%, #3d5a2c, #12180d 72%); color: #f6dca0; font-size: calc(20px * var(--ts)); text-shadow: 0 2px 8px #000; }
+.lvtext { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px 12px; }
+.lvname { font-size: calc(19px * var(--ts)); }
+.lvtag { font-size: calc(11px * var(--ts)); text-transform: uppercase; letter-spacing: 0.06em; color: #fff; background: var(--blossom); border-radius: 8px; padding: 1px 6px; vertical-align: middle; }
+.lvline { font-weight: 500; font-size: calc(14px * var(--ts)); }
+.lvbest { font-size: calc(13px * var(--ts)); color: var(--moss); }
+@media (max-width: 520px) { .lvcard { flex-direction: row; } .lvmini { width: 44%; flex: none; } .lvtext { padding: 8px 10px; } }
 </style>
 </head>
 <body>
@@ -4478,7 +4507,12 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
 
   class Palette {
     constructor(st) { this.st = st; this.names = [null]; this.ids = {}; this.missing = new Set(); }
+    // a material by name; a kind that leaves one out gets the content's defaultMaterial (else the style's first
+    // ramp), never a material named undefined (the Architect's #127 note). The engine names no material itself
+    // (check-layers)
     id(name) {
+      if (name === undefined) name = (ME.content && ME.content.defaultMaterial) ?? Object.keys(this.st.ramps || {})[0];
+      if (name === undefined) throw new Error("a material left out, and no ME.content.defaultMaterial");
       let i = this.ids[name];
       if (i !== undefined) return i;
       i = this.names.length;
@@ -5625,9 +5659,12 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
 </script>
 <script>/* ../MossheartEngine/src/cache.js */
 /* Bake cache: the whole bake (terrain arrays, mesh, model bricks, grass, palette order) kept in
-   IndexedDB, so a repeat launch skips the CPU bake. Only the newest bake is kept. The key holds the
-   engine version, the style id and a fingerprint of the bake code, so a changed bake never loads a
-   stale result. Any failure (no IndexedDB, quota, clone error) falls back to baking. ?nocache=1 skips it. */
+   IndexedDB, so a repeat launch skips the CPU bake. The newest bake is kept per app and map: a key starts
+   with its slot (the app id, then the map's id), and a put drops every other record of that slot (an
+   older density or version) and keeps the other slots, so two games or two levels on one origin don't
+   evict each other. The rest of the key holds the engine version, the density and a fingerprint of the
+   bake code, so a changed bake never loads a stale result. Any failure (no IndexedDB, quota, clone error)
+   falls back to baking. ?nocache=1 skips it. */
 (function () {
   const ME = window.ME, DB = "mossheart", STORE = "bake";
   let held = null; // the database get() opened, kept as a value so put() writes with no await before it
@@ -5638,20 +5675,46 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   });
   const fnv = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return (h >>> 0).toString(36); };
+  // a key's slot: "<app>/<map id>/" (each part URI-encoded, so neither holds a "/")
+  const slotOf = (key) => { const m = /^([^/]*\/[^/]*\/)/.exec(key); return m ? m[1] : null; };
+  // the default app id: the page's folder (each game's pages and the engine's live in their own)
+  const pageApp = () => location.pathname.replace(/[^/]*$/, "");
+
+  // The hand-authored models' sources this bake reads (assets/asset-kit.js, src/asset-format.js, a content
+  // pack's own): each registration appends its source to ME.ASSET_SRC and records it by name in ME.ASSET_BY.
+  // A key takes the sources of the models its map, content or extra names (as a quoted name), and of the
+  // models those sources name in turn, so one level's models don't move another level's key. While some
+  // source was appended without its name (the records don't add up to ME.ASSET_SRC), it takes them all.
+  const assetSrc = (text) => {
+    const by = ME.ASSET_BY, all = ME.ASSET_SRC || "";
+    if (!by || Object.values(by).reduce((n, s) => n + s.length, 0) !== all.length) return all;
+    const names = Object.keys(by).sort(), inc = new Set();
+    let pool = text, grew = true;
+    while (grew) { grew = false; for (const n of names) if (!inc.has(n) && pool.includes(JSON.stringify(n))) { inc.add(n); pool += by[n]; grew = true; } }
+    return [...inc].sort().map((n) => by[n]).join("");
+  };
 
   ME.bakeCache = {
     // extra: anything else the bake depends on (an app's own model list, as a string)
-    key(st, extra = "") {
+    // o.app: the app's id (default: the page's folder); with the map's id it names the key's slot
+    key(st, extra = "", o = {}) {
       const code = [ME.bakeTerrain, ...(ME.bakeTerrain.parts || []), ME.coarseStep, ME.coarseFill, ME.greedyMesh, ME.bakeModels, ME.voxelizeModel, ME.stampModel, ME.bakeGrass, ME.modelOf].map(String).join("|");
       // the content the bake reads: terrain roles (functions as their source), the kinds the map's legend
-      // names (a generator map's letters are kinds made of the terrain roles), deco, grass, critters
+      // names (a generator map's letters are kinds made of the terrain roles), grass, critters, walkers and the
+      // ground lamps' kinds. The lists that only name the models a placement may use (volumeDeco,
+      // flipbookFrames) and the tables keyed by any model or material (modelScale, primLights, sunShadeHalf,
+      // critterScale) are hashed whole but not searched for model names, so a pack's list doesn't pull its
+      // models into every map's key (the Architect's #161 review)
       const C = ME.content, src = (k, v) => (typeof v === "function" ? String(v) : v);
       const v1 = st.map && st.map.v !== undefined, kinds = {};
       if (v1 && C && C.kinds) for (const n of Object.values(st.map.legend || {})) if (n !== null && C.kinds[n]) kinds[n] = C.kinds[n];
-      const content = C ? JSON.stringify([C.terrain, kinds, C.volumeDeco, C.defaultMaterial, C.grass, C.critters, C.walkers, C.flipbookFrames], src) : "";
+      const content = C ? JSON.stringify([C.terrain, kinds, C.defaultMaterial, C.grass, C.critters, C.walkers, C.groundLamps], src) : "";
+      const lists = C ? JSON.stringify([C.volumeDeco, C.flipbookFrames, C.modelScale, C.critterScale, C.primLights, C.sunShadeHalf], src) : "";
       // a v1 map names the bake, and its game block (route, cover, spawns) is not baked
-      const s = v1 ? Object.assign({}, st, { map: Object.assign({}, st.map, { game: undefined }) }) : st;
-      return `${ME.VERSION}:${v1 ? st.map.id : st.id}:vs${ME.VS}:${fnv(code + (ME.ASSET_SRC || "") + content + JSON.stringify(s) + extra)}`; // ASSET_SRC: hand-authored asset models (assets/asset-kit.js)
+      const s = v1 ? Object.assign({}, st, { map: Object.assign({}, st.map, { game: undefined }) }) : st, id = v1 ? st.map.id : st.id;
+      const slot = encodeURIComponent(o.app ?? pageApp()) + "/" + encodeURIComponent(id) + "/";
+      const own = content + JSON.stringify(s) + extra;
+      return `${slot}${ME.VERSION}:${id}:vs${ME.VS}:${fnv(code + assetSrc(own) + own + lists)}`;
     },
     async get(key) {
       if (ME.qn("nocache", 0) || !window.indexedDB) return null;
@@ -5663,27 +5726,51 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
     // fire and forget: the record is cloned here, before the first await (the caller goes on to R.init, the sim
     // and the critters, which write some of T and MB in place: a later clone would store a played scene), and
     // the write commits in the background. With the database get() opened, IndexedDB's put() is that clone
-    // (synchronous, the only copy); without it, structuredClone keeps a copy while the database opens.
+    // (synchronous, the only copy); without it, structuredClone keeps a copy while the database opens. It
+    // replaces its slot's other records and any record without a slot (from before slots).
     async put(key, rec) {
       if (ME.qn("nocache", 0) || !window.indexedDB) return;
+      const slot = slotOf(key);
+      const write = (db, r) => {
+        const tx = db.transaction(STORE, "readwrite"), s = tx.objectStore(STORE);
+        try {
+          s.put(r, key);
+          const g = s.getAllKeys();
+          g.onsuccess = () => { for (const k of g.result) if (k !== key && (typeof k !== "string" || slotOf(k) === slot || slotOf(k) === null)) s.delete(k); };
+        } catch (e) { try { tx.abort(); } catch (_) {} throw e; } // a put that throws deletes nothing
+        return tx;
+      };
       try {
         let tx = null;
         ME.bakeCache.via = "held"; // how the last put copied the record (checks read it)
-        try {
-          if (held) { tx = held.transaction(STORE, "readwrite"); const s = tx.objectStore(STORE); s.clear(); s.put(rec, key); }
-        } catch (e) {
-          // the held connection closed, or put threw after clear(): abort so the store isn't left cleared, and drop
-          // the handle so this put and the next take the fallback below
-          try { if (tx) tx.abort(); } catch (_) {}
-          tx = null; held = null;
-        }
+        // the held connection closed, or put threw: drop the handle so this put and the next take the fallback
+        if (held) try { tx = write(held, rec); } catch (e) { tx = null; held = null; }
         if (!tx) {
           ME.bakeCache.via = "structuredClone";
           const copy = structuredClone(rec), db = await open();
-          tx = db.transaction(STORE, "readwrite"); const s = tx.objectStore(STORE); s.clear(); s.put(copy, key);
+          tx = write(db, copy);
         }
         await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error); });
-      } catch (e) { ME.log("WARN bake cache write failed:", e.message); }
+      } catch (e) {
+        ME.log("WARN bake cache write failed:", e && e.message);
+        // the store is full (one record per app and map adds up): drop every other slot, so the next launch's
+        // put fits. Not retried now: the record has changed since the call (see above)
+        if (e && e.name === "QuotaExceededError") {
+          try {
+            const db = held || (await open()), tx = db.transaction(STORE, "readwrite"), s = tx.objectStore(STORE), g = s.getAllKeys();
+            g.onsuccess = () => { for (const k of g.result) if (typeof k !== "string" || slotOf(k) !== slot) s.delete(k); };
+            ME.bakeCache.evicted = true;
+          } catch (_) {}
+        }
+      }
+    },
+    // the stored keys (for checks and tools)
+    async keys() {
+      if (!window.indexedDB) return [];
+      try {
+        const db = held || (await open());
+        return await new Promise((res, rej) => { const r = db.transaction(STORE).objectStore(STORE).getAllKeys(); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+      } catch (e) { return []; }
     },
   };
 })();
@@ -5700,7 +5787,10 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
 (function () {
   const ME = window.ME;
   const INST_FLOATS = 28; // 6 x vec4 matrices + vec4u info
-  const content = () => ME.content || {};
+  const content = () => ME.content || {}, NONE = {};
+  // 3x3 products into a scratch matrix (row-major, the same sums in the same order as before E9)
+  const mul3 = (A, B, O) => { for (let r = 0; r < 3; r++) for (let k = 0; k < 3; k++) O[r * 3 + k] = A[r * 3] * B[k] + A[r * 3 + 1] * B[3 + k] + A[r * 3 + 2] * B[6 + k]; return O; };
+  const set9 = (O, a, b, c, d, e, f, g, h, i) => { O[0] = a; O[1] = b; O[2] = c; O[3] = d; O[4] = e; O[5] = f; O[6] = g; O[7] = h; O[8] = i; return O; };
 
   // Path cells in walking order, from polylines of cell corners (styles5.js cellsOf).
   const cellsOf = (pts) => {
@@ -5757,6 +5847,14 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
       this.wiltAt = null;
       // who wrote each instance, for pick: the static (index into MB.statics) per instance, the layers' runs
       this.sIdx = new Int32Array(MB.statics.length); this.spanL = []; this.spanA = []; this.spanB = []; this.spanN = 0; // each layer's instances this frame, [spanA, spanB) (no allocation per frame)
+      // E9: put()'s scratch matrices, update()'s scratch vectors, and the statics update() rewrote this frame
+      // ([dirty[0], dirty[1]); a static that stands still is neither rewritten nor uploaded). The still stamps are
+      // this Sim's (the slot, model and place each static was last written with; slot -1: none), not the baked
+      // statics', so a second Sim over the same MB writes everything once; stillN counts the skipped statics
+      const NS = MB.statics.length;
+      this.stillAt = new Int32Array(NS).fill(-1); this.stillMi = new Int32Array(NS); this.stillP = new Float64Array(NS * 5); this.stillN = 0;
+      this.mx = { R: new Float64Array(9), P: new Float64Array(9), F: new Float64Array(9), S: new Float64Array(9), H: new Float64Array(9), A: new Float64Array(9), B: new Float64Array(9), C: new Float64Array(9), L: new Float64Array(9) };
+      this.sh2 = [0, 0]; this.sc3 = [0, 0, 0]; this.at5 = [0, 0, 0, 0, 0]; this.dirty = [0, 0];
     }
     // demo walkers, cycling through the content's walker kinds (ME.content.walkers)
     setCount(n) {
@@ -5773,34 +5871,40 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
     }
     // a point the critters shy away from this frame
     avoid(x, y) { if (this.wn >= this.capacity) return; this.wpos[this.wn * 2] = x; this.wpos[this.wn * 2 + 1] = y; this.wn++; }
-    at(s) {
+    // the route at arc length s: [x, y, z, dx, dy], into o if given (no allocation)
+    at(s, o = [0, 0, 0, 0, 0]) {
       const f = Math.max(0, Math.min(this.route.length - 1.001, s * this.VS)), i = Math.floor(f), u = f - i, a = this.route[i], b = this.route[i + 1];
-      return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u, b[0] - a[0], b[1] - a[1]];
+      o[0] = a[0] + (b[0] - a[0]) * u; o[1] = a[1] + (b[1] - a[1]) * u; o[2] = a[2] + (b[2] - a[2]) * u; o[3] = b[0] - a[0]; o[4] = b[1] - a[1];
+      return o;
     }
 
     // Write one instance: model m, placement, yaw, flip, scale [sx,sy,sz], shear [hx,hy] (x += hx*z), flags,
     // and an optional pitch (raises the model's +x end; climbing squirrels, leaping koi).
     // mark (bits) and markV (a float) are the app's marks: a marked instance is shaded by the hookMark
     // shader hook (see ME.SHADER_HOOKS).
+    // (E9: scalar math on scratch matrices, no allocation; the same arithmetic as before, so the same bytes)
     put(i, mi, X, Y, Z, yaw, flip, sc, sh, flags, pitch = 0, mark = 0, markV = 0) {
-      const m = this.MB.models[mi], vs = this.VS, c = Math.cos(yaw), s = Math.sin(yaw);
+      const m = this.MB.models[mi], vs = this.VS, c = Math.cos(yaw), s = Math.sin(yaw), M = this.mx;
       // L = R * F * S * H / vs ; t = L * box + [X,Y,Z]
-      const Hm = [1, 0, sh[0], 0, 1, sh[1], 0, 0, 1];
-      const S = [sc[0], 0, 0, 0, sc[1], 0, 0, 0, sc[2]];
-      const F = flip ? [0, 1, 0, 1, 0, 0, 0, 0, 1] : [1, 0, 0, 0, 1, 0, 0, 0, 1];
-      const mul = (A, B) => [0, 1, 2].flatMap((r) => [0, 1, 2].map((k) => A[r * 3] * B[k] + A[r * 3 + 1] * B[3 + k] + A[r * 3 + 2] * B[6 + k]));
-      let R = [c, -s, 0, s, c, 0, 0, 0, 1];
-      if (pitch) { const cp = Math.cos(pitch), sp = Math.sin(pitch); R = mul(R, [cp, 0, -sp, 0, 1, 0, sp, 0, cp]); }
-      const L = mul(mul(mul(R, F), S), Hm).map((v) => v / vs);
-      const b = m.box, t = [0, 1, 2].map((r) => L[r * 3] * b[0] + L[r * 3 + 1] * b[1] + L[r * 3 + 2] * b[2] + [X, Y, Z][r]);
+      set9(M.H, 1, 0, sh[0], 0, 1, sh[1], 0, 0, 1);
+      set9(M.S, sc[0], 0, 0, 0, sc[1], 0, 0, 0, sc[2]);
+      if (flip) set9(M.F, 0, 1, 0, 1, 0, 0, 0, 0, 1); else set9(M.F, 1, 0, 0, 0, 1, 0, 0, 0, 1);
+      let R = set9(M.R, c, -s, 0, s, c, 0, 0, 0, 1);
+      if (pitch) { const cp = Math.cos(pitch), sp = Math.sin(pitch); R = mul3(R, set9(M.P, cp, 0, -sp, 0, 1, 0, sp, 0, cp), M.A); }
+      const L = mul3(mul3(mul3(R, M.F, M.B), M.S, M.C), M.H, M.L);
+      for (let k = 0; k < 9; k++) L[k] = L[k] / vs;
+      const b = m.box;
+      const t0 = L[0] * b[0] + L[1] * b[1] + L[2] * b[2] + X, t1 = L[3] * b[0] + L[4] * b[1] + L[5] * b[2] + Y, t2 = L[6] * b[0] + L[7] * b[1] + L[8] * b[2] + Z;
       // inverse of the 3x3
-      const [a0, a1, a2, a3, a4, a5, a6, a7, a8] = L;
+      const a0 = L[0], a1 = L[1], a2 = L[2], a3 = L[3], a4 = L[4], a5 = L[5], a6 = L[6], a7 = L[7], a8 = L[8];
       const det = a0 * (a4 * a8 - a5 * a7) - a1 * (a3 * a8 - a5 * a6) + a2 * (a3 * a7 - a4 * a6), id = 1 / det;
-      const I = [(a4 * a8 - a5 * a7) * id, (a2 * a7 - a1 * a8) * id, (a1 * a5 - a2 * a4) * id, (a5 * a6 - a3 * a8) * id, (a0 * a8 - a2 * a6) * id, (a2 * a3 - a0 * a5) * id, (a3 * a7 - a4 * a6) * id, (a1 * a6 - a0 * a7) * id, (a0 * a4 - a1 * a3) * id];
-      const it = [0, 1, 2].map((r) => -(I[r * 3] * t[0] + I[r * 3 + 1] * t[1] + I[r * 3 + 2] * t[2]));
+      const i0 = (a4 * a8 - a5 * a7) * id, i1 = (a2 * a7 - a1 * a8) * id, i2 = (a1 * a5 - a2 * a4) * id, i3 = (a5 * a6 - a3 * a8) * id, i4 = (a0 * a8 - a2 * a6) * id;
+      const i5 = (a2 * a3 - a0 * a5) * id, i6 = (a3 * a7 - a4 * a6) * id, i7 = (a1 * a6 - a0 * a7) * id, i8 = (a0 * a4 - a1 * a3) * id;
       const o = i * INST_FLOATS, f = this.inst;
-      for (let r = 0; r < 3; r++) { f[o + r * 4] = L[r * 3]; f[o + r * 4 + 1] = L[r * 3 + 1]; f[o + r * 4 + 2] = L[r * 3 + 2]; f[o + r * 4 + 3] = t[r]; }
-      for (let r = 0; r < 3; r++) { f[o + 12 + r * 4] = I[r * 3]; f[o + 12 + r * 4 + 1] = I[r * 3 + 1]; f[o + 12 + r * 4 + 2] = I[r * 3 + 2]; f[o + 12 + r * 4 + 3] = it[r]; }
+      f[o] = a0; f[o + 1] = a1; f[o + 2] = a2; f[o + 3] = t0; f[o + 4] = a3; f[o + 5] = a4; f[o + 6] = a5; f[o + 7] = t1; f[o + 8] = a6; f[o + 9] = a7; f[o + 10] = a8; f[o + 11] = t2;
+      f[o + 12] = i0; f[o + 13] = i1; f[o + 14] = i2; f[o + 15] = -(i0 * t0 + i1 * t1 + i2 * t2);
+      f[o + 16] = i3; f[o + 17] = i4; f[o + 18] = i5; f[o + 19] = -(i3 * t0 + i4 * t1 + i5 * t2);
+      f[o + 20] = i6; f[o + 21] = i7; f[o + 22] = i8; f[o + 23] = -(i6 * t0 + i7 * t1 + i8 * t2);
       const u = this.instU; u[o + 24] = mi; u[o + 25] = flags; u[o + 26] = mark; f[o + 27] = markV;
     }
 
@@ -5812,18 +5916,25 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
     }
 
     update(time, opts) {
-      const MB = this.MB, wk = opts.wind ? opts.windK ?? 1 : 0, [wx, wy] = ME.WIND_DIR, SWAY = content().sway || {};
-      let i = 0, si = -1;
+      const MB = this.MB, wk = opts.wind ? opts.windK ?? 1 : 0, [wx, wy] = ME.WIND_DIR, SWAY = content().sway || NONE;
+      let i = 0, si = -1, lo = Infinity, hi = -1;
+      this.stillN = 0;
+      const sh = this.sh2, sc = this.sc3;
       for (const s of MB.statics) {
         si++;
-        if (s.hidden) continue; // shattered into loose voxels (ME.VoxelPhysics.shatter)
+        if (s.hidden) { this.stillAt[si] = -1; continue; } // shattered into loose voxels (ME.VoxelPhysics.shatter); shown again, it is rewritten
         this.sIdx[i] = si;
         const p = s.place, n = s.frames.length, mi = s.frames[Math.floor(((time * 1.1 + s.phase) % 1) * n) % n];
         // lean downwind with the gust passing over, plus a faster flutter across it
         // (sway per prop: [lean per unit of gust, flutter, flutter rate]; shear = top shift / height)
         const sw = SWAY[p.name], wet = sw ? (s.wet === undefined ? (s.wet = this.waterAt(p)) : s.wet) : null;
-        let sh = [0, 0];
         s.wsh = null;
+        // a static standing still (one frame, no sway, kick or wilt), written last frame in the same slot with
+        // the same model and place, keeps its instance: no rewrite, no upload
+        const still = n === 1 && !wet && !(sw && wk) && !s.kick && !(sw && this.wiltAt);
+        const SP = this.stillP, o5 = si * 5, rot = p.rot | 0, flip = p.flip ? 1 : 0;
+        if (still && this.stillAt[si] === i && this.stillMi[si] === mi && SP[o5] === p.X && SP[o5 + 1] === p.Y && SP[o5 + 2] === p.Z && SP[o5 + 3] === rot && SP[o5 + 4] === flip) { this.stillN++; i++; continue; }
+        sh[0] = 0; sh[1] = 0;
         if (wet || (sw && wk)) {
           const ph = p.X * 1.7 + p.Y * 1.1;
           let hx, hy;
@@ -5838,23 +5949,28 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
             const a = g * sw[0] + Math.sin(time * sw[2] + ph) * sw[1] * wk, b = Math.sin(time * sw[2] * 1.37 + ph * 2.3) * sw[1] * 0.6 * wk;
             hx = wx * a - wy * b; hy = wy * a + wx * b;
           }
-          const [ux, uy] = p.rot ? ME.rotQ(hx, hy, 4 - p.rot) : [hx, hy]; // the shear is in the model's frame: undo the turn, then the mirror
-          sh = p.flip ? [uy, ux] : [ux, uy];
-          s.wsh = [hx, hy]; // world shift per unit height, for critters perched in the crown
+          // the shear is in the model's frame: undo the turn (ME.rotQ by 4 - rot, inline), then the mirror
+          const q = p.rot ? (4 - p.rot) & 3 : 0, ux = q === 0 ? hx : q === 1 ? -hy : q === 2 ? -hx : hy, uy = q === 0 ? hy : q === 1 ? hx : q === 2 ? -hy : -hx;
+          if (p.flip) { sh[0] = uy; sh[1] = ux; } else { sh[0] = ux; sh[1] = uy; }
+          s.wsh = s.wshV || (s.wshV = [0, 0]); s.wsh[0] = hx; s.wsh[1] = hy; // world shift per unit height, for critters perched in the crown
         }
         // an app may shake a prop (s.kick = extra shear), and swaying plants wilt where wiltAt says
-        if (s.kick) sh = [sh[0] + s.kick[0], sh[1] + s.kick[1]];
+        if (s.kick) { sh[0] = sh[0] + s.kick[0]; sh[1] = sh[1] + s.kick[1]; }
         const k = 1 / MB.models[mi].fine; // 1 except chunky (low-density) volumes
-        let sc = [k, k, k];
+        sc[0] = k; sc[1] = k; sc[2] = k;
         if (sw && this.wiltAt) {
           const b = this.wiltAt(p.X, p.Y);
-          if (b > 0.01) { sc = [k * (1 + 0.06 * b), k * (1 + 0.06 * b), k * (1 - 0.2 * b)]; sh = [sh[0] + 0.07 * b, sh[1] - 0.05 * b]; }
+          if (b > 0.01) { sc[0] = k * (1 + 0.06 * b); sc[1] = k * (1 + 0.06 * b); sc[2] = k * (1 - 0.2 * b); sh[0] = sh[0] + 0.07 * b; sh[1] = sh[1] - 0.05 * b; }
         }
-        this.put(i++, mi, p.X, p.Y, p.Z, p.rot ? (p.rot * Math.PI) / 2 : 0, p.flip, sc, sh, 0); // at.rot: the same turn as a stamp
+        this.put(i, mi, p.X, p.Y, p.Z, p.rot ? (p.rot * Math.PI) / 2 : 0, p.flip, sc, sh, 0); // at.rot: the same turn as a stamp
+        if (still) { this.stillAt[si] = i; this.stillMi[si] = mi; SP[o5] = p.X; SP[o5 + 1] = p.Y; SP[o5 + 2] = p.Z; SP[o5 + 3] = rot; SP[o5 + 4] = flip; } else this.stillAt[si] = -1;
+        lo = Math.min(lo, i); hi = Math.max(hi, i); i++;
       }
       this.staticCount = i;
+      this.dirty[0] = hi < 0 ? 0 : lo; this.dirty[1] = hi + 1;
+      const A5 = this.at5;
       for (let w = 0; w < this.walkers.length; w++) {
-        const u = this.walkers[w], s = (u.s0 + u.speed * time) % this.len, [X, Y, Z, dx, dy] = this.at(s);
+        const u = this.walkers[w], s = (u.s0 + u.speed * time) % this.len, A = this.at(s, A5), X = A[0], Y = A[1], Z = A[2], dx = A[3], dy = A[4];
         const yaw = Math.atan2(dy, dx), nx = -Math.sin(yaw), ny = Math.cos(yaw);
         const fr = MB.walkerFrames[u.type], g = u.w.gait, ph = s * u.w.rate + u.ph, k = Math.floor((ph % 1) * fr.length);
         let hop = 0, sq = 0;
@@ -5862,7 +5978,8 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
         else if (g === "fly") hop = u.w.fly + Math.sin(time * 2.1 + u.ph * 6.3) * 0.05; // hover with a slow bob
         else sq = Math.sin(ph * Math.PI * 4) * 0.03;
         const px = X + nx * u.lat, py = Y + ny * u.lat, pz = Z + hop;
-        this.put(i++, fr[k], px, py, pz, yaw, false, [1 + sq * 0.5, 1 + sq * 0.5, 1 - sq], [0, 0], 1);
+        sc[0] = 1 + sq * 0.5; sc[1] = 1 + sq * 0.5; sc[2] = 1 - sq; sh[0] = 0; sh[1] = 0;
+        this.put(i++, fr[k], px, py, pz, yaw, false, sc, sh, 1);
         this.wpos[w * 2] = px; this.wpos[w * 2 + 1] = py;
       }
       this.wn = this.walkers.length;
@@ -6466,10 +6583,18 @@ const QUAD = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0
   const ME = window.ME, W = ME.wgsl;
 
   // r = transmittance towards the sun, g = sky visibility (7 upward directions), per coarse cell.
+  // The rays' march (steps, growth per step; the first step is one cell). R.sunRegion (passes.js) derives a
+  // carve's region from these reaches, so a change here moves the region with it.
+  const SV = (ME.SUNVOL = { sun: [80, 1.035], up: [14, 1.3], slant: [12, 1.3], slantXY: 0.8 }); // slantXY with z 0.6: a unit direction, 0.8 of it horizontal
+  // the distance in cells of a march's last sample (sunvol's march: samples at t = 1, 2, 2 + g, ...)
+  SV.reach = ([n, g]) => 1 + (Math.pow(g, n - 1) - 1) / (g - 1);
   W.sunvol = W.common + /* wgsl */ `
 @group(1) @binding(0) var occT: texture_3d<f32>;
 @group(1) @binding(1) var lin: sampler;
 @group(1) @binding(2) var outT: texture_storage_3d<rgba8unorm, write>;
+// the cells this dispatch recomputes, lo..hi inclusive (the whole volume, or a carve's region a slab at a time)
+struct SunBox { lo: vec4u, hi: vec4u }
+@group(1) @binding(3) var<uniform> sb: SunBox;
 fn march(p: vec3f, dir: vec3f, n: i32, s0: f32, grow: f32, sigma: f32) -> f32 {
   var T = 1.0; var t = s0; var st = s0;
   let top = u.cgrid.z + u.cdims.z / u.cgrid.w;
@@ -6484,16 +6609,17 @@ fn march(p: vec3f, dir: vec3f, n: i32, s0: f32, grow: f32, sigma: f32) -> f32 {
   return T;
 }
 @compute @workgroup_size(4, 4, 4)
-fn main(@builtin(global_invocation_id) id: vec3u) {
+fn main(@builtin(global_invocation_id) gid: vec3u) {
   let N = vec3u(u.cdims.xyz);
-  if (any(id >= N)) { return; }
+  let id = gid + sb.lo.xyz;
+  if (any(id >= N) || any(id > sb.hi.xyz)) { return; }
   let cell = 1.0 / u.cgrid.w;
   let p = u.cgrid.xyz + (vec3f(id) + 0.5) * cell;
-  let sun = march(p, u.sun.xyz, 80, cell, 1.035, 34.0);
-  var sky = 2.0 * march(p, vec3f(0.0, 0.0, 1.0), 14, cell, 1.3, 18.0);
+  let sun = march(p, u.sun.xyz, ${SV.sun[0]}, cell, ${SV.sun[1]}, 34.0);
+  var sky = 2.0 * march(p, vec3f(0.0, 0.0, 1.0), ${SV.up[0]}, cell, ${SV.up[1]}, 18.0);
   for (var k = 0; k < 6; k++) {
     let a = f32(k) * 1.0472 + 0.3;
-    sky += march(p, normalize(vec3f(cos(a) * 0.8, sin(a) * 0.8, 0.6)), 12, cell, 1.3, 18.0);
+    sky += march(p, normalize(vec3f(cos(a) * ${SV.slantXY}, sin(a) * ${SV.slantXY}, 0.6)), ${SV.slant[0]}, cell, ${SV.slant[1]}, 18.0);
   }
   textureStore(outT, id, vec4f(sun, sky / 8.0, 0.0, 1.0));
 }
@@ -7852,6 +7978,7 @@ fn boxOf(V: Vox) -> Box {
       return true;
     }
 
+    // (the elevation clamp bounds sunRegion's sweep along the sun ray: L.z >= sin 0.2)
     sunDir() {
       const [x, y, z] = this.L0, az = (this.set.sunAz * Math.PI) / 180, el0 = Math.asin(z), el = Math.max(0.2, Math.min(1.45, el0 + (this.set.sunEl * Math.PI) / 180));
       const a0 = Math.atan2(y, x) + az;
@@ -7867,7 +7994,8 @@ fn boxOf(V: Vox) -> Box {
       d.queue.writeTexture({ texture: this.rampTex }, S.tables.ramps, { bytesPerRow: 64 }, [16, 256]);
       this.densTex = ME.tex3d(d, "density", "r8unorm", [T.NX >> 1, T.NY >> 1, T.NZ >> 1], T.mips, 1); // half-res base: terrain shading never needed full res
       this.occTex = ME.tex3d(d, "coarse", "r8unorm", T.cdims, [T.coarse], 1);
-      this.sunTex = d.createTexture({ label: "sunvol", size: T.cdims, dimension: "3d", format: "rgba8unorm", usage: GU.STORAGE_BINDING | GU.TEXTURE_BINDING });
+      this.sunTex = d.createTexture({ label: "sunvol", size: T.cdims, dimension: "3d", format: "rgba8unorm", usage: GU.STORAGE_BINDING | GU.TEXTURE_BINDING | GU.COPY_SRC });
+      this.sunBoxBuf = d.createBuffer({ label: "sunvol box", size: 32, usage: BU.UNIFORM | BU.COPY_DST }); this.sunQ = []; this.sunCells = 0; this.sunSlabs = 0; this.sunWhole = 0;
       // canopy light, evaluated once per frame over the canopy plane and sampled by lighting, shafts and water
       const CN = ME.qn("cantex", 512);
       this.canTex = d.createTexture({ label: "canopy", size: [CN, CN], format: "rgba8unorm", usage: GU.STORAGE_BINDING | GU.TEXTURE_BINDING });
@@ -7909,7 +8037,7 @@ fn boxOf(V: Vox) -> Box {
       for (const k in P) this.g0[k] = bg(P[k], 0, [{ buffer: this.ubuf }]);
       const sunV = this.sunTex.createView(), dens = this.densTex.createView();
       this.g1 = {
-        sunvol: bg(P.sunvol, 1, [this.occTex.createView(), this.lin, sunV]),
+        sunvol: bg(P.sunvol, 1, [this.occTex.createView(), this.lin, sunV, { buffer: this.sunBoxBuf }]),
         canopytex: bg(P.canopytex, 1, [this.canV]),
         partsim: bg(P.partsim, 1, [{ buffer: this.partBuf }, { buffer: this.srcBuf }, dens, this.lin]),
         terrain: bg(P.terrain, 1, [dens, this.lin, { buffer: this.matBuf }]),
@@ -8117,6 +8245,33 @@ fn boxOf(V: Vox) -> Box {
       this.dev.queue.writeBuffer(this.lgridBuf, 0, grid);
     }
 
+    // Grass on a carved spot: a blade whose ground voxel was dug or came loose, or whose own cell filled (a
+    // slumped heap), is hidden (its z far below), and shown again when the terrain there comes back.
+    carveGrass(cells) {
+      const G = this.S.grass;
+      if (!G || !G.count) return;
+      const T = this.S.T, NX = T.NX, PL = NX * T.NY, vox = T.vox, B = G.blades;
+      if (!this.grassOf) {
+        // per blade, its ground voxel and its own cell (bakeGrass: x, y at voxel centres, z on the ground's top);
+        // per such cell, the blades on it
+        this.grassZ = B.slice(0); this.grassOf = new Int32Array(G.count * 2); this.grassCells = new Map();
+        for (let b = 0; b < G.count; b++) {
+          const i = Math.floor((B[b * 4] - T.O[0]) * T.VS), j = Math.floor((B[b * 4 + 1] - T.O[1]) * T.VS), k = Math.round((B[b * 4 + 2] - T.O[2]) * T.VS);
+          const g = (k - 1) * PL + j * NX + i;
+          this.grassOf[b * 2] = g; this.grassOf[b * 2 + 1] = g + PL;
+          for (const n of [g, g + PL]) { const l = this.grassCells.get(n); l ? l.push(b) : this.grassCells.set(n, [b]); }
+        }
+      }
+      let lo = Infinity, hi = -1;
+      for (const n of cells) {
+        const l = this.grassCells.get(n);
+        if (l) for (const b of l) {
+          const z = !vox[this.grassOf[b * 2]] || vox[this.grassOf[b * 2 + 1]] ? -99 : this.grassZ[b * 4 + 2];
+          if (B[b * 4 + 2] !== z) { B[b * 4 + 2] = z; lo = Math.min(lo, b); hi = Math.max(hi, b); }
+        }
+      }
+      if (hi >= 0) this.dev.queue.writeBuffer(this.grassBuf, lo * 16, B, lo * 4, (hi - lo + 1) * 4);
+    }
     // Terrain voxels the app has removed or added (T.vox already changed there; cells = voxel indices, each
     // one emptied or filled since the last call). The greedy mesh stays: from the first carve the terrain
     // draws with a shader variant that discards the faces of carved cells (a bitset), and a small patch
@@ -8126,6 +8281,7 @@ fn boxOf(V: Vox) -> Box {
     // coarse occupancy (sun volume) are recomputed over the box around the change.
     carve(cells) {
       if (!cells.length) return;
+      this.carveGrass(cells);
       const d = this.dev, T = this.S.T, NX = T.NX, NY = T.NY, NZ = T.NZ, PL = NX * NY, vox = T.vox;
       if (!this.carved) {
         this.carved = new Uint32Array(Math.ceil((PL * NZ) / 32)); this.carvedCells = new Set(); this.addedCells = new Set();
@@ -8196,7 +8352,7 @@ fn boxOf(V: Vox) -> Box {
         const f = T.VS / T.CPU, top = [T.cdims[0], T.cdims[1], NZ / f].map((n) => n - 1);
         const lo = [0, 1, 2].map((a) => Math.max(0, Math.floor(box[a] / f) - 1)), hi = [0, 1, 2].map((a) => Math.min(top[a], Math.floor(box[a + 3] / f) + 1));
         ME.coarseFill(T, lo, hi);
-        up(this.occTex, 0, T.coarse, T.cdims, lo, hi); this.sunDirty = true;
+        up(this.occTex, 0, T.coarse, T.cdims, lo, hi); this.sunRegion(lo, hi);
       }
       if (d2) {
         const lo2 = lo1.map((x) => x >> 1), hi2 = [0, 1, 2].map((a) => Math.min(D2[a] - 1, hi1[a] >> 1));
@@ -8207,6 +8363,30 @@ fn boxOf(V: Vox) -> Box {
         }
         up(this.densTex, 1, d2, D2, lo2, hi2);
       }
+    }
+
+    // The sun volume cells whose rays can reach coarse cells lo..hi (inclusive) once they changed: under them
+    // down to the ground, out to the slanted sky rays' reach, and back along the sun ray as far as it marches
+    // (ME.SUNVOL, light.js: the sun ray about 405 cells, a slanted sky ray about 57, 0.8 of it horizontal; the
+    // sun ray's slope comes from sunDir's elevation clamp, 0.2 rad at the lowest), 2 cells wider for the
+    // trilinear lookups. Cells outside it keep their value, so the volume ends as a full recompute would leave
+    // it (tools/sunvol-check.js). A carve used to recompute the whole volume in the frame it happened: half the
+    // boss wave's carve frames ran over 50 ms (Engine's probe, 2026-10-23). The region is queued, and frame()
+    // takes it a z-slab at a time, at most ME.SUN_CELLS cells a frame. Once the queue holds more cells than the
+    // volume (carves on most frames, a long collapse), it becomes one box of the whole volume, so the queue
+    // and the shadows' lag stay bounded.
+    sunRegion(lo, hi) {
+      const D = this.S.T.cdims, L = this.lastL || this.sunDir(), m = 2, SV = ME.SUNVOL;
+      const sky = SV.slantXY * SV.reach(SV.slant) + 1, reach = SV.reach(SV.sun) + 1;
+      const t = Math.min(reach, (hi[2] + 1) / Math.max(0.05, L[2])), sx = -L[0] * t, sy = -L[1] * t;
+      const a = [Math.floor(lo[0] + Math.min(-sky, sx)) - m, Math.floor(lo[1] + Math.min(-sky, sy)) - m, 0];
+      const b = [Math.ceil(hi[0] + Math.max(sky, sx)) + m, Math.ceil(hi[1] + Math.max(sky, sy)) + m, hi[2] + m];
+      const box = [0, 1, 2].map((k) => Math.max(0, a[k])).concat([0, 1, 2].map((k) => Math.min(D[k] - 1, b[k])));
+      if (!(box[0] <= box[3] && box[1] <= box[4] && box[2] <= box[5])) return;
+      const cells = (q) => (q[3] - q[0] + 1) * (q[4] - q[1] + 1) * (q[5] - q[2] + 1);
+      if (this.sunQ.reduce((s, q) => s + cells(q), cells(box)) > D[0] * D[1] * D[2]) {
+        this.sunQ.length = 0; this.sunQ.push([0, 0, 0, D[0] - 1, D[1] - 1, D[2] - 1]); this.sunWhole = (this.sunWhole || 0) + 1;
+      } else this.sunQ.push(box);
     }
 
     // The app's ground maps for the shader hooks: a scalar field (fieldRes texels per tile, r8) and one
@@ -8364,17 +8544,33 @@ fn boxOf(V: Vox) -> Box {
       this.updateRings(time);
       if (this.bubbleN) d.queue.writeBuffer(this.bubbleBuf, 0, this.bubbleData, 0, this.bubbleN * 12);
       this.writeUniforms(cam, time, dt);
-      d.queue.writeBuffer(this.instBuf, 0, sim.inst, 0, nInst * ME.INST_FLOATS);
+      // the statics update() rewrote, then the walkers and layers (all of them on this renderer's first frame)
+      const IF = ME.INST_FLOATS, D = sim.dirty, a = this.instUp ? D[0] : 0, b = this.instUp ? Math.min(D[1], sim.staticCount) : sim.staticCount;
+      if (b > a) d.queue.writeBuffer(this.instBuf, a * IF * 4, sim.inst, a * IF, (b - a) * IF);
+      if (nInst > sim.staticCount) d.queue.writeBuffer(this.instBuf, sim.staticCount * IF * 4, sim.inst, sim.staticCount * IF, (nInst - sim.staticCount) * IF);
+      this.instUp = true;
       const sp = this.sprites, nSp = sp.nAdd + sp.nAlpha;
       if (nSp) d.queue.writeBuffer(this.spriteBuf, 0, sp.data, 0, nSp * 12);
       for (const L of this.layers) L.prepare(time, dt);
       const enc = d.createCommandEncoder();
 
-      if (this.sunDirty) {
+      // the sun volume: all of it when the sun moved (the regions queued are then part of it), else the next
+      // slab of the oldest region a carve queued (sunRegion)
+      // (sunUpdates counts the whole-volume recomputes, sunSlabs the slabs, sunCells the cells of both)
+      let sb = null;
+      if (this.sunDirty) { const [X, Y, Z] = S.T.cdims; sb = [0, 0, 0, X - 1, Y - 1, Z - 1]; this.sunQ.length = 0; this.sunDirty = false; this.sunUpdates = (this.sunUpdates || 0) + 1; }
+      else if (this.sunQ.length) {
+        this.sunSlabs = (this.sunSlabs || 0) + 1;
+        const q = this.sunQ[0], plane = (q[3] - q[0] + 1) * (q[4] - q[1] + 1), rows = Math.max(1, Math.floor((ME.SUN_CELLS ?? 1 << 19) / plane));
+        sb = [q[0], q[1], q[2], q[3], q[4], Math.min(q[5], q[2] + rows - 1)];
+        if (sb[5] >= q[5]) this.sunQ.shift(); else q[2] = sb[5] + 1;
+      }
+      if (sb) {
+        d.queue.writeBuffer(this.sunBoxBuf, 0, new Uint32Array([sb[0], sb[1], sb[2], 0, sb[3], sb[4], sb[5], 0]));
         const c = enc.beginComputePass();
         c.setPipeline(P.sunvol); c.setBindGroup(0, g0.sunvol); c.setBindGroup(1, g1.sunvol);
-        const [X, Y, Z] = S.T.cdims; c.dispatchWorkgroups(Math.ceil(X / 4), Math.ceil(Y / 4), Math.ceil(Z / 4));
-        c.end(); this.sunDirty = false; this.sunUpdates = (this.sunUpdates || 0) + 1;
+        c.dispatchWorkgroups(Math.ceil((sb[3] - sb[0] + 1) / 4), Math.ceil((sb[4] - sb[1] + 1) / 4), Math.ceil((sb[5] - sb[2] + 1) / 4));
+        c.end(); this.sunCells += (sb[3] - sb[0] + 1) * (sb[4] - sb[1] + 1) * (sb[5] - sb[2] + 1);
       }
       // particles
       const nP = this.pcount.leaf + this.pcount.fly + this.pcount.mist;
@@ -9077,25 +9273,38 @@ fn boxOf(V: Vox) -> Box {
    With GPU timestamps it aims the measured GPU time at a budget (time ~ pixels ~ scale^2). Without
    them (Android Chrome) only the frame interval is known, and vsync hides any headroom: it drops
    fast when frames run late and probes back up slowly, remembering where the last probe failed.
-   A resize rebuilds every screen target, so changes are at least a second apart. */
+   A resize rebuilds every screen target, so changes are at least a second apart.
+   The GPU time is the median of the readings taken at the current scale (5 at least, about 100 frames; a
+   reading every 20 frames), not the last one: one carve or resize reads 40-50 ms against a 10 ms mean, and a
+   single reading moved the scale 52-61 times a wave (Engine's boss-wave probe, 2026-10-23). It steps down at
+   most 15% at a time above 1.15 x budget, and back up 0.05 at a time, 3 s apart, below 0.7 x budget, never to
+   a scale that was just too slow for 20 s (as without timestamps). The gap between the two thresholds is wider
+   than a step's change in pixels, so a step cannot undo itself. */
 (function () {
   const ME = window.ME;
 
   ME.DynRes = class {
     constructor(R) {
       this.R = R; this.min = 0.55; this.max = 1; this.budget = ME.qn("budget", 12);
-      this.ema = 16.7; this.t = 0; this.ceil = this.max; this.ceilT = 0;
+      this.ema = 16.7; this.t = 0; this.ceil = this.max; this.ceilT = 0; this.samples = []; this.last = null; this.changes = 0;
     }
     // once per frame with the interval since the previous one (ms)
     update(now, dtMs) {
       const s = this.R.set;
       if (!s.autoScale || dtMs > 100) return; // off, or back from a hidden tab
       this.ema += (dtMs - this.ema) * 0.05;
-      if (now - this.t < 1000) return;
+      // a new reading counts for this scale once frames drawn at it can have been read (300 ms after a change)
       const g = this.R.gpuMs;
+      if (g && g !== this.last) { this.last = g; if (g.total > 0 && now - this.t > 300) { this.samples.push(g.total); if (this.samples.length > 15) this.samples.shift(); } }
+      if (now - this.t < 1000) return;
       let next = s.scale;
       if (g && g.total > 0) {
-        if (g.total > this.budget * 1.1 || g.total < this.budget * 0.75) next = s.scale * Math.sqrt(this.budget / g.total);
+        if (this.samples.length < 5) return;
+        const q = this.samples.slice().sort((a, b) => a - b), m = q.length & 1 ? q[q.length >> 1] : (q[q.length / 2 - 1] + q[q.length / 2]) / 2;
+        if (m > this.budget * 1.15) { next = s.scale * Math.max(0.85, Math.sqrt(this.budget / m)); this.ceil = s.scale - 0.05; this.ceilT = now; }
+        else if (m < this.budget * 0.7 && now - this.t > 3000) next = Math.min(s.scale + 0.05, s.scale * Math.sqrt(this.budget / m));
+        if (now - this.ceilT > 20000) this.ceil = this.max;
+        next = Math.min(next, this.ceil);
       } else {
         if (this.ema > 18.5) { next = s.scale - 0.1; this.ceil = s.scale - 0.05; this.ceilT = now; }
         else if (this.ema < 17.2 && now - this.t > 3000) next = s.scale + 0.05;
@@ -9103,7 +9312,7 @@ fn boxOf(V: Vox) -> Box {
         next = Math.min(next, this.ceil);
       }
       next = Math.min(this.max, Math.max(this.min, Math.round(next * 20) / 20));
-      if (Math.abs(next - s.scale) > 0.01) { s.scale = next; this.t = now; this.ema = 16.7; }
+      if (Math.abs(next - s.scale) > 0.01) { s.scale = next; this.t = now; this.ema = 16.7; this.samples.length = 0; this.changes++; }
     }
   };
 })();
@@ -9718,20 +9927,22 @@ fn boxOf(V: Vox) -> Box {
 <script>/* ../MossheartEngine/content/fernglass.js */
 /* Fernglass, Mossheart's second garden (docs/decisions/2026-10-22-showcase-level.md): a round Victorian
    fernery under the bell jar. Its flagstone walks are grown with moss and its glass bays have lost half
-   their panes. A fountain spills down a spout in two falls into a lily pond round the Heart
-   Tree's island. This file holds the level's part of the Mossheart content pack:
-     ME.content.kinds       flagstone (a brick kerb facing moss, standing puddles), studs (the processional
-                            way's brass studs), gravel, pottingsand, wall, fernbed, fernwater (the fountain's and the
-                            pond's water), pond (the pond's sand and gravel floor)
+   their panes. A fountain spills down a spout in two falls into a lily pond, and an iron
+   footbridge crosses it to the Heart Tree's island in its middle. This file holds the level's part of the
+   Mossheart content pack:
+     ME.content.kinds       flagstone (a brick kerb facing moss, standing puddles), gravel, pottingsand, wall,
+                            fernbed, fernwater (the fountain's and the pond's water), pond (the pond's sand and
+                            gravel floor)
      window.MODELS          stamps fg_bay (one glass bay, turned and flipped into eight places), fg_grate (the
-                            boiler house the creatures come out of), fg_fountain, fg_bridge, fg_shed,
-                            fg_pondstones (moss cushions and pebbles on the pond's floor); volumes fg_pot
-                            (o.plant: fern, geranium or agave; a pot can shatter), fg_orange (an orange tree in a
-                            Versailles tub, swaying), fg_lantern (hung from a bay's front beam), and the pond's
+                            boiler house the creatures come out of), fg_fountain, fg_bridge (o.span), fg_shed,
+                            fg_pondstones (moss cushions and pebbles on the pond's floor), fg_rocks (the
+                            island's); volumes fg_pot (o.plant: fern, geranium or agave; a pot can shatter),
+                            fg_orange (an orange tree in a Versailles tub, swaying), fg_lantern (hung from a bay's front beam), and the pond's
                             plants fg_eelgrass, fg_frond (o.type: hornwort or cabomba) and fg_lily (pads on the
                             surface, o.flower), which sway with the water
      ME.content.critterExtra.fernglass, ME.content.padTop   the pond's minnow school; the pads a frog sits on
-     ME.content.maps.fernglass      the v1 map (plain data), with game: { route, spawn, heart, lane }
+     ME.content.maps.fernglass      the v1 map (plain data), with game: { route, spawn, heart, lane, build,
+                                    bridges }
      ME.content.mapLight.fernglass  its light, { L, light }, to put over the style's: a low late sun and
                                     beams on the walks
    The ramps reach the palette through ME.content.addMaterials (critter-models.js, ME.content.ramps). The
@@ -9778,16 +9989,17 @@ fn boxOf(V: Vox) -> Box {
   CT.sunShadeHalf = (CT.sunShadeHalf || []).concat(["vineLeaf", "orangeLeaf", "orangeLeafLt"]);
 
   // ---------------------------------------------------------------- kinds
-  // the walks: flagstones with a brick kerb where they meet the beds and puddles standing in them; the same
-  // with brass studs down the processional way; gravel with set flags; potting sand spilled from the shed
+  // the walks: flagstones with a brick kerb where they meet the beds and puddles standing in them; gravel
+  // with set flags; potting sand spilled from the shed
   const flagstone = { recipe: "layer", top: "flag", mottle: "puddle", mottleK: 0.1, depth: 0.15, under: "rock", edge: { mat: "brick", width: 0.12, raise: 0.07, facing: ["moss", "fernbed"] } };
   Object.assign(CT.kinds = CT.kinds || {}, {
-    flagstone, studs: Object.assign({}, flagstone, { stripe: { mat: "brass", axis: "x", width: 0.1, dash: 0.125 } }),
+    flagstone,
     gravel: { recipe: "lane", top: "gravel", stones: "flag", edge: "moss", drape: ["moss", "moss2"], overhang: "moss", under: "rock" },
     pottingsand: { recipe: "layer", top: "sand", mottle: "sand2", mottleK: 0.2, depth: 0.3, under: "rock" },
     // the low wall: brick under a mossy limestone coping
     wall: { recipe: "layer", top: "limestone", mottle: "moss", mottleK: 0.3, depth: 0.1, under: "brick" },
-    // the fern beds along the west wall: darker moss over peat, not build tiles (the build tiles are "moss")
+    // the fern beds along the west wall: darker moss over peat; build tiles like the moss (game.build), so
+    // the bigger pond costs the garden none
     fernbed: { recipe: "carpet", top: "moss2", mottle: "peat", cushions: true, drape: ["moss", "moss2"], overhang: "moss", under: "rock", grass: true },
     // Fernglass's water: the shared water with its surface at the tile top (the default sits 1.5 voxels down,
     // which in narrow channels reads as a trickle at the bottom of a ditch: the user's "water level low"). The
@@ -9801,8 +10013,8 @@ fn boxOf(V: Vox) -> Box {
       surface: 0, clarity: 0.9, tint: [0.03, 0.2, 0.34], absorb: 1.5, calm: 0.8, glint: 1.4, caustics: 1.4,
       bubbles: { rate: 4, seep: 0.5, size: [1, 2], colour: [0.76, 0.89, 0.94], rise: 0.22 },
     }),
-    // the pond's floor round the Heart Tree's island, under the map's flood (water at 0.95, held by the walks
-    // round it): pale sand mottled with gravel and no land grass, so the bottom reads through the water and the
+    // the pond's floor round the Heart Tree's island, under the map's flood (water at 0.95, held by the walk
+    // and the beds round it): pale sand mottled with gravel and no land grass, so the bottom reads through the water and the
     // underwater plants stand on it; its own kind, so that it is not a build tile
     pond: { recipe: "layer", top: "pondSand", mottle: "pondGravel", mottleK: 0.3, depth: 0.2, under: "rock" },
   });
@@ -9885,11 +10097,12 @@ fn boxOf(V: Vox) -> Box {
     return { prims: p, r: 1.0, h: 1.0, k: 1 };
   });
 
-  // The iron footbridge where the inner walk crosses the pond: a low arch of planks two tiles wide (the
-  // whole walk crosses on it) on three cast-iron girders, balusters with a lattice, a handrail and newel
-  // posts with ball finials. Spans x (rot 1 spans y). Anchored mid-span at the walk's height (at.dz).
-  model("fg_bridge", () => {
-    const p = [], X0 = 1.45, A = 0.42, zf = (x) => A * (1 - (x / X0) ** 2), N = 10, YW = 0.94;
+  // The iron footbridge: a low arch of planks two tiles wide (the whole walk crosses on it) on three
+  // cast-iron girders, balusters with a lattice, a handrail and newel posts with ball finials. o.span is
+  // its half length (1.45: over the spout's one tile of water; the island's, over two, is longer and rises
+  // a little higher). Spans x (rot 1 spans y). Anchored mid-span at the walk's height (at.dz).
+  model("fg_bridge", (o = {}) => {
+    const p = [], X0 = o.span || 1.45, A = 0.42 * Math.sqrt(X0 / 1.45), zf = (x) => A * (1 - (x / X0) ** 2), N = Math.round((10 * X0) / 1.45), YW = 0.94;
     for (let i = 0; i < N; i++) {
       const x0 = -X0 + (i * 2 * X0) / N, x1 = x0 + (2 * X0) / N, xm = (x0 + x1) / 2, ph = Math.atan2(zf(x1) - zf(x0), x1 - x0);
       p.push(B([xm, 0, zf(xm) + 0.02], [X0 / N + 0.005, YW - 0.04, 0.03], 0.004, "plank", { R: ry(-ph) }));
@@ -10054,6 +10267,18 @@ fn boxOf(V: Vox) -> Box {
     return { prims: p, r: 0.45, h: 0.1, k: 1 };
   });
 
+  // A few mossy limestone rocks on the Heart Tree's island: o.n boulders round the anchor, each half sunk
+  // in the moss with a cushion of moss on its top.
+  model("fg_rocks", (o = {}) => {
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), p = [], n = o.n || 3;
+    for (let i = 0; i < n; i++) {
+      const a = TAU * (i / n + 0.3 * h(i, 1)), d = n > 1 ? 0.16 + 0.12 * h(i, 2) : 0, r = (i ? 0.1 : 0.15) + 0.06 * h(i, 3), x = Math.cos(a) * d, y = Math.sin(a) * d;
+      p.push(E([x, y, r * 0.3], [r, r * 0.85, r * 0.75], "limestone", { k2: 0.04, R: rz(TAU * h(i, 4)) }));
+      p.push(E([x - r * 0.15, y + r * 0.1, r * 0.9], [r * 0.7, r * 0.6, r * 0.22], i % 2 ? "moss2" : "moss", { k2: 0.02 }));
+    }
+    return { prims: p, r: 0.45, h: 0.3, k: 1 };
+  });
+
   CT.volumeDeco = (CT.volumeDeco || []).concat(["fg_pot", "fg_orange", "fg_lantern", "fg_eelgrass", "fg_frond", "fg_lily"]);
   CT.sway = Object.assign(CT.sway || {}, { fg_orange: [0.03, 0.01, 2.0], fg_pot: [0.06, 0.03, 3.4], fg_eelgrass: [0.14, 0.06, 1.3], fg_frond: [0.09, 0.04, 1.1], fg_lily: [0.01, 0.005, 0.6] });
   // the critters' part: the top of fg_lily's middle pad over its tile (a frog sits there), and the minnow
@@ -10063,42 +10288,43 @@ fn boxOf(V: Vox) -> Box {
 
   // ---------------------------------------------------------------- the map
   // Rings round the middle (12, 12), measured as an octagon: the wall (h 2.0), the rim beds (1.5), the outer
-  // walk (1.0; gravel on its east half, its west half grown over), the middle beds (1.0), and the inner walk
-  // (1.0, flush with the beds; flagstones, its south-east quarter grown over), the Heart Tree's paved
-  // round. The rift comes in through the boiler house at the top; the route runs clockwise down the outer
-  // walk's east half and its potting sand, up the south cut, round three quarters of the inner walk over
-  // the bridge, and in along the processional way. The water stands level with its banks: the fountain's
-  // basin is raised to the wall's 2.0 in a limestone kerb and spills down a spout channel (1.5), which
-  // falls into the pond's west reach. The pond rings the Heart Tree's island: water at 0.95 (flood) over
-  // a sand floor at 0.5 grown with water plants, held by the walks round it; the inner walk crosses it on
-  // the bridge and the processional way is its causeway.
-  //   _ outside   # wall   . moss (build tiles)   f fern bed   : gravel   % potting sand
-  //   = flagstone   + studs (the processional way)   ~ water   p the pond's floor (sand, flooded)
+  // walk (1.0; gravel on its east half, its west half grown over), the middle beds (1.0), the shore walk
+  // (1.0, flush with the beds; flagstones, on the pond's west half only), the pond and the Heart Tree's
+  // island in its middle. The rift comes in through the boiler house at the top; the route runs clockwise
+  // down the outer walk's east half and its potting sand, up the south cut, round the shore walk's half (over
+  // the footbridge on the spout), and across the iron footbridge from the north shore to the island. The water
+  // stands level with its banks: the fountain's basin is raised to the wall's 2.0 in a limestone kerb and
+  // spills down a spout channel (1.5), which falls into the pond's west reach. The pond, eight tiles across,
+  // rings the island two tiles wide: water at 0.95 (flood) over a sand floor at 0.5 grown with water plants,
+  // held by the shore walk on the west and by the beds, which run down to it, on the east. The island, moss
+  // at 1.0 with a few rocks, is four tiles across.
+  //   _ outside   # wall   . moss (build tiles)   f fern bed (build tiles)   : gravel   % potting sand
+  //   = flagstone   ~ water   p the pond's floor (sand, flooded)
   CT.maps = CT.maps || {};
   CT.maps.fernglass = {
     v: 1, id: "fernglass", W: 24, H: 24, hStep: 0.5, floor: -3,
     h: [
       "000000044443344440000000", "000000443333333344000000", "000004433333333334400000", "000044332222222233440000",
       "000443322222222223344000", "004433222222222222334400", "044332222222222222233440", "443322222222222222223344",
-      "433222222222222222222334", "433222222221122222222334", "444222222211112222222334", "444422222112222222222334",
-      "444311111112222222222334", "444422222211112222222334", "433222222221122222222334", "433222222222222222222334",
+      "433222222111111222222334", "433222221111111122222334", "444222221112211122222334", "444422221122221122222334",
+      "444311111122221122222334", "444422221112211122222334", "433222221111111122222334", "433222222111111222222334",
       "443322222222222222223344", "044332222222222222233440", "004433222222222222334400", "000443322222222223344000",
       "000044332222222233440000", "000004433333333334400000", "000000443333333344000000", "000000044444444440000000",
     ],
     kind: [
       "_______####::####_______", "______##ff.::...##______", "_____##fff.::....##_____", "____##ff...:::::..##____",
-      "___##ff....::::::..##___", "__##ff.........:::..##__", "_##ff...........:::..##_", "##ff......====...:::..##",
-      "#ff......======...:::..#", "#ff.....===pp===...::..#", "###....===pppp===..::..#", "#~~#...==pp==++++..::..#",
-      "#~~~ppppppp==++++..::..#", "####...===pppp.....::..#", "#ff.....===pp......::..#", "#ff......====.....%%%..#",
-      "##ff......===....%%%..##", "_##ff......::...%%%%.##_", "__##ff.....::..%%%%%##__", "___##ff....:::%%%%%##___",
+      "___##ff....::::::..##___", "__##ff.........:::..##__", "_##ff....====...:::..##_", "##ff....=====....:::..##",
+      "#ff....==pppppp...:::..#", "#ff...==pppppppp...::..#", "###...==ppp..ppp...::..#", "#~~#..==pp....pp...::..#",
+      "#~~~pppppp....pp...::..#", "####..==ppp..ppp...::..#", "#ff...==pppppppp...::..#", "#ff....==pppppp...%%%..#",
+      "##ff....=====....%%%..##", "_##ff....====...%%%%.##_", "__##ff.....::..%%%%%##__", "___##ff....:::%%%%%##___",
       "____##ff...:::%%..##____", "_____##fff.......##_____", "______##ff......##______", "_______##########_______",
     ],
-    legend: { _: null, "#": "wall", ".": "moss", f: "fernbed", ":": "gravel", "%": "pottingsand", "=": "flagstone", "+": "studs", "~": "fernwater", p: "pond" },
+    legend: { _: null, "#": "wall", ".": "moss", f: "fernbed", ":": "gravel", "%": "pottingsand", "=": "flagstone", "~": "fernwater", p: "pond" },
     // the basin round the fountain and its spout along row 12, wide enough to fill their tiles (the pond is
     // flooded whole: it needs no shape)
     water: [{ ellipse: [2.0, 12.0, 1.04, 1.04] }, { seg: [2.0, 12.5, 3.6, 12.5], r: 0.48 }],
     // the pond: its tiles flooded to 0.95 (their tops are at 0.5), with the fountain's water (its look, its bubbles)
-    flood: [{ level: 0.95, water: "fernwater", tiles: [[11, 9], [12, 9], [10, 10], [11, 10], [12, 10], [13, 10], [9, 11], [10, 11], [4, 12], [5, 12], [6, 12], [7, 12], [8, 12], [9, 12], [10, 12], [10, 13], [11, 13], [12, 13], [13, 13], [11, 14], [12, 14]] }],
+    flood: [{ level: 0.95, water: "fernwater", tiles: [[9, 8], [10, 8], [11, 8], [12, 8], [13, 8], [14, 8], [8, 9], [9, 9], [10, 9], [11, 9], [12, 9], [13, 9], [14, 9], [15, 9], [8, 10], [9, 10], [10, 10], [13, 10], [14, 10], [15, 10], [8, 11], [9, 11], [14, 11], [15, 11], [4, 12], [5, 12], [6, 12], [7, 12], [8, 12], [9, 12], [14, 12], [15, 12], [8, 13], [9, 13], [10, 13], [13, 13], [14, 13], [15, 13], [8, 14], [9, 14], [10, 14], [11, 14], [12, 14], [13, 14], [14, 14], [15, 14], [9, 15], [10, 15], [11, 15], [12, 15], [13, 15], [14, 15]] }],
     props: [
       // the eight glass bays on the wall, each with its lantern hung from the front beam
       ["fg_bay", { seed: 1 }, 22, 16, { dx: -0.337, dy: -0.29 }], ["fg_lantern", { seed: 1 }, 21, 15, { dx: -0.143, dy: 0.376 }],
@@ -10109,20 +10335,28 @@ fn boxOf(V: Vox) -> Box {
       ["fg_bay", { seed: 6 }, 7, 1, { dx: 0.29, dy: 0.337, flip: true, rot: 2 }], ["fg_lantern", { seed: 6 }, 8, 2, { dx: -0.376, dy: 0.143 }],
       ["fg_bay", { seed: 7 }, 16, 1, { dx: -0.29, dy: 0.337, rot: 3 }], ["fg_lantern", { seed: 7 }, 15, 2, { dx: 0.376, dy: 0.143 }],
       ["fg_bay", { seed: 8 }, 22, 7, { dx: -0.337, dy: 0.29, flip: true, rot: 3 }], ["fg_lantern", { seed: 8 }, 21, 8, { dx: -0.143, dy: -0.376 }],
-      // the boiler house the creatures come out of, the fountain, the bridge over the pond, the potting shed
+      // the boiler house the creatures come out of, the fountain, the footbridge where the shore walk crosses
+      // the spout's reach, the longer one from the north shore to the island, the potting shed
       ["fg_grate", null, 11, 0, { dx: 0.5, rot: 1 }],
       ["fg_fountain", null, 1, 11, { dx: 0.5, dy: 0.5 }],
-      ["fg_bridge", null, 7, 12, { dx: 0.5, dz: 0.5, rot: 1 }],
+      ["fg_bridge", null, 6, 12, { dx: 0.5, dz: 0.5, rot: 1 }],
+      ["fg_bridge", { span: 1.8 }, 11, 8, { dx: 0.5, dy: 0.5, dz: 0.5, rot: 1 }],
       ["fg_shed", null, 18, 18, { dx: 0.5, dy: 0.5 }],
+      // the island's rocks, under the Heart Tree's crown (no build tile lost)
+      ["fg_rocks", { seed: 1, n: 3 }, 13, 12, { dx: 0.1, dy: 0.15 }], ["fg_rocks", { seed: 2, n: 2 }, 11, 13, { dx: -0.1, dy: 0.1 }],
       // the pond: moss cushions and pebbles on its floor, tape grass and hornwort or cabomba under the water
-      // (swaying with it), lily pads on its surface; none under the bridge
-      ["fg_pondstones", { seed: 5 }, 4, 12], ["fg_eelgrass", { seed: 8, n: 7 }, 5, 12, { dy: 0.1 }], ["fg_pondstones", { seed: 1 }, 10, 12], ["fg_pondstones", { seed: 2 }, 13, 13], ["fg_pondstones", { seed: 3 }, 11, 14], ["fg_pondstones", { seed: 4 }, 12, 9, { dx: 0.2, dy: -0.15 }],
-      ["fg_eelgrass", { seed: 1 }, 11, 9, { dx: 0.1, dy: 0.15 }], ["fg_eelgrass", { seed: 2 }, 10, 10, { dx: -0.1 }], ["fg_eelgrass", { seed: 3, n: 8 }, 6, 12, { dx: 0.1 }],
-      ["fg_eelgrass", { seed: 4 }, 9, 12], ["fg_eelgrass", { seed: 5 }, 11, 13, { dy: 0.1 }], ["fg_eelgrass", { seed: 6 }, 12, 14, { dx: 0.1, dy: -0.1 }],
-      ["fg_eelgrass", { seed: 7, n: 9 }, 13, 10, { dx: 0.1 }],
-      ["fg_frond", { seed: 1, type: "cabomba" }, 12, 9], ["fg_frond", { seed: 2, type: "hornwort" }, 11, 10, { dx: 0.15 }], ["fg_frond", { seed: 3, type: "hornwort" }, 10, 13, { dy: 0.1 }],
-      ["fg_frond", { seed: 4, type: "cabomba" }, 10, 11, { dx: -0.1, dy: 0.1 }],
-      ["fg_lily", { seed: 1, flower: true }, 12, 10, { dx: 0.15, dy: 0.05 }], ["fg_lily", { seed: 2, n: 4 }, 9, 11, { dx: -0.1 }], ["fg_lily", { seed: 3, flower: true }, 12, 13, { dx: 0.1, dy: 0.15 }],
+      // (swaying with it), lily pads on its surface; none under the bridges
+      ["fg_pondstones", { seed: 5 }, 4, 12], ["fg_pondstones", { seed: 1 }, 9, 9], ["fg_pondstones", { seed: 2 }, 15, 9, { dx: -0.15 }], ["fg_pondstones", { seed: 3 }, 8, 11],
+      ["fg_pondstones", { seed: 4 }, 13, 15, { dy: -0.15 }], ["fg_pondstones", { seed: 6 }, 9, 14], ["fg_pondstones", { seed: 7 }, 15, 12, { dx: -0.15 }],
+      ["fg_eelgrass", { seed: 8, n: 7 }, 5, 12, { dy: 0.1 }], ["fg_eelgrass", { seed: 1 }, 10, 8, { dy: 0.15 }], ["fg_eelgrass", { seed: 2 }, 14, 8, { dx: -0.1, dy: 0.15 }],
+      ["fg_eelgrass", { seed: 3, n: 8 }, 8, 9, { dx: 0.1 }], ["fg_eelgrass", { seed: 4 }, 15, 11, { dx: -0.1 }], ["fg_eelgrass", { seed: 5, n: 8 }, 8, 12, { dx: 0.1 }],
+      ["fg_eelgrass", { seed: 6 }, 9, 15, { dy: -0.1 }], ["fg_eelgrass", { seed: 7, n: 9 }, 13, 14], ["fg_eelgrass", { seed: 9 }, 10, 13, { dx: -0.1, dy: 0.1 }],
+      ["fg_eelgrass", { seed: 10 }, 15, 14, { dx: -0.1, dy: -0.1 }], ["fg_eelgrass", { seed: 11, n: 7 }, 14, 10], ["fg_eelgrass", { seed: 12 }, 8, 14, { dx: 0.1 }],
+      ["fg_frond", { seed: 1, type: "cabomba" }, 13, 8], ["fg_frond", { seed: 2, type: "hornwort" }, 9, 10, { dx: 0.1 }], ["fg_frond", { seed: 3, type: "hornwort" }, 14, 13, { dy: 0.1 }],
+      ["fg_frond", { seed: 4, type: "cabomba" }, 11, 15, { dy: -0.1 }], ["fg_frond", { seed: 5, type: "cabomba" }, 8, 13, { dx: 0.1 }], ["fg_frond", { seed: 6, type: "hornwort" }, 15, 10, { dx: -0.1 }],
+      ["fg_lily", { seed: 1, flower: true }, 10, 9, { dx: 0.15, dy: 0.05 }], ["fg_lily", { seed: 2, n: 4 }, 14, 9, { dx: -0.1 }], ["fg_lily", { seed: 3, flower: true }, 9, 11, { dx: 0.1, dy: 0.15 }],
+      ["fg_lily", { seed: 4, n: 4 }, 14, 12, { dy: 0.1 }], ["fg_lily", { seed: 5, flower: true }, 12, 14, { dx: 0.1 }], ["fg_lily", { seed: 6 }, 13, 10, { dx: 0.1, dy: -0.05 }],
+      ["fg_lily", { seed: 7, n: 4 }, 10, 15, { dy: -0.1 }],
       // terracotta pots by the outer walk, orange trees in tubs along the west avenue
       ["fg_pot", { seed: 1, plant: "fern" }, 17, 3], ["fg_pot", { seed: 2, plant: "geranium" }, 19, 5], ["fg_pot", { seed: 3, plant: "fern" }, 21, 9],
       ["fg_pot", { seed: 4, plant: "agave" }, 21, 11], ["fg_pot", { seed: 5, plant: "geranium" }, 21, 14], ["fg_pot", { seed: 6, plant: "fern" }, 13, 21],
@@ -10159,10 +10393,11 @@ fn boxOf(V: Vox) -> Box {
     box: { o: [-1, -1, -2.5], size: [26, 26, 10] },
     // The rules' data (the engine never reads it): the route as one polyline of tile corners (cells), the
     // rift's point and the Heart Tree's centre in tiles, the kinds that are walks, the kinds that are build
-    // tiles (the pond is not), and the wet cells the route crosses on the bridge (dry for the creatures)
+    // tiles (the pond is not), and the wet cells the route crosses on the bridges (dry for the creatures)
     game: {
-      route: [[[12, 0], [12, 4], [15, 4], [15, 5], [16, 5], [16, 6], [17, 6], [17, 7], [18, 7], [18, 8], [19, 8], [19, 15], [18, 15], [18, 16], [17, 16], [17, 17], [16, 17], [16, 18], [15, 18], [15, 19], [12, 19], [12, 15], [10, 15], [10, 14], [9, 14], [9, 13], [8, 13], [8, 10], [9, 10], [9, 9], [10, 9], [10, 8], [13, 8], [13, 9], [14, 9], [14, 10], [15, 10], [15, 11], [13, 11]]],
-      spawn: [12.0, 0.6], heart: [12, 12], lane: ["gravel", "flagstone", "studs", "pottingsand"], build: ["moss"], bridges: [[7, 12], [8, 12]],
+      route: [[[12, 0], [12, 4], [15, 4], [15, 5], [16, 5], [16, 6], [17, 6], [17, 7], [18, 7], [18, 8], [19, 8], [19, 15], [18, 15], [18, 16], [17, 16], [17, 17], [16, 17], [16, 18], [15, 18], [15, 19], [12, 19], [12, 16], [8, 16], [8, 15], [7, 15], [7, 8], [8, 8], [8, 7], [12, 7], [12, 10]]],
+      spawn: [12.0, 0.6], heart: [12, 12], lane: ["gravel", "flagstone", "pottingsand"], build: ["moss", "fernbed"],
+      bridges: [[6, 12], [7, 12], [11, 8], [12, 8], [11, 9], [12, 9]],
     },
   };
 
@@ -10828,7 +11063,8 @@ fn boxOf(V: Vox) -> Box {
     M[name] = (o) => { const md = fn(o || {}); md.k = k * (md.kMul || 1); return md; };
     ME.VOLUME_DECO.add(name);
     if (frames > 1) ME.FRAMES[name] = frames;
-    ME.ASSET_SRC += name + k + String(fn);
+    (ME.ASSET_BY = ME.ASSET_BY || {})[name] = name + k + String(fn); // by name: a bake keys only the models it reads (src/cache.js)
+    ME.ASSET_SRC += ME.ASSET_BY[name];
   };
 
   // ---------------------------------------------------------------- showroom
@@ -11708,10 +11944,14 @@ function MA_DSP() {
   }
 
   class Mixer {
-    constructor() {
+    // o.latencyHint: the AudioContext's ("interactive", the default; "balanced" or "playback" buffer more,
+    // which rides out a busy CPU better)
+    constructor(o = {}) {
       const AC = window.AudioContext || window.webkitAudioContext;
-      this.ctx = new AC({ latencyHint: "interactive" });
+      this.latencyHint = o.latencyHint ?? "interactive"; this.ctx = new AC({ latencyHint: this.latencyHint });
       this.samples = {}; this.banks = []; this.ready = false; this.renderMs = 0; this.worker = "none";
+      // metering: the voices sounding now and the most at once since the last resetMeter()
+      this.live = 0; this.livePeak = 0;
       this.bus = {};
       const c = this.ctx, limiter = c.createDynamicsCompressor();
       limiter.threshold.value = -6; limiter.knee.value = 0; limiter.ratio.value = 20; limiter.attack.value = 0.001; limiter.release.value = 0.12;
@@ -11762,11 +12002,27 @@ function MA_DSP() {
       if (pan !== null) { const p = c.createStereoPanner(); p.pan.value = pan; g.connect(p); tail = p; }
       src.connect(g); tail.connect(this.bus[bus]);
       const v = { src, g, p: pan !== null ? tail : null, name, rate, at: Math.max(c.currentTime, when), done: false };
-      src.onended = () => { v.done = true; src.disconnect(); g.disconnect(); if (v.p) v.p.disconnect(); };
+      src.onended = () => { v.done = true; this.live--; src.disconnect(); g.disconnect(); if (v.p) v.p.disconnect(); };
       src.start(v.at, offset);
+      this.live++; if (this.live > this.livePeak) this.livePeak = this.live;
       return v;
     }
-    stop(v, when = 0) { if (v && !v.done) { try { v.src.stop(Math.max(when, this.ctx.currentTime)); } catch (e) { /* already stopped */ } } }
+    // Stops a voice at ctx time `when` (0 = now), fading it out with time constant `fade` s first (gone in
+    // about 6 x fade): a voice cut at full gain clicks (a steal, a silenced deck). fade 0: a hard stop.
+    // The fade starts from the gain the voice has now, even for a later `when` (every caller's voices hold a
+    // steady gain; a loop under Spatial.update's automation fades from its current level). Stopping a voice
+    // twice starts its fade again from there: harmless.
+    stop(v, when = 0, fade = 0.006) {
+      if (!v || v.done) return;
+      const t = Math.max(when, this.ctx.currentTime);
+      try {
+        if (fade > 0) { const g = v.g.gain; g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.setTargetAtTime(0, t, fade); }
+        v.src.stop(t + fade * 6);
+      } catch (e) { /* already stopped */ }
+    }
+    resetMeter() { this.livePeak = this.live; }
+    // the context's latency in s (base: its own buffering; output: the device's, where the browser reports it)
+    latency() { return { hint: this.latencyHint, base: this.ctx.baseLatency ?? null, output: this.ctx.outputLatency ?? null }; }
     // browsers start audio suspended until the user touches the page
     resume() { if (this.ctx.state !== "running") this.ctx.resume().catch(() => {}); }
     setMuted(muted) { this.master.gain.setTargetAtTime(muted ? 0 : 1, this.ctx.currentTime, 0.05); }
@@ -11829,6 +12085,7 @@ function MA_DSP() {
       this.mixer = mixer; this.instruments = instruments; this.pools = pools;
       this.stepsPerBar = opts.stepsPerBar ?? 16; this.lookahead = opts.lookahead ?? 0.12;
       this.voices = {}; for (const b in pools) this.voices[b] = [];
+      this.stolen = 0; // voices that gave way to a new note (metering)
       this.ready = false; this.bpm = 72; this.clock = 0; this.nextStep = 0; this.step = 0; this.bar = 0; this.rate = 1; this.played = 0;
       this.onStep = null; this.onBarEnd = null;
     }
@@ -11849,7 +12106,7 @@ function MA_DSP() {
       const when = m.ctx.currentTime + Math.max(0, at - this.clock);
       const pool = this.voices[bus];
       for (let k = pool.length - 1; k >= 0; k--) if (pool[k].done) pool.splice(k, 1);
-      if (pool.length >= this.pools[bus]) m.stop(pool.shift(), when);
+      if (pool.length >= this.pools[bus]) { m.stop(pool.shift(), when); this.stolen++; } // faded out, not cut
       const v = m.voice(name, bus, db, pitch * this.rate, when);
       if (v) { v.pitch = pitch; pool.push(v); this.played++; }
     }
@@ -11881,7 +12138,8 @@ function MA_DSP() {
    lands on screen and quieter the further it is from the middle of the view (a touch louder zoomed in).
    listen() takes the camera's view-projection matrix (column-major 4x4) every frame.
    One-shots go through a mix table, name (without a "_N" take suffix) -> [dB, pitch spread, minimum ms
-   between plays], and a voice pool whose oldest unprotected voice gives way. */
+   between plays], and a voice pool whose oldest unprotected voice gives way, faded out (mixer.stop), not cut.
+   Metering: played, stolen (voices that gave way) and active (voices sounding in the pool). */
 (function () {
   const MA = window.MA;
   const smooth = (e0, e1, x) => { const s = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return s * s * (3 - 2 * s); };
@@ -11891,7 +12149,7 @@ function MA_DSP() {
     // o: { bus, mix, protect: Set of names never cut off, voices }
     constructor(mixer, o) {
       this.mixer = mixer; this.bus = o.bus; this.mix = o.mix; this.protect = o.protect || new Set(); this.maxVoices = o.voices ?? 40;
-      this.voices = []; this.last = {}; this.loops = []; this.vp = null; this.zoom = 1; this.aspect = 1; this.played = 0;
+      this.voices = []; this.last = {}; this.loops = []; this.vp = null; this.zoom = 1; this.aspect = 1; this.played = 0; this.stolen = 0;
     }
     // vp: view-projection matrix; zoom: 1 at the default framing; aspect: view height / width
     listen(vp, zoom, aspect) { this.vp = vp; this.zoom = zoom; this.aspect = aspect; }
@@ -11912,11 +12170,12 @@ function MA_DSP() {
       if (this.voices.length >= this.maxVoices) {
         const k = this.voices.findIndex((v) => !this.protect.has(v.name));
         if (k < 0) return;
-        this.mixer.stop(this.voices.splice(k, 1)[0]);
+        this.mixer.stop(this.voices.splice(k, 1)[0]); this.stolen++;
       }
       const v = this.mixer.voice(sound, this.bus, mix[0] + db + this.gainDb(p), pitch * (1 + (Math.random() * 2 - 1) * mix[1]), 0, this.pan(p));
       if (v) { this.voices.push(v); this.played++; }
     }
+    get active() { let n = 0; for (const v of this.voices) if (!v.done) n++; return n; }
     // a looping sound held at a world point on `bus`, starting at a random offset
     loop(name, p, db, bus) {
       const v = this.mixer.voice(name, bus, db + this.gainDb(p), 1, 0, this.pan(p), true, Math.random() * 3);
@@ -11941,7 +12200,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "1d61c68" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "9538437" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -12273,7 +12532,9 @@ function MA_DSP() {
   // the garden played (main.js): each keeps its own best wave and saved run (core/save.js), under the
   // plain keys for Momiji Valley and with ".<level id>" after them for the others
   S.level = "momiji";
-  S.levelKey = (key) => (S.level === "momiji" ? key : key + "." + S.level);
+  S.levelKey = (key, level = S.level) => (level === "momiji" ? key : key + "." + level);
+  // the best wave reached in any garden (the level selection screen shows each), without switching to it
+  S.bestOf = (level) => { try { return parseInt(localStorage.getItem(S.levelKey(SAVE_KEY, level)) || "0", 10) || 0; } catch (e) { return 0; /* storage blocked */ } };
   S.setLevel = (id) => {
     S.level = id;
     try { S.best = parseInt(localStorage.getItem(S.levelKey(SAVE_KEY)) || "0", 10) || 0; } catch (e) { S.best = 0; /* storage blocked */ }
@@ -13323,7 +13584,7 @@ function MA_DSP() {
    than Momiji Valley: S.levelKey) as plain data, so a reload picks it up.
    A run is saved only at rest, in the build phase and while the garden's gifts are on offer. A reload
    during a wave goes back to the build phase before it. A game over clears the save.
-     G.Save.capture(game) -> data, or null mid-wave        G.Save.read() / write(data) / clear()
+     G.Save.capture(game) -> data, or null mid-wave        G.Save.read(level?) / write(data) / clear()
      G.Save.fits(game, data) -> whether data belongs on this level and this version of the rules
      G.Save.restore(game, data) -> true if restored: a fresh Game takes on the saved run (state, plants,
        blight, stats, the gifts on offer) and the usual state events go out, then "restored"
@@ -13368,7 +13629,7 @@ function MA_DSP() {
         stats: JSON.parse(JSON.stringify(game.stats)), time: +game.time.toFixed(2),
       };
     },
-    read() { try { const d = migrate(JSON.parse(localStorage.getItem(S.levelKey(KEY)) || "null")); return d && d.v === VERSION ? d : null; } catch (e) { return null; } },
+    read(level = S.level) { try { const d = migrate(JSON.parse(localStorage.getItem(S.levelKey(KEY, level)) || "null")); return d && d.v === VERSION ? d : null; } catch (e) { return null; } },
     migrate,
     write(d) { try { localStorage.setItem(S.levelKey(KEY), JSON.stringify(d)); } catch (e) { /* storage blocked or full */ } },
     clear() { try { localStorage.removeItem(S.levelKey(KEY)); } catch (e) { /* storage blocked */ } },
@@ -13614,7 +13875,8 @@ function MA_DSP() {
 </script>
 <script>/* src/art/boons.js */
 /* Boon art and the UI kit's icons. The look of every gift of the garden (Defs.BOONS) in play and on its card,
-   for the hook in view/boonfx.js, then the plant, element and creature icons and the links' looks (below).
+   for the hook in view/boonfx.js, then the plant, element, creature and wave-trait icons and the links' looks
+   (below).
    G.BOON_ART[id] = { color, icon, levels }:
      color   the boon's own colour, [r, g, b] in 0..1. Its particles glow in it, and the card inks its
              icon, level and pips in it (hud.js darkens it to a readable ink on the paper).
@@ -13805,6 +14067,19 @@ function MA_DSP() {
     mother: svg(`<path d="M3 20.5C3 12 7 8.5 12 8.5C17 8.5 21 12 21 20.5Z" ${W}/><path d="M7 8.8L7.6 3.5L10 6.6L12 2.5L14 6.6L16.4 3.5L17 8.8"/><path d="M9.4 13.4h.01M14.6 13.4h.01" stroke-width="2.6"/><path d="M9.5 17.2C11 18.2 13 18.2 14.5 17.2"/><circle cx="2.6" cy="11" r="1" ${S}/><circle cx="21.4" cy="11" r="1" ${S}/>`),
   };
 
+  // --- a wave's trait (Defs.TRAITS), for the forecast and the almanac: G.TRAIT_ART[id] = { color, icon }, the
+  // colour as a boon's (the HUD darkens it to ink). The four resistances echo the element they shrug off.
+  const TRAIT = {
+    shelled: [[0.62, 0.48, 0.32], `<path d="M4 17.5C4 10 7.6 5.5 12 5.5C16.4 5.5 20 10 20 17.5Z" ${W}/><path d="M12 5.5V17.5M7.4 7.6L8.6 17.5M16.6 7.6L15.4 17.5M2.5 20H21.5"/>`],
+    shadowed: [[0.45, 0.4, 0.62], `<circle cx="12" cy="12" r="6.4" ${W}/><path d="M12 5.6A6.4 6.4 0 0 0 12 18.4Z" ${S}/><g opacity=".55">${rays(8, 8.6, 10.6)}</g>`],
+    mouldering: [[0.52, 0.6, 0.3], `<path d="M5 18.5C3.4 14.5 6 11 9 11.4C9.6 7.8 14 6.8 15.8 9.8C19 9.4 21 12.8 19.6 15.6C20 18.2 17.4 19.8 15 18.8C12.5 20.4 8 20.4 5 18.5Z" ${W}/><path d="M8.4 11.2L7.2 8.4M12.2 8.6V5.6M16.4 9.6L18 7.2M19.4 14L22 13"/><circle cx="7" cy="6.6" r=".8" ${S}/><circle cx="18.6" cy="5" r=".8" ${S}/>`],
+    hollow: [[0.7, 0.68, 0.6], `<circle cx="12" cy="12" r="8.4" stroke-dasharray="2.4 2.2"/><circle cx="12" cy="12" r="3.4" ${W}/><path d="M12 8.6V3.6M12 20.4V15.4" opacity=".5"/>`],
+    swift: [[0.3, 0.72, 0.68], `<path d="M2.5 8H10M1.8 12H8.4M2.5 16H10"/><path d="M12.5 5.5L19.5 12L12.5 18.5Q15 12 12.5 5.5Z" ${W}/>`],
+    bloated: [[0.78, 0.44, 0.5], `<circle cx="12" cy="12" r="6" ${W}/><circle cx="10" cy="10.2" r="1.2" ${S}/><path d="M10.4 3.4L12 1.9L13.6 3.4M10.4 20.6L12 22.1L13.6 20.6M3.4 10.4L1.9 12L3.4 13.6M20.6 10.4L22.1 12L20.6 13.6"/>`],
+  };
+  G.TRAIT_ART = {};
+  for (const id in TRAIT) G.TRAIT_ART[id] = { color: TRAIT[id][0], icon: svg(TRAIT[id][1]) };
+
   // --- the links between neighbouring plants (Defs.LINKS, game/links), read by the view as G.LINK_ART[id]:
   // { color: the vine, color2: the motes running along it, width, motes per direction, mote, icon }. The
   // vine takes a colour between the two plants', leaning to what the pair does (embers, prisms, rot,
@@ -13834,6 +14109,38 @@ function MA_DSP() {
   };
   G.LINK_ART = {};
   for (const id in LINK) { const [[a, b], color, color2, width, motes, mote] = LINK[id]; G.LINK_ART[id] = { color, color2, width, motes, mote, icon: pair(a, b) }; }
+})();
+
+</script>
+<script>/* src/art/turntable.js */
+/* The look of the gardens' miniatures on the level selection screen: each garden in its jar, turning
+   slowly on its card. Game's tools/turntable.ps1 captures the frames ahead of time from this data and
+   writes each garden's sprite sheet to src/art/turntable/<id>.js (MG.TURNTABLE[id]); the menu plays it.
+   G.TURNTABLE_LOOK:
+     frames   frames in one full turn, the sheet's cells in reading order
+     size     one frame, [w, h] in pixels (4:3; a card is about 170 css px wide on a phone, so a 2x screen
+              gets close to one pixel per pixel)
+     turnS    seconds for a full turn. At 48 frames that is 2 frames a second, so the menu cross-fades each
+              frame into the next (a second layer one frame ahead, its opacity 0 to 1 over each step): the
+              jar turns smoothly instead of ticking
+     vs, preset, weather   the bake's voxel size, the look preset and the weather
+     still    the capture holds the world still and turns only the camera: time pinned (the frozen shot),
+              particles off, critters hidden, no creatures, the Heart Tree unhurt. Ripples, sway, fireflies
+              or a minnow would jump from frame to frame and at the loop's seam
+     fill     how much of the frame's width the jar takes, dome included, at its widest; both gardens the
+              same, so the cards match
+     levels   per garden: yaw0, the first frame's camera turn (theta, radians; 0 is the view the game opens
+              on, so the card's still frame, with reduced motion, is the garden as the player meets it),
+              pan (tiles, from the jar's middle), and blurb, the card's line about the garden */
+(function () {
+  const G = window.MG;
+  G.TURNTABLE_LOOK = {
+    frames: 48, size: [256, 192], turnS: 24, vs: 16, preset: "cosy", weather: "clear", still: true, fill: 0.88,
+    levels: {
+      momiji: { yaw0: 0, pan: [0, 0], blurb: "Maples and waterfalls down an autumn valley to the Heart Tree." },
+      fernglass: { yaw0: 0, pan: [0, 0], blurb: "A Victorian fernery under glass, round a lily pond." },
+    },
+  };
 })();
 
 </script>
@@ -14892,7 +15199,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.creatureFx = new G.CreatureFx(this); // the deeper creatures' looks (creaturefx.js)
       this.game = null; this.anim = new Map();
       this.heartKick = 0; this.heartStatic = null; this.heartFrames = null; this.heartStage = 0;
-      this.dusk = 0; this.bossWave = false; this.pinDusk = ME.params.has("dusk") ? ME.qn("dusk", 0) : null;
+      this.dusk = 0; this.zoomIn = 1; this.closeFade = ME.qn("closeup", 1); this.bossWave = false; this.pinDusk = ME.params.has("dusk") ? ME.qn("dusk", 0) : null;
       this.vox = new Map(); // model index -> sampled voxels [x, y, z, mat, ...] (voxelsOf)
       this.selected = null; this.seed = ""; this.hover = null;
       this.hoverOk = true; this.ringCol = [1, 0.95, 0.7];
@@ -15186,7 +15493,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (n === 1) { const s = Math.sin(ph * Math.PI * 2); pitch = s * 0.07; bob = Math.abs(s) * 0.035; }
         const f = cm.frames[Math.floor((((ph % 1) + 1) % 1) * n) % n], fl = E.flash[k], sq = fl * 0.1, s = cm.scale;
         const yaw = E.yaw[k] - cm.fwd + (n === 1 ? Math.sin(ph * Math.PI * 2) * 0.08 : 0);
-        sim.put(i++, f, E.px[k], E.py[k], E.pz[k] + bob, yaw, false, [s * (1 + sq), s * (1 + sq), s * (1 - sq)], [0, 0], 1, pitch, this.marks(E, k), fl);
+        sim.put(i++, f, E.px[k], E.py[k], E.pz[k] + bob, yaw, false, [s * (1 + sq), s * (1 + sq), s * (1 - sq)], [0, 0], 1, pitch, this.marks(E, k), fl * (G.flashK ?? 1));
         sim.avoid(E.px[k], E.py[k]);
       }
       return i;
@@ -15260,6 +15567,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       s.haze = base.haze + 0.035 * m;
       s.dusk = d;
       if (this.atmos) this.atmos.apply(s); // the mood's sun and the weather on top (view/atmos.js)
+      // zoomed in, the jar's look fades out so the garden shows its true colours (the user, 2026-10-24): the
+      // glass, the screen's haze wash and vignette go, bloom and shafts ease to half, at any mood. zoomIn is
+      // the zoom over the default framing's (main.js): full look up to 1.2x, none from 4x
+      const u = Math.min(1, Math.max(0, (this.zoomIn - 1.2) / 2.8)), close = u * u * (3 - 2 * u) * this.closeFade; // (?closeup=0: no fade)
+      if (close > 0) {
+        s.glassK *= 1 - close; s.haze *= 1 - close; s.vignette *= 1 - close;
+        s.bloomK *= 1 - 0.5 * close; s.shaftK *= 1 - 0.5 * close;
+      }
     }
     // everything the renderer needs this frame
     draw(barPx) { this.flushField(); this.mood(); this.overlays(); this.writeSprites(barPx); }
@@ -15527,7 +15842,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
    it resists. Seed cards mark the plants that counter the coming creatures, or that they shrug off.
    The almanac folds to a small tab (its state kept on the device, "mossheart.hud"); the gifts in play
    show as chips under the readouts (a tap tells what one does); the camera's turn buttons and the sky
-   button (mood and weather, view/atmos.js) sit on the right. */
+   button (mood and weather, view/atmos.js) sit on the right. The UI kit's icons (src/art/boons.js) mark the
+   plants, the creatures, the elements and the wave traits; until one is in, a dot or a glyph stands in. */
 (function () {
   const G = window.MG, D = G.Defs, S = G.state;
   const $ = (id) => document.getElementById(id);
@@ -15539,6 +15855,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // a boon's colour as ink on the paper cards: pale ones (the prism's white) darkened until they read
   const HUD_KEY = "mossheart.hud";
   const ink = (c) => { const l = 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2], k = Math.min(1, 0.6 / Math.max(l, 1e-3)); return hex(c.map((v) => Math.min(1, v) * k)); };
+  // an icon of the UI kit (src/art/boons.js: G.PLANT_ICONS, ENEMY_ICONS, ELEMENT_ICONS), or "" until it is in
+  const icon = (table, key) => (G[table] && G[table][key]) || "";
+  // a phone-sized screen (game.css's 760 px layout), where the inspector and the open almanac overlap
+  const NARROW = window.matchMedia("(max-width: 760px)");
 
   class Hud {
     constructor(game, actions) {
@@ -15549,7 +15869,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       for (const kind of D.TOWER_ORDER) {
         const def = D.TOWERS[kind], b = document.createElement("button");
         b.className = "seed"; b.style.setProperty("--acc", hex(def.color.map((v) => v * 0.75)));
-        b.innerHTML = `<span class="dot" style="background:${hex(def.color)}"></span><b>${def.name}</b><span class="el">${D.ELEMENT_NAMES[D.elementOf(kind)]}</span><span class="cost"></span><span class="tag"></span>`;
+        b.innerHTML = `${icon("PLANT_ICONS", kind) ? `<span class="picon" style="color:${ink(def.color)}">${icon("PLANT_ICONS", kind)}</span>` : `<span class="dot" style="background:${hex(def.color)}"></span>`}<b>${def.name}</b><span class="el">${D.ELEMENT_NAMES[D.elementOf(kind)]}</span><span class="cost"></span><span class="tag"></span>`;
         b.title = def.desc;
         b.addEventListener("click", () => { this.selected = this.selected === kind ? "" : kind; this.act.seed(this.selected); this.refresh(); });
         seeds.appendChild(b); this.cards[kind] = b;
@@ -15561,10 +15881,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       try { this.almOpen = !!JSON.parse(localStorage.getItem(HUD_KEY) || "{}").almanac; } catch (e) { this.almOpen = false; }
       this.almSummary = "";
       $("almtog").addEventListener("click", () => {
+        // (folded only for the inspector: a tap opens it over the inspector, as asked)
+        if (this.almFolded()) { this.almOver = true; this.showAlmanac(); return; }
         this.almOpen = !this.almOpen; this.showAlmanac();
         try { localStorage.setItem(HUD_KEY, JSON.stringify({ almanac: this.almOpen })); } catch (e) { /* storage blocked */ }
       });
       this.showAlmanac();
+      NARROW.addEventListener("change", () => this.showAlmanac());
       $("turnl").addEventListener("click", () => this.act.turn(-1));
       $("turnr").addEventListener("click", () => this.act.turn(1));
       $("skybtn").addEventListener("click", () => this.act.sky());
@@ -15581,11 +15904,15 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.refresh();
     }
     clearSeed() { this.selected = ""; this.refresh(); }
+    // On a phone the open almanac folds while a plant is inspected (the two would overlap) and opens again
+    // when the inspector closes; the player's choice (almOpen, kept on the device) stays as it was.
+    almFolded() { return this.almOpen && !this.almOver && NARROW.matches && $("inspector").classList.contains("show"); }
     showAlmanac() {
-      $("almbody").classList.toggle("hide", !this.almOpen);
-      $("almanac").classList.toggle("closed", !this.almOpen);
-      document.body.classList.toggle("alm-open", this.almOpen); // (phones: the open almanac stands in for the chips)
-      $("almtog").textContent = this.almOpen ? "Almanac ▾" : `Almanac${this.almSummary ? " · " + this.almSummary : ""} ▸`;
+      const open = this.almOpen && !this.almFolded();
+      $("almbody").classList.toggle("hide", !open);
+      $("almanac").classList.toggle("closed", !open);
+      document.body.classList.toggle("alm-open", open); // (phones: the open almanac stands in for the chips)
+      $("almtog").textContent = open ? "Almanac ▾" : `Almanac${this.almSummary ? " · " + this.almSummary : ""} ▸`;
     }
     // the gifts in play, as chips: the boon's icon (Art's, or its glyph) and level, framed by rarity
     boonBar() {
@@ -15594,7 +15921,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.boonKey = key;
       $("boonbar").innerHTML = owned.map((b) => {
         const lv = Math.min(b.levels.length, S.boonLevel(b.id));
-        return `<button class="bchip r-${b.needs ? "fused" : b.rarity}" data-boon="${b.id}" style="--bc:${ink(G.boonLook(b.id).color)}" title="${esc(b.name)}"><span class="bicon">${G.boonIcon(b.id) || GLYPH[b.el] || "❀"}</span>${b.levels.length > 1 ? `<em>${ROMAN[lv]}</em>` : ""}</button>`;
+        return `<button class="bchip r-${b.needs ? "fused" : b.rarity}" data-boon="${b.id}" style="--bc:${ink(G.boonLook(b.id).color)}" title="${esc(b.name)}"><span class="bicon">${G.boonIcon(b.id) || icon("PLANT_ICONS", b.el) || GLYPH[b.el] || "❀"}</span>${b.levels.length > 1 ? `<em>${ROMAN[lv]}</em>` : ""}</button>`;
       }).join("");
       if (this.tipFor && !S.boonLevel(this.tipFor)) this.boonTip("");
     }
@@ -15621,7 +15948,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         el.className = "boon r-" + b.rarity;
         el.style.setProperty("--bc", ink(look.color));
         const rar = b.needs ? `Fused · ${this.recipe(b)}` : `${D.RARITY[b.rarity].name}${lv > 1 ? " · grows to " + ROMAN[lv] : ""}`;
-        el.innerHTML = `<span class="bicon">${G.boonIcon(b.id) || GLYPH[b.el] || "❀"}</span><b>${esc(b.name)}${top > 1 ? ` <em>${ROMAN[lv]}</em>` : ""}</b>` +
+        el.innerHTML = `<span class="bicon">${G.boonIcon(b.id) || icon("PLANT_ICONS", b.el) || GLYPH[b.el] || "❀"}</span><b>${esc(b.name)}${top > 1 ? ` <em>${ROMAN[lv]}</em>` : ""}</b>` +
           `<span class="rar">${rar}</span><span>${esc(b.levels[lv - 1].desc)}</span>${pips ? `<span class="pips">${pips}</span>` : ""}${b.needs ? "" : this.hints(b)}`;
         el.addEventListener("click", () => { $("boons").classList.remove("show"); choose(b); });
         row.appendChild(el);
@@ -15636,9 +15963,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
     inspect(t) {
       const box = $("inspector");
-      if (!t) { box.classList.remove("show"); return; }
+      if (!t) { box.classList.remove("show"); this.almOver = false; this.showAlmanac(); return; }
       const def = D.TOWERS[t.kind];
-      $("insptitle").textContent = `${def.name}  ·  Lv ${t.level}`;
+      const pic = icon("PLANT_ICONS", t.kind);
+      $("insptitle").innerHTML = `${pic ? `<span class="picon" style="color:${ink(def.color)}">${pic}</span>` : ""}${esc(def.name)}  ·  Lv ${t.level}`;
       // what it does at its level, and what growing it would change
       const now = def.levels.slice(0, t.level).map((s, k) => `<span class="lvl">${ROMAN[k + 1]}</span> ${esc(s)}`).join("<br>");
       const next = t.level < D.MAX_LEVEL ? `<br><span class="dim"><span class="lvl">${ROMAN[t.level + 1]}</span> ${esc(def.levels[t.level])}</span>` : "";
@@ -15656,6 +15984,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       else { grow.textContent = `Grow  (${t.upgradeCost()} dew)`; grow.disabled = !S.canAfford(t.upgradeCost()); }
       $("uproot").textContent = `Uproot  (+${t.sellValue()} dew)`;
       box.classList.add("show");
+      this.showAlmanac();
     }
 
     // Two waves' plans: `first` is the running wave (with `left` its creatures still to come or on the
@@ -15702,16 +16031,22 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
       return out.slice(0, 2).join("");
     }
+    // a wave trait's icon in its colour (G.TRAIT_ART; as it is, like the creatures': the almanac is dark), or
+    // the dot it had before
+    traitIcon(wt) {
+      const a = G.TRAIT_ART && G.TRAIT_ART[wt.id];
+      return a ? `<span class="ti" style="color:${hex(a.color)}">${a.icon}</span>` : "· ";
+    }
     waveHtml(p, tag, left) {
       const wt = p.trait;
-      let t = `<div class="wv"><b class="wn">Wave ${p.wave}</b> <span class="wt">${tag}</span>${wt ? ` <span class="tr">· ${esc(wt.name)}</span>` : ""}${p.boss ? ` <span class="tr">· boss</span>` : ""}</div>`;
+      let t = `<div class="wv"><b class="wn">Wave ${p.wave}</b> <span class="wt">${tag}</span>${wt ? ` <span class="tr">${this.traitIcon(wt)}${esc(wt.name)}</span>` : ""}${p.boss ? ` <span class="tr">· boss</span>` : ""}</div>`;
       for (const g of p.groups) {
         const e = D.ENEMIES[g.kind], count = left ? left[g.kind] || 0 : g.count, aff = D.affinity(g.kind, wt), weak = [], resist = [];
         D.ELEMENTS.forEach((_, el) => {
-          const tw = D.TOWERS[D.ELEMENT_TOWER[el]], chip = `<span style="color:${hex(tw.color)}">${D.ELEMENT_NAMES[el]} ×${aff[el].toFixed(1)}</span>`;
+          const tw = D.TOWERS[D.ELEMENT_TOWER[el]], chip = `<span class="ei" style="color:${hex(tw.color)}">${icon("ELEMENT_ICONS", D.ELEMENTS[el])}${D.ELEMENT_NAMES[el]} ×${aff[el].toFixed(1)}</span>`;
           if (aff[el] > D.WEAK_ABOVE) weak.push(chip); else if (aff[el] < D.RESIST_BELOW) resist.push(chip);
         });
-        const line = `<span class="sw" style="color:${hex(e.color)}">●</span> ${e.name} ×${count}`;
+        const line = `<span class="sw" style="color:${hex(e.color)}">${icon("ENEMY_ICONS", g.kind) || "●"}</span> ${e.name} ×${count}`;
         if (left && count === 0) t += `<div class="ln gone">${line}</div>`;
         else t += `<div class="ln">${line}<div class="det">${weak.length ? "weak " + weak.join(", ") : ""}${weak.length && resist.length ? " &nbsp; " : ""}${resist.length ? "resists " + resist.join(", ") : ""}</div></div>`;
       }
@@ -15755,7 +16090,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("wavebtn").style.display = building ? "" : "none";
       $("wavebtn").textContent = `Begin Wave ${S.wave + 1}`;
       $("hint").style.display = S.wave === 0 && building ? "" : "none";
-      if (S.phase === G.Phase.GAME_OVER) $("inspector").classList.remove("show");
+      if (S.phase === G.Phase.GAME_OVER && $("inspector").classList.contains("show")) this.inspect(null);
       this.boonBar();
     }
   }
@@ -15775,25 +16110,44 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const KEY = "mossheart.settings";
   const $ = (id) => document.getElementById(id);
 
+  // motion: "reduced" drops the screen shake and the lightning, softens the flashes and thins the weather
+  // (it starts as the system's reduced-motion choice); text: the HUD's and the menus' text size, a factor
+  const calmOS = !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
   const DEFAULTS = {
     master: 0.9, music: 0.8, sfx: 0.9, ambience: 0.8,
-    quality: "high", scale: "auto", look: "cosy", fps: true, shake: true, vs: 16, level: "momiji",
+    quality: "high", scale: "auto", look: "cosy", fps: true, shake: true, vs: 24, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1,
   };
-  const load = () => { try { return Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(KEY) || "{}")); } catch (e) { return Object.assign({}, DEFAULTS); } };
+  // vs: the voxel density, Ultra (24) unless the player picked one (vsPicked; the device's cap still applies).
+  // Before Ultra became the default every save held vs 16 unless picked, so only another value was a choice.
+  const load = () => {
+    let raw = {};
+    try { raw = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { /* storage blocked */ }
+    const s = Object.assign({}, DEFAULTS, raw);
+    if (!("vsPicked" in raw)) s.vsPicked = raw.vs !== undefined && raw.vs !== 16;
+    if (!s.vsPicked) s.vs = DEFAULTS.vs;
+    return s;
+  };
   const save = (s) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* storage blocked */ } };
 
-  // Voxel densities this device may pick: phones and small-memory machines stop at 16. Against 16, the
-  // terrain at 20 holds ~2x the voxels and bakes ~1.4x as long, at 24 ~3.4x and ~2.2x (Iris Xe: 6.7 s at
-  // 16, 14.8 s at 24; phones bake several times slower). GPU time barely moves: it is per pixel.
+  // Voxel densities this device may pick: phones and small-memory machines stop at 16; elsewhere the
+  // engine's ceiling for the device (ME.vsCeiling, when it has one), else 24. Against 16, the terrain at 20
+  // holds ~2x the voxels and bakes ~1.4x as long, at 24 ~3.4x and ~2.2x (Iris Xe: 6.7 s at 16, 14.8 s at
+  // 24; phones bake several times slower). GPU time barely moves: it is per pixel.
   const mobile = /Android|iPhone|iPad|Mobile/.test(navigator.userAgent), mem = navigator.deviceMemory || 8;
-  const VS_MAX = mobile || mem <= 4 ? 16 : 24;
-  const VS_NAMES = { 8: "Chunky (8)", 12: "Coarse (12)", 16: "Standard (16)", 20: "Fine (20)", 24: "Ultra (24)" };
+  const VS_MAX = mobile || mem <= 4 ? 16 : ME.vsCeiling ? ME.vsCeiling() : 24;
+  // and the densest a model may bake (its o.fine x the terrain's VS; docs/decisions/2026-10-20-hero-density.md):
+  // 32 on those devices, 64 elsewhere. main.js caps the bake list's fine to it.
+  G.HERO_MAX = ME.qn("heromax", mobile || mem <= 4 ? 32 : 64); // (?heromax=32: the phone cap, to test it on a desktop)
+  const VS_NAMES = { 8: "Chunky (8)", 12: "Coarse (12)", 16: "Standard (16)", 20: "Fine (20)", 24: "Ultra (24)", 32: "Extreme (32)", 40: "Ultimate (40)", 48: "Epic (48)", 64: "Maximum (64)" };
   G.vsChoices = () => ME.VS_LEVELS.filter((v) => v <= VS_MAX);
   // before the bake: the saved density, unless ?vs= pins one
   const boot = load();
   if (!ME.vsPinned) ME.setVS(Math.min(VS_MAX, boot.vs));
   // and the garden (view/level.js): ?level=, else the one picked on the title screen
   G.levelId = G.pickLevel(boot.level);
+  // the gardens the level selection screen offers, in G.LEVELS's order; GO_KEY: set while a garden picked
+  // there reloads, so it opens straight into play
+  const levelIds = () => Object.keys(G.LEVELS).filter(G.hasLevel), GO_KEY = "mossheart.go";
 
   const QUALITY = {
     low: { shafts: false, glass: false, grass: false, critters: false, particles: true, water: true },
@@ -15828,7 +16182,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
           <h1>Mossheart</h1><p class="sub">a cozy roguelike tower defence in a voxel bell jar</p>
           <button class="btn pink big" data-a="play">Play</button>
           <button class="btn big" data-a="new">New garden</button>
-          <button class="btn big" data-a="garden" id="gardenbtn"></button>
+          <button class="btn big" data-a="levels" id="gardenbtn">Gardens <small>▸</small></button>
           <button class="btn big" data-a="settings">Settings</button>
           <button class="btn big" data-a="howto">How to play</button>
         </div></div>
@@ -15840,6 +16194,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
           <button class="btn big" data-a="restart">Plant anew</button>
           <button class="btn big" data-a="title">Main menu</button>
         </div></div>
+        <div id="levels" class="veil menu"><div class="panel card wide lvpanel"><h2>Choose a garden</h2><div id="lvcards" class="lvcards"></div>
+          <button class="btn big" data-a="back">Back</button></div></div>
         <div id="settings" class="veil menu"><div class="panel card wide"><h2>Settings</h2><div id="setbody"></div>
           <button class="btn pink big" data-a="back">Done</button></div></div>
         <div id="howto" class="veil menu"><div class="panel card wide"><h2>How to play</h2><div class="howto">${HOWTO()}</div>
@@ -15853,30 +16209,34 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (e.target && e.target.tagName === "INPUT" && e.key !== "Escape") return;
         // (with a seed or a plant picked, Esc first lets go of it: the game's own key)
         if (e.key === "Escape" && !this.open && (app.hud.selected || app.scene.selected)) return;
-        if (e.key === "Escape") { e.stopImmediatePropagation(); if (this.open) this.action(this.open === "title" ? "play" : this.open === "pause" ? "resume" : "back"); else this.show("pause"); }
+        if (e.key === "Escape") { e.stopImmediatePropagation(); if (this.open) this.action(this.open === "title" ? "start" : this.open === "pause" ? "resume" : "back"); else this.show("pause"); }
         else if (this.open) e.stopImmediatePropagation();
       }, true);
       // a phone backgrounding the tab mid-run comes back paused
       document.addEventListener("visibilitychange", () => { if (document.hidden && !this.open && this.inRun()) this.show("pause"); });
       this.apply();
       const skip = !ME.qn("menu", 1) || ME.qn("autoplay", 0) || ME.qn("selftest", 0);
-      if (!skip) this.show("title");
+      // a garden picked on the level selection screen reloads into it and starts playing at once
+      let go = false;
+      try { go = sessionStorage.getItem(GO_KEY) === "1"; sessionStorage.removeItem(GO_KEY); } catch (e) { /* storage blocked */ }
+      if (!skip && go) this.action("start");
+      else if (!skip) this.show("title");
     }
 
     inRun() { const g = this.app.game; return !!g && (G.state.wave > 0 || g.towers.length > 0) && G.state.phase !== G.Phase.GAME_OVER; }
     show(name, from) {
-      for (const id of ["title", "pause", "settings", "howto"]) $(id).classList.toggle("show", id === name);
-      if (name === "settings" || name === "howto") this.back = from || this.open || "pause";
+      for (const id of ["title", "levels", "pause", "settings", "howto"]) $(id).classList.toggle("show", id === name);
+      if (name === "settings" || name === "howto" || name === "levels") this.back = from || this.open || "pause";
       if (name === "settings") this.renderSettings();
+      if (name === "levels") this.renderLevels();
+      this.turntable(name === "levels");
       if (name === "title") {
         // Continue: the run going on, or else a run saved before a reload (with the wave it is at)
         const d = this.inRun() ? null : this.saved();
         $("title").querySelector('[data-a="play"]').innerHTML = this.inRun() ? "Continue" : d ? `Continue <small>wave ${d.wave + 1}</small>` : "Play";
-        // the garden, and the next one a tap switches to (a reload: the new garden bakes; each keeps its own
-        // save). Hidden while a run goes on, so a reload never throws away a wave in progress
-        const ids = Object.keys(G.LEVELS).filter(G.hasLevel);
-        $("gardenbtn").style.display = ids.length > 1 && !this.inRun() ? "" : "none";
-        $("gardenbtn").innerHTML = `Garden: ${G.LEVELS[G.levelId].name} <small>▸</small>`;
+        // the level selection screen (another garden is a reload: it bakes; each keeps its own save). Hidden
+        // while a run goes on, so a reload never throws away a wave in progress
+        $("gardenbtn").style.display = levelIds().length > 1 && !this.inRun() ? "" : "none";
       }
       this.open = name || "";
       this.app.paused = !!name;
@@ -15885,22 +16245,70 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
     saved() { return this.act.saved ? this.act.saved() : null; }
     action(a) {
-      if (a === "play" && !this.inRun() && this.saved()) { this.act.continueRun(); this.show(""); }
-      else if (a === "play" || a === "resume") this.show("");
+      // Play with nothing to continue opens the level selection screen (when there are several gardens);
+      // start plays the garden that is up (Esc on the title screen, a card for it)
+      if (a === "play" && !this.inRun() && !this.saved() && levelIds().length > 1) this.show("levels", "title");
+      else if ((a === "play" || a === "start") && !this.inRun() && this.saved()) { this.act.continueRun(); this.show(""); }
+      else if (a === "play" || a === "start" || a === "resume") this.show("");
       else if (a === "new" || a === "restart") { this.act.restart(); this.show(""); }
-      else if (a === "settings" || a === "howto") this.show(a, this.open);
+      else if (a === "settings" || a === "howto" || a === "levels") this.show(a, this.open);
+      else if (a.startsWith("pick:")) this.pick(a.slice(5));
       else if (a === "title") this.show("title");
       else if (a === "back") this.show(this.back || "pause");
       else if (a === "reload") location.reload();
-      else if (a === "garden") {
-        const ids = Object.keys(G.LEVELS).filter(G.hasLevel), next = ids[(ids.indexOf(G.levelId) + 1) % ids.length];
-        this.set("level", next);
-        const u = new URL(location.href); u.searchParams.delete("level"); location.href = u.toString();
-      }
+    }
+    // a card on the level selection screen: this garden plays (its saved run, if any, continues); another one
+    // is kept as the choice and the page reloads into it, straight into play
+    pick(id) {
+      if (id === G.levelId) { this.action("start"); return; }
+      this.set("level", id);
+      try { sessionStorage.setItem(GO_KEY, "1"); } catch (e) { /* storage blocked: it opens on the title */ }
+      const u = new URL(location.href); u.searchParams.delete("level"); location.href = u.toString();
+    }
+    // One card per garden: its miniature (a turntable sheet, MG.TURNTABLE[id] from art/turntable/<id>.js,
+    // else a plain backdrop with the name), its name, line (Art's blurb) and best wave. The classes (lvcards,
+    // lvcard, lvmini, lvtext, lvname, lvtag, lvline, lvbest) are the hooks a menu theme restyles.
+    renderLevels() {
+      const look = G.TURNTABLE_LOOK || {}, sheets = G.TURNTABLE || {};
+      $("lvcards").innerHTML = levelIds().map((id) => {
+        const L = G.LEVELS[id], sheet = sheets[id], best = G.state.bestOf(id), run = G.Save && G.Save.read(id), here = id === G.levelId;
+        const line = ((look.levels || {})[id] || {}).blurb || "";
+        const rec = run ? `Run saved at wave ${run.wave + 1}${best ? ` · best wave ${best}` : ""}` : best ? `Best wave ${best}` : "Not played yet";
+        const mini = sheet
+          ? `<span class="lvmini" data-tt="${id}" style="background-color: ${sheet.bg || "var(--bg)"}"><i style="background-image: url('${sheet.src}')"></i><i style="background-image: url('${sheet.src}')"></i></span>`
+          : `<span class="lvmini none"><span>${L.name}</span></span>`;
+        return `<button class="lvcard${here ? " here" : ""}" data-a="pick:${id}">${mini}<span class="lvtext">` +
+          `<b class="lvname">${L.name}${here ? ' <span class="lvtag">here now</span>' : ""}</b>` +
+          `<span class="lvline">${line}</span><span class="lvbest">${rec}</span></span></button>`;
+      }).join("");
+    }
+    // The miniatures turn while the screen is open: each sheet's frame for the time, cross-faded into the
+    // next (a second layer, its opacity 0 to 1 over each step), so a 2 fps sheet turns smoothly. Reduced
+    // motion holds frame 0, the view the garden opens on. A sheet: { src, frames, cols, bg }, its cells in
+    // reading order.
+    turntable(on) {
+      if (this.tt) { cancelAnimationFrame(this.tt); this.tt = 0; }
+      if (!on) return;
+      const t0 = performance.now(), turnS = (G.TURNTABLE_LOOK || {}).turnS || 24;
+      const place = (el, sh, f) => {
+        const cols = sh.cols, rows = Math.ceil(sh.frames / cols), c = f % cols, r = Math.floor(f / cols);
+        el.style.backgroundSize = `${cols * 100}% ${rows * 100}%`;
+        el.style.backgroundPosition = `${cols > 1 ? (c / (cols - 1)) * 100 : 0}% ${rows > 1 ? (r / (rows - 1)) * 100 : 0}%`;
+      };
+      const tick = () => {
+        const calm = this.s.motion === "reduced";
+        for (const m of document.querySelectorAll("#lvcards .lvmini[data-tt]")) {
+          const sh = G.TURNTABLE[m.dataset.tt], [a, b] = m.children;
+          const p = calm ? 0 : (((performance.now() - t0) / 1000 / turnS) % 1) * sh.frames, f = Math.floor(p);
+          place(a, sh, f); place(b, sh, (f + 1) % sh.frames); b.style.opacity = (p - f).toFixed(3);
+        }
+        this.tt = requestAnimationFrame(tick);
+      };
+      tick();
     }
 
     // ------------------------------------------------------------------ settings
-    set(k, v) { this.s[k] = v; save(this.s); this.apply(); }
+    set(k, v) { this.s[k] = v; if (k === "vs") this.s.vsPicked = true; save(this.s); this.apply(); }
     apply() {
       const s = this.s, R = this.app.R, a = this.app.audio;
       Object.assign(R.set, QUALITY[s.quality] || QUALITY.high);
@@ -15910,17 +16318,22 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         else { R.set.autoScale = false; R.set.scale = +s.scale; }
       }
       $("fps").style.visibility = s.fps ? "" : "hidden";
-      G.shake = s.shake ? 1 : 0;
+      const calm = s.motion === "reduced";
+      G.shake = s.shake && !calm ? 1 : 0;
+      G.flashK = calm ? 0.35 : 1; // (main.js: the heart's red flash; scene.js: the creatures' hit flashes)
+      if (this.app.atmos) this.app.atmos.reduced = calm;
+      document.body.classList.toggle("calm", calm);
+      document.documentElement.style.setProperty("--ts", s.text);
       if (a && a.mixer) {
         const bus = a.mixer.bus, set = (n, v) => { if (bus[n] && bus[n].gain) bus[n].gain.value = v * s.master; };
         set("Music", s.music); set("Sfx", s.sfx); set("Ambience", s.ambience);
       }
     }
     renderSettings() {
-      const s = this.s, body = $("setbody");
+      const s = Object.assign({}, this.s, { vs: Math.min(VS_MAX, this.s.vs) }), body = $("setbody"); // (the density as this device bakes it)
       const slider = (k, label) => `<label class="row"><span>${label}</span><input type="range" min="0" max="1" step="0.05" value="${s[k]}" data-k="${k}"><em>${Math.round(s[k] * 100)}%</em></label>`;
       const choice = (k, label, opts) => `<div class="row"><span>${label}</span><div class="seg">${opts.map(([v, t]) => `<button class="${String(s[k]) === String(v) ? "on" : ""}" data-k="${k}" data-v="${v}">${t}</button>`).join("")}</div></div>`;
-      const vsNow = ME.VS, vsNote = s.vs !== vsNow && !ME.vsPinned ? `<div class="note">Takes effect on reload. <button class="btn" data-a="reload">Reload now</button></div>` : ME.vsPinned ? `<div class="note">Pinned to ${vsNow} by the page address (?vs=).</div>` : "";
+      const vsNow = ME.VS, vsNote = Math.min(VS_MAX, s.vs) !== vsNow && !ME.vsPinned ? `<div class="note">Takes effect on reload. <button class="btn" data-a="reload">Reload now</button></div>` : ME.vsPinned ? `<div class="note">Pinned to ${vsNow} by the page address (?vs=).</div>` : "";
       body.innerHTML =
         `<h3>Sound</h3>` + slider("master", "Volume") + slider("music", "Music") + slider("sfx", "Effects") + slider("ambience", "Ambience") +
         `<h3>Graphics</h3>` +
@@ -15928,17 +16341,34 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         choice("scale", "Render scale", [["auto", "Auto"], ["0.6", "60%"], ["0.8", "80%"], ["1", "100%"]]) +
         choice("look", "Light", [["cosy", "Cosy"], ["morning", "Morning"], ["clear", "Clear"]]) +
         `<div class="note dim">The light of the Auto mood. The cloud button by the turn buttons picks the mood and the weather.</div>` +
-        choice("vs", "Voxel density", G.vsChoices().map((v) => [v, VS_NAMES[v]])) +
-        `<div class="note dim">Voxels per tile edge. Finer looks smoother and bakes longer (now ${vsNow}).${VS_MAX < 24 ? " This device stops at 16." : ""}</div>` + vsNote +
-        `<h3>Game</h3>` + choice("shake", "Screen shake", [[true, "On"], [false, "Off"]]) + choice("fps", "Show fps", [[true, "On"], [false, "Off"]]);
+        choice("vs", "Voxel density", G.vsChoices().map((v) => [v, VS_NAMES[v] || String(v)])) +
+        `<div class="note dim">Voxels per tile edge. Finer looks smoother and bakes longer (now ${vsNow}).${VS_MAX < 24 ? ` This device stops at ${VS_MAX}.` : VS_MAX > 24 ? " Above Ultra a bake takes several times longer and needs a strong GPU with plenty of memory." : ""}</div>` + vsNote +
+        `<h3>Game</h3>` + choice("shake", "Screen shake", [[true, "On"], [false, "Off"]]) + choice("fps", "Show fps", [[true, "On"], [false, "Off"]]) +
+        `<h3>Comfort</h3>` + choice("motion", "Motion", [["full", "Full"], ["reduced", "Reduced"]]) +
+        `<div class="note dim">Reduced: no screen shake or lightning, softer flashes, lighter rain and snow.</div>` +
+        choice("text", "Text size", [[1, "Normal"], [1.15, "Large"], [1.3, "Larger"]]);
       body.querySelectorAll("input[type=range]").forEach((el) => el.addEventListener("input", () => { this.set(el.dataset.k, +el.value); el.nextElementSibling.textContent = Math.round(el.value * 100) + "%"; }));
       body.querySelectorAll(".seg button").forEach((el) => el.addEventListener("click", () => {
-        const k = el.dataset.k, raw = el.dataset.v, v = raw === "true" ? true : raw === "false" ? false : k === "vs" ? +raw : raw;
+        const k = el.dataset.k, raw = el.dataset.v, v = raw === "true" ? true : raw === "false" ? false : k === "vs" || k === "text" ? +raw : raw;
         this.set(k, v); this.renderSettings();
       }));
     }
   }
   G.Menu = Menu;
+
+  // the GPU by name through WebGL (WEBGL_debug_renderer_info), for the details of a failed boot: WebGPU may
+  // have no adapter to ask. A throwaway context, let go at once.
+  const gpuName = () => {
+    try {
+      const gl = document.createElement("canvas").getContext("webgl2") || document.createElement("canvas").getContext("webgl");
+      if (!gl) return "no WebGL either";
+      const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+      const name = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) + " (" + gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) + ")" : gl.getParameter(gl.RENDERER);
+      const lose = gl.getExtension("WEBGL_lose_context");
+      if (lose) lose.loseContext();
+      return name;
+    } catch (x) { return "unknown (" + x.message + ")"; }
+  };
 
   // When the boot fails: what went wrong and what the player can do about it, instead of a bare error.
   G.bootFailed = function (e) {
@@ -15946,7 +16376,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     const adv = e.advice || null;
     let tips = adv ? adv.tips : [];
     if (!navigator.gpu) tips = ["This browser has no WebGPU. Use Chrome or Edge (desktop or Android 12+), or Safari 26+."];
-    const detail = [e.message, (G.VERSION ? G.VERSION.name + " " + G.VERSION.label : "version unknown"), "UA: " + navigator.userAgent].concat(adv ? adv.tried.map((t) => "requestAdapter " + t.opts + " → " + (t.ok ? "ok" : "none") + (t.err ? " (" + t.err + ")" : "")) : []).join("\n");
+    const detail = [e.message, (G.VERSION ? G.VERSION.name + " " + G.VERSION.label : "version unknown"), "UA: " + navigator.userAgent, "GPU: " + gpuName()].concat(adv ? adv.tried.map((t) => "requestAdapter " + t.opts + " → " + (t.ok ? "ok" : "none") + (t.err ? " (" + t.err + ")" : "")) : []).join("\n");
     l.style.display = "";
     l.innerHTML = `<div class="box fail-box"><h1>Mossheart</h1><div class="fail">${esc(e.message || String(e))}</div>` +
       (tips.length ? `<ul class="tips">${tips.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : "") +
@@ -16234,6 +16664,11 @@ function MG_SFX(L) {
     hit_weak: [0.45, 32000], hit_resist: [0.32, 32000],
     grub: [0.45, 22050], beetle: [0.45, 32000], moth: [0.7, 22050], golem: [0.5, 22050], spirit: [2.6, 22050], spawn: [1.0, 22050],
     death_pop: [0.4, 32000], death_crumble: [0.9, 22050], death_boss: [2.4, 22050], heart_hurt: [0.9, 22050],
+    // the newer plants and creatures
+    briar_fire: [0.3, 22050], toad_fire: [0.45, 22050], moon_fire: [0.9, 32000], lily_fire: [0.3, 22050],
+    mat_snail: [0.18, 32000], mat_bloat: [0.25, 22050], mat_mite: [0.08, 32000], mat_mender: [0.22, 22050], mat_midge: [0.06, 32000], mat_mole: [0.2, 22050], mat_lichen: [0.22, 32000], mat_mother: [0.5, 22050],
+    snail: [0.8, 22050], bloat: [0.7, 22050], mite: [0.25, 32000], mender: [0.9, 22050], midge: [0.8, 22050], mole: [0.6, 22050], lichen: [0.4, 32000], mother: [2.8, 22050],
+    death_shell: [0.6, 32000], death_burst: [0.7, 22050],
     uguisu: [1.45, 32000], chirp: [0.7, 32000], trill: [0.9, 32000], cricket: [1.4, 32000], frog: [0.8, 22050], leaves: [1.2, 22050],
     waterfall: [4.0, 22050, true], stream: [4.0, 22050, true], wind: [6.0, 22050, true],
   };
@@ -16410,6 +16845,129 @@ function MG_SFX(L) {
         s[i] = f(saw, 450, 0.4) * min(t / 0.05, 1) * (1 - t / dur) + sin(TAU * 60 * t) * exp(-t * 10) * 0.8;
       }
       return s;
+    },
+    // ---- the newer plants: Briar Vine, Stinkhorn, Moonpetal, Ghost Lily
+    // a vine lashing out: a whippy swish rising fast, the creak of the stem behind it
+    briar_fire(s, sr) {
+      const f = svf(sr); let ph = 0;
+      for (let i = 0; i < s.length; i++) {
+        const t = i / sr, whip = f(n1(), lerp(700, 3800, min(t / 0.07, 1)), 0.35) * min(t / 0.01, 1) * exp(-t * 26); ph += (130 + 40 * exp(-t * 20)) / sr;
+        let saw = 0; for (let h = 1; h < 6; h++) saw += sin(TAU * ph * h) / h;
+        s[i] = whip * 1.2 + saw * (0.5 + 0.5 * sin(TAU * 28 * t)) * smooth(0.04, 0.08, t) * exp(-t * 16) * 0.25;
+      }
+      return s;
+    },
+    // a glob of rot lobbed high: a low thump, a wet slap and the faint whistle of the arc
+    toad_fire(s, sr) {
+      const wet = svf(sr); let ph = 0, wh = 0;
+      for (let i = 0; i < s.length; i++) {
+        const t = i / sr; ph += (70 + 90 * exp(-t * 25)) / sr; wh += lerp(500, 1300, min(t / 0.35, 1)) / sr;
+        s[i] = sin(TAU * ph) * exp(-t * 16) * 0.9 + wet(n1(), lerp(1200, 350, min(t * 10, 1)), 0.3) * exp(-t * 24) * 1.2 + sin(TAU * wh) * smooth(0.05, 0.12, t) * exp(-t * 7) * 0.12;
+      }
+      return s;
+    },
+    // a cool glassy ping (F6 and C7, in key, two near-twins beating) and a breath of air
+    moon_fire(s, sr) {
+      const air = svf(sr);
+      for (let i = 0; i < s.length; i++) {
+        const t = i / sr, env = min(t / 0.006, 1) * exp(-t * 3.6);
+        s[i] = (sin(TAU * 1397 * t) + 0.8 * sin(TAU * 1400 * t) + 0.45 * sin(TAU * 2093 * t) * exp(-t * 3) + 0.2 * sin(TAU * 4186 * t) * exp(-t * 9)) * env * 0.32 + air(n1(), 3200, 0.7) * exp(-t * 10) * 0.12;
+      }
+      return s;
+    },
+    // the beam's breath, soft enough for four a second: a sung A5 with its fifth over a whisper
+    lily_fire(s, sr) {
+      const dur = s.length / sr, f = svf(sr); let ph = 0;
+      for (let i = 0; i < s.length; i++) { const t = i / sr; ph += (880 * (1 + 0.01 * sin(TAU * 11 * t))) / sr; s[i] = (sin(TAU * ph) * 0.5 + sin(TAU * ph * 1.5) * 0.18 + f(n1(), 1760, 0.5) * 0.35) * sin((PI * t) / dur); }
+      return s;
+    },
+    // ---- the newer creatures' materials (struck), calls and deaths
+    // a snail's shell: a hard ceramic tock
+    mat_snail(s, sr) { const sh = svf(sr); for (let i = 0; i < s.length; i++) { const t = i / sr; s[i] = sh(i < 30 ? n1() : 0, 1650, 0.04) * exp(-t * 30) * 3 + n1() * exp(-t * 700) * 0.4; } return s; },
+    // mould: a spongy thud
+    mat_bloat(s, sr) { let lp = 0, ph = 0; for (let i = 0; i < s.length; i++) { const t = i / sr; lp += 0.12 * (n1() - lp); ph += (110 - 40 * min(t * 8, 1)) / sr; s[i] = lp * exp(-t * 18) * 2 + sin(TAU * ph) * exp(-t * 20) * 0.6; } return s; },
+    // a mite: a tiny bright tick
+    mat_mite(s, sr) { const f = svf(sr); for (let i = 0; i < s.length; i++) { const t = i / sr; s[i] = f(i < 16 ? n1() : 0, 5600, 0.06) * exp(-t * 80) * 2; } return s; },
+    // rot: the grub's squelch with a hum in it
+    mat_mender(s, sr) { FX.mat_grub(s, sr); let ph = 0; for (let i = 0; i < s.length; i++) { const t = i / sr; ph += 196 / sr; s[i] += sin(TAU * ph) * exp(-t * 14) * 0.2; } return s; },
+    // a midge: next to nothing, a dry speck
+    mat_midge(s, sr) { for (let i = 0; i < s.length; i++) { const t = i / sr; s[i] = n1() * exp(-t * 400) * 0.5; } return s; },
+    // fur and earth: a muffled thump
+    mat_mole(s, sr) { let lp = 0, ph = 0; for (let i = 0; i < s.length; i++) { const t = i / sr; lp += 0.08 * (n1() - lp); ph += (95 - 25 * min(t * 10, 1)) / sr; s[i] = lp * exp(-t * 22) * 2.2 + sin(TAU * ph) * exp(-t * 24) * 0.5; } return s; },
+    // a lichen crust: a dry knock and a crunch of flakes
+    mat_lichen(s, sr) { const st = svf(sr); for (let i = 0; i < s.length; i++) { const t = i / sr; s[i] = st(n1() * exp(-t * 300), 520, 0.08) * exp(-t * 25) * 2; } return grains(s, sr, 14, 0, 0.12, 0.0005, 0.002, 0.35); },
+    // the Mould Mother: a deep wet thud
+    mat_mother(s, sr) { const wet = svf(sr); let ph = 0; for (let i = 0; i < s.length; i++) { const t = i / sr; ph += (62 - 18 * min(t * 4, 1)) / sr; s[i] = sin(TAU * ph) * exp(-t * 9) + wet(n1(), lerp(700, 220, min(t * 4, 1)), 0.3) * exp(-t * 12) * 1.3; } return s; },
+    // a slither on a slime trail and the shell scraping on stone
+    snail(s, sr) {
+      const dur = s.length / sr, f = svf(sr); let lp = 0;
+      for (let i = 0; i < s.length; i++) { const t = i / sr; lp += 0.08 * (n1() - lp); s[i] = (f(n1(), 900 + 250 * sin(TAU * 1.7 * t), 0.4) * 0.5 + lp * 1.2) * (0.6 + 0.4 * sin(TAU * 3 * t)) * sin((PI * t) / dur); }
+      return grains(s, sr, 6, 0.1, dur - 0.1, 0.001, 0.003, 0.25);
+    },
+    // a gurgle: bubbles rising through mould
+    bloat(s, sr) {
+      let lp = 0; for (let i = 0; i < s.length; i++) { lp += 0.05 * (n1() - lp); s[i] = lp * 0.6; }
+      for (let b = 0; b < 9; b++) {
+        const at = Math.floor(rr(0.02, 0.6) * sr), f0 = rr(140, 320), amp = rr(0.4, 0.9), n = Math.floor(0.06 * sr); let ph = 0;
+        for (let j = 0; j < n && at + j < s.length; j++) { const t = j / sr; ph += (f0 * (1 + (3 * t) / 0.06)) / sr; s[at + j] += sin(TAU * ph) * sin((PI * t) / 0.06) * amp; }
+      }
+      return s;
+    },
+    // a tiny skitter, higher and quicker than the beetle's
+    mite(s, sr) {
+      for (let t0 = 0; t0 < 0.2; t0 += rr(0.012, 0.025)) { const at = Math.floor(t0 * sr), amp = rr(0.4, 1); for (let j = 0; j < Math.floor(0.0012 * sr) && at + j < s.length; j++) s[at + j] += n1() * amp * exp((-j / sr) * 3000); }
+      const f = svf(sr); for (let i = 0; i < s.length; i++) s[i] = f(s[i], 5200, 0.5) * 2;
+      return s;
+    },
+    // the Rot Mender's murmur: a hummed "mmm" through a closed mouth, rising a little
+    mender(s, sr) {
+      const dur = s.length / sr, f = svf(sr); let ph = 0;
+      for (let i = 0; i < s.length; i++) {
+        const t = i / sr; ph += (196 * (1 + (0.06 * t) / dur) * (1 + 0.012 * sin(TAU * 5 * t))) / sr;
+        let v = 0; for (let h = 1; h < 7; h++) v += sin(TAU * ph * h) / (h * h);
+        s[i] = (f(v, 400, 0.5) * 1.4 + sin(TAU * ph * 1.5) * 0.15) * smooth(0, 0.15, t) * min((dur - t) / 0.25, 1);
+      }
+      return s;
+    },
+    // a swarm's whine drifting past
+    midge(s, sr) { const dur = s.length / sr, f = svf(sr); let ph = 0; for (let i = 0; i < s.length; i++) { const t = i / sr; ph += (590 + 60 * sin(TAU * 1.3 * t) + 25 * sin(TAU * 7 * t)) / sr; s[i] = f(2 * (ph % 1) - 1, 1900, 0.3) * 0.45 * sin((PI * t) / dur); } return s; },
+    // claws in the soil and a snuffle
+    mole(s, sr) {
+      const dur = s.length / sr, f = svf(sr); grains(s, sr, 22, 0.02, dur - 0.05, 0.002, 0.006, 0.35);
+      for (let i = 0; i < s.length; i++) { const t = i / sr; s[i] += f(n1(), 1400, 0.6) * pow(max(0, sin(TAU * 8 * t)), 6) * smooth(0.25, 0.35, t) * 0.35; }
+      return s;
+    },
+    // claws: clack-clack, twice
+    lichen(s, sr) {
+      for (const [t0, a] of [[0.02, 1], [0.08, 0.8], [0.22, 0.9], [0.28, 0.7]]) { const at = Math.floor(t0 * sr); for (let j = 0; j < 50 && at + j < s.length; j++) s[at + j] += n1() * a; }
+      const hi = svf(sr); for (let i = 0; i < s.length; i++) s[i] = hi(s[i], 3100, 0.08) * 2.2;
+      return s;
+    },
+    // the Mould Mother: a deep wet groan through two formants, bubbling as it goes
+    mother(s, sr) {
+      const dur = s.length / sr, f1 = svf(sr), f2 = svf(sr); let ph = 0;
+      for (let i = 0; i < s.length; i++) {
+        const t = i / sr; ph += (96 * (1 - (0.12 * t) / dur) * (1 + 0.03 * sin(TAU * 3.5 * t))) / sr;
+        let v = 0; for (let h = 1; h < 10; h++) v += sin(TAU * ph * h) / h;
+        s[i] = (f1(v, 420, 0.35) + f2(v, 900, 0.45) * 0.6) * min(t / 0.6, 1) * min((dur - t) / 1, 1) * 0.9;
+      }
+      for (let b = 0; b < 16; b++) {
+        const at = Math.floor(rr(0.3, dur - 0.3) * sr), f0 = rr(90, 220), amp = rr(0.2, 0.5), n = Math.floor(0.08 * sr); let p2 = 0;
+        for (let j = 0; j < n && at + j < s.length; j++) { const t = j / sr; p2 += (f0 * (1 + (2.5 * t) / 0.08)) / sr; s[at + j] += sin(TAU * p2) * sin((PI * t) / 0.08) * amp; }
+      }
+      return s;
+    },
+    // a shell cracking, then the squelch inside (snail, lichen crab)
+    death_shell(s, sr) {
+      const cr = svf(sr), wet = svf(sr);
+      for (let i = 0; i < s.length; i++) { const t = i / sr, x = n1(); s[i] = cr(x, 2400, 0.3) * exp(-t * 60) * 1.4 + (t > 0.08 ? wet(x, lerp(900, 300, min((t - 0.08) * 5, 1)), 0.3) * exp(-(t - 0.08) * 9) * 0.9 : 0); }
+      return grains(s, sr, 18, 0, 0.18, 0.0006, 0.003, 0.4);
+    },
+    // mould bursting: a wet pop and a spatter (bloat mould, rot mender)
+    death_burst(s, sr) {
+      let ph = 0, lp = 0;
+      for (let i = 0; i < s.length; i++) { const t = i / sr; ph += (140 + 380 * exp(-t * 25)) / sr; lp += 0.3 * (n1() - lp); s[i] = sin(TAU * ph) * exp(-t * 18) * 0.8 + lp * exp(-t * 6) * 0.7 * smooth(0, 0.01, t); }
+      return grains(s, sr, 24, 0.02, 0.5, 0.001, 0.004, 0.3);
     },
     // the bush warbler: a long held whistle, then "ho-ke-kyo"
     uguisu(s, sr) {
@@ -16982,7 +17540,8 @@ function MG_SFX(L) {
    Placement in the view is the audio engine's (MA.Spatial): a sound is panned by where it lands on
    screen and gets quieter the further it is from the middle of the view. Birds sing from the valley's
    songbirds, frogs from its frogs, crickets from the moss (the app's ambient-life layer, app.critters);
-   they fall silent where the blight spreads and as the battle grows, while the wind rises with it. */
+   they fall silent where the blight spreads and as the battle grows, while the wind rises with it.
+   Plays queue and start once a rendered frame (update), at most BUDGET of them, the most important first. */
 (function () {
   const G = window.MG, S = G.state, D = G.Defs, MA = window.MA;
   // name (without its take number) -> [volume dB, pitch spread, minimum ms between plays]
@@ -16994,11 +17553,29 @@ function MG_SFX(L) {
     hit_weak: [-15, 0.06, 70], hit_resist: [-18, 0.1, 90],
     grub: [-21, 0.15, 150], beetle: [-22, 0.15, 150], moth: [-20, 0.15, 150], golem: [-14, 0.1, 200], spirit: [-9, 0.05, 1500], spawn: [-20, 0.1, 700],
     death_pop: [-15, 0.12, 50], death_crumble: [-11, 0.08, 120], death_boss: [-6, 0, 1000], heart_hurt: [-8, 0.05, 250],
+    briar_fire: [-20, 0.12, 50], toad_fire: [-17, 0.08, 120], moon_fire: [-19, 0.04, 120], lily_fire: [-25, 0.06, 140],
+    mat_snail: [-20, 0.12, 45], mat_bloat: [-20, 0.12, 45], mat_mite: [-24, 0.15, 40], mat_mender: [-20, 0.12, 45], mat_midge: [-26, 0.2, 40], mat_mole: [-20, 0.12, 45], mat_lichen: [-20, 0.12, 45], mat_mother: [-14, 0.08, 120],
+    snail: [-22, 0.12, 150], bloat: [-21, 0.12, 150], mite: [-24, 0.15, 150], mender: [-20, 0.1, 200], midge: [-25, 0.12, 300], mole: [-21, 0.12, 200], lichen: [-21, 0.12, 150], mother: [-9, 0.05, 1500],
+    death_shell: [-14, 0.1, 60], death_burst: [-14, 0.12, 60],
     uguisu: [-17, 0.04, 2000], chirp: [-20, 0.08, 500], trill: [-20, 0.06, 800], cricket: [-24, 0.05, 300], frog: [-19, 0.1, 1500], leaves: [-22, 0.1, 1000],
   };
   // too long to cut off when the pool needs a voice
-  const PROTECTED = new Set(["spirit", "death_boss", "uguisu"]);
-  const DEATH = { grub: ["death_pop", 0.7], beetle: ["death_pop", 1.0], moth: ["death_pop", 1.4], golem: ["death_crumble", 1.0], spirit: ["death_boss", 1.0] };
+  const PROTECTED = new Set(["spirit", "mother", "death_boss", "uguisu"]);
+  const DEATH = {
+    grub: ["death_pop", 0.7], beetle: ["death_pop", 1.0], moth: ["death_pop", 1.4], golem: ["death_crumble", 1.0], spirit: ["death_boss", 1.0],
+    snail: ["death_shell", 1.0], bloat: ["death_burst", 1.0], mite: ["death_pop", 1.8], mender: ["death_burst", 1.25], midge: ["death_pop", 2.2], mole: ["death_pop", 0.6],
+    lichen: ["death_shell", 0.8], mother: ["death_boss", 0.8],
+  };
+  // the bosses: a call as each comes, and again every few seconds
+  const bossy = (kind) => !!(D.ENEMIES[kind] && D.ENEMIES[kind].boss);
+  // Plays per frame (#192: starting a voice costs about 1 ms, and a boss wave can start 30 in a frame). A
+  // sound asked for again in the same frame plays once, 1.5 dB louder a copy up to +4.5. At most BUDGET
+  // start a frame, the most important first (PRI: the heart, the bosses and the player's own actions, then
+  // fire, calls and kills, then hits); the rest wait for the next frames and are dropped after STALE ms,
+  // since a hit heard late reads wrong (the top priority waits as long as it takes).
+  const BUDGET = 8, STALE = 80;
+  const PRI = { heart_hurt: 3, death_boss: 3, spirit: 3, mother: 3, plant: 3, grow: 3, uproot: 3, mat_mother: 2, spawn: 2 };
+  const priOf = (base) => PRI[base] ?? (/^(hit|mat)_/.test(base) ? 0 : 1);
   const rr = (a, b) => a + (b - a) * Math.random(), pick = (a) => a[Math.floor(Math.random() * a.length)];
   const lerp = (a, b, u) => a + (b - a) * u, toDb = (x) => 20 * Math.log10(x);
 
@@ -17007,9 +17584,12 @@ function MG_SFX(L) {
       this.mixer = mixer; this.game = game; this.app = app; this.ready = false;
       this.sp = new MA.Spatial(mixer, { bus: "Sfx", mix: MIX, protect: PROTECTED, voices: 40 });
       this.t = { vocal: 1, bird: 2, cricket: 1, frog: 4, leaves: 5, boss: 6 };
+      this.q = []; this.frame = 0; this.merged = 0; this.deferred = 0; this.dropped = 0;
       for (const ev of ["fire", "hit", "kill", "spawn", "heart_hit", "tower_placed", "tower_upgraded", "tower_sold"]) G.on(ev, (d) => this.onEvent(ev, d));
     }
     get played() { return this.sp.played; }
+    // the queue's metering: plays merged into one in the same frame, put off to a later frame, dropped stale
+    get queue() { return { merged: this.merged, deferred: this.deferred, dropped: this.dropped }; }
     start() {
       this.ready = true;
       const app = this.app, T = app.T;
@@ -17029,7 +17609,29 @@ function MG_SFX(L) {
       this.trees = cr ? cr.trees.map((t) => [t.X, t.Y, t.Z + t.h * 0.8]) : [];
       this.moss = cr ? cr.cells.m : [];
     }
-    play(sound, p, db = 0, pitch = 1) { if (this.ready) this.sp.play(sound, p, db, pitch); }
+    play(sound, p, db = 0, pitch = 1) {
+      if (!this.ready) return;
+      const q = this.q, same = q.find((e) => e.sound === sound && e.frame === this.frame);
+      if (same) { same.db = Math.min(same.db0 + 4.5, same.db + 1.5); this.merged++; return; }
+      const base = sound.replace(/_\d$/, "");
+      q.push({ sound, p, db, db0: db, pitch, pri: priOf(base), t: performance.now(), frame: this.frame });
+    }
+    // start this frame's share of the queue, the most important and then the oldest first
+    flush() {
+      const q = this.q, now = performance.now();
+      this.frame++;
+      if (!q.length) return;
+      q.sort((a, b) => b.pri - a.pri || a.t - b.t);
+      let started = 0, k = 0;
+      for (; k < q.length && started < BUDGET; k++) {
+        const e = q[k];
+        if (now - e.t > STALE && e.pri < 3) { this.dropped++; continue; }
+        const n = this.sp.played; this.sp.play(e.sound, e.p, e.db, e.pitch); if (this.sp.played > n) started++;
+      }
+      const left = q.slice(k).filter((e) => { if (now - e.t > STALE && e.pri < 3) { this.dropped++; return false; } return true; });
+      this.deferred += left.filter((e) => e.frame === this.frame - 1).length;
+      this.q = left;
+    }
 
     onEvent(name, d) {
       if (!this.ready) return;
@@ -17045,7 +17647,7 @@ function MG_SFX(L) {
           break;
         }
         case "kill": { const x = DEATH[d.kind] || DEATH.grub; this.play(x[0], d.pos, 0, x[1]); break; }
-        case "spawn": if (d.kind === "spirit") this.play("spirit", d.pos, 3, 0.9); else this.play("spawn", d.pos); break;
+        case "spawn": if (bossy(d.kind)) this.play(d.kind, d.pos, 3, 0.9); else this.play("spawn", d.pos); break;
         case "heart_hit": { const w = this.game.world; this.play("heart_hurt", [w.heart[0], w.heart[1], w.heartZ + 1]); break; }
         case "tower_placed": this.play("plant", d.pos); break;
         case "tower_upgraded": this.play("grow", d.pos); break;
@@ -17058,6 +17660,7 @@ function MG_SFX(L) {
       if (!this.ready) return;
       this.sp.listen(L.vp, L.zoom, L.aspect);
       this.sp.update();
+      this.flush();
       const now = this.mixer.ctx.currentTime, i = S.intensity;
       if (this.wind) { this.wind.g.gain.setTargetAtTime(MA.dbToGain(lerp(-24, -13, i)), now, 0.3); this.wind.src.playbackRate.setTargetAtTime(lerp(0.9, 1.15, i), now, 0.3); }
       this.creatureCalls(dt);
@@ -17099,11 +17702,11 @@ function MG_SFX(L) {
       if ((T.vocal -= dt) <= 0) {
         T.vocal = Math.min(1.8, Math.max(0.22, 1.8 / Math.sqrt(E.count))) * rr(0.7, 1.3);
         const live = []; E.forEachLive((k) => { if (E.dist[k] >= 0) live.push(k); });
-        if (live.length) { const k = pick(live), kind = E.kindOf(k); if (kind !== "spirit") this.play(kind, [E.px[k], E.py[k], E.pz[k]]); }
+        if (live.length) { const k = pick(live), kind = E.kindOf(k); if (!bossy(kind)) this.play(kind, [E.px[k], E.py[k], E.pz[k]]); }
       }
       if (E.bossAlive() && (T.boss -= dt) <= 0) {
         T.boss = rr(6, 9);
-        E.forEachLive((k) => { if (E.kindOf(k) === "spirit") this.play("spirit", [E.px[k], E.py[k], E.pz[k]]); });
+        E.forEachLive((k) => { const kind = E.kindOf(k); if (bossy(kind)) this.play(kind, [E.px[k], E.py[k], E.pz[k]]); });
       }
     }
   }
@@ -17185,7 +17788,7 @@ function MG_SFX(L) {
     stats() {
       const m = this.mixer;
       if (!m) return null;
-      return Object.assign({ ready: m.ready, readyAt: this.readyAt, state: m.ctx.state, samples: Object.keys(m.samples).length, renderMs: m.renderMs, worker: m.worker, notes: this.music.notes, sfx: this.sound.played, mood: this.music.mood, bpm: Math.round(this.music.bpm), cues: this.music.cueLog.join(" ") }, m.meterStats());
+      return Object.assign({ ready: m.ready, readyAt: this.readyAt, state: m.ctx.state, samples: Object.keys(m.samples).length, renderMs: m.renderMs, worker: m.worker, notes: this.music.notes, sfx: this.sound.played, sfxq: this.sound.queue, mood: this.music.mood, bpm: Math.round(this.music.bpm), cues: this.music.cueLog.join(" ") }, m.meterStats());
     }
   }
   G.Audio = Audio;
@@ -17335,7 +17938,8 @@ function MG_SFX(L) {
    (view/), the HUD, input, audio and camera every frame.
    URL options: ?level=momiji|fernglass, ?seed=N fixes the run, ?speed=2, ?dpr=1, ?scale=0.8 (render scale), ?mute=1,
    ?autoplay=1&waves=8 (bot; see bot.js), ?selftest=1 (render N frames, report timings into #result),
-   ?vinyl=0 (no record crackle under the music: the A/B for the music's noise). */
+   ?vinyl=0 (no record crackle under the music: the A/B for the music's noise), ?closeup=0 (no true-colour fade
+   when zoomed in: the A/B for view/scene.js mood()). */
 (async function () {
   const ME = window.ME, G = window.MG, S = G.state, D = G.Defs;
   const canvas = document.getElementById("cv"), result = document.getElementById("result");
@@ -17385,6 +17989,8 @@ function MG_SFX(L) {
     const ids = { sky: pal.id("sky"), water: pal.id("water"), fall: pal.id("fall"), maple: pal.id("maple") };
     // the bake, or the cached copy of it (the engine's IndexedDB bake cache; ?nocache=1 skips it)
     const bakeOpts = { walkers: false, models: G.bakeList() };
+    // (no model finer than G.HERO_MAX voxels per tile edge, menu.js: 32 on phones)
+    for (const k in bakeOpts.models) { const o = bakeOpts.models[k][1]; if (o && o.fine && o.fine * ME.VS > G.HERO_MAX) o.fine = G.HERO_MAX / ME.VS; }
     const key = ME.bakeCache.key(st, JSON.stringify(bakeOpts)), hit = await ME.bakeCache.get(key);
     let T, mesh, MB, grass;
     if (hit) {
@@ -17614,9 +18220,10 @@ function MG_SFX(L) {
       for (let k = 0; k < n; k++) { game.update(simDt / n); scene.update(simDt / n); }
       if (bot) bot.update(rdt);
       trauma = Math.max(0, trauma - rdt * 1.4); flash = Math.max(0, flash - rdt * 1.8);
-      flashEl.style.opacity = flash.toFixed(3);
+      flashEl.style.opacity = (flash * (G.flashK ?? 1)).toFixed(3);
       const sh = trauma * trauma * 0.22 * (G.shake ?? 1), tt = now / 1000, jx = sh * Math.sin(tt * 61.3) * Math.sin(tt * 17.1), jy = sh * Math.sin(tt * 53.7 + 1.3) * Math.sin(tt * 13.9);
       atmos.update(rdt);
+      scene.zoomIn = cam.zoom / Math.min(canvas.width / 37, canvas.height / 24.5); // (1 at the default framing)
       scene.draw(R.size[0] / Math.max(1, canvas.clientWidth));
       cam.pan[0] += jx; cam.pan[1] += jy;
       const c0 = ME.now();
