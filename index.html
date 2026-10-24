@@ -306,7 +306,7 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
 .jar:focus-visible { outline: none; }
 .jar .nm { position: absolute; left: 50%; top: 96%; transform: translateX(-50%); white-space: nowrap; display: grid; justify-items: center; gap: 5px; pointer-events: none; transition: opacity 0.3s; }
 .jar .nm b { font-size: calc(19px * var(--ts)); color: #fffae6; text-shadow: 0 2px 6px #000; }
-#jars .jar:not(.front) .nm, #jars.picked .jar:not(.on) .nm { opacity: 0; }
+#jars .jar:not(.front) .nm { opacity: 0; }
 .chip { display: inline-flex; align-items: center; gap: 6px; font-size: calc(13px * var(--ts)); color: var(--ink); background: var(--paper2); border: 2px solid var(--blossom); border-radius: 999px; padding: 4px 11px; }
 .chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--blossom); animation: beat 1.6s ease-in-out infinite; }
 @keyframes beat { 0%, 100% { transform: scale(0.8); opacity: 0.7; } 12% { transform: scale(1.25); opacity: 1; } 30% { transform: scale(0.95); } }
@@ -319,25 +319,16 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
 .jtop .btn:hover { background: rgba(250, 242, 219, 0.22); }
 .jarrow { position: absolute; top: 50%; transform: translateY(-50%); z-index: 11; width: 52px; height: 52px; border-radius: 50%; padding: 0; font-size: calc(26px * var(--ts)); background: rgba(250, 242, 219, 0.08); color: #fffae6; border-color: rgba(250, 242, 219, 0.35); box-shadow: none; }
 .jarrow.l { left: calc(3% + var(--sl)); } .jarrow.r { right: calc(3% + var(--sr)); }
-.jhint { position: absolute; left: 0; right: 0; bottom: calc(18px + var(--sb)); text-align: center; color: rgba(255, 250, 230, 0.55); font-size: calc(14px * var(--ts)); pointer-events: none; transition: opacity 0.3s; }
-#jars.picked .jarrow, #jars.picked .jhint { opacity: 0; pointer-events: none; }
-.jsheet { position: absolute; z-index: 13; right: 5%; top: 50%; width: min(400px, 40vw); transform: translate(6%, -50%); padding: 22px; display: grid; gap: 13px; opacity: 0; pointer-events: none; transition: opacity 0.35s, transform 0.45s cubic-bezier(.3, .7, .2, 1); }
-#jars.picked .jsheet { opacity: 1; pointer-events: auto; transform: translate(0, -50%); }
-.jsheet h3 { margin: 0; font-size: calc(28px * var(--ts)); }
-.jsheet .blurb { margin: 0; font-size: calc(15px * var(--ts)); color: #55603f; }
-.jsheet .note { margin: 0; font-size: calc(13px * var(--ts)); color: #55603f; }
-.jsheet .row { display: flex; flex-wrap: wrap; gap: 8px; }
-.jsheet .chip.soon { color: var(--ink); border-color: #c9bd98; }
-.jsheet .btns { display: grid; gap: 9px; }
-.jsheet .btns .btn { height: 54px; font-size: calc(19px * var(--ts)); }
-.jsheet .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
-.jsheet .stat { background: #f1e6c4; border-radius: 10px; padding: 8px 4px; text-align: center; }
-.jsheet .stat b { display: block; font-size: calc(21px * var(--ts)); font-variant-numeric: tabular-nums; }
-.jsheet .stat span { display: block; font-size: calc(11px * var(--ts)); color: #6f7656; margin-top: 3px; }
-.jsheet .heart .t { display: flex; justify-content: space-between; font-size: calc(13px * var(--ts)); margin-bottom: 4px; font-variant-numeric: tabular-nums; }
-.jsheet .hbar { height: 10px; border-radius: 999px; background: #dccfab; overflow: hidden; }
-.jsheet .hbar i { display: block; height: 100%; background: linear-gradient(90deg, #5d8a46, #86b85c); border-radius: inherit; }
-.jsheet .warn { margin: 0; font-size: calc(14px * var(--ts)); color: #8a3f52; background: #fbe3ea; border-radius: 10px; padding: 10px 12px; }
+/* under the ring: the front jar's Start new (and its question) stacked over the hint line, so a wrapped
+   hint on a phone pushes them up instead of running under them */
+.jfoot { position: absolute; left: calc(14px + var(--sl)); right: calc(14px + var(--sr)); bottom: calc(18px + var(--sb)); z-index: 12; display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: none; }
+.jhint { text-align: center; color: rgba(255, 250, 230, 0.55); font-size: calc(14px * var(--ts)); transition: opacity 0.3s; }
+.jhint.warn { color: #f6c7d4; }
+.jnew { pointer-events: auto; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 10px; }
+.jnew .btn { padding: 7px 14px; font-size: calc(14px * var(--ts)); background: rgba(250, 242, 219, 0.12); color: #fffae6; border-color: rgba(250, 242, 219, 0.3); box-shadow: none; }
+.jnew .btn:hover { background: rgba(250, 242, 219, 0.22); }
+.jnew .btn.pink { background: var(--blossom); color: var(--ink); border-color: var(--blossom); }
+.jnew .warn { flex-basis: 100%; text-align: center; font-size: calc(14px * var(--ts)); color: #f6c7d4; }
 #title .tjar .jar { left: 64%; top: 52%; width: 50%; opacity: 0.95; cursor: default; }
 #title .tjar .jar:hover canvas { filter: none; transform: none; }
 #title .col { position: absolute; left: 7%; top: 50%; transform: translateY(-50%); z-index: 2; align-items: flex-start; }
@@ -346,15 +337,13 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
 #title .btn.big small { display: block; font-size: 0.62em; font-weight: 500; margin-top: 2px; }
 @media (max-width: 760px), (max-aspect-ratio: 4/5) {
   .jtop h2 { display: none; }
-  .jsheet { left: calc(4% + var(--sl)); right: calc(4% + var(--sr)); top: auto; bottom: calc(14px + var(--sb)); width: auto; transform: translateY(12%); padding: 18px; }
-  #jars.picked .jsheet { transform: none; }
   #title .tjar .jar { left: 50%; top: 40%; width: 96%; }
   #title .col { left: 0; right: 0; top: auto; bottom: calc(26px + var(--sb)); transform: none; align-items: center; }
   #title h1 { position: fixed; left: 0; right: 0; top: calc(7% + var(--st)); text-align: center; }
   #title .sub { position: fixed; left: 0; right: 0; top: calc(7% + 70px + var(--st)); text-align: center; margin: 0 auto; }
 }
 body.calm .jar .bob, body.calm .chip i { animation: none; }
-body.calm .jar, body.calm .jsheet, body.calm .jar canvas { transition: none; }
+body.calm .jar, body.calm .jar canvas { transition: none; }
 </style>
 </head>
 <body>
@@ -13101,7 +13090,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "b0a564b" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "c8da37b" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -16585,6 +16574,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // hit and fades back over FLARE_S (Art's look)
   const BEAT_S = [0.7, 0.6, 0.5], BEATS = 2, SWELL = [0.02, 0.03], GLOW = 0.22, FLARE_S = 0.5;
   const lubDub = (u) => Math.max(Math.exp(-(((u - 0.08) / 0.06) ** 2)), 0.6 * Math.exp(-(((u - 0.26) / 0.07) ** 2)));
+  // the terrarium glass over the presets' glassK, in every garden: subtler, more see-through (the user, 2026-10-25;
+  // ?glassk= tries another)
+  const GLASS_K = 0.45;
   // the props a boss breaks as it passes (Fernglass's terracotta pots), how near it comes (tiles, from its
   // centre to the pot's: Fernglass's pots stand 2 to 2.24 tiles off the route's line), and how long the
   // shards fly (s); at most POT_FLYING pots in the air at once (the phone's voxel pool: 12,288, a pot under
@@ -16601,7 +16593,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.game = null; this.anim = new Map();
       this.heartKick = 0; this.heartStatic = null; this.heartFrames = null; this.heartStage = 0;
       this.beat = { t: -1e9, hit: false, s: BEAT_S[0] }; // when the last hit's beat began, and its period (hit: one came since the last frame)
-      this.dusk = 0; this.zoomIn = 1; this.closeFade = ME.qn("closeup", 1); this.bossWave = false; this.pinDusk = ME.params.has("dusk") ? ME.qn("dusk", 0) : null;
+      this.dusk = 0; this.zoomIn = 1; this.closeFade = ME.qn("closeup", 1); this.glassMul = ME.qn("glassk", GLASS_K); this.bossWave = false; this.pinDusk = ME.params.has("dusk") ? ME.qn("dusk", 0) : null;
       this.vox = new Map(); // model index -> sampled voxels [x, y, z, mat, ...] (voxelsOf)
       this.selected = null; this.seed = ""; this.hover = null;
       this.hoverOk = true; this.ringCol = [1, 0.95, 0.7];
@@ -17019,12 +17011,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (this.atmos) this.atmos.apply(s); // the mood's sun and the weather on top (view/atmos.js)
       // zoomed in, the jar's look fades out so the garden shows its true colours (the user, 2026-10-24): the
       // glass, the screen's haze wash and vignette go, bloom and shafts ease to half, at any mood. zoomIn is
-      // the zoom over the default framing's (main.js): full look up to 1.2x, none from 4x
-      const u = Math.min(1, Math.max(0, (this.zoomIn - 1.2) / 2.8)), close = u * u * (3 - 2 * u) * this.closeFade; // (?closeup=0: no fade)
+      // the zoom over the default framing's (main.js): full look up to 1.2x, none from 4x. The glass is
+      // lighter than the presets' in every garden (GLASS_K) and goes sooner: all of it
+      // up to 1.05x, none from 2.5x (the middle of the zoom range, which ends near 11x, on a log scale)
+      const fade = (z0, z1) => { const u = Math.min(1, Math.max(0, (this.zoomIn - z0) / (z1 - z0))); return u * u * (3 - 2 * u) * this.closeFade; }; // (?closeup=0: no fade)
+      const close = fade(1.2, 4), clear = fade(1.05, 2.5);
+      // (every value here is rewritten above each frame: glassK by atmos.apply from the base, the rest by
+      // the dusk blend; glassK from the base again in case a build runs without atmos, so nothing compounds)
+      s.glassK = (base.glassK ?? s.glassK) * this.glassMul * (1 - clear);
       if (close > 0) {
-        // (every value here is rewritten above each frame: glassK by atmos.apply from the base, the rest by
-        // the dusk blend; glassK from the base again in case a build runs without atmos, so nothing compounds)
-        s.glassK = (base.glassK ?? s.glassK) * (1 - close); s.haze *= 1 - close; s.vignette *= 1 - close;
+        s.haze *= 1 - close; s.vignette *= 1 - close;
         s.bloomK *= 1 - 0.5 * close; s.shaftK *= 1 - 0.5 * close;
       }
     }
@@ -17628,19 +17624,20 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 <script>/* src/view/terrariums.js */
 /* The terrarium screen (#237, as the user picked it): the gardens float in a dark void as jars, each turning
    on its turntable sheet (MG.TURNTABLE, art/turntable/<id>.js), on a slow ring with one jar in front (Orbit).
-   A jar at the side, the arrows, a swipe or ←/→ bring a garden round; the front jar (a click, or Enter)
-   opens its card:
+   The arrows, a swipe or ←/→ turn the ring. A click or tap on a jar, at the side or in front, or Enter on
+   the front one, goes straight into play (the user's ask, no card between):
      a run in that garden (one saved run per garden, core/save.js; the run in play for the garden that is up)
-       its wave, gifts, plants, Heart Tree and time played, with Resume or Start new (which asks first)
-     no run    its best wave and Begin
+       it resumes; the front jar's Start new (under the ring, which asks first) begins anew in its place
+     no run    a run begins
      a garden still in the works (G.LEVELS_SOON, or soon in the turntable look)   dimmed, marked In the
-       works, its card only
-   Another garden than the one up is a reload into it (Menu.go), which opens straight into play.
+       works; a click turns it round and the hint line says so, nothing opens
+   Another garden than the one up is a reload into it (Menu.go), which opens straight into play. Leaving
+   the garden that is up mid-wave takes its run back to the start of that wave: the hint line says so.
    The game opens here when no garden has a run (menu.js); with one, the title menu's Terrariums opens it.
      new G.Terrariums(menu, el)   .open() / .close() / .key(e) -> handled / .runOf(id) / .latest()
      G.Terrariums.loop(on)        turns every jar canvas on the page (the title's one too) while on
-   The card is a .panel with .btn / .btn.pink buttons and the jars carry data-orn="none", so a menu skin
-   (art/skin.js) dresses the one and leaves the others alone. */
+   Start new and its question are .btn / .btn.pink buttons; they and the jars carry data-orn="none", so a
+   menu skin (art/skin.js) gives them no ivy to grow over the question and the hint line. */
 (function () {
   const G = window.MG, S = G.state, P = G.Phase;
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -17724,25 +17721,24 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   class Terrariums {
     // menu: the Menu (its inRun, set, go, action and the app's act); el: the screen's element (#jars)
     constructor(menu, el) {
-      this.menu = menu; this.el = el; this.picked = null; this.confirm = false; this.rot = 0; this.rotTo = 0; this.last = 0;
+      this.menu = menu; this.el = el; this.confirm = null; this.rot = 0; this.rotTo = 0; this.last = 0; this.said = 0;
       el.innerHTML = `<canvas class="motes"></canvas>
         <div class="jtop"><button class="btn jback" data-j="back">‹ Title</button><h2>Choose a terrarium</h2>
           <span class="jgap"></span><button class="btn jlink" data-a="settings">Settings</button><button class="btn jlink" data-a="howto">How to play</button></div>
         <button class="btn jarrow l" data-j="left" aria-label="Turn the ring left">‹</button><button class="btn jarrow r" data-j="right" aria-label="Turn the ring right">›</button>
-        <div class="jhint"></div><div class="panel jsheet" role="dialog"></div>`;
-      this.sheet = el.querySelector(".jsheet");
+        <div class="jfoot"><div class="jnew"></div><div class="jhint" role="status"></div></div>`;
+      this.bar = el.querySelector(".jnew"); this.hint = el.querySelector(".jhint");
       el.addEventListener("click", (e) => {
         if (this.swiped) { this.swiped = false; return; }
         const j = e.target.closest("[data-j]"), jar = e.target.closest(".jar");
         if (j) this.act(j.dataset.j);
-        else if (jar) this.clickJar(jar.dataset.id);
-        else if (this.picked && !e.target.closest(".jsheet, .jtop")) this.closeCard();
+        else if (jar) this.play(jar.dataset.id);
       });
       // a swipe turns the ring (and is not also a click on the jar it started on)
       let x0 = null;
       el.addEventListener("pointerdown", (e) => { x0 = e.clientX; });
       el.addEventListener("pointerup", (e) => {
-        if (x0 !== null && Math.abs(e.clientX - x0) > 40 && !this.picked && !e.target.closest(".jsheet, .jtop")) { this.turn(e.clientX < x0 ? 1 : -1); this.swiped = true; setTimeout(() => (this.swiped = false), 0); }
+        if (x0 !== null && Math.abs(e.clientX - x0) > 40 && !e.target.closest(".jnew, .jtop")) { this.turn(e.clientX < x0 ? 1 : -1); this.swiped = true; setTimeout(() => (this.swiped = false), 0); }
         x0 = null;
       });
       ticks.push((t) => this.ease(t));
@@ -17780,52 +17776,68 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       for (const j of this.el.querySelectorAll(".jar")) j.remove();
       ids.forEach((id, k) => this.el.insertBefore(jarEl(id, k * 0.31), this.el.querySelector(".jarrow")));
       for (const cv of this.el.querySelectorAll(".jar canvas")) cv.dataset.name = this.info(cv.dataset.id).name;
-      this.picked = null; this.confirm = false; this.el.classList.remove("picked");
+      this.confirm = null;
       // the ring opens on the garden of the last run, else the one that is up
       const l = this.latest();
       this.rot = this.rotTo = Math.max(0, ids.indexOf(l ? l.id : G.levelId));
       this.el.querySelector(".jback").style.visibility = this.menu.hasTitle() ? "" : "hidden";
-      this.el.querySelector(".jhint").textContent = matchMedia("(pointer: coarse)").matches ? "Swipe to turn · tap the front jar" : "Click a jar to bring it round · click the front one to open it";
-      this.labels(); this.place();
+      this.labels(); this.place(); this.say();
       this.el.focus({ preventScroll: true });
     }
-    close() { this.picked = null; this.el.classList.remove("picked"); }
+    close() { this.confirm = null; clearTimeout(this.said); }
     labels() {
       for (const j of this.el.querySelectorAll(".jar")) {
         const g = this.info(j.dataset.id);
         const chip = g.run ? `<span class="chip"><i></i>Wave ${g.run.wave} · in progress</span>` : g.soon ? `<span class="chip soon">In the works</span>` : g.best ? `<span class="chip best">Best wave ${g.best}</span>` : `<span class="chip best">Not played yet</span>`;
         j.querySelector(".nm").innerHTML = `<b>${esc(g.name)}</b>${chip}`;
         j.classList.toggle("soon", g.soon);
-        j.setAttribute("aria-label", g.name + (g.soon ? ", in the works" : g.run ? `, run at wave ${g.run.wave}` : ""));
+        j.setAttribute("aria-label", g.name + (g.soon ? ", in the works" : g.run ? `, resume at wave ${g.run.wave}` : ", begin a run"));
       }
     }
     front() { const ids = this.ids(), n = ids.length; return ids[((Math.round(this.rotTo) % n) + n) % n]; }
-    turn(d) { if (!this.picked) this.rotTo += d; }
-    clickJar(id) {
-      const ids = this.ids(), n = ids.length;
-      if (!this.picked && this.front() !== id) {
-        const cur = Math.round(this.rotTo), want = ids.indexOf(id);
-        let d = (((want - cur) % n) + n) % n; if (d > n / 2) d -= n;
-        this.rotTo = cur + d; return;
-      }
-      if (this.picked === id) this.closeCard(); else this.openCard(id);
+    turn(d) { this.rotTo += d; }
+    // a jar clicked, tapped or Entered: its garden's run resumes, else one begins; a garden in the works
+    // turns round and the hint line says it is not playable yet
+    play(id) {
+      const g = this.info(id);
+      if (!g.soon) { this.menu.go(id, g.run ? "resume" : "begin"); return; }
+      const ids = this.ids(), n = ids.length, cur = Math.round(this.rotTo);
+      let d = (((ids.indexOf(id) - cur) % n) + n) % n; if (d > n / 2) d -= n;
+      this.rotTo = cur + d;
+      this.say(`${g.name} is still in the works, not playable yet`);
     }
-    // where each jar sits on the ring: x, y and width in % of the screen, its opacity and stacking; the ring
-    // moves aside (up, on a phone) for the card
+    // the hint line: how to play, or the warning for leaving the garden that is up mid-wave; a note (a
+    // garden in the works) stands in for a few seconds
+    say(note) {
+      clearTimeout(this.said);
+      const warn = !note && this.leaving(), coarse = matchMedia("(pointer: coarse)").matches;
+      this.hint.textContent = note || warn || (coarse ? "Tap a jar to play · swipe to turn" : "Click a jar to play · ←/→ or the arrows turn the ring");
+      this.hint.classList.toggle("warn", !!warn);
+      if (note) this.said = setTimeout(() => this.say(), 3000);
+    }
+    // the front jar's Start new, under the ring, when its garden has a run; it asks first (or Keep my run)
+    newBar() {
+      const id = this.front(), g = this.info(id), r = g.run, btn = (a, t, pink) => `<button class="btn${pink ? " pink" : ""}" data-j="${a}" data-orn="none">${t}</button>`;
+      if (this.confirm !== id) this.confirm = null;
+      const h = !r ? "" : this.confirm ? `<span class="warn">Start over in ${esc(g.name)}? This run ends at wave ${r.wave}.</span>${btn("new", "Start new", true)}${btn("keep", "Keep my run")}` : btn("ask", `Start new in ${esc(g.name)}`);
+      if (this.bar.dataset.h !== h) { this.bar.dataset.h = h; this.bar.innerHTML = h; }
+    }
+    // where each jar sits on the ring: x, y and width in % of the screen, its opacity and stacking
     place() {
-      const ids = this.ids(), n = ids.length, phone = innerWidth < 760 || innerHeight > innerWidth * 1.25, picked = this.picked;
-      const cx = picked ? (phone ? 50 : 32) : 50, cy = picked ? (phone ? 24 : 48) : phone ? 44 : 50;
+      const ids = this.ids(), n = ids.length, phone = innerWidth < 760 || innerHeight > innerWidth * 1.25;
+      const cx = 50, cy = phone ? 44 : 50;
       ids.forEach((id, i) => {
         const j = this.el.querySelector(`.jar[data-id="${id}"]`), a = ((i - this.rot) * 2 * Math.PI) / n, c = Math.cos(a), k = (1 + c) / 2, s = 0.5 + 0.5 * k;
         const soon = j.classList.contains("soon"), front = this.front() === id;
         j.style.left = cx + (phone ? 30 : 27) * Math.sin(a) + "%";
         j.style.top = cy - (phone ? 7 : 9) * (1 - c) + (phone ? 3 : 4) * c + "%";
-        j.style.width = (phone ? 84 : 40) * s * (picked && phone ? 0.75 : 1) + "%";
+        j.style.width = (phone ? 84 : 40) * s + "%";
         j.style.zIndex = Math.round(10 * k);
-        j.style.opacity = picked && picked !== id ? 0.16 : (0.25 + 0.75 * k) * (soon ? 0.6 : 1);
-        j.classList.toggle("front", front); j.classList.toggle("on", picked === id);
+        j.style.opacity = (0.25 + 0.75 * k) * (soon ? 0.6 : 1);
+        j.classList.toggle("front", front);
         j.tabIndex = front ? 0 : -1;
       });
+      this.newBar();
     }
     ease(t) {
       const dt = Math.min(0.1, t - (this.last || t)); this.last = t;
@@ -17835,50 +17847,26 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.place();
     }
 
-    openCard(id) {
-      this.picked = id; this.confirm = false;
-      this.rotTo = Math.round(this.rotTo); // the front jar is the one opened: the ring stays where it is (not a turn to its index)
-      this.el.classList.add("picked"); this.card(); this.place();
-      const b = this.sheet.querySelector("button"); if (b) b.focus({ preventScroll: true });
-    }
-    closeCard() { this.picked = null; this.confirm = false; this.el.classList.remove("picked"); this.place(); this.el.focus({ preventScroll: true }); }
-    card() {
-      const g = this.info(this.picked), r = g.run, btn = (a, t, pink) => `<button class="btn${pink ? " pink" : ""}" data-j="${a}">${t}</button>`;
-      let h = `<h3>${esc(g.name)}</h3>${g.blurb ? `<p class="blurb">${esc(g.blurb)}</p>` : ""}`;
-      if (g.soon) h += `<div class="row"><span class="chip soon">In the works · not playable yet</span></div><div class="btns">${btn("close", "Back")}</div>`;
-      else if (r && this.confirm) h += `<p class="warn">Start over in ${esc(g.name)}? This run ends at wave ${r.wave}.</p><div class="btns">${btn("new", "Start new", true)}${btn("keep", "Keep my run")}</div>`;
-      else if (r) {
-        h += `<div class="row"><span class="chip"><i></i>Run in progress</span></div>` +
-          `<div class="heart"><div class="t"><span>Heart Tree</span><span>${Math.ceil(r.heart[0])} / ${r.heart[1]}</span></div><div class="hbar"><i style="width: ${Math.max(0, Math.min(100, (100 * r.heart[0]) / r.heart[1])).toFixed(0)}%"></i></div></div>` +
-          `<div class="stats"><div class="stat"><b>${r.wave}</b><span>wave</span></div><div class="stat"><b>${r.gifts}</b><span>gifts</span></div><div class="stat"><b>${r.plants}</b><span>plants</span></div><div class="stat"><b>${mins(r.time)}</b><span>min</span></div></div>` +
-          this.leaving(g.id) + `<div class="btns">${btn("resume", "Resume", true)}${btn("ask", "Start new")}</div>`;
-      } else {
-        h += `<div class="row">${g.best ? `<span class="chip best">Best wave ${g.best}</span>` : `<span class="chip best">Not played yet</span>`}</div>` + this.leaving(g.id) + `<div class="btns">${btn("begin", "Begin", true)}${btn("close", "Back")}</div>`;
-      }
-      this.sheet.innerHTML = h;
-      this.sheet.setAttribute("aria-label", g.name);
-    }
-    // leaving the garden that is up mid-wave: its save goes back to the start of that wave
-    leaving(id) {
-      if (id === G.levelId || !this.menu.inRun() || S.phase !== P.WAVE) return "";
-      return `<p class="note">Your ${esc(this.info(G.levelId).name)} run goes back to the start of wave ${S.wave}.</p>`;
+    // leaving the garden that is up mid-wave: its save goes back to the start of that wave (a jar plays at
+    // once, so the warning stands on the hint line before the click)
+    leaving() {
+      if (!this.menu.inRun() || S.phase !== P.WAVE) return "";
+      return `Another garden takes your ${this.info(G.levelId).name} run back to the start of wave ${S.wave}`;
     }
     act(a) {
-      const id = this.picked;
+      const id = this.front();
       if (a === "left" || a === "right") this.turn(a === "left" ? -1 : 1);
-      else if (a === "back") { if (this.picked) this.closeCard(); else if (this.menu.hasTitle()) this.menu.show("title"); }
-      else if (a === "close") this.closeCard();
-      else if (a === "ask") { this.confirm = true; this.card(); this.sheet.querySelector("button").focus({ preventScroll: true }); }
-      else if (a === "keep") { this.confirm = false; this.card(); }
-      else if (a === "resume" || a === "begin" || a === "new") this.menu.go(id, a);
+      else if (a === "back") { if (this.confirm) this.act("keep"); else if (this.menu.hasTitle()) this.menu.show("title"); }
+      else if (a === "ask") { this.confirm = id; this.newBar(); this.bar.querySelector("button").focus({ preventScroll: true }); }
+      else if (a === "keep") { this.confirm = null; this.newBar(); this.el.focus({ preventScroll: true }); }
+      else if (a === "new") this.menu.go(id, a);
     }
-    // the menu's keys while this screen is open: ←/→ turn, Enter opens the front jar, Esc closes the card
-    // (and goes back to the title, when there is one)
+    // the menu's keys while this screen is open: ←/→ turn, Enter plays the front jar, Esc drops Start new's
+    // question (else goes back to the title, when there is one)
     key(e) {
       if (e.key === "Escape") { this.act("back"); return true; }
-      if (this.picked) return false;
       if (e.key === "ArrowLeft" || e.key === "ArrowRight") { this.turn(e.key === "ArrowLeft" ? -1 : 1); return true; }
-      if (e.key === "Enter" && (e.target === this.el || e.target === document.body || (e.target.closest && e.target.closest(".jar")))) { this.openCard(this.front()); e.preventDefault(); return true; }
+      if (e.key === "Enter" && (e.target === this.el || e.target === document.body || (e.target.closest && e.target.closest(".jar")))) { this.play(this.front()); e.preventDefault(); return true; }
       return false;
     }
   }
