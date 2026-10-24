@@ -13094,7 +13094,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "57362a1" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "038b11d" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -18444,72 +18444,77 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
 </script>
 <script>/* src/audio/score.js */
-/* The score's material (from music_director.gd): Hisaishi-style progressions in F major (the "royal road"
-   IV-V-iii-vi, a descending bass line with a borrowed bVII), darker ones for the battle, the boss and
-   the outro, two-bar melody rhythms, melodic steps, electric-piano comping patterns, the music-box
+/* The score's material: folk-like, modal progressions in F major (I-bVII-IV, vi-IV-I-V and, once in a
+   while, the Lydian lift of a major II), D Aeolian ones (i-bVI-bVII) for the hard fighting and the
+   boss, plain triads with an added ninth or a sus2 at most, the pentatonic scale the melodies are
+   written in, two-bar melody rhythms, melodic steps, electric-piano comping patterns, the music-box
    figure each kind of creature is announced with, the cues the director crossfades between (one per
    phase of a run) and the sting of a cleared wave. Pure data; music.js plays it. */
 (function () {
   const G = window.MG;
-  // A chord: a bass note, a rootless voicing for the electric piano and `dark`, a borrowed minor colour
-  // the blight swaps in as it spreads.
+  // A chord: a bass note, a voicing for the electric piano and `dark`, what the blight swaps in as it
+  // spreads: the same chord in a darker mode (a borrowed iv, a minor v, bVI over the bass), never a
+  // cluster. No voicing has two notes a semitone apart, nor a note a semitone from its bass.
   const C = (bass, notes, dark) => ({ bass, notes, dark });
-  const BBMAJ9 = C(46, [57, 60, 62, 65], [56, 60, 61, 65]), C9SUS = C(48, [58, 62, 65, 67], [58, 61, 65, 67]), AM9 = C(45, [55, 59, 60, 64], [55, 60, 63, 67]);
-  const DM9 = C(50, [57, 60, 64, 65], [57, 61, 64, 65]), GM9 = C(43, [57, 58, 62, 65], [58, 61, 65, 67]), C13 = C(48, [58, 62, 64, 69], [58, 61, 64, 68]);
-  const FMAJ9 = C(41, [57, 60, 64, 67], [56, 60, 63, 67]), F69 = C(41, [57, 62, 65, 67], [56, 60, 61, 65]), BBMAJ7S11 = C(46, [57, 60, 62, 64], [56, 60, 61, 64]);
-  const F_A = C(45, [57, 60, 64, 65], [56, 60, 63, 65]), EBMAJ9 = C(39, [58, 62, 65, 67], [58, 61, 65, 67]), A7B13 = C(45, [55, 61, 65, 69], [55, 61, 65, 68]);
-  const A7B9 = C(45, [55, 58, 61, 64], [55, 58, 61, 64]), EBMAJ7S11 = C(39, [57, 58, 62, 67], [57, 58, 62, 66]);
+  const F = C(41, [57, 60, 65, 67], [56, 60, 65]), BB = C(46, [58, 60, 62, 65], [58, 61, 65]); // I add9 (Fm), IV add9 (iv: Bbm)
+  const CSUS = C(48, [60, 62, 67], [60, 63, 67]), CM = C(48, [60, 64, 67], [60, 63, 67]); // Vsus2 and V (v: Cm)
+  const DM = C(50, [57, 62, 65, 69], [58, 62, 65, 70]), GM = C(43, [58, 62, 67], [58, 63, 67]); // vi (Bb/D), ii (Eb/G)
+  const AM = C(45, [57, 60, 64], [57, 60, 64]), EB = C(39, [58, 63, 67], [58, 63, 65]); // iii, bVII (Ebsus2)
+  const G_LYD = C(43, [59, 62, 67], [58, 62, 67]), C_E = C(40, [60, 64, 67], [57, 60, 64]); // II, the Lydian lift (ii); V/3 (Am/E)
+  const ASUS = C(45, [57, 62, 64], [57, 60, 64]); // D minor's v, sus4 (Am)
 
-  const PROG_A = [BBMAJ9, C9SUS, AM9, DM9, GM9, C13, FMAJ9, F69]; // IV V iii vi | ii V I
-  const PROG_B = [DM9, BBMAJ7S11, F_A, GM9, EBMAJ9, C9SUS, FMAJ9, A7B13]; // falling bass, bVII
-  const PROG_WAVE = [DM9, BBMAJ9, FMAJ9, C9SUS, DM9, BBMAJ7S11, GM9, C13]; // vi IV I V | vi IV ii V, walking on
-  const PROG_TENSE = [DM9, BBMAJ9, GM9, A7B9];
-  const PROG_BOSS = [DM9, EBMAJ7S11, BBMAJ9, A7B9];
-  const PROG_BOSS_B = [GM9, EBMAJ7S11, DM9, A7B13];
-  const PROG_OUTRO = [FMAJ9, DM9, BBMAJ9, C9SUS];
-  const PROG_WISTFUL = [BBMAJ9, AM9, DM9, GM9, BBMAJ9, C9SUS, FMAJ9, F69]; // IV iii vi ii | IV V I, looking back
+  const PROG_A = [F, EB, BB, F, DM, BB, CSUS, CM]; // I bVII IV I | vi IV Vsus V
+  const PROG_B = [DM, BB, F, CM, DM, BB, G_LYD, CSUS]; // vi IV I V | vi IV II Vsus, the Lydian lift
+  const PROG_WAVE = [F, CM, DM, BB, F, EB, BB, CSUS]; // I V vi IV | I bVII IV Vsus
+  const PROG_TENSE = [DM, BB, CM, DM]; // D minor: i bVI bVII i
+  const PROG_BOSS = [DM, BB, CM, AM]; // i bVI bVII v
+  const PROG_BOSS_B = [GM, DM, BB, ASUS]; // iv i bVI vsus
+  const PROG_OUTRO = [F, DM, BB, CSUS]; // I vi IV Vsus
+  const PROG_WISTFUL = [BB, AM, DM, F, BB, GM, CSUS, F]; // IV iii vi I | IV ii Vsus I, looking back
   // the second arrangements' own (see CUES[cue].alt)
-  const PROG_LULLABY = [FMAJ9, AM9, BBMAJ9, C9SUS, DM9, GM9, BBMAJ7S11, C13]; // I iii IV V | vi ii IV V, rocking
-  const PROG_STROLL = [GM9, C13, FMAJ9, DM9, GM9, C9SUS, F_A, BBMAJ9]; // ii V I vi | ii V I/3 IV, a walk
-  const PROG_BOSS_C = [DM9, C9SUS, BBMAJ9, A7B9, DM9, EBMAJ7S11, GM9, A7B13]; // i bVII bVI V | i bII iv V, a march
-  const PROG_HOME = [BBMAJ9, FMAJ9, GM9, C9SUS, AM9, DM9, BBMAJ7S11, F69]; // IV I ii V | iii vi IV I, homeward
+  const PROG_LULLABY = [F, C_E, DM, AM, BB, F, GM, CSUS]; // I V/3 vi iii | IV I ii Vsus, rocking
+  const PROG_STROLL = [GM, CM, F, DM, GM, CM, BB, F]; // ii V I vi | ii V IV I, a walk
+  const PROG_BOSS_C = [DM, CM, BB, CM, DM, F, GM, ASUS]; // i bVII bVI bVII | i III iv vsus, a march
+  const PROG_HOME = [BB, F, CSUS, DM, BB, GM, CSUS, F]; // IV I Vsus vi | IV ii Vsus I, homeward
 
   G.Score = {
     KEY: 65, MAJOR: [0, 2, 4, 5, 7, 9, 11],
-    FIRST_CHORD: BBMAJ9,
+    // the melodies' scale, F major pentatonic (D minor's too), and the degrees they keep to (C4 to A5)
+    SCALE: [0, 2, 4, 7, 9], RANGE: [-2, 7],
+    FIRST_CHORD: F,
     PROG_A, PROG_B, PROG_WAVE, PROG_TENSE, PROG_BOSS, PROG_BOSS_B, PROG_OUTRO, PROG_WISTFUL, PROG_LULLABY, PROG_STROLL, PROG_BOSS_C, PROG_HOME,
-    // The cues, one per phase: build (calm keys, guitar and the odd melody), wave (a gentle boom-bap
-    // drive), boss (a harp ostinato over a pedal bass and half-time toms: tension, still cosy) and over
-    // (solo felt piano, soft and wistful). Each has its tempo and how far intensity pushes it, the
-    // progressions its sections take turns with (`tense`: the wave's when the fighting is hard), its
-    // swing, the music bus's lowpass and reverb send (calm..intense), and how long it takes to fade in
-    // and, when the next cue takes over, to fade out.
+    // The cues, one per phase: build (calm keys, harp and the ocarina's song), wave (a lazy, soft
+    // boom-bap), boss (a harp ostinato over a pedal bass and half-time toms, in D minor: tense, still
+    // cosy) and over (solo felt piano, soft and wistful). Each has its tempo and how far intensity pushes
+    // it, the progressions its sections take turns with (`tense`: the wave's when the fighting is hard),
+    // its swing, the music bus's lowpass (kept low, for a warm tape) and reverb send (calm..intense), and
+    // how long it takes to fade in and, when the next cue takes over, to fade out.
     // `alt` is a cue's second arrangement, which takes turns with the first each time the phase comes
     // round (music.js), so the second build or wave of a run doesn't sound like the first: build, a
     // music-box lullaby (celesta and harp, the flute singing); wave, a brushed stroll (walking bass, brushes,
     // keys on the Charleston); boss, a pizzicato march (guitar ostinato, toms in 3+3+2); over, the music
     // box alone over the pad. Its fields replace the cue's.
     CUES: {
-      build: { bpm: 70, drive: 0, progs: [PROG_A, PROG_B], swing: 0.2, lp: [5200, 5600], wet: [0.2, 0.22], fadeIn: 1.5, fadeOut: 2.5,
-        alt: { bpm: 66, progs: [PROG_LULLABY, PROG_A], swing: 0.12, lp: [4600, 5000], wet: [0.24, 0.26] } },
-      wave: { bpm: 78, drive: 8, progs: [PROG_WAVE, PROG_A], tense: PROG_TENSE, swing: 0.24, lp: [6000, 11000], wet: [0.18, 0.24], fadeIn: 0.8, fadeOut: 2,
-        alt: { bpm: 82, drive: 6, progs: [PROG_STROLL, PROG_WAVE], swing: 0.3, lp: [5600, 10000] } },
-      boss: { bpm: 84, drive: 4, progs: [PROG_BOSS, PROG_BOSS_B], swing: 0.16, lp: [7000, 11500], wet: [0.22, 0.26], fadeIn: 0.6, fadeOut: 2.5,
-        alt: { bpm: 88, progs: [PROG_BOSS_C, PROG_BOSS], swing: 0.08 } },
+      build: { bpm: 70, drive: 0, progs: [PROG_A, PROG_B], swing: 0.22, lp: [4800, 5200], wet: [0.2, 0.22], fadeIn: 1.5, fadeOut: 2.5,
+        alt: { bpm: 68, progs: [PROG_LULLABY, PROG_A], swing: 0.14, lp: [4400, 4800], wet: [0.24, 0.26] } },
+      wave: { bpm: 76, drive: 6, progs: [PROG_WAVE, PROG_A], tense: PROG_TENSE, swing: 0.32, lp: [4800, 8000], wet: [0.18, 0.24], fadeIn: 0.8, fadeOut: 2,
+        alt: { bpm: 80, drive: 4, progs: [PROG_STROLL, PROG_WAVE], swing: 0.34, lp: [4600, 7500] } },
+      boss: { bpm: 80, drive: 4, progs: [PROG_BOSS, PROG_BOSS_B], swing: 0.18, lp: [5600, 9000], wet: [0.22, 0.26], fadeIn: 0.6, fadeOut: 2.5,
+        alt: { bpm: 82, progs: [PROG_BOSS_C, PROG_BOSS], swing: 0.1 } },
       over: { bpm: 58, drive: 0, progs: [PROG_OUTRO, PROG_WISTFUL], swing: 0.2, lp: [2600, 2600], wet: [0.3, 0.3], fadeIn: 3, fadeOut: 3,
         alt: { bpm: 54, progs: [PROG_HOME, PROG_OUTRO], lp: [3200, 3200], wet: [0.34, 0.34] } },
     },
-    // a cleared wave: a harp run up F major add9, then the chord rolled on the keys over a low F, a bell
+    // a cleared wave: a harp run up the F pentatonic, then F add9 rolled on the keys over a low F, a bell
     // and two music-box notes on top
-    STING: { run: [53, 57, 60, 65, 67, 69, 72, 76], chord: [57, 60, 64, 67], bass: 41, bell: 77, top: [79, 81] },
+    STING: { run: [53, 57, 60, 62, 65, 67, 69, 72], chord: [57, 60, 65, 67], bass: 41, bell: 77, top: [79, 81] },
     // two-bar melody rhythms: [start, length] in 16ths
     RHYTHMS: [
       [[0, 6], [6, 2], [8, 8], [16, 4], [20, 4], [24, 8]], [[2, 2], [4, 4], [8, 4], [12, 4], [16, 12], [28, 4]],
       [[0, 4], [4, 4], [8, 2], [10, 6], [16, 8], [24, 4], [28, 4]], [[0, 12], [12, 2], [14, 2], [16, 8], [24, 8]],
       [[4, 2], [6, 2], [8, 6], [14, 2], [16, 16]], [[0, 3], [3, 3], [6, 2], [8, 8], [20, 2], [22, 2], [24, 8]],
     ],
-    // melodic steps in scale degrees, mostly stepwise
-    STEPS: [-1, -1, -1, 1, 1, 1, -2, 2, 0, 3, -3, 2],
+    // melodic steps in scale degrees, mostly stepwise (a pentatonic step is a tone or a minor third)
+    STEPS: [-1, -1, -1, 1, 1, 1, -2, 2, 0, 0, 2, -1],
     // electric-piano comping patterns (16th steps that get a chord) once the drums are in
     COMPS: [[0, 6, 10], [0, 10, 14], [0, 3, 8, 11], [0, 8, 14], [0, 6, 11, 14]],
     // music-box figures (chord-tone indices) announcing each kind of creature
@@ -18520,25 +18525,26 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 </script>
 <script>/* src/audio/instruments.js */
 /* The score's instruments, a sound bank for the audio engine (MA.loadBanks; ports of Synth, synth.gd):
-   FM electric piano, additive felt piano, a round bass, Karplus-Strong guitar and harp, a music box, a
-   breathy flute, a saw pad, a temple bell, a heartbeat, a dusty lofi kit and vinyl crackle. Each is
-   synthesised once at a base pitch; the sequencer pitch-shifts it per note. Keyboards have a "_hi"
-   twin so no note is shifted far. Self-contained: it runs in the bank worker with only the DSP
-   library L (MA_DSP). */
+   FM electric piano, additive felt piano, a round bass and a pizzicato one, Karplus-Strong guitar and
+   harp, a music box, a breathy flute, an ocarina, a saw pad, a temple bell, a heartbeat, a dusty lofi
+   kit and vinyl crackle. Each is synthesised once at a base pitch; the sequencer pitch-shifts it per note.
+   Keyboards have a "_hi" twin so no note is shifted far. Self-contained: it runs in the bank worker
+   with only the DSP library L (MA_DSP). */
 function MG_INSTRUMENTS(L) {
   const { TAU, TABLE, LOOP_FADE, rnd, rr, ri, n1, smooth, midiHz, svf, table, seam, buf, pluck, ensemble } = L;
   const { exp, sin, min, max, pow, tanh } = Math;
 
   // name -> [base MIDI note, sample rate]
   const INSTRUMENTS = {
-    keys: [57, 32000], keys_hi: [69, 32000], piano: [62, 32000], piano_hi: [76, 32000], bass: [36, 22050], guitar: [52, 32000],
-    pad: [57, 22050], celesta: [81, 32000], harp: [57, 32000], flute: [74, 32000], bell: [57, 32000], heartbeat: [40, 22050],
+    keys: [57, 32000], keys_hi: [69, 32000], piano: [62, 32000], piano_hi: [76, 32000], bass: [36, 22050], pizz: [36, 22050], guitar: [52, 32000],
+    pad: [57, 22050], celesta: [81, 32000], harp: [57, 32000], flute: [74, 32000], ocarina: [74, 32000], bell: [57, 32000], heartbeat: [40, 22050],
     kick: [36, 22050], snare: [60, 32000], rim: [60, 32000], hat: [60, 32000], ohat: [60, 32000], shaker: [60, 32000], tom: [45, 22050], vinyl: [60, 22050],
   };
 
   // ------------------------------------------------------------------ instruments
   const SAW = (() => { const h = []; for (let k = 1; k < 25; k++) h.push((1 / k) * exp(-k / 10)); return table(h); })();
   const FLUTE = table([1, 0.22, 0.08, 0.03]);
+  const OCARINA = table([1, 0.07, 0.02]);
 
   // electric piano by two-operator FM: a 1:1 pair whose brightness dies away like a struck tine, a high
   // bell partial for the attack's "tink", a two-stage decay and gentle tape saturation
@@ -18591,6 +18597,12 @@ function MG_INSTRUMENTS(L) {
     }
     return out;
   }
+  // a pizzicato bass: a dark plucked string over a round sine, dying away soon after the pluck
+  function pizz(f, sr, secs) {
+    const s = pluck(f, sr, secs, 0.4975, 0.25), w = (TAU * f) / sr; let lp = 0;
+    for (let i = 0; i < s.length; i++) { const t = i / sr; lp += 0.25 * (s[i] - lp); s[i] = (lp * 0.8 + sin(w * i) * 0.6) * exp(-t * 2.2) * min(t / 0.004, 1) * min((secs - t) / 0.2, 1); }
+    return s;
+  }
   // nylon guitar: a mellow plucked string through a wooden body resonance
   function guitar(f, sr, secs) { const s = pluck(f, sr, secs, 0.4994, 0.35), body = svf(sr); for (let i = 0; i < s.length; i++) s[i] = s[i] + body(s[i], 210, 0.4) * 0.6; return s; }
   // music box: a plucked steel comb, bright stretched partials ringing down over a purer fundamental
@@ -18610,6 +18622,16 @@ function MG_INSTRUMENTS(L) {
       noise += 0.12 * (n1() - noise);
       const env = min(t / 0.07, 1) * min((secs - t) / 0.5, 1) * (0.92 + 0.08 * sin(TAU * 5.2 * t));
       out[i] = (FLUTE[Math.floor(ph) & mask] + noise * 0.15) * env;
+    }
+    return out;
+  }
+  // an ocarina: a vessel flute, near a pure sine, with a breathy chiff as it speaks and a late vibrato
+  function ocarina(f, sr, secs) {
+    const out = buf(secs, sr), mask = TABLE - 1, inc = (f * TABLE) / sr, bp = svf(sr); let ph = 0;
+    for (let i = 0; i < out.length; i++) {
+      const t = i / sr, vib = sin(TAU * 5.6 * t) * smooth(0.3, 0.8, t); ph += inc * (1 + 0.005 * vib);
+      const breath = bp(n1(), f * 2, 0.3) * (0.1 * exp(-t * 18) + 0.012), env = min(t / 0.035, 1) * min((secs - t) / 0.45, 1) * (0.94 + 0.06 * vib);
+      out[i] = (OCARINA[Math.floor(ph) & mask] + breath) * env;
     }
     return out;
   }
@@ -18678,11 +18700,13 @@ function MG_INSTRUMENTS(L) {
       case "keys": case "keys_hi": s = epiano(f, sr, 4); break;
       case "piano": case "piano_hi": s = feltPiano(f, sr, 4.5); break;
       case "bass": s = bass(f, sr, 2.4); break;
+      case "pizz": s = pizz(f, sr, 1.6); break;
       case "guitar": s = guitar(f, sr, 2.8); break;
       case "pad": s = ensemble(SAW, f, sr, 5, 4, 7, 1.4, 1.6, 0.09); break;
       case "celesta": s = musicBox(f, sr, 2.4); break;
       case "harp": s = pluck(f, sr, 2.6); break;
       case "flute": s = fluteNote(f, sr, 2.2); break;
+      case "ocarina": s = ocarina(f, sr, 2.2); break;
       case "bell": s = bell(f, sr, 5); break;
       case "heartbeat": s = heartbeat(f, sr, 0.9); break;
       case "kick": s = kick(sr, 0.55); break;
@@ -19082,20 +19106,22 @@ function MG_SFX(L) {
 
 </script>
 <script>/* src/audio/music.js */
-/* Adaptive lofi score (port of the Music autoload, music_director.gd): cosy, unhurried, a little Ghibli.
+/* Adaptive lofi score (port of the Music autoload, music_director.gd): cosy, unhurried, a little
+   adventure in an old forest.
 
    The audio engine's sequencer (MA.Sequencer) runs a swung 16th grid; this director decides what plays
-   on it, from the score's material (score.js): warm electric-piano chords, a round bass, a felt-piano
-   melody composed per section (a two-bar motif, repeated, lifted, then answered with a cadence) and a
-   dusty boom-bap kit, all under a faint vinyl crackle (?vinyl=0: none) and a gentle tape wobble.
+   on it, from the score's material (score.js): warm electric-piano triads, a plucked bass, harp
+   arpeggios, an ocarina singing a pentatonic melody (a two-bar motif, chosen once per cue so it comes
+   back every section, repeated, lifted, then answered with a cadence) and a dusty boom-bap kit, all
+   under a faint vinyl crackle (?vinyl=0: none) and a gentle tape wobble.
 
    The score is a set of cues, one per phase of a run (score.js, CUES):
-   - build: keys, bass, a lone rim click, a melody every other section and a nylon guitar picking the
-     chord in between;
-   - wave: the drums come in, the keys comp, the melody sings every section, and hard fighting opens the
-     filter, thickens the hats and turns the harmony to D minor;
-   - boss (a boss wave): darker progressions, a harp ostinato over a pedal bass, half-time toms, the
-     flute on the melody and a pad under every bar;
+   - build: keys, bass, a lone rim click, the ocarina every other section and a harp arpeggio in
+     between;
+   - wave: the drums come in, the keys comp, the ocarina sings every section, and hard fighting opens
+     the filter, thickens the hats and turns the harmony to D minor;
+   - boss (a boss wave): D minor progressions, a harp ostinato over a pedal bass, half-time toms, the
+     ocarina on the melody and a pad under every bar;
    - over: the tape winds down to a stop, then a slow solo felt piano with a soft pad.
    Each cue has a second arrangement (CUES[cue].alt) that takes turns with the first each time its phase
    comes round: a music-box lullaby, a brushed stroll, a pizzicato march and the music box alone.
@@ -19107,7 +19133,7 @@ function MG_SFX(L) {
    It follows the game without ever losing its calm:
    - Each kind of creature on the field adds a quiet figure (grubs a low guitar, beetles rim clicks, moths
      music-box flutters, golems a low tom), and a kind seen for the first time gets a music-box stinger.
-   - As the blight spreads, chords borrow darker minor colours, the tape wobbles harder and the crackle
+   - As the blight spreads, chords turn to a darker mode (score.js, `dark`), the tape wobbles harder and the crackle
      rises a little. A hit on the Heart Tree dips the tape and a heartbeat comes in when it is low.
    - Kills sparkle on the music box and weak-spot hits ring a high key, in the current chord, on the beat.
 
@@ -19131,6 +19157,7 @@ function MG_SFX(L) {
   // the blight adds at its worst (the voice 12 dB under the first mix, which the user heard as static; the
   // buffer itself is far quieter too, instruments.js, so the crackle as heard drops by much more)
   const VINYL = { start: -34, calm: -33, drums: -37, over: -30, blight: 2 };
+  const [LO, HI] = SC.RANGE, DEGREES = SC.SCALE.length;
 
   // A deck plays one cue on its own sub-buses (gains: one per sub-bus, faded together) and keeps that
   // cue's song form: progression, section, comping pattern and composed melody.
@@ -19147,7 +19174,7 @@ function MG_SFX(L) {
     start(cue, when, alt) {
       this.silence(when);
       this.cue = cue; this.alt = !!(alt && SC.CUES[cue].alt); this.D = this.alt ? Object.assign({}, SC.CUES[cue], SC.CUES[cue].alt) : null;
-      this.live = true; this.sectionBar = 0; this.sections = 0; this.turn = 0; this.variant = ""; this.forceSection = true;
+      this.live = true; this.sectionBar = 0; this.sections = 0; this.turn = 0; this.variant = ""; this.forceSection = true; this.motif = null;
       this.ramp(when, MA.dbToGain(-12), 1, this.def.fadeIn);
     }
     // plays no new notes; what still rings fades out over `secs` from ctx time `when`
@@ -19183,10 +19210,11 @@ function MG_SFX(L) {
       this.phrase = this.compose(); this.phraseI = 0;
     }
     // A melody for the 8-bar section: a two-bar motif, the same motif again over the next two chords, a
-    // lifted variation, then the motif's first bar and a long note to close.
+    // lifted variation, then the motif's first bar and a long note to close. The motif is the cue's own,
+    // chosen with its first section, so every section of the cue comes back to it; only the answer is new.
     compose() {
-      const r1 = pick(SC.RHYTHMS), r2 = pick(SC.RHYTHMS), d1 = r1.map(() => pick(SC.STEPS)), d2 = r2.map(() => pick(SC.STEPS));
-      const start = 2 + Math.floor(rf() * 5), out = [];
+      if (!this.motif) { const r = pick(SC.RHYTHMS); this.motif = { r, d: r.map(() => pick(SC.STEPS)), start: 1 + Math.floor(rf() * 4) }; }
+      const { r: r1, d: d1, start } = this.motif, r2 = pick(SC.RHYTHMS), d2 = r2.map(() => pick(SC.STEPS)), out = [];
       this.place(out, 0, r1, d1, start, false); this.place(out, 2, r1, d1, start, false);
       this.place(out, 4, r2, d2, start + 2, false); this.place(out, 6, r1, d1, start, true);
       return out;
@@ -19196,25 +19224,28 @@ function MG_SFX(L) {
       for (let k = 0; k < rhythm.length; k++) {
         const st = rhythm[k][0];
         if (cadence && st >= 16) break;
-        if (k > 0) d = clamp(d + deltas[k], -2, 11);
+        if (k > 0) d = clamp(d + deltas[k], LO, HI);
         const bar = bar0 + Math.floor(st / 16), pcs = this.pcs(bar);
-        if (st % 8 === 0) d = this.snapDegree(d, pcs);
-        let note = this.degreeNote(d);
-        if (this.dark[bar]) note = this.nearestTone(note, pcs);
-        out.push([bar0 * 16 + st, note, rhythm[k][1]]);
+        // on the beat and on a long note, a chord tone
+        if (st % 8 === 0 || rhythm[k][1] >= 6) d = this.snapDegree(d, pcs);
+        out.push([bar0 * 16 + st, this.fit(this.degreeNote(d), bar, pcs), rhythm[k][1]]);
       }
       if (cadence) {
         const bar = bar0 + 1, pcs = this.pcs(bar);
         d = this.snapDegree(d, pcs);
-        let note = this.degreeNote(d);
-        if (this.dark[bar]) note = this.nearestTone(note, pcs);
-        out.push([bar * 16, note, 16]);
+        out.push([bar * 16, this.fit(this.degreeNote(d), bar, pcs), 16]);
       }
     }
     // pitch classes of the chord at a bar of the section
     pcs(bar) { const ch = this.prog[bar % this.prog.length], notes = this.dark[bar] ? ch.dark : ch.notes; return [posmod(ch.bass, 12)].concat(notes.map((n) => posmod(n, 12))); }
-    degreeNote(d) { return SC.KEY + SC.MAJOR[posmod(d, 7)] + 12 * Math.floor(d / 7); }
-    snapDegree(d, pcs) { for (const off of [0, -1, 1, -2, 2, 3, -3]) if (pcs.includes(posmod(this.degreeNote(d + off), 12))) return clamp(d + off, -2, 11); return d; }
+    degreeNote(d) { return SC.KEY + SC.SCALE[posmod(d, DEGREES)] + 12 * Math.floor(d / DEGREES); }
+    snapDegree(d, pcs) { for (const off of [0, -1, 1, -2, 2]) if (pcs.includes(posmod(this.degreeNote(d + off), 12))) return clamp(d + off, LO, HI); return d; }
+    // a melody note that sits with the chord: in a darker bar, a chord tone; elsewhere, any note but one
+    // a semitone from the chord (the pentatonic's A over Bb, or its D over Eb)
+    fit(note, bar, pcs) {
+      const rub = pcs.some((p) => posmod(note - p, 12) === 1 || posmod(p - note, 12) === 1);
+      return this.dark[bar] || rub ? this.nearestTone(note, pcs) : note;
+    }
     nearestTone(note, pcs) { for (const off of [0, -1, 1, -2, 2, -3, 3]) if (pcs.includes(posmod(note + off, 12))) return note + off; return note; }
     // the melody's notes that start on 16th `s` of the bar: [pos, note, length]
     due(s) {
@@ -19243,17 +19274,18 @@ function MG_SFX(L) {
       const P = (inst, note, db, sub, d = 0) => this.play(inst, note, db, sub, t + d), root = this.chord.bass;
       if (s === 0) this.strum(t, this.chordNotes, -15);
       else if (s === 10 && rf() < 0.45) this.strum(t + swing, this.chordNotes.slice(1), -19);
-      if (s === 0) P("bass", root, -12, "Pads");
-      else if (s === 8 && rf() < 0.5) P("bass", root + 7, -16, "Pads");
+      if (s === 0) P("pizz", root, -11, "Pads");
+      else if (s === 8 && rf() < 0.5) P("pizz", root + 7, -15, "Pads");
       if (s === 12 && this.m.seq.bar % 2 === 1) P("rim", 60, -21, "Perc");
-      // the melody sings every other section; in between, a nylon guitar picks the chord on the off-beats
+      // the ocarina sings every other section, the felt piano a third under its long notes; in between, a
+      // harp climbs the chord in 8ths
       const sing = this.sections % 2 === 0;
       for (const [, note, len] of this.due(s)) {
         if (!sing || rf() < 0.15) continue;
-        P("piano", note, -13, "Lead", swing);
-        if (len >= 8 && rf() < 0.5) P("piano", this.thirdBelow(note), -17, "Lead", swing + 0.012);
+        P("ocarina", note, -12, "Lead", swing);
+        if (len >= 8 && rf() < 0.5) P("piano", this.thirdBelow(note), -18, "Lead", swing + 0.012);
       }
-      if (!sing && s % 4 === 2) P("guitar", this.chordNotes[(s >> 2) % this.chordNotes.length], s === 2 ? -19 : -21, "Keys", swing);
+      if (s % 2 === 0) { const a = this.arp(); P("harp", a[[0, 1, 2, 1, 0, 1, 2, 3][(s >> 1) % 8] % a.length] - 12, sing ? -24 : -20, "Keys", swing); }
       // music box turnaround at the end of the section
       if (this.sectionBar === 7 && s === 8) { const arp = this.arp(); for (let k = 0; k < 4; k++) P("celesta", arp[k % arp.length], -21, "Keys", k * six); }
       if (s === 0 && S.corruption > 0.5) for (const n of this.chordNotes) P("pad", n, -25, "Pads");
@@ -19261,10 +19293,10 @@ function MG_SFX(L) {
     waveStep(s, t, swing, six) {
       const i = this.m.intensity, P = (inst, note, db, sub, d = 0) => this.play(inst, note, db, sub, t + d), root = this.chord.bass;
       if (this.comp.includes(s)) this.strum(t + swing, this.chordNotes, s === 0 ? -15 : -18);
-      if (s === 0) P("bass", root, -9, "Pads");
-      else if (s === 7 && rf() < 0.35) P("bass", root, -16, "Pads", swing);
-      else if (s === 10) P("bass", root + (rf() < 0.3 ? 12 : 0), -11, "Pads");
-      else if (s === 14 && rf() < 0.6) P("bass", this.prog[(this.sectionBar + 1) % this.prog.length].bass + (rf() < 0.5 ? 1 : -1), -14, "Pads");
+      if (s === 0) P("pizz", root, -9, "Pads");
+      else if (s === 7 && rf() < 0.35) P("pizz", root, -16, "Pads", swing);
+      else if (s === 10) P("pizz", root + (rf() < 0.3 ? 12 : 0), -11, "Pads");
+      else if (s === 14 && rf() < 0.6) P("pizz", root + 7, -14, "Pads");
       // a dusty boom-bap
       const h = rr(0, 0.006);
       if (s === 0) P("kick", 36, -7, "Perc");
@@ -19279,9 +19311,9 @@ function MG_SFX(L) {
       // a soft tom fill into each new section
       if (this.sectionBar === 7 && s >= 12 && s !== 13 && rf() < 0.6) P("tom", [52, 0, 48, 45][s - 12], -15, "Perc", swing);
       for (const [, note, len] of this.due(s)) {
-        P("piano", note, -11, "Lead", swing);
-        if (len >= 8 && rf() < 0.5) P("piano", this.thirdBelow(note), -17, "Lead", swing + 0.012);
-        if (i > 0.55 && len >= 4) P("flute", note, -18, "Lead", swing);
+        P("ocarina", note, -11, "Lead", swing);
+        if (len >= 8 && rf() < 0.5) P("piano", this.thirdBelow(note), -18, "Lead", swing + 0.012);
+        if (i > 0.55 && len >= 4) P("harp", note - 12, -19, "Keys", swing);
       }
       // a warm pad once the fighting is hard or the blight is wide
       if (s === 0 && (this.variant || S.corruption > 0.5)) for (const n of this.chordNotes) P("pad", n, -25 + i * 4, "Pads");
@@ -19292,7 +19324,7 @@ function MG_SFX(L) {
       if (s === 0 || s === 6 || s === 10) this.strum(t + swing, this.chordNotes, s === 0 ? -16 : -19);
       if (s === 0) for (const n of this.chordNotes) P("pad", n, -24 + i * 3, "Pads");
       // a pedal bass pulsing in 8ths, leaning on the downbeats
-      if (s % 2 === 0) P("bass", root + (s === 12 && rf() < 0.4 ? 12 : 0), s % 8 === 0 ? -10 : s % 4 === 0 ? -15 : -18, "Pads");
+      if (s % 2 === 0) P("pizz", root + (s === 12 && rf() < 0.4 ? 12 : 0), s % 8 === 0 ? -10 : s % 4 === 0 ? -15 : -18, "Pads");
       // a harp ostinato over the chord: the tension, kept soft
       if (s % 2 === 0) { const a = this.arp(); P("harp", a[[0, 2, 1, 3][(s >> 1) % 4] % a.length], s % 8 === 0 ? -21 : -23, "Keys"); }
       // half-time drums with low toms
@@ -19305,8 +19337,8 @@ function MG_SFX(L) {
       if (this.m.seq.bar % 2 === 1 && (s === 12 || s === 14)) P("tom", s === 12 ? 45 : 41, -15, "Perc", h);
       else if (this.sectionBar === 7 && s >= 12 && s !== 13) P("tom", [52, 0, 48, 45][s - 12], -15, "Perc", swing);
       P("shaker", 60, -29 + i * 2, "Perc", swing);
-      // the flute takes the melody, the felt piano an octave under it
-      for (const [, note] of this.due(s)) { P("flute", note, -14, "Lead", swing); P("piano", note - 12, -18, "Lead", swing + 0.01); }
+      // the ocarina takes the melody, the felt piano an octave under it
+      for (const [, note] of this.due(s)) { P("ocarina", note, -13, "Lead", swing); P("piano", note - 12, -19, "Lead", swing + 0.01); }
     }
     // solo felt piano, slow and sparse, over a soft pad
     overStep(s, t, six) {
@@ -19339,8 +19371,8 @@ function MG_SFX(L) {
       if (this.sectionBar === 7 && s === 8) { const a = this.arp(); for (let k = 0; k < 6; k++) P("harp", a[a.length - 1 - (k % a.length)] + (k < a.length ? 12 : 0), -19, "Keys", k * six * 0.75); }
       if (s === 0 && S.corruption > 0.5) for (const n of this.chordNotes) P("pad", n, -26, "Pads");
     }
-    // wave: a brushed stroll. A walking bass in quarters (root, a chord tone, the fifth, a step into the
-    // next chord), brushes for drums, the keys on the Charleston and the felt piano on the melody, with
+    // wave: a brushed stroll. A plucked walking bass in quarters (root, a chord tone, the fifth, a step towards
+    // the next chord), brushes for drums, the keys on the Charleston and the flute on the melody, with
     // the music box doubling it an octave up when the fighting is hard.
     strollStep(s, t, swing, six) {
       const i = this.m.intensity, P = (inst, note, db, sub, d = 0) => this.play(inst, note, db, sub, t + d), root = this.chord.bass, h = rr(0, 0.006);
@@ -19348,8 +19380,8 @@ function MG_SFX(L) {
       else if (s === 14 && rf() < 0.3 + 0.3 * i) this.strum(t + swing, this.chordNotes.slice(1), -21);
       if (s % 4 === 0) {
         const next = this.prog[(this.sectionBar + 1) % this.prog.length].bass, third = this.chordNotes.find((n) => posmod(n - root, 12) === 3 || posmod(n - root, 12) === 4);
-        const walk = [root, third !== undefined ? root + posmod(third - root, 12) : root + 7, root + 7, next + (next > root ? -1 : 1)][s >> 2];
-        P("bass", walk, s === 0 ? -10 : -13, "Pads");
+        const walk = [root, third !== undefined ? root + posmod(third - root, 12) : root + 7, root + 7, next + (next > root ? -2 : 2)][s >> 2];
+        P("pizz", walk, s === 0 ? -10 : -13, "Pads");
       }
       // brushes: a soft kick on one and three, the snare's swish on two and four with ghosts, hats on the beat
       if (s === 0) P("kick", 36, -11, "Perc");
@@ -19361,27 +19393,27 @@ function MG_SFX(L) {
       if (i > 0.6) P("shaker", 60, -28, "Perc", swing);
       if (this.sectionBar === 7 && s >= 12 && s % 2 === 0) P("snare", 60, -22 + (s - 12), "Perc", swing);
       for (const [, note, len] of this.due(s)) {
-        P("piano", note, -12, "Lead", swing);
+        P("flute", note, -13, "Lead", swing);
         if (len >= 8 && rf() < 0.4) P("piano", this.thirdBelow(note), -18, "Lead", swing + 0.012);
         if (i > 0.55) P("celesta", note + 12, -22, "Keys", swing);
       }
       if (s === 0 && (this.variant || S.corruption > 0.5)) for (const n of this.chordNotes) P("pad", n, -26 + i * 4, "Pads");
     }
     // boss: a pizzicato march. A guitar ostinato in 8ths (root, fifth, octave, fifth), toms in 3+3+2 over
-    // a straight kick and snare, the pad under every bar and the flute and the felt piano on the melody.
+    // a straight kick and snare, the pad under every bar and the ocarina and the felt piano on the melody.
     marchStep(s, t, swing, six) {
       const i = this.m.intensity, P = (inst, note, db, sub, d = 0) => this.play(inst, note, db, sub, t + d), root = this.chord.bass, h = rr(0, 0.006);
       if (s === 0) for (const n of this.chordNotes) P("pad", n, -24 + i * 3, "Pads");
       if (s === 0 || s === 8) this.strum(t, this.chordNotes, s === 0 ? -17 : -20);
       if (s % 2 === 0) P("guitar", root + 12 + [0, 7, 12, 7][(s >> 1) % 4], s % 8 === 0 ? -15 : -18, "Keys", swing);
-      if (s === 0 || s === 8) P("bass", root, s === 0 ? -10 : -13, "Pads");
+      if (s === 0 || s === 8) P("pizz", root, s === 0 ? -10 : -13, "Pads");
       if (s === 0 || s === 6 || s === 12) P("tom", [45, 43, 41][s / 6], -14, "Perc", h);
       if (s === 0) P("kick", 36, -8, "Perc");
       else if (s === 8) P("kick", 36, -10, "Perc", h);
       if (s === 4 || s === 12) P("snare", 60, -12, "Perc", h);
       if (s % 2 === 0) P("hat", 60, s % 4 === 2 ? -19 : -22, "Perc", h);
       if (this.sectionBar === 7 && s >= 8 && s % 2 === 0) P("snare", 60, -20 + (s - 8) * 0.8, "Perc", h);
-      for (const [, note] of this.due(s)) { P("flute", note, -14, "Lead", swing); P("piano", note - 12, -19, "Lead", swing + 0.01); }
+      for (const [, note] of this.due(s)) { P("ocarina", note, -13, "Lead", swing); P("piano", note - 12, -20, "Lead", swing + 0.01); }
     }
     // over: the music box alone, slow, over the pad, with the felt piano's low notes under each chord
     musicBoxStep(s, t, six) {
