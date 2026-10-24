@@ -13090,7 +13090,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "90160dd" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "01381a4" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -17951,10 +17951,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // camera: the view eases to the rift when a boss comes (main.js); motion: "reduced" drops the screen shake, the camera moves and the lightning, softens the flashes and thins the weather
   // (it starts as the system's reduced-motion choice); text: the HUD's and the menus' text size, a factor; weather: how strong the sky panel's weather is (atmos.js)
   // glass: the terrarium glass, "auto" as the quality has it (none on Low), or true/false over it (the HUD glass button and the Settings row)
+  // res: the resolution, the canvas's pixels per CSS pixel: "auto" (the screen's own, up to 2) or "2", "1.5", "1", "0.75" (main.js fitCanvas; ?dpr= pins it)
   const calmOS = !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
   const DEFAULTS = {
     master: 0.9, music: 0.8, sfx: 0.9, ambience: 0.8,
-    quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, camera: true, vs: 24, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, weather: "subtle", glass: "auto",
+    quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, camera: true, vs: 24, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, weather: "subtle", glass: "auto", res: "auto",
   };
   // vs: the voxel density, Ultra (24) unless the player picked one (vsPicked; the device's cap still applies).
   // Before Ultra became the default every save held vs 16 unless picked, so only another value was a choice.
@@ -18003,6 +18004,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   if (!ME.vsPinned) ME.setVS(Math.min(VS_MAX, boot.vs));
   // and the garden (view/level.js): ?level=, else the one picked on the title screen
   G.levelId = G.pickLevel(boot.level);
+  // and the resolution, for main.js's first fitCanvas (apply() keeps it after)
+  G.resolution = boot.res;
+  // Presets: a density and a resolution together (the user, 2026-10-24). Not stored: the row shows the one the
+  // two settings match, else Custom. A density over this device's cap steps down to the finest it has.
+  const PRESETS = { low: { vs: 12, res: "1" }, medium: { vs: 16, res: "1.5" }, high: { vs: 20, res: "auto" }, ultra: { vs: 24, res: "auto" } };
+  const PRESET_NAMES = { low: "Low", medium: "Medium", high: "High", ultra: "Ultra" };
+  const presetVs = (p) => G.vsChoices().filter((v) => v <= p.vs).pop() || G.vsChoices()[0];
+  // the presets this device has (one where two land on the same pair) and the one the settings match
+  const presets = () => Object.keys(PRESETS).filter((k, i, all) => !all.slice(0, i).some((j) => presetVs(PRESETS[j]) === presetVs(PRESETS[k]) && PRESETS[j].res === PRESETS[k].res));
+  const presetOf = (s) => presets().find((k) => presetVs(PRESETS[k]) === Math.min(VS_MAX, s.vs) && PRESETS[k].res === s.res) || "custom";
   // GO_KEY: set while a garden picked on the terrarium screen reloads, so it opens straight into play ("id|mode")
   // ("resume" its run, "new" a fresh one in place of it, "begin" a first one)
   const GO_KEY = "mossheart.go";
@@ -18143,7 +18154,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
 
     // ------------------------------------------------------------------ settings
-    set(k, v) { this.s[k] = v; if (k === "vs") this.s.vsPicked = true; save(this.s); this.apply(); }
+    // (a preset sets the density, a reload's worth, and the resolution, at once; Custom only shows)
+    set(k, v) {
+      if (k === "preset") { if (!PRESETS[v]) return; Object.assign(this.s, { vs: presetVs(PRESETS[v]), res: PRESETS[v].res }); k = "vs"; }
+      else this.s[k] = v;
+      if (k === "vs") this.s.vsPicked = true;
+      save(this.s); this.apply();
+    }
     apply() {
       const s = this.s, R = this.app.R, a = this.app.audio;
       Object.assign(R.set, QUALITY[s.quality] || QUALITY.high);
@@ -18156,6 +18173,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (s.scale === "auto") R.set.autoScale = !ME.qn("selftest", 0);
         else { R.set.autoScale = false; R.set.scale = +s.scale; }
       }
+      G.resolution = s.res;
+      if (this.app.fitCanvas) this.app.fitCanvas();
       $("fps").style.visibility = s.fps ? "" : "hidden";
       const calm = s.motion === "reduced";
       G.shake = s.shake && !calm ? 1 : 0;
@@ -18171,13 +18190,19 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
     }
     renderSettings() {
-      const s = Object.assign({}, this.s, { vs: Math.min(VS_MAX, this.s.vs) }), body = $("setbody"); // (the density as this device bakes it)
+      const s = Object.assign({}, this.s, { vs: Math.min(VS_MAX, this.s.vs), preset: presetOf(this.s) }), body = $("setbody"); // (the density as this device bakes it)
+      const dprNow = +(this.app.dpr || 1).toFixed(2);
+      const resNote = ME.params.has("dpr") ? `Pinned to ${dprNow}x by the page address (?dpr=).` : `Pixels drawn per screen pixel (now ${dprNow}x). Auto is the screen's own, up to 2x. Lower runs faster and looks softer.`;
       const slider = (k, label) => `<label class="row"><span>${label}</span><input type="range" min="0" max="1" step="0.05" value="${s[k]}" data-k="${k}"><em>${Math.round(s[k] * 100)}%</em></label>`;
       const choice = (k, label, opts) => `<div class="row"><span>${label}</span><div class="seg">${opts.map(([v, t]) => `<button class="${String(s[k]) === String(v) ? "on" : ""}" data-k="${k}" data-v="${v}">${t}</button>`).join("")}</div></div>`;
       const vsNow = ME.VS, vsNote = Math.min(VS_MAX, s.vs) !== vsNow && !ME.vsPinned ? `<div class="note">Takes effect on reload. <button class="btn" data-a="reload">Reload now</button></div>` : ME.vsPinned ? `<div class="note">Pinned to ${vsNow} by the page address (?vs=).</div>` : "";
       body.innerHTML =
         `<h3>Sound</h3>` + slider("master", "Volume") + slider("music", "Music") + slider("sfx", "Effects") + slider("ambience", "Ambience") +
         `<h3>Graphics</h3>` +
+        choice("preset", "Preset", presets().map((k) => [k, PRESET_NAMES[k]]).concat(s.preset === "custom" ? [["custom", "Custom"]] : [])) +
+        `<div class="note dim">Sets the voxel density and the resolution together (${presets().map((k) => PRESET_NAMES[k] + " " + presetVs(PRESETS[k]) + " · " + (PRESETS[k].res === "auto" ? "Auto" : PRESETS[k].res + "x")).join(", ")}). Custom once either is changed by hand.</div>` +
+        choice("res", "Resolution", [["auto", "Auto"], ["2", "2x"], ["1.5", "1.5x"], ["1", "1x"], ["0.75", "0.75x"]]) +
+        `<div class="note dim">${resNote}</div>` +
         choice("quality", "Quality", [["low", "Low"], ["medium", "Medium"], ["high", "High"]]) +
         choice("glass", "Glass", [["auto", "Auto"], [true, "On"], [false, "Off"]]) +
         `<div class="note dim">The terrarium's glass. Auto keeps the quality's (none on Low); the glass button by the turn buttons sets it too.</div>` +
@@ -20017,12 +20042,20 @@ function MG_SFX(L) {
 
     // ------------------------------------------------------------------ camera, HUD, audio
     const cam = T.geo ? new ME.Camera(T.geo.C, T.geo.C) : new ME.Camera(map.W / 2, map.H / 2);
+    // the canvas's pixels per CSS pixel: the settings' Resolution (G.resolution, menu.js), Auto the screen's own
+    // up to 2; ?dpr= pins it (at most the screen's). A new resolution scales the camera's zoom with it, so the
+    // framing stays put
+    let dprNow = 0;
     const fitCanvas = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, ME.qn("dpr", 2));
+      const res = G.resolution || "auto", own = window.devicePixelRatio || 1;
+      const dpr = ME.params.has("dpr") ? Math.min(own, ME.qn("dpr", 2)) : res === "auto" ? Math.min(own, 2) : +res;
+      if (dprNow && dpr !== dprNow) cam.zoom *= dpr / dprNow;
+      dprNow = app.dpr = dpr;
       const w = Math.max(64, Math.round(canvas.clientWidth * dpr)), h = Math.max(64, Math.round(canvas.clientHeight * dpr));
       if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
       R.resize(w, h);
     };
+    app.fitCanvas = fitCanvas;
     const frameView = () => {
       cam.fit(canvas.width, canvas.height);
       // leave room for the HUD: a little more zoom on wide screens, centred a touch higher on tall ones
@@ -20031,6 +20064,9 @@ function MG_SFX(L) {
     fitCanvas(); frameView();
     cam.attach(canvas);
     window.addEventListener("resize", fitCanvas);
+    // and when the screen's density changes without a resize (the window dragged to another screen): Auto follows it
+    const watchDpr = () => matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener("change", () => { fitCanvas(); watchDpr(); }, { once: true });
+    watchDpr();
     document.getElementById("loading").style.display = "none";
 
     // the player's mood and weather (view/atmos.js): the view's mood() ends with its pass
