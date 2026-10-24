@@ -13094,7 +13094,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "d25407d" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "58a53e8" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -13259,7 +13259,9 @@ function MA_DSP() {
   // sticky (extra damage to slowed creatures), haunt (a wisp kill strikes on), bramble (share of a
   // Thornbloom's damage per second to creatures passing its foot), shield (leaks the Heart Tree stops per
   // wave), fireflies, flare (every 7-n-th sunbeam flares), puffball (share of a popped creature's vitality),
-  // pulse (share of every creature's vitality left, so it never kills alone) and grow_free (plants grown after each wave).
+  // pulse (share of every creature's vitality left, so it never kills alone), grow_free (plants grown after each wave),
+  // mark_bonus (added to a Moonpetal's mark), moonshade (the slow on what it marks), rot (Stinkhorn poison: that
+  // much stronger, 5 s, a puddle from every bomb), heat (a Ghost Lily heating faster) and lily_keep (the heat a beam keeps).
   const L = (desc, mods = {}, once = {}) => Object.assign({ desc, mods }, once);
   D.RARITY = { common: { weight: 60, name: "Common" }, rare: { weight: 30, name: "Rare" }, epic: { weight: 10, name: "Epic" } };
   D.EPIC_FROM = 4;
@@ -13271,6 +13273,9 @@ function MA_DSP() {
     { id: "solar_focus", name: "Solar Focus", rarity: "common", el: "sun", levels: [L("Sunpetal reach +20%, damage +25%", { range_sun: 0.2, dmg_sun: 0.25 }), L("Sunpetal reach +35%, damage +50%", { range_sun: 0.35, dmg_sun: 0.5 }), L("Sunpetal reach +50%, damage +80%", { range_sun: 0.5, dmg_sun: 0.8 })] },
     { id: "spore_cloud", name: "Spore Cloud", rarity: "common", el: "puff", levels: [L("Puffcap reach +25%, slows 10% more", { range_puff: 0.25, slow_bonus: 0.1 }), L("Puffcap reach +40%, slows 15% more", { range_puff: 0.4, slow_bonus: 0.15 }), L("Puffcap reach +55%, slows 20% more", { range_puff: 0.55, slow_bonus: 0.2 })] },
     { id: "kindred_wisps", name: "Kindred Wisps", rarity: "common", el: "wisp", levels: [L("Willow Wisps cost 30% less, and chain to 1 more creature", { cost_wisp: -0.3, chain_bonus: 1 }), L("Willow Wisps cost 30% less, and chain to 2 more creatures", { cost_wisp: -0.3, chain_bonus: 2 }), L("Willow Wisps cost 30% less, and chain to 3 more creatures", { cost_wisp: -0.3, chain_bonus: 3 })] },
+    { id: "harvest_moon", name: "Harvest Moon", rarity: "common", el: "moon", levels: [L("Moonpetal reach +20%, and its marks bite 10% deeper", { range_moon: 0.2, mark_bonus: 0.1 }), L("Moonpetal reach +35%, marks 15% deeper", { range_moon: 0.35, mark_bonus: 0.15 }), L("Moonpetal reach +50%, marks 25% deeper", { range_moon: 0.5, mark_bonus: 0.25 })] },
+    { id: "ripe_spores", name: "Ripe Spores", rarity: "common", el: "toad", levels: [L("Stinkhorn damage +25%, reach +10%", { dmg_toad: 0.25, range_toad: 0.1 }), L("Stinkhorn damage +45%, reach +15%", { dmg_toad: 0.45, range_toad: 0.15 }), L("Stinkhorn damage +70%, reach +20%", { dmg_toad: 0.7, range_toad: 0.2 })] },
+    { id: "spirit_lantern", name: "Spirit Lanterns", rarity: "common", el: "lily", levels: [L("Ghost Lilies cost 25% less, and heat up 30% faster", { cost_lily: -0.25, heat: 0.3 }), L("Ghost Lilies cost 25% less, and heat up 55% faster", { cost_lily: -0.25, heat: 0.55 }), L("Ghost Lilies cost 25% less, and heat up 85% faster", { cost_lily: -0.25, heat: 0.85 })] },
     { id: "deep_roots", name: "Deep Roots", rarity: "common", el: "all", levels: [L("All plants deal 12% more damage", { dmg_all: 0.12 }), L("All plants deal 25% more damage", { dmg_all: 0.25 }), L("All plants deal 40% more damage", { dmg_all: 0.4 })] },
     { id: "quick_sap", name: "Quickened Sap", rarity: "common", el: "all", levels: [L("All plants attack 12% faster", { rate_all: 0.12 }), L("All plants attack 25% faster", { rate_all: 0.25 }), L("All plants attack 40% faster", { rate_all: 0.4 })] },
     { id: "overgrowth", name: "Overgrowth", rarity: "common", el: "all", levels: [L("All plants reach 10% further", { range_all: 0.1 }), L("All plants reach 20% further", { range_all: 0.2 }), L("All plants reach 30% further", { range_all: 0.3 })] },
@@ -13285,6 +13290,9 @@ function MA_DSP() {
     { id: "prism", name: "Dewdrop Prism", rarity: "rare", el: "sun", levels: [L("Sunpetal beams split to 1 more creature (70% damage)", { prism: 1 }), L("Sunpetal beams split to 2 more creatures (70% damage)", { prism: 2 }), L("Sunpetal beams split to 3 more creatures (70% damage)", { prism: 3 })] },
     { id: "sticky_spores", name: "Sticky Spores", rarity: "rare", el: "puff", levels: [L("Slowed creatures take 25% more damage", { sticky: 0.25 }), L("Slowed creatures take 45% more damage", { sticky: 0.45 }), L("Slowed creatures take 70% more damage", { sticky: 0.7 })] },
     { id: "haunting", name: "Wandering Kodama", rarity: "rare", el: "wisp", levels: [L("Willow Wisps cost 30% less, and a Wisp kill strikes the next creature for 70% of the hit", { cost_wisp: -0.3, haunt: 0.7 }), L("Willow Wisps cost 30% less; a Wisp kill strikes on for the whole hit", { cost_wisp: -0.3, haunt: 1 }), L("Willow Wisps cost 30% less; a Wisp kill strikes on for half again the hit", { cost_wisp: -0.3, haunt: 1.5 })] },
+    { id: "moonshadow", name: "Moonshadow", rarity: "rare", el: "moon", levels: [L("A creature the Moonpetal marks is slowed 15% while the mark lasts", { moonshade: 0.15 }), L("Marked creatures are slowed 22%", { moonshade: 0.22 }), L("Marked creatures are slowed 30%", { moonshade: 0.3 })] },
+    { id: "rot_bloom", name: "Rot Bloom", rarity: "rare", el: "toad", levels: [L("Stinkhorn poison is 50% stronger and lasts 5 s; every bomb leaves a puddle", { rot: 0.5 }), L("Stinkhorn poison is 90% stronger", { rot: 0.9 }), L("Stinkhorn poison is 140% stronger", { rot: 1.4 })] },
+    { id: "lingering", name: "Lingering Spirit", rarity: "rare", el: "lily", levels: [L("Ghost Lily damage +20%; a beam taking a new creature keeps 70% of its heat", { dmg_lily: 0.2, lily_keep: 0.7 }), L("Ghost Lily damage +35%; keeps 80% of its heat", { dmg_lily: 0.35, lily_keep: 0.8 }), L("Ghost Lily damage +50%; keeps 90% of its heat", { dmg_lily: 0.5, lily_keep: 0.9 })] },
     { id: "bramble_hedge", name: "Bramble Hedge", rarity: "rare", el: "thorn", levels: [L("Brambles at each Thornbloom's foot scratch passers-by (40% of its damage per s)", { bramble: 0.4 }), L("Brambles scratch passers-by for 65% of the Thornbloom's damage per s", { bramble: 0.65 }), L("Brambles scratch passers-by for the Thornbloom's whole damage per s", { bramble: 1 })] },
     { id: "heartwood", name: "Heartwood", rarity: "rare", el: "heart", levels: [L("The Heart Tree shrugs off the first 2 creatures to reach it each wave", { shield: 2 }), L("The Heart Tree shrugs off the first 3 creatures each wave", { shield: 3 }), L("The Heart Tree shrugs off the first 5 creatures each wave", { shield: 5 })] },
     { id: "firefly_lanterns", name: "Firefly Lanterns", rarity: "rare", el: "heart", levels: [L("4 fireflies guard the Heart Tree, zapping creatures near it", { fireflies: 4 }), L("5 fireflies guard the Heart Tree", { fireflies: 5 }), L("7 fireflies guard the Heart Tree", { fireflies: 7 })] },
@@ -13299,6 +13307,7 @@ function MA_DSP() {
     // rainbow (beams split to all in reach at 80%), sporestorm (bursts leave a cloud), choir (wisp light
     // leaps 2 more, never fades, and every kill haunts on), needles (Thornbloom fires at all in reach),
     // evergreen (double shield, a heal of 2 per shrug), starswarm (6 fireflies, whole valley, always crit, slower growth),
+    // hunter (Thornbloom hits on marked creatures always crit), miasma (the poisoned slowed 25% and hurt 25% more),
     // summer (every other beam flares, flares twice as wide), grove (fully grown plants deal that much
     // more) and bloom (the pulse every 12 s, healing 1).
     { id: "wildfire", name: "Wildfire Hedge", rarity: "fused", el: "thorn", needs: [["ember_seeds", 2], ["bramble_hedge", 1]], levels: [L("Brambles set every passer-by ablaze, embers burn three times hotter, and the fire leaps between creatures", { wildfire: 1 })] },
@@ -13312,6 +13321,8 @@ function MA_DSP() {
     { id: "summer", name: "Endless Summer", rarity: "fused", el: "sun", needs: [["solar_flare", 1], ["quick_sap", 2]], levels: [L("Every other sunbeam flares, and flares burn twice as wide", { summer: 1 })] },
     { id: "grove", name: "Ancient Grove", rarity: "fused", el: "garden", needs: [["wild_growth", 1], ["deep_roots", 2]], levels: [L("After each wave 2 more plants grow for free; fully grown plants deal 50% more damage", { grow_free: 2, grove: 0.5 })] },
     { id: "bloom", name: "Heartbloom", rarity: "fused", el: "heart", needs: [["verdant_pulse", 1], ["overgrowth", 2]], levels: [L("The Heart Tree pulses every 12 s, and each pulse heals it 1", { bloom: 1 })] },
+    { id: "hunters_moon", name: "Hunter's Moon", rarity: "fused", el: "moon", needs: [["harvest_moon", 2], ["sharp_thorns", 1]], levels: [L("Every Thornbloom hit on a marked creature is critical", { hunter: 1 })] },
+    { id: "miasma", name: "Miasma", rarity: "fused", el: "toad", needs: [["rot_bloom", 2], ["spore_cloud", 1]], levels: [L("Poisoned creatures are slowed 25% and take 25% more damage", { miasma: 1 })] },
   ];
   D.RARITY.fused = { weight: 0, name: "Fused" };
   D.boon = (id) => D.BOONS.find((b) => b.id === id);
@@ -13321,7 +13332,7 @@ function MA_DSP() {
 
   // additive modifiers (default 0) versus multipliers (default 1)
   D.ADDITIVE_MODS = new Set(["split", "slow_bonus", "chain_bonus", "interest", "interest_cap", "dew_wave", "crit", "crit_mult", "burn", "prism", "sticky", "haunt", "bramble", "shield", "fireflies", "flare", "puffball", "pulse", "grow_free",
-    "wildfire", "rainbow", "sporestorm", "choir", "needles", "evergreen", "starswarm", "summer", "grove", "bloom"]);
+    "wildfire", "rainbow", "sporestorm", "choir", "needles", "evergreen", "starswarm", "summer", "grove", "bloom", "mark_bonus", "moonshade", "rot", "heat", "lily_keep", "hunter", "miasma"]);
   D.modDefault = (key) => (D.ADDITIVE_MODS.has(key) ? 0 : 1);
 
   // Creature vitality by wave. It grows exponentially so that the garden, which grows every wave too
@@ -13785,6 +13796,8 @@ function MA_DSP() {
       this.lastHit = Hit.PLAIN;
       if (this.slowT[i] > 0) amount *= 1 + G.state.mod("sticky");
       if (this.markT[i] > 0) amount *= 1 + this.markAmt[i];
+      // (Miasma: poisoned creatures take 25% more)
+      if (this.poisonT[i] > 0 && G.state.mod("miasma") > 0) amount *= 1.25;
       if (element >= 0) {
         const mult = this.affinity[i * 4 + element], a = i * 4 + element, adapt = this.defOf(i).adapt;
         amount *= mult * (1 - this.armour[a]);
@@ -14138,24 +14151,24 @@ function MA_DSP() {
         else for (let k = 0; k < lv; k++) { const v = E.pickTarget(this.X, this.Y, R, "strong", marked); if (v < 0) break; marked.push(v); }
         if (marked.length) {
           target = E.centre(marked[0]);
-          for (const v of marked) { G.emit("mark", { from: o, to: E.centre(v), tower: this }); E.mark(v, this.def.mark + (B.mark || 0), 4); shots.strike(v, this.damage(), el, this.kind); }
+          for (const v of marked) { G.emit("mark", { from: o, to: E.centre(v), tower: this }); E.mark(v, this.def.mark + (B.mark || 0) + S.mod("mark_bonus"), 4); if (S.mod("moonshade") > 0) E.applySlow(v, S.mod("moonshade"), 4); shots.strike(v, this.damage(), el, this.kind); }
         }
       } else if (this.kind === "lily") {
         // each beam holds its creature while it stays in reach, heating up to 3x over 3 s; a new creature
-        // starts cold (level II: keeps 60% of the heat)
+        // starts cold (level II: keeps 60% of the heat; Lingering Spirit: more)
         const held = this.rays.map((r) => r.t);
         for (const r of this.rays) {
           const ok = E.isValid(r.t, r.uid) && !E.hidden(r.t) && (E.px[r.t] - this.X) ** 2 + (E.py[r.t] - this.Y) ** 2 <= R * R;
           if (!ok) {
             const v = E.pickTarget(this.X, this.Y, R, "first", held);
-            if (v < 0) { r.t = -1; r.uid = -1; r.hold = lv >= 2 ? r.hold * 0.6 : 0; continue; }
-            r.t = v; r.uid = E.uid[v]; r.hold = lv >= 2 ? r.hold * 0.6 : 0; held.push(v);
+            if (v < 0) { r.t = -1; r.uid = -1; r.hold *= Math.max(lv >= 2 ? 0.6 : 0, S.mod("lily_keep")); continue; }
+            r.t = v; r.uid = E.uid[v]; r.hold *= Math.max(lv >= 2 ? 0.6 : 0, S.mod("lily_keep")); held.push(v);
             // (Moonlit Lily: a marked creature is taken half hot)
             if (B.moonlit && E.markT[v] > 0) r.hold = Math.max(r.hold, 1.5);
             target = target || E.centre(v);
           }
           shots.strike(r.t, this.damage() * (1 + 2 * Math.min(1, r.hold / 3)), el, this.kind);
-          r.hold += (1 + (B.heat || 0)) / this.rate();
+          r.hold += (1 + (B.heat || 0) + S.mod("heat")) / this.rate();
           if (!target) radius = radius || 0.01; // holding: keeps its pace without a new "fire"
         }
       }
@@ -14203,11 +14216,12 @@ function MA_DSP() {
     // strikes on at the creature nearest, from the hit before its crit (haunt; a haunting strike doesn't
     // haunt again). Damage that is a share of vitality (the Verdant Pulse, Puffball's pops) never crits.
     // Thorn barbs stuck in a creature add 4% each to the thorns' hits; a level III Thornbloom's seed
-    // leaves one (`lv`). (sure: a crit without the roll, for Star Swarm's fireflies)
+    // leaves one (`lv`). (sure: a crit without the roll, for Star Swarm's fireflies; Hunter's Moon: every
+    // Thornbloom hit on a marked creature)
     strike(enemy, dmg, element = -1, source = "", shot = false, haunted = false, sure = false, lv = 0) {
       if (this.enemies.under[enemy] === 1) return false; // under the road: nothing reaches it
       const E = this.enemies, at = E.centre(enemy), kind = E.kindOf(enemy), S = G.state, base = dmg;
-      const crit = sure || (!NO_CRIT.has(source) && S.rng.f() < S.mod("crit"));
+      const crit = sure || (source === "thorn" && E.markT[enemy] > 0 && S.mod("hunter") > 0) || (!NO_CRIT.has(source) && S.rng.f() < S.mod("crit"));
       if (crit) dmg *= 2.5 + S.mod("crit_mult");
       if (source === "thorn" || source === "briar") dmg *= 1 + 0.04 * E.barbs[enemy];
       if (source === "thorn" && lv >= 3) E.barbs[enemy] = Math.min(8, E.barbs[enemy] + 1);
@@ -14222,13 +14236,14 @@ function MA_DSP() {
       return killed;
     }
     // A spore bomb bursting at `at`: a splash that poisons (25% of the hit per s for 3 s); level II leaves
-    // a poison puddle, level III scatters 3 smaller bursts around it
+    // a poison puddle, level III scatters 3 smaller bursts around it. Rot Bloom: stronger poison, 5 s, a puddle
+    // from every bomb; Miasma: the poisoned are slowed
     splash(at, dmg, lv, cluster = false, B = NONE) {
-      const E = this.enemies, el = D.elementOf("toad"), r = cluster ? SPLASH_R * 0.65 : SPLASH_R;
+      const E = this.enemies, el = D.elementOf("toad"), r = cluster ? SPLASH_R * 0.65 : SPLASH_R, rot = G.state.mod("rot"), slow = G.state.mod("miasma") > 0 ? 0.25 : 0;
       G.emit("bomb", { pos: at, radius: r, level: lv });
-      for (const v of E.inRadius(at[0], at[1], r)) { this.strike(v, dmg, el, "toad", true); E.poison(v, dmg * 0.25, B.rot ? 5 : 3); if (B.pods) E.applySlow(v, B.pods, 1); }
+      for (const v of E.inRadius(at[0], at[1], r)) { this.strike(v, dmg, el, "toad", true); E.poison(v, dmg * 0.25 * (1 + rot), B.rot || rot > 0 ? 5 : 3); if (slow) E.applySlow(v, slow, 3); if (B.pods) E.applySlow(v, B.pods, 1); }
       if (cluster) return;
-      if (lv >= 2 || B.rot) this.puddles.push({ x: at[0], y: at[1], z: at[2], t: 3, dps: dmg * 0.3 });
+      if (lv >= 2 || B.rot || rot > 0) this.puddles.push({ x: at[0], y: at[1], z: at[2], t: 3, dps: dmg * 0.3 * (1 + rot) });
       if (lv >= 3) for (let k = 0; k < 3; k++) { const a = (k / 3) * Math.PI * 2 + G.state.rng.f(); this.splash([at[0] + Math.cos(a) * 0.75, at[1] + Math.sin(a) * 0.75, at[2]], dmg * 0.4, lv, true, B); }
     }
     update(dt) {
@@ -14245,7 +14260,7 @@ function MA_DSP() {
       if (this.puddles.length) {
         for (const p of this.puddles) p.t -= dt;
         this.puddles = this.puddles.filter((p) => p.t > 0);
-        if ((this.puddleT -= dt) <= 0) { this.puddleT = 0.5; for (const p of this.puddles) for (const v of E.inRadius(p.x, p.y, PUDDLE_R)) E.poison(v, p.dps, 1); }
+        if ((this.puddleT -= dt) <= 0) { this.puddleT = 0.5; for (const p of this.puddles) for (const v of E.inRadius(p.x, p.y, PUDDLE_R)) { E.poison(v, p.dps, 1); if (G.state.mod("miasma") > 0) E.applySlow(v, 0.25, 1); } }
       }
     }
     arrive(i) {
@@ -16154,6 +16169,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     summer: { color: [1.0, 0.6, 0.2], levels: fused("ring", [1.0, 0.9, 0.5]) },
     grove: { color: [0.6, 0.95, 0.3], levels: fused("leaf", [1.0, 0.9, 0.4]) },
     bloom: { color: [1.0, 0.55, 0.75], levels: fused("ring", [0.6, 1.0, 0.6]) },
+    harvest_moon: { color: [0.72, 0.8, 1.0], levels: grow("ring", [0.9, 0.95, 1.0]) },
+    ripe_spores: { color: [0.95, 0.55, 0.25], levels: grow("puff") },
+    spirit_lantern: { color: [1.0, 0.7, 0.9], levels: grow("beam", [1, 0.9, 1]) },
+    moonshadow: { color: [0.45, 0.5, 0.85], levels: grow("ring") },
+    rot_bloom: { color: [0.6, 0.75, 0.25], levels: grow("puff", [0.95, 0.55, 0.25]) },
+    lingering: { color: [0.95, 0.75, 1.0], levels: grow("orb", [1, 0.6, 0.85]) },
+    hunters_moon: { color: [0.8, 0.9, 1.0], levels: fused("streak", [0.6, 1.0, 0.45]) },
+    miasma: { color: [0.55, 0.8, 0.2], levels: fused("puff", [0.8, 0.5, 1.0]) },
   };
   // a boon's look at a level (default: its level now): { color, color2, scale, count, glow, sprite }
   G.boonLook = (id, lv = S.boonLevel(id)) => {
@@ -19956,7 +19979,7 @@ function MG_SFX(L) {
       if (this.done) return;
       this.simT += rdt;
       if (this.boons && (this.boonAt -= rdt) <= 0) {
-        const b = pickBoon(this.boons); this.boons = null;
+        const b = pickBoon(this.boons, this.game.towers); this.boons = null;
         this.hooks.hideBoons();
         this.hooks.log(`  boon: ${b.name}`);
         this.game.chooseBoon(b);
@@ -20052,13 +20075,14 @@ function MG_SFX(L) {
     }
   }
   // The gift it takes: a fused boon, else a card that unlocks one, else one that leaves a fusion a single
-  // step away, else the first card (as a player chasing the recipes on the cards would)
-  const pickBoon = (boons) => {
+  // step away, else the first that helps a plant it has sown (or all of them, the garden or the heart),
+  // else the first card (as a player chasing the recipes on the cards, and feeding the plants they grow, would)
+  const pickBoon = (boons, towers) => {
     const score = (b) => {
       if (b.needs) return 100;
       let s = 0;
       for (const f of D.fusionsWith(b.id)) if (S.fits(f) && !S.boonLevel(f.id)) { const m = S.fusionMissing(f, b.id).length; s = Math.max(s, m === 0 ? 50 : m === 1 ? 10 : 0); }
-      return s;
+      return s + (D.TOWERS[b.el] && !towers.some((t) => t.kind === b.el) ? 0 : 1);
     };
     let best = boons[0];
     for (const b of boons) if (score(b) > score(best)) best = b;
