@@ -13094,7 +13094,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "59f716f" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "4f47431" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -18023,9 +18023,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // res: the resolution, the canvas's pixels per CSS pixel: "auto" (the screen's own, up to 2) or "2", "1.5", "1", "0.75" (main.js fitCanvas; ?dpr= pins it)
   const calmOS = !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
   const DEFAULTS = {
-    master: 0.9, music: 0.8, sfx: 0.9, ambience: 0.8,
+    master: 0.7, music: 0.5, sfx: 0.7, ambience: 0.45,
     quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, camera: true, vs: 24, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, weather: "subtle", glass: "auto", res: "auto",
   };
+  const OLD_VOLUMES = { master: 0.9, music: 0.8, sfx: 0.9, ambience: 0.8 };
   // vs: the voxel density, Ultra (24) unless the player picked one (vsPicked; the device's cap still applies).
   // Before Ultra became the default every save held vs 16 unless picked, so only another value was a choice.
   const load = () => {
@@ -18034,6 +18035,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     const s = Object.assign({}, DEFAULTS, raw);
     if (!("vsPicked" in raw)) s.vsPicked = raw.vs !== undefined && raw.vs !== 16;
     if (!s.vsPicked) s.vs = DEFAULTS.vs;
+    // the volumes were louder until 2026-10-24 (the user: "default to lower volumes for more subtle
+    // atmosphere"); a saved volume still at its old default was never moved, so it takes the new one
+    for (const [k, v] of Object.entries(OLD_VOLUMES)) if (raw[k] === v) s[k] = DEFAULTS[k];
     return s;
   };
   const save = (s) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* storage blocked */ } };
@@ -19073,7 +19077,11 @@ function MG_SFX(L) {
    events and the state's readings (intensity, corruption, field, heart). */
 (function () {
   const G = window.MG, S = G.state, SC = G.Score, MA = window.MA;
-  const LOOKAHEAD = 0.12;
+  // How far ahead of the audio clock the notes are scheduled: longer than a slow frame, so a busy main thread
+  // (10 fps on a phone at a fine density, a long bake or GC pause) doesn't leave the music without notes.
+  // At the first 0.12 s, any frame over ~120 ms let the scheduled notes run out, and the music stopped and
+  // started again: the chopping the user heard.
+  const LOOKAHEAD = 0.35;
   const SUBS = ["Pads", "Keys", "Lead", "Perc"];
   // voices per bus: the shared buses the gestures and the sting play on, and each deck's own
   const POOL = { MusicPads: 6, MusicKeys: 16, MusicLead: 6, MusicPerc: 8 };
@@ -19351,6 +19359,7 @@ function MG_SFX(L) {
     // delays), decks (two sets of sub-bus gains)
     constructor(mixer, mix) {
       this.mixer = mixer; this.mix = mix; this.seq = null; this.ready = false; this.intensity = 0;
+      this.lastCtx = -1; this.late = 0; this.skipped = 0; // (the audio clock last frame; the stalls past the lookahead, and the steps they dropped)
       this.decks = mix.decks.map((g, k) => new Deck(this, "AB"[k], g)); this.live = null;
       this.cue = ""; this.want = "build"; this.holdUntil = 0; this.cueLog = []; this.turns = {};
       this.chord = SC.FIRST_CHORD; this.chordNotes = this.chord.notes;
@@ -19414,13 +19423,24 @@ function MG_SFX(L) {
       const drums = this.cue === "wave" || this.cue === "boss";
       if (!this.gameOver && this.vinyl) this.vinyl.g.gain.setTargetAtTime(MA.dbToGain((drums ? VINYL.drums : VINYL.calm) + rot * VINYL.blight), now, 0.3);
 
+      // The music clock follows the audio clock, not the frame's dt (capped at 0.1 s, which slowed the
+      // music under it at 10 fps and on every long frame). After a stall longer than the lookahead, the
+      // steps whose time has passed are dropped rather than all played at once.
+      let adt = this.lastCtx < 0 ? dt : Math.min(1, now - this.lastCtx);
+      this.lastCtx = now;
       if (this.tapeState === 2 && this.tapeSpeed === 0) {
         this.outroWait -= dt;
         if (this.outroWait > 0) return;
         // start the outro on a fresh bar
         this.tapeSpeed = 1; this.want = "over"; q.restartBar();
       }
-      q.advance(dt, this.tapeSpeed);
+      if (adt > LOOKAHEAD) {
+        const on = q.onStep;
+        this.late++; q.onStep = (s, t) => { if (s === 0) on(s, t); else this.skipped++; }; // (bar lines still turn the song)
+        q.advance(adt - LOOKAHEAD, this.tapeSpeed);
+        q.onStep = on; adt = LOOKAHEAD;
+      }
+      q.advance(adt, this.tapeSpeed);
     }
 
     // --- cues
@@ -19816,7 +19836,7 @@ function MG_SFX(L) {
     stats() {
       const m = this.mixer;
       if (!m) return null;
-      return Object.assign({ ready: m.ready, readyAt: this.readyAt, state: m.ctx.state, samples: Object.keys(m.samples).length, renderMs: m.renderMs, worker: m.worker, notes: this.music.notes, sfx: this.sound.played, sfxq: this.sound.queue, mood: this.music.mood, bpm: Math.round(this.music.bpm), cues: this.music.cueLog.join(" ") }, m.meterStats());
+      return Object.assign({ ready: m.ready, readyAt: this.readyAt, state: m.ctx.state, samples: Object.keys(m.samples).length, renderMs: m.renderMs, worker: m.worker, notes: this.music.notes, late: this.music.late, skipped: this.music.skipped, sfx: this.sound.played, sfxq: this.sound.queue, mood: this.music.mood, bpm: Math.round(this.music.bpm), cues: this.music.cueLog.join(" ") }, m.meterStats());
     }
   }
   G.Audio = Audio;
