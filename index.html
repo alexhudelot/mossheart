@@ -13094,7 +13094,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "13df245" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "65ccd68" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -18345,7 +18345,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       body.innerHTML =
         `<h3>Sound</h3>` + slider("master", "Volume") + slider("music", "Music") + slider("sfx", "Effects") + slider("ambience", "Ambience") +
         choice("musicStyle", "Music style", [["ambient", "Ambient"], ["drift", "Drift"]]) +
-        `<div class="note dim">Ambient: single notes far apart over a warm pad. Drift: slow electronica, a soft pulse, a muted beat and a filtered arpeggio. A change comes in on the next bar.</div>` +
+        `<div class="note dim">Ambient: single notes far apart over a warm pad. Drift: chill, psychedelic synth electronica in D minor, a deep sub, a soft four-on-the-floor, resonant arpeggios and slow filter sweeps. A change comes in on the next bar.</div>` +
         `<h3>Graphics</h3>` +
         choice("preset", "Preset", presets().map((k) => [k, PRESET_NAMES[k]]).concat(s.preset === "custom" ? [["custom", "Custom"]] : [])) +
         `<div class="note dim">Sets every graphics setting here at once (${presets().map((k) => { const p = presetSet(k); return PRESET_NAMES[k] + ": " + p.vs + ", " + (p.res === "full" ? "Full" : p.res + "x") + ", quality " + p.quality + (p.glass === false ? ", no glass" : ""); }).join("; ")}; the weather Subtle in all). Ultra is the default. Custom once one is changed by hand.</div>` +
@@ -18484,7 +18484,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 /* The score's material: slow progressions in F major, each chord held two bars or more, D Aeolian ones
    (i-bVI-bVII) for the hard fighting and the boss, plain triads with an added ninth or a sus2 at most,
    the pentatonic scale the notes are drawn from, the cues the director crossfades between (one per phase
-   of a run, in two styles, Ambient and Drift: what lies under them, which voices sound over it, how long
+   of a run, in two styles, Ambient and Drift, which has its own harmony in D minor: what lies under them, which voices sound over it, how long
    the music stays in and how long it leaves the valley alone), the sting of a cleared wave and the figure each kind of creature is
    announced with. Pure data; music.js plays it. */
 (function () {
@@ -18507,6 +18507,22 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const PROG_BOSS = [DM, DM, DM, DM, BB, BB, ASUS, ASUS]; // i | bVI vsus
   const PROG_BOSS_B = [GM, GM, DM, DM, BB, BB, DM, DM]; // iv i bVI i
   const PROG_OUTRO = [F, F, DM, DM, BB, BB, F, F]; // I vi IV I
+
+  // Drift's own harmony, D minor: Dorian (its ii, Em7) for the calm, Aeolian (bVI, bVII, iv) for the
+  // fighting; minor sevenths and ninths and suspended chords, no plain major triad, each held four bars
+  // or more over a drone on D (music.js), and darker still under the blight
+  const DM9 = C(38, [53, 57, 60, 64], [53, 58, 62, 65]), DSUS = C(38, [55, 57, 62, 64], [55, 58, 62, 65]); // Dm9, Dsus4 add9 (Bb/D, Gm/D)
+  const EM7 = C(40, [55, 59, 62, 64], [55, 58, 62, 64]), AM7 = C(45, [55, 60, 64, 67], [55, 60, 63, 67]); // ii7, v7 (half-diminished)
+  const CSUS2 = C(36, [55, 60, 62, 67], [55, 60, 63, 67]), BBSUS2 = C(46, [53, 58, 60, 65], [53, 58, 61, 65]); // bVIIsus2, bVIsus2 (Cm, Bbm)
+  const GM9 = C(43, [53, 58, 62, 69], [51, 55, 58, 62]), A7SUS = C(45, [55, 57, 62, 64], [55, 57, 60, 64]); // iv9 (Ebmaj7/G), v7sus4 (Am7)
+  const DR_A = [DM9, DM9, DM9, DM9, EM7, EM7, EM7, EM7]; // i | ii
+  const DR_B = [DM9, DM9, DM9, DM9, CSUS2, CSUS2, DSUS, DSUS]; // i | bVII isus
+  const DR_C = [AM7, AM7, AM7, AM7, DM9, DM9, DM9, DM9]; // v | i
+  const DR_WAVE = [DM9, DM9, DM9, DM9, BBSUS2, BBSUS2, CSUS2, CSUS2]; // i | bVI bVII
+  const DR_TENSE = [DSUS, DSUS, GM9, GM9, DM9, DM9, A7SUS, A7SUS]; // isus iv i vsus
+  const DR_BOSS = [DSUS, DSUS, DSUS, DSUS, BBSUS2, BBSUS2, GM9, GM9]; // isus | bVI iv
+  const DR_BOSS_B = [GM9, GM9, GM9, GM9, DM9, DM9, DM9, DM9]; // iv | i
+  const DR_OUTRO = [DM9, DM9, DM9, DM9, DM9, DM9, DM9, DM9]; // one chord, on its drone
 
   // a voice: an instrument on a sub-bus at `db`, playing a loop `len` 16ths long (picked in that range for
   // each phrase) with `notes` struck in it, each on a degree of the pentatonic in `deg` (0: the F above
@@ -18558,51 +18574,70 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         alt: { voices: [V("celesta", "Keys", -20, [48, 64], 2, [3, 8]), V("piano", "Lead", -19, [72, 96], 1, [-5, 0])] } },
     },
     // The second style, Drift (the settings' Music style; the user's words, 2026-10-25: "a bit more
-    // rythmic but still very ambient electronica, a la Carbon Based Lifeforms"): the same harmony and in
-    // and out, at 84-96 bpm, with what lies under it moving. Its cues have the fields above, and:
-    // - bed.inst: the pad (`air`, a pad whose filter opens and closes as it is held); no bed.bass, the
-    //   pulse is the bass.
-    // - pulse: a soft sub on the chord's root an octave down, on the 16ths in `at` (the first accented).
-    // - arp: a filtered pluck through the chord's tones (in `pattern`, an octave up) every `every` 16ths,
+    // rythmic but still very ambient electronica, a la Carbon Based Lifeforms", then "too major key
+    // sounding. more high tech ambient psychedelic synth based EDM super chill"): its own harmony in D
+    // minor (DR_ above), synths only, a chill pulse at 80-98 bpm, and the same in and out. Its cues have
+    // the fields above (bed.bass aside: the pulse is the bass), and:
+    // - bed.inst: the pad (`saw`, a detuned supersaw whose filter opens and closes as it is held), and
+    //   bed.drone: a PWM drone on D under every chord, every 4 bars.
+    // - pulse: a deep sub on the chord's root, on the 16ths in `at` (the first accented).
+    // - kit: a soft kick on the 16ths in `kick` (four on the floor, or half-time), soft hats on those in
+    //   `hat` (the offbeats) and a ghost of a shaker on those in `shaker`, at `db` [kick, hat, shaker],
+    //   once the intensity reaches `i`.
+    // - arp: a resonant pluck through the chord's tones (in `pattern`, an octave up) every `every` 16ths,
     //   its count running across the bar lines (3: dotted 8ths, three against the bar's four), into the
     //   lead's delays; `rest` the odds a note is left out (less as the intensity rises), `i` the
     //   intensity it waits for.
-    // - kit: a muted kick on the 16ths in `kick` and a soft shaker on those in `shaker`, at `db` [kick,
-    //   shaker], once the intensity reaches `i`.
+    // - acid: a squelchy, very soft line low in the minor pentatonic, `notes` [min, max] 16ths of each
+    //   bar (picked for each phrase), degrees in `deg`, once the intensity reaches `i`.
+    // - spark: the odds of a bar getting a little granular sparkle on a chord tone, high up.
     // - sweep: [seconds, depth]: the music bus's lowpass closes by up to `depth` and opens again over
-    //   that long, the slow filter sweep over everything.
+    //   that long, the slow filter sweep over everything. reso: [lo, hi, seconds, lo dB, hi dB]: the
+    //   lead's resonant lowpass sweeping between lo and hi Hz over that long, its resonance between the
+    //   two (on a shorter cycle, so they drift apart). pump: how far the pads duck on each beat (a
+    //   sidechain's pumping). pan: how far the keys' autopan swings. taps: the lead's delays in 16ths.
     DRIFT: {
-      build: { bpm: 88, drive: 0, progs: [PROG_B, PROG_A], lp: [3800, 4600], wet: [0.24, 0.26], fadeIn: 3, fadeOut: 4, sweep: [26, 0.4],
-        bed: { every: 2, inst: "air", pad: -24, breath: -30 },
-        pulse: { db: -17, at: [0, 6, 8, 14] },
-        arp: { inst: "soft", db: -21, every: 3, pattern: [0, 1, 2, 1, 3, 2], rest: 0.35 },
-        kit: { kick: [0, 8], shaker: [4, 12], db: [-23, -33] },
-        voices: [V("glass", "Lead", -21, [56, 80], 1, [3, 8])],
+      build: { bpm: 90, drive: 0, progs: [DR_A, DR_B], lp: [3600, 5200], wet: [0.32, 0.34], fadeIn: 3, fadeOut: 4, sweep: [32, 0.45],
+        reso: [700, 3600, 24, 1, 6], pump: 0.3, pan: 0.6, taps: [3, 6, 9],
+        bed: { every: 2, inst: "saw", pad: -27, breath: -33, drone: -24 },
+        pulse: { db: -17, at: [0, 3, 8, 11] },
+        kit: { kick: [0, 8], hat: [6, 14], shaker: [], db: [-22, -30, -36] },
+        arp: { inst: "reso", db: -21, every: 3, pattern: [0, 1, 2, 1, 3, 2], rest: 0.35 },
+        spark: { db: -24, odds: 0.3 },
+        voices: [V("spark", "Keys", -23, [48, 72], 1, [5, 10])],
         breath: { on: [60, 120], off: [20, 50] },
-        alt: { progs: [PROG_C, PROG_B],
-          arp: { inst: "kalimba", db: -20, every: 2, pattern: [0, 2, 1, 3], rest: 0.45 },
-          voices: [V("keys", "Keys", -22, [60, 84], 1, [-4, 1])] } },
-      wave: { bpm: 92, drive: 4, progs: [PROG_WAVE, PROG_B], tense: PROG_TENSE, lp: [4200, 6000], wet: [0.22, 0.26], fadeIn: 2, fadeOut: 3, sweep: [20, 0.35],
-        bed: { every: 2, inst: "air", pad: -23, breath: -29 },
-        pulse: { db: -16, at: [0, 3, 6, 8, 11, 14] },
-        arp: { inst: "soft", db: -20, every: 3, pattern: [0, 1, 2, 3, 2, 1], rest: 0.25 },
-        kit: { kick: [0, 8], shaker: [2, 6, 10, 14], db: [-21, -32] },
-        voices: [V("glass", "Lead", -21, [44, 60], 1, [3, 8]), V("kalimba", "Lead", -21, [36, 52], 1, [-1, 4], 0.5)],
+        alt: { progs: [DR_C, DR_A],
+          arp: { inst: "reso", db: -21, every: 2, pattern: [0, 2, 1, 3], rest: 0.45 },
+          acid: { db: -30, notes: [2, 4], deg: [-5, 0] } } },
+      wave: { bpm: 94, drive: 4, progs: [DR_WAVE, DR_B], tense: DR_TENSE, lp: [4000, 6400], wet: [0.3, 0.34], fadeIn: 2, fadeOut: 3, sweep: [24, 0.4],
+        reso: [900, 4600, 18, 2, 7], pump: 0.42, pan: 0.65, taps: [3, 6, 9],
+        bed: { every: 2, inst: "saw", pad: -26, breath: -32, drone: -25 },
+        pulse: { db: -16, at: [2, 6, 10, 14] },
+        kit: { kick: [0, 4, 8, 12], hat: [2, 6, 10, 14], shaker: [3, 7, 11, 15], db: [-21, -29, -36] },
+        arp: { inst: "reso", db: -20, every: 3, pattern: [0, 1, 2, 3, 2, 1], rest: 0.25 },
+        acid: { db: -28, notes: [3, 5], deg: [-5, 1], i: 0.25 },
+        spark: { db: -24, odds: 0.4 },
+        voices: [V("spark", "Keys", -23, [44, 60], 1, [5, 10]), V("reso", "Lead", -22, [40, 56], 1, [0, 5], 0.5)],
         breath: { on: [90, 160], off: [10, 25] },
-        alt: { progs: [PROG_B, PROG_WAVE], arp: { inst: "soft", db: -20, every: 2, pattern: [0, 2, 1, 3, 2, 1], rest: 0.4 } } },
-      boss: { bpm: 96, drive: 2, progs: [PROG_BOSS, PROG_BOSS_B], lp: [4600, 6400], wet: [0.24, 0.28], fadeIn: 1.5, fadeOut: 3, sweep: [16, 0.3],
-        bed: { every: 1, inst: "air", pad: -22, breath: -28, bell: -23 },
-        pulse: { db: -15, at: [0, 3, 6, 8, 11, 14] },
-        arp: { inst: "soft", db: -19, every: 3, pattern: [0, 1, 2, 3], rest: 0.2 },
-        kit: { kick: [0, 8], shaker: [2, 6, 10, 14], db: [-20, -31] },
-        voices: [V("glass", "Lead", -20, [32, 48], 1, [2, 7])],
+        alt: { progs: [DR_B, DR_WAVE], arp: { inst: "reso", db: -20, every: 2, pattern: [0, 2, 1, 3, 2, 1], rest: 0.4 } } },
+      boss: { bpm: 98, drive: 2, progs: [DR_BOSS, DR_BOSS_B], lp: [4400, 6800], wet: [0.32, 0.36], fadeIn: 1.5, fadeOut: 3, sweep: [16, 0.35],
+        reso: [1100, 5400, 14, 2, 8], pump: 0.48, pan: 0.7, taps: [3, 6, 9],
+        bed: { every: 2, inst: "saw", pad: -25, breath: -31, drone: -24 },
+        pulse: { db: -15, at: [2, 6, 10, 14] },
+        kit: { kick: [0, 4, 8, 12], hat: [2, 6, 10, 14], shaker: [3, 7, 11, 15], db: [-20, -28, -35] },
+        arp: { inst: "reso", db: -19, every: 3, pattern: [0, 1, 2, 3], rest: 0.2 },
+        acid: { db: -27, notes: [4, 6], deg: [-5, 1] },
+        spark: { db: -24, odds: 0.3 },
+        voices: [V("spark", "Keys", -22, [32, 48], 1, [4, 9])],
         breath: { on: [120, 200], off: [8, 15] },
-        alt: { progs: [PROG_BOSS_B, PROG_BOSS] } },
-      over: { bpm: 76, drive: 0, progs: [PROG_OUTRO, PROG_C], lp: [2800, 2800], wet: [0.3, 0.3], fadeIn: 3, fadeOut: 3, sweep: [30, 0.3],
-        bed: { every: 2, inst: "air", pad: -25, breath: -29 },
-        pulse: { db: -19, at: [0, 8] },
-        arp: { inst: "soft", db: -22, every: 4, pattern: [0, 1, 2, 1], rest: 0.4 },
-        voices: [V("piano", "Lead", -18, [64, 96], 1, [-1, 4])],
+        alt: { progs: [DR_BOSS_B, DR_BOSS] } },
+      over: { bpm: 80, drive: 0, progs: [DR_OUTRO, DR_C], lp: [2800, 2800], wet: [0.36, 0.36], fadeIn: 3, fadeOut: 3, sweep: [30, 0.3],
+        reso: [600, 2200, 30, 1, 4], pump: 0.2, pan: 0.5, taps: [3, 6, 9],
+        bed: { every: 2, inst: "saw", pad: -27, breath: -32, drone: -23 },
+        pulse: { db: -19, at: [0] },
+        arp: { inst: "reso", db: -23, every: 4, pattern: [0, 1, 2, 1], rest: 0.4 },
+        spark: { db: -25, odds: 0.3 },
+        voices: [V("spark", "Keys", -22, [64, 96], 1, [0, 5])],
         breath: { on: [40, 60], off: [40, 90] } },
     },
     // a cleared wave: a low F, three glass notes up the F chord with space between them, then a bell
@@ -18610,8 +18645,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // kalimba figures (chord-tone indices) announcing each kind of creature
     FIGURES: { grub: [0, 1, 0], beetle: [0, 2, 1, 3], moth: [3, 2, 3, 2, 1], golem: [0, 0, 1], spirit: [3, 1, 0] },
   };
-  // the styles' cue tables, by the settings' Music style (view/menu.js); Ambient is the first
-  G.Score.STYLES = { ambient: G.Score.CUES, drift: G.Score.DRIFT };
+  // the styles (the settings' Music style, view/menu.js; Ambient is the first): each one's cues, the
+  // key and scale its voices' degrees are in, its sting, the instruments the event gestures swap theirs
+  // for ([name, semitones, dB]) and how far the vinyl crackle drops
+  const SC = G.Score;
+  SC.STYLES = {
+    ambient: { cues: SC.CUES, key: SC.KEY, scale: SC.SCALE, sting: SC.STING },
+    // D minor pentatonic; the sting a low D, then D, F and A, then a sparkle
+    drift: { cues: SC.DRIFT, key: 62, scale: [0, 3, 5, 7, 10], sting: { bass: 38, notes: [62, 65, 69], bell: 74 }, vinyl: -40,
+      swap: { kalimba: ["reso", 0, -1], glass: ["spark", 0, 0], bell: ["spark", 12, -3], bass: ["sub", 0, 0] } },
+  };
 })();
 
 </script>
@@ -18619,12 +18662,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 /* The score's instruments, a sound bank for the audio engine (MA.loadBanks; ports of Synth, synth.gd):
    FM electric piano, additive felt piano, a round bass, a glassy FM pluck, a kalimba, a Karplus-Strong
    harp, a music box, a warm pad, a breath (sung noise, the floor the ambient score lies on), a temple
-   bell, a heartbeat and vinyl crackle, and the Drift score's soft sub, muted kick, shaker, soft pluck and
-   airy pad. Each is synthesised once at a base pitch; the sequencer
+   bell, a heartbeat and vinyl crackle, and the Drift score's synths: a deep sub, a muted kick, a shaker
+   and hats, a supersaw pad, a PWM drone, a resonant pluck, an acid line and granular sparkles. Each is
+   synthesised once at a base pitch; the sequencer
    pitch-shifts it per note. Keyboards have a "_hi" twin so no note is shifted far. Self-contained: it
    runs in the bank worker with only the DSP library L (MA_DSP). */
 function MG_INSTRUMENTS(L) {
-  const { TAU, LOOP_FADE, rnd, rr, ri, n1, smooth, midiHz, svf, table, seam, buf, pluck, ensemble } = L;
+  const { TAU, TABLE, LOOP_FADE, rnd, rr, ri, n1, smooth, midiHz, svf, table, seam, buf, pluck, ensemble } = L;
   const { exp, sin, min, pow, tanh } = Math;
 
   // name -> [base MIDI note, sample rate]
@@ -18632,7 +18676,8 @@ function MG_INSTRUMENTS(L) {
     keys: [57, 32000], keys_hi: [69, 32000], piano: [62, 32000], piano_hi: [76, 32000], bass: [36, 22050],
     glass: [76, 32000], kalimba: [64, 32000], celesta: [81, 32000], harp: [57, 32000], warm: [57, 22050],
     breath: [57, 22050], bell: [57, 32000], heartbeat: [40, 22050], vinyl: [60, 22050],
-    sub: [36, 22050], kick: [36, 22050], shaker: [60, 32000], soft: [74, 32000], air: [57, 22050],
+    sub: [36, 22050], kick: [36, 22050], shaker: [60, 32000], hat: [60, 32000], saw: [57, 22050], pwm: [50, 22050],
+    reso: [69, 32000], acid: [50, 22050], spark: [81, 32000],
   };
 
   // ------------------------------------------------------------------ instruments
@@ -18758,8 +18803,9 @@ function MG_INSTRUMENTS(L) {
     return out;
   }
 
-  // --- the Drift score's (music.js): a sub, a muted kick, a shaker, a soft pluck and an airy pad
-  // a soft sub: a sine with a touch of its second and third harmonics (so a small speaker still hears
+  // --- the Drift score's (music.js), all synths: a sub, a soft kick, a shaker and hats, a supersaw pad,
+  // a PWM drone, a resonant pluck, a squelchy acid line and granular sparkles
+  // a deep sub: a sine with a touch of its second and third harmonics (so a small speaker still hears
   // the pitch), a rounded attack and a short body, so the pulse breathes rather than booms
   function sub(f, sr, secs) {
     const out = buf(secs, sr), w = (TAU * f) / sr; let ph = 0;
@@ -18784,30 +18830,76 @@ function MG_INSTRUMENTS(L) {
     for (let i = 0; i < out.length; i++) { const t = i / sr; out[i] = band(n1(), 4500, 0.7) * min(t / 0.012, 1) * exp(-t * 38) * min((secs - t) / 0.02, 1); }
     return out;
   }
-  // a soft plucked synth for the arpeggios: a rounded saw's harmonics, the higher dying first like a
-  // lowpass closing after the pluck, and a slightly detuned twin of the lowest three, over a near-sine
-  // that rings on into the lead's delays
-  function softPluck(f, sr, secs) {
-    const out = buf(secs, sr);
-    for (let p = 1; p < 9 && f * p < sr * 0.45; p++) {
-      damped(out, (TAU * f * p) / sr, exp(-(1.2 + 3.5 * (p - 1)) / sr), 0.9 / p, 0);
-      if (p < 4) damped(out, (TAU * f * p * 1.004) / sr, exp(-(1.6 + 3.5 * (p - 1)) / sr), 0.3 / p, rnd() * TAU);
+  // a soft closed hat: noise with its lows taken out and a band around 5 kHz, gone in a few hundredths
+  function hat(sr, secs) {
+    const out = buf(secs, sr), band = svf(sr); let lp = 0;
+    for (let i = 0; i < out.length; i++) {
+      const t = i / sr, x = n1(); lp += 0.25 * (x - lp);
+      out[i] = ((x - lp) * 0.6 + band(x, 5200, 0.5) * 0.8) * min(t / 0.002, 1) * exp(-t * 60) * min((secs - t) / 0.01, 1);
     }
-    for (let i = 0; i < out.length; i++) { const t = i / sr; out[i] *= min(t / 0.005, 1) * min((secs - t) / 0.3, 1); }
     return out;
   }
-  // an airy pad: a detuned ensemble of a brighter table, through a band that opens up from the note and
-  // closes again over the sample's length (one slow breath of a filter), with a little noise sung around
-  // the note, so a held chord opens and closes
-  const AIR = table([1, 0.5, 0.33, 0.25, 0.2, 0.16, 0.14]);
-  function air(f, sr, secs) {
-    const body = ensemble(AIR, f, sr, secs, 4, 9, 2.8, 3.5, 0.35), band = svf(sr), hiss = svf(sr); let lp = 0;
+  // a resonant (Chamberlin) lowpass whose damping `q` sets the resonance (0.15: a squelch, 0.8: none)
+  const lowSvf = (sr) => { let low = 0, band = 0; return (x, freq, q) => { const f = 2 * sin((Math.PI * min(freq, sr / 8)) / sr); low += f * band; const high = x - low - q * band; band += f * high; return low; }; };
+  // a band-limited saw, for the pads, the plucks and the drone
+  const SAW = table(Array.from({ length: 16 }, (_, n) => 1 / (n + 1))), MASK = TABLE - 1;
+  // a supersaw pad: seven saws detuned around the note, through a filter that opens up from the note and
+  // closes again over the sample's length (one slow breath of a filter), so a held chord sweeps
+  function saw(f, sr, secs) {
+    const body = ensemble(SAW, f, sr, secs, 7, 14, 2.4, 3.5, 0.5), lp = lowSvf(sr);
     for (let i = 0; i < body.length; i++) {
-      const t = i / sr, u = 0.5 - 0.5 * Math.cos((TAU * t) / secs), env = min(t / 2.8, 1) * min((secs - t) / 3.5, 1);
-      lp += 0.3 * (n1() - lp);
-      body[i] = body[i] * 0.5 + band(body[i], f * (1.5 + 5 * u), 0.5) * 0.9 + hiss(lp, f * 4, 0.08) * 0.05 * env;
+      const t = i / sr, u = 0.5 - 0.5 * Math.cos((TAU * t) / secs);
+      body[i] = lp(body[i], f * (1.2 + 6 * u), 0.5) * 0.9 + body[i] * 0.1;
     }
     return body;
+  }
+  // a PWM drone: two slightly detuned pulses whose width swings slowly (a saw less itself, shifted), a
+  // gentle lowpass, a three-second swell and a four-second fall
+  function pwm(f, sr, secs) {
+    const out = buf(secs, sr), n = out.length; let a = rnd() * TABLE, b = rnd() * TABLE, l1 = 0, l2 = 0;
+    const ia = (f * Math.pow(2, 4 / 1200) * TABLE) / sr, ib = (f * Math.pow(2, -4 / 1200) * TABLE) / sr;
+    for (let i = 0; i < n; i++) {
+      const t = i / sr, w = TABLE * (0.5 + 0.38 * sin(TAU * 0.13 * t)), w2 = TABLE * (0.5 + 0.38 * sin(TAU * 0.09 * t + 2));
+      const x = SAW[Math.floor(a) & MASK] - SAW[Math.floor(a + w) & MASK] + SAW[Math.floor(b) & MASK] - SAW[Math.floor(b + w2) & MASK];
+      l1 += 0.12 * (x * 0.25 - l1); l2 += 0.12 * (l1 - l2);
+      out[i] = l2 * min(t / 3, 1) * min((secs - t) / 4, 1); a += ia; b += ib;
+    }
+    return out;
+  }
+  // a resonant pluck for the arpeggios: two saws a hair apart through a singing lowpass that snaps open
+  // and closes as the note falls, ringing on into the lead's delays
+  function reso(f, sr, secs) {
+    const out = buf(secs, sr), lp = lowSvf(sr), ia = (f * TABLE) / sr, ib = ia * 1.006; let a = 0, b = rnd() * TABLE;
+    for (let i = 0; i < out.length; i++) {
+      const t = i / sr, x = (SAW[Math.floor(a) & MASK] + SAW[Math.floor(b) & MASK]) * 0.5;
+      out[i] = lp(x, f * (1.1 + 6 * exp(-t * 7)), 0.3) * min(t / 0.003, 1) * exp(-t * 2.4) * min((secs - t) / 0.2, 1); a += ia; b += ib;
+    }
+    return out;
+  }
+  // an acid line: a bright saw through a near-singing lowpass that squelches shut after each note, driven
+  // a little into tanh; the score keeps it very soft
+  const ACID = table(Array.from({ length: 30 }, (_, n) => 1 / (n + 1)));
+  function acid(f, sr, secs) {
+    const out = buf(secs, sr), lp = lowSvf(sr), inc = (f * TABLE) / sr; let a = 0;
+    for (let i = 0; i < out.length; i++) {
+      const t = i / sr, y = lp(ACID[Math.floor(a) & MASK], f * (1.3 + 12 * exp(-t * 12)), 0.15);
+      out[i] = tanh(1.6 * y) * min(t / 0.003, 1) * exp(-t * 5) * min((secs - t) / 0.08, 1); a += inc;
+    }
+    return out;
+  }
+  // granular sparkles: ten tiny grains of sine on the note and its overtones, scattered over a second and
+  // fading as they go, the first on the strike, over a faint ring of the note
+  function spark(f, sr, secs) {
+    const out = buf(secs, sr), n = out.length;
+    for (let k = 0; k < 10; k++) {
+      const at = k === 0 ? 0 : rr(0.03, 1.1), len = rr(0.02, 0.06), r = [1, 2, 3, 4][ri(0, 3)], w = (TAU * f * r) / sr;
+      const i0 = Math.floor(at * sr), m = Math.floor(len * sr), amp = exp(-at * 1.8) / Math.sqrt(r), ph = rnd() * TAU;
+      if (f * r > sr * 0.45) continue;
+      for (let j = 0; j < m && i0 + j < n; j++) { const h = sin((Math.PI * j) / m); out[i0 + j] += sin(ph + w * j) * h * h * h * h * amp; }
+    }
+    const w = (TAU * f) / sr;
+    for (let i = 0; i < n; i++) { const t = i / sr; out[i] = (out[i] + sin(w * i) * 0.12 * exp(-t * 3) * min(t / 0.004, 1)) * min((secs - t) / 0.1, 1); }
+    return out;
   }
 
   function render(name) {
@@ -18828,8 +18920,12 @@ function MG_INSTRUMENTS(L) {
       case "sub": s = sub(f, sr, 0.9); break;
       case "kick": s = kick(sr, 0.5); break;
       case "shaker": s = shaker(sr, 0.18); break;
-      case "soft": s = softPluck(f, sr, 2.2); break;
-      case "air": s = air(f, sr, 10); break;
+      case "hat": s = hat(sr, 0.12); break;
+      case "saw": s = saw(f, sr, 9); break;
+      case "pwm": s = pwm(f, sr, 12); break;
+      case "reso": s = reso(f, sr, 1.6); break;
+      case "acid": s = acid(f, sr, 0.6); break;
+      case "spark": s = spark(f, sr, 1.6); break;
       case "vinyl": s = seam(vinyl(sr, 8 + LOOP_FADE), Math.floor(LOOP_FADE * sr)); break;
     }
     return { data: s, sr, loop: name === "vinyl" };
@@ -19249,10 +19345,14 @@ function MG_SFX(L) {
    which takes turns with the first each time its phase comes round.
    That is the Ambient style. The settings' Music style can pick a second one, Drift (score.js, DRIFT;
    the user's words, 2026-10-25: "a bit more rythmic but still very ambient electronica, a la Carbon
-   Based Lifeforms"): the same harmony, cues and in and out at 76-96 bpm, over a soft sub pulse on the
-   root, a muted kick and a soft shaker, a filtered pluck arpeggio in dotted 8ths into the lead's delays,
-   an airy pad that opens and closes as it is held and a slow sweep of the music bus's lowpass, with one
-   sparse voice over it. A style change crossfades on the next bar line like a cue change (setStyle).
+   Based Lifeforms", then "too major key sounding. more high tech ambient psychedelic synth based EDM
+   super chill"): the same cues and in and out, but its own harmony (D minor, long-held minor sevenths,
+   ninths and suspensions over a PWM drone on D) and synths only, at 80-98 bpm: a deep sub pulse, a soft
+   kick (half-time in the build, four on the floor in a wave) with offbeat hats, a detuned supersaw pad
+   that pumps on the beat, a resonant pluck arpeggio in dotted 8ths through a lowpass sweeping slowly
+   into the lead's delays, a very soft acid line, granular sparkles and a slow sweep of the music bus's
+   lowpass. The gestures and the sting play in its synths too (score.js, STYLES[].swap). A style change
+   crossfades on the next bar line like a cue change (setStyle).
    A cue plays on one of two decks, each its own copy of the music sub-buses (audio.js). On a phase or
    mood change the next cue starts on the other deck on a fresh bar (a wave's on the next beat), swelling
    in while the old one's ringing notes fade out. A cleared wave ends the wave with a sting (a low F,
@@ -19279,7 +19379,7 @@ function MG_SFX(L) {
   const SUBS = ["Pads", "Keys", "Lead", "Perc"];
   // voices per bus: the shared buses the gestures and the sting play on, and each deck's own
   const POOL = { MusicPads: 6, MusicKeys: 8, MusicLead: 10, MusicPerc: 4 };
-  for (const d of ["A", "B"]) Object.assign(POOL, { ["MusicPads" + d]: 16, ["MusicKeys" + d]: 10, ["MusicLead" + d]: 14, ["MusicPerc" + d]: 8 });
+  for (const d of ["A", "B"]) Object.assign(POOL, { ["MusicPads" + d]: 16, ["MusicKeys" + d]: 10, ["MusicLead" + d]: 14, ["MusicPerc" + d]: 12 });
   const posmod = (a, n) => ((a % n) + n) % n;
   const rf = () => Math.random(), rr = (a, b) => a + (b - a) * Math.random(), ri = (a, b) => a + Math.floor(Math.random() * (b - a + 1)), pick = (a) => a[Math.floor(Math.random() * a.length)];
   const lerp = (a, b, u) => a + (b - a) * u, clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -19290,13 +19390,12 @@ function MG_SFX(L) {
   // the gate's time constants (s) as the music comes in and goes out, and how long after it starts to go
   // out notes are still struck (music-clock seconds): the last ones ring out into the fade
   const GATE_IN = 1.6, GATE_OUT = 2.5, LAST_NOTES = 3;
-  const DEGREES = SC.SCALE.length;
 
   // A deck plays one cue on its own sub-buses (gains: one per sub-bus, faded together) and keeps that
   // cue's song form: progression, section and the phrase's loops.
   class Deck {
     constructor(music, id, gains) {
-      this.m = music; this.gains = gains; this.T = SC.CUES; this.cue = ""; this.alt = false; this.D = null; this.live = false;
+      this.m = music; this.gains = gains; this.Y = SC.STYLES.ambient; this.T = this.Y.cues; this.cue = ""; this.alt = false; this.D = null; this.live = false;
       this.bus = {}; for (const k of SUBS) this.bus[k] = "Music" + k + id;
       this.prog = SC.PROG_A; this.dark = []; this.sectionBar = 0; this.turn = 0; this.variant = ""; this.forceSection = true;
       this.loops = []; this.n = 0; this.padAge = 0; this.lastChord = null; this.lastNotes = null;
@@ -19304,10 +19403,10 @@ function MG_SFX(L) {
     }
     // the cue's settings: its own, or its second arrangement's over them
     get def() { return this.D || this.T[this.cue]; }
-    // starts `cue` of the cue table `T` (a style's, score.js; its second arrangement when `alt`) on a fresh bar at ctx time `when`, swelling in from -12 dB
-    start(cue, when, alt, T) {
+    // starts `cue` of the style `Y` (score.js, STYLES; its second arrangement when `alt`) on a fresh bar at ctx time `when`, swelling in from -12 dB
+    start(cue, when, alt, Y) {
       this.silence(when);
-      this.T = T; this.cue = cue; this.alt = !!(alt && T[cue].alt); this.D = this.alt ? Object.assign({}, T[cue], T[cue].alt) : null;
+      const T = (this.T = Y.cues); this.Y = Y; this.cue = cue; this.alt = !!(alt && T[cue].alt); this.D = this.alt ? Object.assign({}, T[cue], T[cue].alt) : null;
       this.live = true; this.sectionBar = 0; this.turn = 0; this.variant = ""; this.forceSection = true;
       this.newPhrase();
       this.ramp(when, MA.dbToGain(-12), 1, this.def.fadeIn);
@@ -19323,7 +19422,7 @@ function MG_SFX(L) {
       }
     }
     silence(when) { const m = this.m; for (const k of SUBS) for (const v of m.seq.voices[this.bus[k]]) m.mixer.stop(v, when); }
-    play(inst, note, db, sub, at) { this.m.play(inst, note, db, this.bus[sub], at); }
+    play(inst, note, db, sub, at) { this.m.play(inst, note, db, this.bus[sub], at, true); }
 
     // --- song form
     barStart() {
@@ -19355,11 +19454,17 @@ function MG_SFX(L) {
         for (let k = 0; k < v.notes; k++) deg.push(ri(v.deg[0], v.deg[1]));
         return { v, len, at, deg };
       });
-      this.n = 0; this.lastChord = null;
+      // Drift's acid line: a few 16ths of the bar, most of them off the 8ths, each on a degree low in the scale
+      const A = D.acid; this.acid = null;
+      if (A) {
+        this.acid = new Map();
+        for (let want = ri(A.notes[0], A.notes[1]); this.acid.size < want; ) { const s = rf() < 0.75 ? 2 * ri(0, 7) + 1 : 2 * ri(0, 7); if (!this.acid.has(s)) this.acid.set(s, ri(A.deg[0], A.deg[1])); }
+      }
+      this.n = 0; this.lastChord = null; this.sparkAt = -1;
     }
     // pitch classes of the chord at a bar of the section
     pcs(bar) { const ch = this.prog[bar % this.prog.length], notes = this.dark[bar] ? ch.dark : ch.notes; return [posmod(ch.bass, 12)].concat(notes.map((n) => posmod(n, 12))); }
-    degreeNote(d) { return SC.KEY + SC.SCALE[posmod(d, DEGREES)] + 12 * Math.floor(d / DEGREES); }
+    degreeNote(d) { const Y = this.Y, n = Y.scale.length; return Y.key + Y.scale[posmod(d, n)] + 12 * Math.floor(d / n); }
     // a note that sits with the chord: in a darker bar, a chord tone; elsewhere, any note but one a
     // semitone from the chord (the pentatonic's A over Bb, or its D over Eb)
     fit(note, bar, pcs) {
@@ -19383,23 +19488,36 @@ function MG_SFX(L) {
       this.n++;
     }
     // the Drift style's moving floor (score.js, DRIFT): the sub's pulse on the root, the kit once the
-    // intensity reaches it, and the arpeggio through the chord's tones, its count running across the bar
-    // lines (dotted 8ths drift three against four), fewer notes left out as the fighting heats up
+    // intensity reaches it, the arpeggio through the chord's tones, its count running across the bar
+    // lines (dotted 8ths drift three against four), fewer notes left out as the fighting heats up, the
+    // acid line, now and then a sparkle, and the pads ducking on each beat
     drift(s, t, i) {
-      const D = this.def, P = D.pulse, K = D.kit, A = D.arp;
-      if (P.at.includes(s)) this.play("sub", this.chord.bass - 12, P.db + (s === P.at[0] ? 0 : -3) + rr(-1, 0), "Perc", t);
+      const D = this.def, P = D.pulse, K = D.kit, A = D.arp, C = D.acid, ch = this.chord;
+      // (the sub folded into the octave from G1 up, deep whatever the chord's bass)
+      if (P.at.includes(s)) this.play("sub", 31 + posmod(ch.bass - 31, 12), P.db + (s === P.at[0] ? 0 : -3) + rr(-1, 0), "Perc", t);
       if (K && i >= (K.i || 0)) {
         if (K.kick.includes(s)) this.play("kick", 36, K.db[0] + rr(-1.5, 0), "Perc", t);
-        if (K.shaker.includes(s)) this.play("shaker", 60 + rr(-0.5, 0.5), K.db[1] + rr(-3, 0), "Perc", t + rr(0, 0.012));
+        if (K.hat.includes(s)) this.play("hat", 60 + rr(-0.3, 0.3), K.db[1] + rr(-3, 0), "Perc", t + rr(0, 0.008));
+        if (K.shaker.includes(s)) this.play("shaker", 60 + rr(-0.5, 0.5), K.db[2] + rr(-3, 0), "Perc", t + rr(0, 0.012));
       }
       if (A && i >= (A.i || 0) && this.n % A.every === 0 && rf() >= A.rest * (1 - 0.5 * i)) {
         const tones = this.chordNotes.slice().sort((a, b) => a - b), k = A.pattern[(this.n / A.every) % A.pattern.length];
         this.play(A.inst, tones[k % tones.length] + 12 * (1 + Math.floor(k / tones.length)), A.db + rr(-2, 0), "Lead", t + rr(0, 0.006));
       }
+      if (C && this.acid && i >= (C.i || 0) && this.acid.has(s) && rf() >= 0.15) {
+        const bar = this.sectionBar;
+        this.play("acid", this.fit(this.degreeNote(this.acid.get(s)), bar, this.pcs(bar)), C.db + rr(-2, 0), "Perc", t);
+      }
+      if (D.spark) {
+        if (s === 0) this.sparkAt = rf() < D.spark.odds ? ri(1, 15) : -1;
+        if (s === this.sparkAt) this.play("spark", pick(this.chordNotes) + 24, D.spark.db + rr(-3, 0), "Keys", t);
+      }
+      if (D.pump && s % 4 === 0) this.m.pump(this.m.ctxTime(t), D.pump);
     }
     // the bed, on a bar line: the pad (the warm one, or the cue's bed.inst) rolled up the chord and a
     // breath on its root and fifth when the chord changes (and every `every` bars it is held), a low bass
-    // note on most changes (when the cue has one), and the boss's bell every other bar
+    // note on most changes (when the cue has one), the boss's bell every other bar, and Drift's drone on
+    // the key's root every 4 bars
     bed(t) {
       const b = this.def.bed, ch = this.chord, fresh = ch !== this.lastChord || this.chordNotes !== this.lastNotes;
       if (fresh || ++this.padAge >= b.every) {
@@ -19409,6 +19527,7 @@ function MG_SFX(L) {
       }
       if (b.bass && fresh && rf() < 0.6) this.play("bass", ch.bass, b.bass, "Pads", t);
       if (b.bell && this.m.seq.bar % 2 === 0) this.play("bell", ch.bass + 24, b.bell, "Pads", t + 0.05);
+      if (b.drone !== undefined && this.sectionBar % 4 === 0) this.play("pwm", this.Y.key - 12, b.drone, "Pads", t);
       this.lastChord = ch; this.lastNotes = this.chordNotes;
     }
   }
@@ -19446,8 +19565,9 @@ function MG_SFX(L) {
       this.nextBreath(now, "on");
     }
     get bpm() { return this.seq ? this.seq.bpm : 64; }
-    // the style's cue table (score.js, STYLES)
-    get cues() { return SC.STYLES[this.style] || SC.CUES; }
+    // the style (score.js, STYLES) and its cue table
+    get Y() { return SC.STYLES[this.style] || SC.STYLES.ambient; }
+    get cues() { return this.Y.cues; }
     // the settings' Music style ("ambient" or "drift"): on the next bar line (after a sting has rung) the
     // wanted cue starts in it on the free deck while the old style's ringing notes fade out under it, as
     // on any cue change, so nothing is cut or left hanging
@@ -19461,8 +19581,20 @@ function MG_SFX(L) {
     // the cue changes so far, with the audio clock's seconds (for the checks)
     logCue(what) { this.cueLog.push(what + "@" + Math.round(this.mixer.ctx.currentTime)); if (this.cueLog.length > 60) this.cueLog.shift(); }
 
-    // (no new notes once a passage has gone out and its last notes are struck)
-    play(inst, note, db, bus, at) { if (this.ready && (this.on || this.seq.clock < this.quietAt)) this.seq.play(inst, note, db, bus, at); }
+    // (no new notes once a passage has gone out and its last notes are struck; the gestures' and the
+    // sting's instruments swapped for the style's own, score.js, STYLES[].swap, the decks' never)
+    play(inst, note, db, bus, at, deck) {
+      if (!this.ready || !(this.on || this.seq.clock < this.quietAt)) return;
+      const w = !deck && this.Y.swap && this.Y.swap[inst];
+      if (w) { inst = w[0]; note += w[1]; db += w[2]; }
+      this.seq.play(inst, note, db, bus, at);
+    }
+    // Drift's sidechain: the pads duck by `depth` at ctx time `at` and swell back within the beat
+    pump(at, depth) {
+      const g = this.mix.pump.gain;
+      g.setTargetAtTime(1 - depth, at, 0.01); g.setTargetAtTime(1, at + 0.04, this.sixteenth());
+      this.pumping = true;
+    }
     sixteenth() { return this.seq.sixteenth(); }
     // ctx time of music-clock time `t`
     ctxTime(t) { return this.mixer.ctx.currentTime + Math.max(0, t - this.seq.clock); }
@@ -19521,9 +19653,17 @@ function MG_SFX(L) {
       const cutoff = lerp(D.lp[0], D.lp[1], i) * sweep * (1 - 0.3 * rot) * (1 - 0.6 * this.tapeDip);
       mx.lp.frequency.setTargetAtTime(clamp(cutoff, 900, 16000), now, this.tapeDip > 0 ? 0.05 : 0.4);
       mx.wet.gain.setTargetAtTime(lerp(D.wet[0], D.wet[1], i), now, 0.4);
-      mx.keysPan.pan.setTargetAtTime(Math.sin(q.clock * 0.4) * 0.3, now, 0.1);
-      [3, 6, 10].forEach((n, k) => mx.taps[k].delayTime.setTargetAtTime(q.sixteenth() * n, now, 0.1));
-      if (!this.gameOver && this.vinyl) this.vinyl.g.gain.setTargetAtTime(MA.dbToGain(VINYL.calm + rot * VINYL.blight), now, 0.3);
+      mx.keysPan.pan.setTargetAtTime(Math.sin(q.clock * 0.4) * (D.pan || 0.3), now, 0.1);
+      (D.taps || [3, 6, 10]).forEach((n, k) => mx.taps[k].delayTime.setTargetAtTime(q.sixteenth() * n, now, 0.1));
+      // Drift's: the lead's resonant lowpass sweeping slowly, its resonance on a cycle of its own, and the
+      // pads' pumping let go when a cue has none
+      const R = D.reso;
+      if (R) {
+        const u = 0.5 - 0.5 * Math.cos((q.clock * 2 * Math.PI) / R[2]), v = 0.5 - 0.5 * Math.cos((q.clock * 2 * Math.PI) / (R[2] * 0.61));
+        mx.leadLp.frequency.setTargetAtTime(R[0] * Math.pow(R[1] / R[0], u), now, 0.2); mx.leadLp.Q.setTargetAtTime(lerp(R[3], R[4], v), now, 0.2);
+      } else { mx.leadLp.frequency.setTargetAtTime(18000, now, 0.4); mx.leadLp.Q.setTargetAtTime(-3, now, 0.4); }
+      if (!D.pump && this.pumping) { const g = mx.pump.gain; g.cancelScheduledValues(now); g.setValueAtTime(g.value, now); g.setTargetAtTime(1, now, 0.1); this.pumping = false; }
+      if (!this.gameOver && this.vinyl) this.vinyl.g.gain.setTargetAtTime(MA.dbToGain(VINYL.calm + rot * VINYL.blight + (this.Y.vinyl || 0)), now, 0.3);
 
       // The music clock follows the audio clock, not the frame's dt (capped at 0.1 s, which slowed the
       // music under it at 10 fps and on every long frame). After a stall longer than the lookahead, the
@@ -19564,7 +19704,7 @@ function MG_SFX(L) {
       const when = this.ctxTime(t), old = this.live, d = this.decks[0] === old ? this.decks[1] : this.decks[0];
       if (old) old.release(when, old.def.fadeOut);
       const turn = (this.turns[this.want] = (this.turns[this.want] || 0) + 1);
-      d.start(this.want, when, turn % 2 === 0, this.cues); this.live = d; this.cue = this.want; this.restyle = false;
+      d.start(this.want, when, turn % 2 === 0, this.Y); this.live = d; this.cue = this.want; this.restyle = false;
       this.logCue(this.want + (d.alt ? ":alt" : ""));
     }
     // stops the cue now, fading what rings over `secs`
@@ -19638,9 +19778,10 @@ function MG_SFX(L) {
       this.tapeSpeed = 1; this.tapeState = 0; this.seen.clear(); this.stinger = "";
     }
     // a cleared wave: the wave stops, a low F, three glass notes up the F chord with space between them
-    // and a bell; the build cue comes in on the first bar after it has rung
+    // and a bell (the style's own sting: Drift's on D minor, in its synths); the build cue comes in on
+    // the first bar after it has rung
     sting(g) {
-      const st = SC.STING, end = g + st.notes.length * 0.4;
+      const st = this.Y.sting || SC.STING, end = g + st.notes.length * 0.4;
       this.cut(2); this.want = "build"; this.holdUntil = end + 2;
       this.play("bass", st.bass, -15, "MusicPads", g);
       st.notes.forEach((n, k) => this.play("glass", n, -17 - k, "MusicLead", g + k * 0.4));
@@ -19862,8 +20003,9 @@ function MG_SFX(L) {
 /* The game's audio: the bus layout of the Godot build, built from the audio engine's mixer (MA.Mixer),
    with the game's two sound banks (instruments.js, sfx.js), the music director (music.js) and the
    soundscape (soundscape.js):
-     Music      lowpass -> reverb -> gentle compressor; sub-buses MusicPads, MusicKeys (chorus + slow
-                autopan), MusicLead (three delay taps on the 16th grid), MusicPerc (dusty lowpass), and two
+     Music      lowpass -> reverb -> gentle compressor; sub-buses MusicPads (a gain Drift pumps),
+                MusicKeys (chorus + slow autopan), MusicLead (a lowpass Drift sweeps, then three delay taps
+                on the 16th grid), MusicPerc (dusty lowpass), and two
                 decks of those four (MusicPadsA ... MusicPercB) the director crossfades its cues on
      Sfx        short reverb       Ambience   longer reverb
    G.Audio is what the game talks to: it unlocks the context on the first tap and remembers the sound
@@ -19881,13 +20023,15 @@ function MG_SFX(L) {
     const comp = m.compressor({ threshold: -16, ratio: 2.5, knee: 6, attack: 0.01, release: 0.2 }), makeup = m.gain(MA.dbToGain(3 - 3.8));
     const music = m.gain();
     music.connect(lp); lp.connect(verb.input); verb.out.connect(comp); comp.connect(makeup); makeup.connect(fade); fade.connect(gate); gate.connect(m.master);
-    const pads = m.gain(); pads.connect(music);
+    // pads: through a gain Drift ducks on each beat, a sidechain's pumping (music.js; 1 otherwise)
+    const pads = m.gain(), pump = m.gain(1); pads.connect(pump); pump.connect(music);
     // keys: a light chorus and a slow autopan
     const keys = m.gain(), ch = m.chorus(0.014, 0.0025, 0.8, 0.2), keysPan = m.panner();
     keys.connect(ch.input); ch.out.connect(keysPan); keysPan.connect(music);
-    // lead: dry plus three delay taps (3, 6 and 10 sixteenths), panned apart, so a lone note echoes into the space after it
-    const lead = m.gain(); lead.connect(music);
-    const taps = [[-0.35, -14], [0.35, -19], [0, -25]].map(([pan, db]) => m.delayTap(lead, music, db, pan));
+    // lead: through a lowpass (wide open but in Drift, which sweeps it and its resonance, music.js), dry plus
+    // three delay taps (3, 6 and 10 sixteenths), panned apart, so a lone note echoes into the space after it
+    const lead = m.gain(), leadLp = m.lowpass(18000, -3); lead.connect(leadLp); leadLp.connect(music);
+    const taps = [[-0.35, -14], [0.35, -19], [0, -25]].map(([pan, db]) => m.delayTap(leadLp, music, db, pan));
     // perc: dusty, no fizz on top
     const perc = m.gain(), dust = m.lowpass(7000); perc.connect(dust); dust.connect(music);
     const sfx = m.verbBus(1.2, 2.5, 0.5, 0.12), amb = m.verbBus(2.6, 2, 0.8, 0.28);
@@ -19895,7 +20039,7 @@ function MG_SFX(L) {
     for (const [name, input] of [["Music", music], ["MusicPads", pads], ["MusicKeys", keys], ["MusicLead", lead], ["MusicPerc", perc], ["Sfx", sfx.input], ["Ambience", amb.input]]) m.addBus(name, input);
     // two decks of the sub-buses, silent until a cue plays on one (music.js)
     const decks = ["A", "B"].map((d) => [["Pads", pads], ["Keys", keys], ["Lead", lead], ["Perc", perc]].map(([k, bus]) => { const g = m.gain(0); g.connect(bus); m.addBus("Music" + k + d, g); return g; }));
-    return { fade, gate, lp, wet: verb.wet, keysPan, taps, decks };
+    return { fade, gate, lp, wet: verb.wet, pump, keysPan, leadLp, taps, decks };
   }
 
   class Audio {
