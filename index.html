@@ -240,7 +240,7 @@ body.calm .coach-spot { animation: none; }
   #hint { top: auto; bottom: calc(176px + 184px * var(--ts) + var(--sb)); font-size: calc(17px * var(--ts)); }
   .coach { top: auto; bottom: calc(176px + 184px * var(--ts) + var(--sb)); font-size: calc(14.5px * var(--ts)); padding: 10px 12px 8px; }
   #seeds { left: calc(6px + var(--sl)); right: calc(6px + var(--sr)); bottom: calc(6px + var(--sb)); gap: 6px; flex-wrap: wrap; }
-  .seed { flex: 1 1 calc(25% - 6px); height: calc(64px * var(--ts)); padding: 5px 6px 4px; border-radius: 13px; }
+  .seed { flex: 1 1 calc(33.4% - 6px); height: calc(64px * var(--ts)); padding: 5px 6px 4px; border-radius: 13px; } /* (a garden's five seeds, three over two) */
   .seed .el { display: none; }
   .seed b { font-size: calc(12.5px * var(--ts)); max-width: calc(100% - 18px); } /* (clear of the plant's icon) */
   .seed .cost, .seed .tag { font-size: calc(11.5px * var(--ts)); }
@@ -372,7 +372,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   <button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button>
   <div id="boons" class="veil"><div class="col"><h2>The garden offers a gift</h2><div id="boonrow"></div></div></div>
   <div id="over" class="veil dark"><div class="panel card"><h2>The Heart Tree sleeps</h2><div class="cscroll"><p id="overtxt"></p><div id="oversum" class="oversum"></div></div><button id="again" class="btn pink">Plant anew</button></div></div>
-  <div class="help">drag pan · wheel zoom · Q/E turn · 1–8 seeds · space wave</div>
+  <div class="help">drag pan · wheel zoom · Q/E turn · 1–5 seeds · space wave</div>
 </div>
 <div id="loading"><div class="box"><h1>Mossheart</h1><p>a cozy roguelike tower defence in a voxel bell jar</p><div id="track"><div id="bar"></div></div><div id="bartxt">loading</div></div></div>
 <div id="lost"><button onclick="location.reload()">The GPU was reset · tap to reload</button></div>
@@ -13094,7 +13094,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "134e1cd" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "2682824" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -13130,8 +13130,8 @@ function MA_DSP() {
   D.RESIST_BELOW = 0.8;
   D.WEAK_ABOVE = 1.25;
 
-  // Eight plants, two per element, each playing its own way. A plant's three levels change how it plays,
-  // not only its numbers (`levels`: what each level does, for the inspector):
+  // Eight plants, two per element, each playing its own way (a garden grows five: LEVEL_PLANTS). A plant's three
+  // levels change how it plays, not only its numbers (`levels`: what each level does, for the inspector):
   //   thorn  seeds at the creature nearest the Heart Tree; II they pierce on to the one behind; III barbs
   //          (each hit makes it take 4% more from thorns, up to 8)
   //   sun    beams the toughest creature; II the beam burns every creature on its line; III dazzles (stuns)
@@ -13338,6 +13338,13 @@ function MA_DSP() {
   // Momiji's (11.92 against 12.09; tools/sim.html, seeds 1-100 to wave 40).
   D.LEVEL_EASE = { fernglass: [0.2, 8] };
   D.levelHp = (level, wave) => { const e = D.LEVEL_EASE[level]; return e ? 1 - e[0] * Math.max(0, 1 - (wave - 1) / e[1]) : 1; };
+  // The plants each garden grows (State.plants: its seed bar and digit keys, the bot, and the gifts drafted
+  // there), five with every element among them; a garden not listed grows all eight. A plant of another
+  // garden still stands and grows where a save has it. tools/sim.html ?plants= tries another set (all: every plant).
+  D.LEVEL_PLANTS = { momiji: ["thorn", "puff", "sun", "wisp", "briar"], fernglass: ["thorn", "puff", "moon", "toad", "lily"] };
+  D.plantsOf = (level) => D.LEVEL_PLANTS[level] || D.TOWER_ORDER;
+  // whether a boon belongs where only `plants` grow: one tied to a plant (its `el`) only where that plant does
+  D.boonFits = (b, plants) => !D.TOWERS[b.el] || plants.includes(b.el);
 
   // index into ELEMENTS of the element a plant deals
   D.elementOf = (towerKind) => D.ELEMENTS.indexOf(D.TOWERS[towerKind].element);
@@ -13439,8 +13446,9 @@ function MA_DSP() {
   S.levelKey = (key, level = S.level) => (level === "momiji" ? key : key + "." + level);
   // the best wave reached in any garden (the terrarium screen shows each), without switching to it
   S.bestOf = (level) => { try { return parseInt(localStorage.getItem(S.levelKey(SAVE_KEY, level)) || "0", 10) || 0; } catch (e) { return 0; /* storage blocked */ } };
+  // (and the plants it grows, Defs.LEVEL_PLANTS: S.fits says whether a boon belongs there)
   S.setLevel = (id) => {
-    S.level = id;
+    S.level = id; S.plants = D.plantsOf(id);
     try { S.best = parseInt(localStorage.getItem(S.levelKey(SAVE_KEY)) || "0", 10) || 0; } catch (e) { S.best = 0; /* storage blocked */ }
   };
   S.setLevel("momiji");
@@ -13488,7 +13496,8 @@ function MA_DSP() {
   // Fusions: what a fused boon still needs ([id, level] pairs not yet met), counting `extra` (a boon id
   // taken once more, for the hints on the cards); the fused boons unlocked and not yet taken
   S.fusionMissing = (f, extra = "") => f.needs.filter(([id, lv]) => S.boonLevel(id) + (id === extra ? 1 : 0) < lv);
-  S.fusionsReady = () => D.FUSIONS.filter((f) => !S.boonLevel(f.id) && !S.fusionMissing(f).length);
+  S.fusionsReady = () => D.FUSIONS.filter((f) => S.fits(f) && !S.boonLevel(f.id) && !S.fusionMissing(f).length);
+  S.fits = (b) => D.boonFits(b, S.plants);
   // the fused boons ever taken, on this device (the almanac lists them with their recipes)
   S.found = [];
   try { S.found = JSON.parse(localStorage.getItem(FOUND_KEY) || "[]").filter((id) => D.boon(id)); } catch (e) { /* storage blocked */ }
@@ -13498,10 +13507,11 @@ function MA_DSP() {
     try { localStorage.setItem(FOUND_KEY, JSON.stringify(S.found)); } catch (e) { /* storage blocked */ }
   };
   // Up to `count` different boons not yet at their top level, drawn by rarity weight (a boon already
-  // owned 1.5 times as likely, so levels come up), epics only from wave D.EPIC_FROM. A fused boon
-  // unlocked takes the first card (the first one unlocked, if several are).
+  // owned 1.5 times as likely, so levels come up), epics only from wave D.EPIC_FROM, and none tied to a
+  // plant this garden doesn't grow (S.fits). A fused boon unlocked takes the first card (the first one
+  // unlocked, if several are).
   S.rollBoons = (count) => {
-    const pool = D.BOONS.filter((b) => !b.needs && S.boonLevel(b.id) < b.levels.length && (b.rarity !== "epic" || S.wave >= D.EPIC_FROM)), picks = S.fusionsReady().slice(0, 1);
+    const pool = D.BOONS.filter((b) => !b.needs && S.fits(b) && S.boonLevel(b.id) < b.levels.length && (b.rarity !== "epic" || S.wave >= D.EPIC_FROM)), picks = S.fusionsReady().slice(0, 1);
     const weight = (b) => D.RARITY[b.rarity].weight * (S.boonLevel(b.id) ? 1.5 : 1);
     while (picks.length < count && pool.length) {
       let r = S.rng.f() * pool.reduce((a, b) => a + weight(b), 0), k = 0;
@@ -17481,7 +17491,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.selected = ""; this.matchup = {};
       const seeds = $("seeds");
       this.cards = {};
-      for (const kind of D.TOWER_ORDER) {
+      for (const kind of S.plants) {
         const def = D.TOWERS[kind], b = document.createElement("button");
         b.className = "seed"; b.style.setProperty("--acc", hex(def.color.map((v) => v * 0.75)));
         b.innerHTML = `${icon("PLANT_ICONS", kind) ? `<span class="picon" style="color:${ink(def.color)}">${icon("PLANT_ICONS", kind)}</span>` : `<span class="dot" style="background:${hex(def.color)}"></span>`}<b>${def.name}</b><span class="el">${D.ELEMENT_NAMES[D.elementOf(kind)]}</span><span class="cost"></span><span class="tag"></span>`;
@@ -17626,7 +17636,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       // its links (each once, with the plants that give it), or the plants it could link with
       const by = new Map();
       for (const l of t.links) { if (!by.has(l.link)) by.set(l.link, new Set()); by.get(l.link).add(D.TOWERS[l.other.kind].name); }
-      const partners = D.LINKS.filter((l) => l.kinds.includes(t.kind)).map((l) => D.TOWERS[l.kinds[0] === t.kind ? l.kinds[1] : l.kinds[0]].name);
+      const partners = D.LINKS.filter((l) => l.kinds.includes(t.kind) && l.kinds.every((k) => S.plants.includes(k))).map((l) => D.TOWERS[l.kinds[0] === t.kind ? l.kinds[1] : l.kinds[0]].name);
       const links = by.size
         ? [...by].map(([l, names]) => `<span class="lnk">${G.linkIcon(l.id) || "⟡"} ${esc(l.name)}</span> <span class="dim">with ${esc([...names].join(", "))}</span>: ${esc(l.desc)}`).join("<br>")
         : `<span class="dim">No links. Plant beside it: ${esc([...new Set(partners)].join(", "))}</span>`;
@@ -17655,16 +17665,17 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.showAlmanac();
       this.refresh();
     }
-    // the garden's gifts so far, each at its level, then the fusions: those found on this device (with
-    // their recipes) and those one boon away in this run
+    // the garden's gifts so far, each at its level, then the fusions of the plants it grows (State.fits): those
+    // found on this device (with their recipes) and those one boon away in this run
     giftsHtml() {
       const owned = D.BOONS.filter((b) => S.boonLevel(b.id) > 0);
       let t = "";
       if (owned.length) t += `<div class="gifts"><b class="wn">Gifts</b> ` + owned.map((b) => `<span class="gift r-${b.rarity}" style="--bc:${ink(G.boonLook(b.id).color)}" title="${esc(b.levels[Math.min(b.levels.length, S.boonLevel(b.id)) - 1].desc)}">${esc(b.name)}${b.levels.length > 1 ? " " + ROMAN[Math.min(b.levels.length, S.boonLevel(b.id))] : ""}</span>`).join(" ") + `</div>`;
-      const close = D.FUSIONS.filter((f) => !S.boonLevel(f.id) && S.fusionMissing(f).length === 1 && f.needs.some(([id]) => S.boonLevel(id) > 0));
-      if (S.found.length || close.length) {
-        t += `<div class="gifts"><b class="wn">Fusions</b> <span class="wt">${S.found.length}/${D.FUSIONS.length} found</span>`;
-        for (const id of S.found) { const f = D.boon(id); t += `<div class="det fu" style="--bc:${ink(G.boonLook(id).color)}"><b>${esc(f.name)}</b> = ${this.recipe(f)}</div>`; }
+      const close = D.FUSIONS.filter((f) => S.fits(f) && !S.boonLevel(f.id) && S.fusionMissing(f).length === 1 && f.needs.some(([id]) => S.boonLevel(id) > 0));
+      const found = S.found.filter((id) => S.fits(D.boon(id)));
+      if (found.length || close.length) {
+        t += `<div class="gifts"><b class="wn">Fusions</b> <span class="wt">${found.length}/${D.FUSIONS.filter(S.fits).length} found</span>`;
+        for (const id of found) { const f = D.boon(id); t += `<div class="det fu" style="--bc:${ink(G.boonLook(id).color)}"><b>${esc(f.name)}</b> = ${this.recipe(f)}</div>`; }
         for (const f of close) if (!S.found.includes(f.id)) t += `<div class="det fu">close: ${this.recipe(f)}</div>`;
         t += `</div>`;
       }
@@ -17676,7 +17687,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // as "a fusion")
     hints(b) {
       const out = [];
-      for (const f of D.fusionsWith(b.id)) {
+      for (const f of D.fusionsWith(b.id).filter(S.fits)) {
         if (S.boonLevel(f.id)) continue;
         const miss = S.fusionMissing(f, b.id), name = S.found.includes(f.id) ? esc(f.name) : "a fusion";
         if (!miss.length) out.push(`<span class="hint ready">✦ unlocks ${name}</span>`);
@@ -17713,7 +17724,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         let score = 0, total = 0;
         for (const g of p.groups) { const n = left ? left[g.kind] || 0 : g.count; score += n * (D.affinity(g.kind, p.trait)[el] - 1); total += n; }
         const avg = score / Math.max(total, 1);
-        for (const kind of D.TOWER_ORDER) if (D.elementOf(kind) === el) out[kind] = avg > 0.2 ? 1 : avg < -0.15 ? -1 : 0;
+        for (const kind of S.plants) if (D.elementOf(kind) === el) out[kind] = avg > 0.2 ? 1 : avg < -0.15 ? -1 : 0;
       });
       return out;
     }
@@ -18130,7 +18141,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     <p>The <b>↺ ↻</b> buttons turn the garden. The <b>☁</b> button picks the mood (the light) and the weather;
       Random rolls new ones every wave. The chips under the readouts are your gifts: tap one to read it.</p>
     <p class="dim">${G.VERSION ? G.VERSION.name + " " + G.VERSION.label : ""}</p>
-    <p class="dim">Drag to pan, pinch or wheel to zoom, ${ME.keys.text("{KeyQ}/{KeyE} turn. Keys: 1–8 seeds, Space wave, {KeyU} grow, {KeyF} speed, {KeyM} sound, Esc pause.")}</p>`;
+    <p class="dim">Drag to pan, pinch or wheel to zoom, ${ME.keys.text(`{KeyQ}/{KeyE} turn. Keys: 1–${G.state.plants.length} seeds, Space wave, {KeyU} grow, {KeyF} speed, {KeyM} sound, Esc pause.`)}</p>`;
 
   class Menu {
     // app: the live app (ME.app); act: { setSpeed, restart, saved, continueRun } (saved() -> the saved run
@@ -19917,12 +19928,12 @@ function MG_SFX(L) {
       const game = this.game;
       // grow existing plants sometimes
       for (const t of game.towers) if (t.level < D.MAX_LEVEL && S.dew > t.upgradeCost() + 80 && this.rng.f() < 0.5) game.upgrade(t);
-      // lead with the plant the coming wave is most weak to, then mostly that with some variety
+      // lead with the plant (of those the garden grows, State.plants) the coming wave is most weak to, then mostly that with some variety
       const coming = game.plan(S.wave + 1);
       // (and toward the plants its gifts favour, as a player who took Kindred Wisps sows wisps: as likely
       // again per level of a gift for that plant)
       const pull = (k) => 1 + S.boons.filter((id) => D.boon(id).el === k).length;
-      const kinds = D.TOWER_ORDER.slice().sort((a, b) => counterScore(coming, b) * pull(b) - counterScore(coming, a) * pull(a));
+      const kinds = S.plants.slice().sort((a, b) => counterScore(coming, b) * pull(b) - counterScore(coming, a) * pull(a));
       const cost = (k) => S.towerCost(D.TOWERS[k].cost, k);
       for (let tries = 0, placed = 0; tries < 200; tries++) {
         let kind = placed === 0 || this.rng.f() < 0.6 ? kinds[0] : kinds[this.rng.i(kinds.length)];
@@ -19995,7 +20006,7 @@ function MG_SFX(L) {
     const score = (b) => {
       if (b.needs) return 100;
       let s = 0;
-      for (const f of D.fusionsWith(b.id)) if (!S.boonLevel(f.id)) { const m = S.fusionMissing(f, b.id).length; s = Math.max(s, m === 0 ? 50 : m === 1 ? 10 : 0); }
+      for (const f of D.fusionsWith(b.id)) if (S.fits(f) && !S.boonLevel(f.id)) { const m = S.fusionMissing(f, b.id).length; s = Math.max(s, m === 0 ? 50 : m === 1 ? 10 : 0); }
       return s;
     };
     let best = boons[0];
@@ -20266,7 +20277,7 @@ function MG_SFX(L) {
       if (e.target && e.target.tagName === "INPUT") return;
       if (e.ctrlKey || e.altKey || e.metaKey) return;
       const d = ME.keys.digit(e);
-      if (d >= 1 && d <= D.TOWER_ORDER.length) { const kind = D.TOWER_ORDER[d - 1]; hud.selected = hud.selected === kind ? "" : kind; scene.seed = hud.selected; deselect(); hud.refresh(); }
+      if (d >= 1 && d <= S.plants.length) { const kind = S.plants[d - 1]; hud.selected = hud.selected === kind ? "" : kind; scene.seed = hud.selected; deselect(); hud.refresh(); }
       else if (ME.keys.is(e, "Space")) { e.preventDefault(); if (S.phase === G.Phase.BUILD || S.phase === G.Phase.WAVE) startWave(); }
       else if (e.key === "Escape") { hud.clearSeed(); scene.seed = ""; deselect(); }
       else if (ME.keys.is(e, "KeyF")) document.getElementById("speed").click();
@@ -20274,7 +20285,7 @@ function MG_SFX(L) {
       else if (ME.keys.is(e, "KeyU") && selected) { if (game.upgrade(selected)) select(selected); }
     });
     // the help line names the keys the player's layout shows
-    const helpEl = document.querySelector(".help"), helpText = () => { helpEl.textContent = ME.keys.text("drag pan · wheel zoom · {KeyQ}/{KeyE} turn · 1–8 seeds · space wave"); };
+    const helpEl = document.querySelector(".help"), helpText = () => { helpEl.textContent = ME.keys.text(`drag pan · wheel zoom · {KeyQ}/{KeyE} turn · 1–${S.plants.length} seeds · space wave`); };
     helpText(); ME.keys.onChange(helpText);
 
     // ------------------------------------------------------------------ juice: shake, heart flash
