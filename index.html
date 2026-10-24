@@ -122,6 +122,9 @@ body.calm .coach-spot { animation: none; }
 .seed.on { background: #fffbe8; transform: translateY(-6px); box-shadow: 0 8px 14px rgba(26, 38, 13, 0.35), 0 0 0 3px #fff8 inset; }
 .seed.poor { opacity: 0.55; }
 #wavebtn { position: fixed; right: calc(12px + var(--sr)); bottom: calc(12px + var(--sb)); width: 210px; height: calc(104px * var(--ts)); font-size: calc(24px * var(--ts)); }
+/* (while a wave runs: the next one called early, Game.callEarly, with the dew it pays) */
+#wavebtn.early { border-color: var(--moss); }
+#wavebtn small { display: block; font-size: 0.62em; font-weight: 500; margin-top: 2px; }
 
 #inspector { position: fixed; left: calc(12px + var(--sl)); top: 50%; transform: translateY(-50%); width: 280px; padding: 12px 14px; display: none; flex-direction: column; gap: 8px; }
 #inspector.panel { background: rgb(250, 242, 219); } /* (the paper, opaque: nothing shows through what it says) */
@@ -244,6 +247,7 @@ body.calm .coach-spot { animation: none; }
   .seed .dot { width: 9px; height: 9px; right: 6px; top: 6px; }
   .seed .picon { width: 14px; height: 14px; right: 5px; top: 5px; }
   #wavebtn { right: calc(6px + var(--sr)); bottom: calc(20px + 128px * var(--ts) + var(--sb)); width: calc(156px * var(--ts)); white-space: nowrap; height: calc(56px * var(--ts)); font-size: calc(18px * var(--ts)); border-radius: 13px; }
+  #wavebtn.early { font-size: calc(16px * var(--ts)); line-height: 1.1; }
   #inspector { left: calc(6px + var(--sl)); top: auto; bottom: calc(28px + 184px * var(--ts) + var(--sb)); max-height: calc(100vh - 58px - 260px * var(--ts) - var(--st) - var(--sb)); transform: none; width: min(320px, calc(100vw - 12px)); padding: 10px 12px; gap: 6px; }
   #inspector .btn { flex: none; height: 44px; font-size: calc(16px * var(--ts)); }
   #insptitle { font-size: calc(18px * var(--ts)); }
@@ -13090,7 +13094,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "01381a4" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "59f716f" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -14268,6 +14272,9 @@ function MA_DSP() {
 (function () {
   const G = window.MG, D = G.Defs, S = G.state;
 
+  // calling waves early (Game.callEarly): how many may run at once, and the share of a clear bonus paid
+  const EARLY_MAX = 3, EARLY_SHARE = 0.5;
+
   class Game {
     // level: the level description (world.js); body: the sizes the rules need from the art, as data
     // { creatureH[kind index], hover[kind index], towerH(kind, level) }
@@ -14277,7 +14284,10 @@ function MA_DSP() {
       this.shots = new G.Shots(this.enemies);
       this.blight = new G.Blight(this.world);
       this.towers = [];
-      this.spawnQueue = []; this.spawnTimer = 0; this.hpMult = 1; this.trait = null;
+      // the waves still spawning, one stream each ({ wave, queue of [kind, delay], timer, hpMult, trait }: more
+      // than one when the next wave is called early), how many waves run since the last clear, and the gifts
+      // still owed for them (one draft per wave, chained)
+      this.streams = []; this.running = 0; this.owed = 0;
       this.heartShock = 0; this.plans = new Map(); this.hitsSeen = 0; this.lastCount = -1;
       this.time = 0;
       // boon timers: the brambles' next scratch, the fireflies' next zap, the Heart Tree's next pulse, the
@@ -14356,20 +14366,58 @@ function MA_DSP() {
     // creatures of the running wave still to come or on the field, per kind
     remaining() {
       const out = {};
-      for (const [k] of this.spawnQueue) if (k) out[k] = (out[k] || 0) + 1;
+      for (const st of this.streams) for (const [k] of st.queue) if (k) out[k] = (out[k] || 0) + 1;
       D.ENEMY_ORDER.forEach((k, i) => { if (this.enemies.kindCounts[i] > 0) out[k] = (out[k] || 0) + this.enemies.kindCounts[i]; });
       return out;
     }
+    // In BUILD it starts the next wave; while a wave runs it calls the next one early (callEarly)
     startWave() {
-      if (S.phase !== G.Phase.BUILD) return;
-      S.nextWave();
-      const p = this.plan(S.wave);
-      this.spawnQueue = p.spawns.slice(); this.trait = p.trait; this.spawnTimer = 0.8; this.hpMult = D.hpScale(S.wave) * D.levelHp(S.level, S.wave);
+      if (S.phase === G.Phase.WAVE) return this.callEarly();
+      if (S.phase !== G.Phase.BUILD) return false;
       this.enemies.shield = Math.round(S.mod("shield")) * (S.mod("evergreen") > 0 ? 2 : 1); this.pulseT = 6; this.flyT = 0; this.brambleT = 0; this.cloudT = 0; this.fireT = 0;
       this.restPlants();
+      this.running = 0;
+      this.addWave();
       S.setPhase(G.Phase.WAVE);
-      G.emit("wave_start", { wave: S.wave, boss: p.boss, bossKind: p.bossKind, trait: this.trait });
+      this.announce();
+      return true;
+    }
+    // the next wave's spawns as a stream of their own (with its own vitality and trait)
+    addWave() {
+      S.nextWave();
+      const p = this.plan(S.wave);
+      this.streams.push({ wave: S.wave, queue: p.spawns.slice(), timer: 0.8, hpMult: D.hpScale(S.wave) * D.levelHp(S.level, S.wave), trait: p.trait });
+      this.running++;
+    }
+    announce() {
+      const p = this.plan(S.wave);
+      G.emit("wave_start", { wave: S.wave, boss: p.boss, bossKind: p.bossKind, trait: p.trait, early: this.running > 1 });
       G.emit("waves");
+    }
+    // Calling the next wave early: while a wave runs, the next one's creatures start at once, on top of
+    // those still out, for a dew bonus by how much is left to fight (earlyBonus). Up to EARLY_MAX waves at
+    // once, and never into or out of a boss wave (a boss is fought alone). The shield and the boons' timers
+    // carry on from the running wave; all of them are paid for and drafted on the one clear (waveCleared).
+    canCallEarly() {
+      return S.phase === G.Phase.WAVE && this.running > 0 && this.running < EARLY_MAX && !this.plan(S.wave).boss && !this.plan(S.wave + 1).boss;
+    }
+    // how much is left to fight, as a share of the newest wave: the creatures still to spawn or on the field
+    // (of every running wave, capped at the whole: a split's young count too)
+    earlyShare() {
+      let left = this.enemies.count;
+      for (const st of this.streams) for (const [k] of st.queue) if (k) left++;
+      return Math.min(1, left / Math.max(1, this.plan(S.wave).total));
+    }
+    // half the next wave's clear bonus, times that share
+    earlyBonus() { return Math.round(EARLY_SHARE * (18 + S.wave + 1) * this.earlyShare()); }
+    callEarly() {
+      if (!this.canCallEarly()) return false;
+      const bonus = this.earlyBonus();
+      S.earnRaw(bonus); this.stats.dew += bonus; this.stats.early = (this.stats.early || 0) + 1;
+      this.addWave();
+      G.emit("early", { wave: S.wave, dew: bonus });
+      this.announce();
+      return true;
     }
     // per wave, so a restore sees the same: the Midsummer Flare's beam count, Spore Storm's clouds, a
     // Puffcap's burst count (its sleep), a Ghost Lily's beams (the creature held, the heat)
@@ -14378,6 +14426,8 @@ function MA_DSP() {
       const lv = S.applyBoon(b); this.offer = null;
       const cleanse = lv > 0 && b.levels[lv - 1].cleanse;
       if (cleanse) this.blight.cleanse(cleanse);
+      // (a wave called early is owed its own draft: the next one follows at once)
+      if (this.owed > 0) { this.owed--; this.offerBoons(); return; }
       S.setPhase(G.Phase.BUILD);
       G.emit("waves");
     }
@@ -14387,35 +14437,47 @@ function MA_DSP() {
       // exactly what a save restores (core/save.js)
       this.shots.reset(); this.enemies.reset(); this.restPlants();
       this.brambleT = 0; this.flyT = 0; this.pulseT = 0; this.flyK = 0; this.cloudT = 0; this.fireT = 0;
-      this.spawnTimer = 0; this.hpMult = 1; this.trait = null;
-      const bonus = 18 + S.wave, interest = Math.min(S.mod("interest_cap"), Math.floor(S.dew * S.mod("interest"))) + Math.round(S.mod("dew_wave"));
+      // (every wave run since the last clear is paid its bonus; the interest once)
+      const n = Math.max(1, this.running);
+      this.streams = []; this.running = 0;
+      let bonus = 0;
+      for (let w = S.wave - n + 1; w <= S.wave; w++) bonus += 18 + w;
+      const interest = Math.min(S.mod("interest_cap"), Math.floor(S.dew * S.mod("interest"))) + Math.round(S.mod("dew_wave"));
       S.earnRaw(bonus + interest); this.stats.dew += bonus + interest;
-      G.emit("wave_clear", { wave: S.wave, dew: bonus + interest, interest });
+      G.emit("wave_clear", { wave: S.wave, dew: bonus + interest, interest, waves: n });
       // Wild Growth: plants not yet fully grown grow a level for free
       // (by the wave number, so half a plant a wave is one every other wave, with nothing to save)
       const g = S.mod("grow_free");
-      for (let n = Math.floor(g * S.wave + 1e-9) - Math.floor(g * (S.wave - 1) + 1e-9); n > 0; n--) {
+      for (let k = Math.floor(g * S.wave + 1e-9) - Math.floor(g * (S.wave - n) + 1e-9); k > 0; k--) {
         const small = this.towers.filter((t) => t.level < D.MAX_LEVEL);
         if (!small.length) break;
         const t = small[S.rng.i(small.length)];
         t.upgrade(); this.stats.grown++;
         G.emit("tower_upgraded", { kind: t.kind, level: t.level, pos: [t.X, t.Y, t.Z], tower: t, free: true });
       }
-      // (the offer is drawn before the phase changes, so a save taken on the phase change carries it)
+      this.owed = n - 1;
+      this.offerBoons();
+    }
+    // (the offer is drawn before the phase changes, so a save taken on the phase change carries it; a chained
+    // draft stays in CHOOSE_BOON, and an "offer" event has the save written then)
+    offerBoons() {
       this.offer = S.rollBoons(3);
-      S.setPhase(G.Phase.CHOOSE_BOON);
+      if (S.phase === G.Phase.CHOOSE_BOON) G.emit("offer"); else S.setPhase(G.Phase.CHOOSE_BOON);
       G.emit("boons_offered", { boons: this.offer });
     }
 
     update(dt) {
       this.time += dt;
       if (S.phase === G.Phase.WAVE) {
-        this.spawnTimer -= dt;
-        while (this.spawnTimer <= 0 && this.spawnQueue.length) {
-          const [kind, delay] = this.spawnQueue.shift();
-          if (kind) this.enemies.spawn(kind, this.hpMult, this.trait);
-          this.spawnTimer += delay;
+        for (const st of this.streams) {
+          st.timer -= dt;
+          while (st.timer <= 0 && st.queue.length) {
+            const [kind, delay] = st.queue.shift();
+            if (kind) this.enemies.spawn(kind, st.hpMult, st.trait);
+            st.timer += delay;
+          }
         }
+        if (this.streams.some((st) => !st.queue.length)) this.streams = this.streams.filter((st) => st.queue.length);
       }
       this.enemies.update(dt, this.time);
       for (const t of this.towers) t.update(dt, this);
@@ -14423,7 +14485,7 @@ function MA_DSP() {
       if (S.phase === G.Phase.WAVE) this.boonsAct(dt);
       this.popPuffballs();
       this.blight.update(dt, this.enemies);
-      if (S.phase === G.Phase.WAVE && !this.spawnQueue.length && this.enemies.count === 0) this.waveCleared();
+      if (S.phase === G.Phase.WAVE && !this.streams.length && this.enemies.count === 0) this.waveCleared();
       this.readBattle(dt);
       this.updateIntensity(dt);
     }
@@ -14588,6 +14650,8 @@ function MA_DSP() {
         seed: S.seed, rng: S.rng.state(), wave: S.wave, dew: S.dew, heart: [S.heartHp, S.heartMax],
         boons: S.boons.slice(), best: S.best,
         phase: S.phase, offer: S.phase === P.CHOOSE_BOON && game.offer ? game.offer.map((o) => o.id) : null,
+        // (the drafts still owed after this one, for waves called early: Game.owed)
+        owed: S.phase === P.CHOOSE_BOON ? game.owed : 0,
         towers: game.towers.map((t) => [t.kind, t.cx, t.cy, t.level, t.invested]),
         blight: { level: b64(quantise(b.level)), scar: b64(quantise(b.scar)) },
         stats: JSON.parse(JSON.stringify(game.stats)), time: +game.time.toFixed(2),
@@ -14653,7 +14717,7 @@ function MA_DSP() {
         G.emit("dew"); G.emit("heart"); G.emit("wave"); G.emit("mods");
         const offer = d.phase === P.CHOOSE_BOON && d.offer ? d.offer.map(D.boon).filter(Boolean) : null;
         if (offer && offer.length) {
-          game.offer = offer;
+          game.offer = offer; game.owed = d.owed || 0;
           S.setPhase(P.CHOOSE_BOON);
           G.emit("boons_offered", { boons: offer });
         } else S.setPhase(P.BUILD);
@@ -14671,7 +14735,7 @@ function MA_DSP() {
         const d = Save.capture(g);
         if (d) Save.write(d);
       };
-      for (const ev of ["phase", "tower_placed", "tower_upgraded", "tower_sold", "restored"]) G.on(ev, save);
+      for (const ev of ["phase", "offer", "tower_placed", "tower_upgraded", "tower_sold", "restored"]) G.on(ev, save);
       G.on("game_over", () => Save.clear());
     },
   });
@@ -15909,6 +15973,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       });
       on("leaked", () => { const w = this.world; this.burst("heart", [w.heart[0], w.heart[1], w.heartZ + 1.1]); });
       on("wave_clear", (e) => { const w = this.world; this.floatText([w.heart[0], w.heart[1], w.heartZ + 2.6], "+" + e.dew + " dew", [0.7, 0.95, 1.0]); });
+      on("early", (e) => { if (e.dew > 0) { const w = this.world; this.floatText([w.heart[0], w.heart[1], w.heartZ + 2.6], "+" + e.dew + " dew", [0.7, 0.95, 1.0]); } });
       on("tower_placed", (e) => this.burst("plant", [e.pos[0], e.pos[1], e.pos[2] + 0.15]));
       on("tower_upgraded", (e) => this.burst("plant", [e.pos[0], e.pos[1], e.pos[2] + 0.25]));
       on("tower_sold", (e) => this.burst("plant", [e.pos[0], e.pos[1], e.pos[2] + 0.15]));
@@ -17441,7 +17506,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("grow").addEventListener("click", () => this.act.upgrade());
       $("uproot").addEventListener("click", () => this.act.sell());
       $("again").addEventListener("click", () => this.act.restart());
-      for (const ev of ["dew", "heart", "wave", "phase", "mods"]) G.on(ev, () => this.refresh());
+      for (const ev of ["dew", "heart", "wave", "phase", "mods", "waves"]) G.on(ev, () => this.refresh());
       // links change as plants come and go around the one in the inspector
       G.on("links", () => { if (this.inspected && $("inspector").classList.contains("show") && this.inspected.links) this.inspect(this.inspected); });
       this.refresh();
@@ -17668,8 +17733,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
       const building = S.phase === G.Phase.BUILD;
       if (S.phase !== G.Phase.CHOOSE_BOON) $("boons").classList.remove("show");
-      $("wavebtn").style.display = building ? "" : "none";
-      label("wavebtn", `Begin Wave ${S.wave + 1}`);
+      // (while a wave runs: the next one called early, for the bonus it pays now, Game.callEarly)
+      const early = this.game.canCallEarly();
+      $("wavebtn").style.display = building || early ? "" : "none";
+      $("wavebtn").classList.toggle("early", early);
+      if (early) $("wavebtn").querySelector(".lb").innerHTML = `Next wave <small>+${this.game.earlyBonus()} dew</small>`;
+      else label("wavebtn", `Begin Wave ${S.wave + 1}`);
       $("hint").style.display = S.wave === 0 && building ? "" : "none";
       if (S.phase === G.Phase.GAME_OVER && $("inspector").classList.contains("show")) this.inspect(null);
       this.boonBar();
@@ -19761,7 +19830,8 @@ function MG_SFX(L) {
    starts waves, takes a boon (fusions and the boons toward them first, else the first card), logs a line per wave (how hits landed, how far the blight
    spread) and hands a report to hooks.finish after N waves or on game over.
    It plays through the rules alone, so the same bot drives the full game (main.js) and the rules-only
-   balance sim (tools/sim.html). Everything else comes through hooks: { maxWaves, now(), log(line),
+   balance sim (tools/sim.html). With hooks.early (0-1) it also calls the next wave early (Game.callEarly)
+   once what is left of the running one falls to that share (1: as soon as it may). Everything else comes through hooks: { maxWaves, early, now(), log(line),
    deselect(), hideBoons(), setSpeed(x), finish(report) }. */
 (function () {
   const G = window.MG, D = G.Defs, S = G.state;
@@ -19769,7 +19839,7 @@ function MG_SFX(L) {
   class Bot {
     constructor(game, hooks) {
       this.game = game; this.hooks = hooks;
-      this.maxWaves = hooks.maxWaves || 8;
+      this.maxWaves = hooks.maxWaves || 8; this.early = hooks.early == null ? -1 : hooks.early;
       this.rng = G.rng((S.seed ^ 0xb07) >>> 0);
       this.t0 = hooks.now(); this.waveT0 = 0; this.simT = 0; this.hits0 = [0, 0, 0];
       this.rows = []; this.done = false; this.boonAt = -1; this.boons = null;
@@ -19790,6 +19860,11 @@ function MG_SFX(L) {
         this.hooks.hideBoons();
         this.hooks.log(`  boon: ${b.name}`);
         this.game.chooseBoon(b);
+      }
+      if (S.phase === G.Phase.WAVE && this.early >= 0 && S.wave < this.maxWaves && this.game.canCallEarly() && this.game.earlyShare() <= this.early) {
+        this.spend();
+        this.hooks.log(`  called wave ${S.wave + 1} early for ${this.game.earlyBonus()} dew`);
+        this.game.startWave();
       }
       if (S.phase !== G.Phase.BUILD) return;
       if (S.wave >= this.maxWaves) { this.hooks.log(`reached wave ${S.wave}, heart ${S.heartHp}/${S.heartMax}, dew ${S.dew}, plants ${this.game.towers.length}`); this.finish(false); return; }
@@ -19907,7 +19982,7 @@ function MG_SFX(L) {
    adds the engine's voxel physics, reads the level off it, then runs the rules (core/), the view
    (view/), the HUD, input, audio and camera every frame.
    URL options: ?level=momiji|fernglass, ?seed=N fixes the run, ?speed=2, ?dpr=1, ?scale=0.8 (render scale), ?mute=1,
-   ?autoplay=1&waves=8 (bot; see bot.js), ?selftest=1 (render N frames, report timings into #result),
+   ?autoplay=1&waves=8 (bot; see bot.js; &early=0.5 has it call waves early), ?selftest=1 (render N frames, report timings into #result),
    ?bench=1 (the engine's benchmark, src/bench.js, on a still build phase with the self-test's four plants:
    one BENCH line into #result; ?bench=2 the bake part only),
    ?vinyl=0 (no record crackle under the music: the A/B for the music's noise), ?closeup=0 (no true-colour fade
@@ -20074,9 +20149,12 @@ function MG_SFX(L) {
     let speed = ME.qn("speed", 1), selected = null;
     const audio = G.Audio ? new G.Audio(game, app, banks) : null;
     if (audio && ME.qn("mute", 0)) audio.setEnabled(false);
+    // the wave button and Space: in the build phase the next wave, while one runs the next called early
+    // (Game.callEarly; the plant looked at stays selected)
+    const startWave = () => { if (S.phase === G.Phase.BUILD) deselect(); game.startWave(); audio && audio.unlock(); };
     const hud = new G.Hud(game, {
       seed: (kind) => { deselect(); scene.seed = kind; },
-      startWave: () => { deselect(); game.startWave(); audio && audio.unlock(); },
+      startWave,
       speed: (fast) => { speed = fast ? 2 : 1; },
       sound: () => (audio ? audio.toggle() : false),
       upgrade: () => { if (selected && game.upgrade(selected)) select(selected); },
@@ -20151,7 +20229,7 @@ function MG_SFX(L) {
       if (e.ctrlKey || e.altKey || e.metaKey) return;
       const d = ME.keys.digit(e);
       if (d >= 1 && d <= D.TOWER_ORDER.length) { const kind = D.TOWER_ORDER[d - 1]; hud.selected = hud.selected === kind ? "" : kind; scene.seed = hud.selected; deselect(); hud.refresh(); }
-      else if (ME.keys.is(e, "Space")) { e.preventDefault(); if (S.phase === G.Phase.BUILD) { deselect(); game.startWave(); audio && audio.unlock(); } }
+      else if (ME.keys.is(e, "Space")) { e.preventDefault(); if (S.phase === G.Phase.BUILD || S.phase === G.Phase.WAVE) startWave(); }
       else if (e.key === "Escape") { hud.clearSeed(); scene.seed = ""; deselect(); }
       else if (ME.keys.is(e, "KeyF")) document.getElementById("speed").click();
       else if (ME.keys.is(e, "KeyM")) document.getElementById("sound").click();
@@ -20188,7 +20266,7 @@ function MG_SFX(L) {
     };
 
     const bot = G.Bot && ME.qn("autoplay", 0) ? new G.Bot(game, {
-      maxWaves: ME.qn("waves", 8), now: () => ME.now(), log: (line) => ME.log("BOT", line),
+      maxWaves: ME.qn("waves", 8), early: ME.qn("early", -1) >= 0 ? ME.qn("early", -1) : null, now: () => ME.now(), log: (line) => ME.log("BOT", line),
       deselect, hideBoons: () => document.getElementById("boons").classList.remove("show"), setSpeed: (s) => { speed = s; },
       finish: (r) => {
         const out = JSON.stringify(Object.assign({ ok: ME.errors.length === 0 }, r, { audio: audio ? audio.stats() : null, errors: ME.errors }));
