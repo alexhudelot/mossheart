@@ -137,6 +137,19 @@ body.calm .coach-spot { animation: none; }
 #inspbody .lnk svg { width: 1.1em; height: 1.1em; vertical-align: -0.2em; }
 #inspbody .lvl { display: inline-block; min-width: 1.6em; font-weight: 800; color: #6a8a3a; }
 #inspector .btn { height: 52px; font-size: calc(18px * var(--ts)); }
+/* a picked seed's info (hud.js seedInfo): the panel without Grow and Uproot */
+#inspector.seedinfo .btn { display: none; }
+#insptitle .short { color: #b0402a; }
+#inspbody .how { font-weight: 800; color: #8a5a2a; }
+#inspbody .tomore { display: none; font-weight: 800; color: #6a8a3a; }
+#inspbody .tomore::after { content: " ▸"; }
+#inspector.open #inspbody .tomore::after { content: " ▾"; }
+/* (on a phone it sits above the garden, under the almanac, its levels and matchups folded until a tap) */
+@media (max-width: 760px) {
+  #inspector.seedinfo { top: calc(100px + var(--st)); bottom: auto; }
+  #inspector.seedinfo .tomore { display: inline; }
+  #inspector.seedinfo:not(.open) .more { display: none; }
+}
 
 .veil { position: fixed; inset: 0; display: none; place-items: center; background: rgba(20, 31, 15, 0.45); animation: fade 0.35s; padding: 16px; }
 .veil.show { display: grid; }
@@ -367,7 +380,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   <div id="almanac"><button id="almtog">Almanac ▸</button><div id="almbody"></div></div>
   <div id="viewctl"><button id="skybtn" class="btn small" title="mood and weather">☁</button><button id="turnl" class="btn small" title="turn left">↺</button><button id="turnr" class="btn small" title="turn right">↻</button></div>
   <div id="sky" class="panel"><div class="skyrow"><b>Mood</b><div class="seg" id="moodseg"></div></div><div class="skyrow"><b>Weather</b><div class="seg" id="wxseg"></div></div></div>
-  <div id="hint">Tap a seed, then tap the meadow to plant it</div>
+  <div id="hint">Tap a seed, then tap the meadow twice to plant it</div>
   <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspbody"></div><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div>
   <div id="seeds"></div>
   <button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button>
@@ -13098,7 +13111,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "54f7c4e" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "c42da58" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -13566,7 +13579,7 @@ function MA_DSP() {
    field (port of LevelMap / BlightField). World units are tiles: cell (cx, cy) spans
    [cx, cx + 1) x [cy, cy + 1), Z up.
    The level itself comes from outside, already described (view/level.js reads it off the baked map):
-     { W, H, blocked: Uint8Array W*H (cells the map itself rules out: water, rock, props, lamps),
+     { W, H, blocked: Uint8Array W*H (cells the map itself rules out: water, rock, props),
        path: [[cx, cy], ...] in walking order, len, at(s) -> [X, Y, Z, dx, dy] (the road at distance s),
        lane: [[cx, cy], ...] the tiles across the lane (the path's included; the path when left out),
        sides, sideStep: the lane's reach each side of the road, a pair per sideStep (view/level.js; optional),
@@ -14038,6 +14051,12 @@ function MA_DSP() {
     // a Briar Vine patch's radius (Thornwall widens it), grown across a wide lane (p.wide)
     patchR(p) { return (PATCH_R + (p ? p.wide : 0)) * (1 + (this.bond.patch || 0)); }
     upgradeCost() { return G.state.towerCost(Math.floor(this.def.cost * 0.8 * this.level)); }
+    // a seed's numbers before it is planted (the HUD's seed info): at a level, with the gifts in play and
+    // without the links a spot would give, its damage, reach, attacks a second and the dew to grow it on
+    static preview(kind, level = 1) {
+      const t = { def: D.TOWERS[kind], kind, level, bond: {} }, P = Tower.prototype;
+      return { damage: P.damage.call(t), range: P.range.call(t), rate: P.rate.call(t), growCost: P.upgradeCost.call(t) };
+    }
     sellValue() { return Math.floor(this.invested * 0.6); }
     upgrade() { this.level++; this.refresh(); }
     // what follows from the level: a Briar Vine's patches, a Ghost Lily's beams
@@ -15764,8 +15783,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 </script>
 <script>/* src/view/level.js */
 /* Reads the level description the rules need (core/world.js) off the v1 map and its bake: the moss inside
-   the island, minus props and lamps; the road (the engine sim's path along `game.route`, in walking order,
-   with its length and heights); the lane round it; the voxel ground's height; and the Heart Tree
+   the island, minus props (a ground lamp's tile takes a plant, the lamp standing on at its edge); the road
+   (the engine sim's path along `game.route`, in walking order, with its length and heights); the lane round it; the voxel ground's height; and the Heart Tree
    (`game.heart`). The one place gameplay and the baked art meet. Before the bake, the game's retypes of
    the map's `kind` rows (docs/decisions/2026-10-21-map-format.md, section 3): the sand banks and the
    wider lanes. A level's `game` block: { route: [[x, y], ...] tile corners (or a list of such lines, the
@@ -15843,7 +15862,6 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const ex = d[4] || {}, X = d[2] + 0.5 + (ex.dx || 0), Y = d[3] + 0.5 + (ex.dy || 0);
       blocked[at(Math.min(W - 1, Math.max(0, Math.floor(X))), Math.min(H - 1, Math.max(0, Math.floor(Y))))] = 1;
     }
-    for (const l of T.lights || []) { const x = Math.floor(l.p[0]), y = Math.floor(l.p[1]); if (x >= 0 && y >= 0 && x < W && y < H) blocked[at(x, y)] = 1; }
     const { lane, sides, sideStep } = G.laneFrom(T, sim, groundZ, (map.game && map.game.lane) || []);
     return { W, H, blocked, path: sim.cells, lane, len: sim.len, at: (s) => sim.at(s), sides, sideStep, groundZ, heart: (map.game && map.game.heart) || [7.5, 5.5] };
   };
@@ -17529,6 +17547,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const NARROW = window.matchMedia("(max-width: 760px)");
   // the inspector's buttons wait GRACE_MS after it opens on a plant; Uproot's first tap asks for ARM_MS
   const GRACE_MS = 450, ARM_MS = 3000;
+  // what each plant aims at (core/towers.js), for the seed info
+  const TARGETS = {
+    thorn: "the creature nearest the Heart Tree", sun: "the toughest creature in reach", puff: "everything in reach",
+    wisp: "the creature nearest the Heart Tree, then leaps on", briar: "the road beside it", toad: "the creature nearest the Heart Tree, beyond 1 tile",
+    moon: "the toughest creature in reach", lily: "the creature nearest the Heart Tree, and holds it",
+  };
+  // a screen without hover (a phone): planting takes two taps (main.js)
+  const TOUCH = window.matchMedia("(hover: none)");
 
   class Hud {
     constructor(game, actions) {
@@ -17545,7 +17571,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         seeds.appendChild(b); this.cards[kind] = b;
       }
       $("wavebtn").addEventListener("click", () => this.act.startWave());
-      $("speed").addEventListener("click", () => { const fast = !$("speed").classList.contains("on"); $("speed").classList.toggle("on", fast); label("speed", fast ? "2x" : "1x"); this.act.speed(fast); });
+      $("inspector").addEventListener("click", () => { if ($("inspector").classList.contains("seedinfo")) $("inspector").classList.toggle("open"); });
+      $("speed").addEventListener("click", () => this.act.speed());
       $("sound").addEventListener("click", () => { const on = this.act.sound(); label("sound", on ? "♪" : "♪̸"); $("sound").classList.toggle("off", !on); });
       // the almanac: folded unless the player left it open
       try { this.almOpen = !!JSON.parse(localStorage.getItem(HUD_KEY) || "{}").almanac; } catch (e) { this.almOpen = false; }
@@ -17643,6 +17670,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const lv = Math.min(b.levels.length, S.boonLevel(b.id));
       tip.innerHTML = `<b>${esc(b.name)}${b.levels.length > 1 ? " " + ROMAN[lv] : ""}</b> <span class="rar">${b.needs ? "Fused" : D.RARITY[b.rarity].name}</span><br>${esc(b.levels[lv - 1].desc)}`;
     }
+    // the game's speed on its button (main.js steps it: 1x, 2x, 3x)
+    showSpeed(s) { label("speed", `${s}x`); $("speed").classList.toggle("on", s > 1); }
     setFps(fps, scale) { $("fps").textContent = `${Math.round(fps)} fps · ${Math.round(scale * 100)}%`; }
 
     // The gifts on offer: each card framed by its rarity, with its icon (Art's, or the element's glyph),
@@ -17692,8 +17721,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
     inspect(t) {
       const box = $("inspector");
-      if (!t) { box.classList.remove("show"); this.inspected = null; this.arm(null); this.almOver = false; this.showAlmanac(); return; }
-      if (t !== this.inspected || !box.classList.contains("show")) { this.openedAt = performance.now(); this.arm(null); }
+      if (!t) { box.classList.remove("show"); this.inspected = null; this.arm(null); this.almOver = false; this.showAlmanac(); this.seedInfo(); return; }
+      if (t !== this.inspected || !box.classList.contains("show") || box.classList.contains("seedinfo")) { this.openedAt = performance.now(); this.arm(null); }
+      box.classList.remove("seedinfo", "open"); this.seedKey = "";
       const def = D.TOWERS[t.kind];
       const pic = icon("PLANT_ICONS", t.kind);
       $("insptitle").innerHTML = `${pic ? `<span class="picon" style="color:${ink(def.color)}">${pic}</span>` : ""}${esc(def.name)}  ·  Lv ${t.level}`;
@@ -17715,6 +17745,32 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.uprootLabel(t);
       box.classList.add("show");
       this.showAlmanac();
+    }
+
+    // The picked seed, in the inspector's panel while no plant is looked at (its buttons hidden): its cost,
+    // what it does, its damage, reach and attacks as it would be planted now (Tower.preview), what it aims
+    // at, its levels with the dew each costs to grow, and the creatures it suits. Built again only when
+    // what it says changes (refresh runs on every dew).
+    seedInfo() {
+      const box = $("inspector"), kind = this.selected;
+      const on = !!kind && !this.inspected && (S.phase === G.Phase.BUILD || S.phase === G.Phase.WAVE);
+      if (!on) {
+        if (box.classList.contains("seedinfo")) { box.classList.remove("show", "seedinfo", "open"); this.seedKey = ""; this.showAlmanac(); }
+        return;
+      }
+      const def = D.TOWERS[kind], cost = S.towerCost(def.cost, kind), p = G.Tower.preview(kind), pic = icon("PLANT_ICONS", kind);
+      const grow = [1, 2].map((lv) => G.Tower.preview(kind, lv).growCost);
+      const key = [kind, cost, S.canAfford(cost), p.damage, p.range, p.rate, ...grow, TOUCH.matches].join();
+      if (key !== this.seedKey) {
+        this.seedKey = key;
+        $("insptitle").innerHTML = `${pic ? `<span class="picon" style="color:${ink(def.color)}">${pic}</span>` : ""}${esc(def.name)}  ·  <span class="${S.canAfford(cost) ? "" : "short"}">${cost} dew</span>`;
+        const levels = def.levels.map((s, k) => `<span class="lvl">${ROMAN[k + 1]}</span> ${esc(s)}${k ? ` <span class="dim">· ${grow[k - 1]} dew</span>` : ""}`).join("<br>");
+        $("inspbody").innerHTML = `${esc(def.desc)}<br>Damage <b>${p.damage.toFixed(0)}</b> · Reach <b>${p.range.toFixed(1)}</b> · <b>${p.rate.toFixed(2)}</b> / s<br>` +
+          `Aims at <b>${esc(TARGETS[kind] || "the creature nearest the Heart Tree")}</b><span class="more"><br>${levels}<br><span class="dim">${esc(this.matchupsOf(kind))}</span></span>` +
+          `<span class="tomore"><br>Levels and matchups</span><br><span class="how">${TOUCH.matches ? "Tap a spot to see it there, tap it again to plant." : "Click a spot to plant it."}</span>`;
+      }
+      box.classList.add("seedinfo");
+      if (!box.classList.contains("show")) { box.classList.add("show"); this.showAlmanac(); }
     }
 
     // Two waves' plans: `first` is the running wave (with `left` its creatures still to come or on the
@@ -17827,8 +17883,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (early) $("wavebtn").querySelector(".lb").innerHTML = `Next wave <small>+${this.game.earlyBonus()} dew</small>`;
       else if (waving) $("wavebtn").querySelector(".lb").innerHTML = `Next wave <small>${this.game.earlyBlocked()}</small>`;
       else label("wavebtn", `Begin Wave ${S.wave + 1}`);
-      $("hint").style.display = S.wave === 0 && building ? "" : "none";
+      $("hint").style.display = S.wave === 0 && building && !this.selected ? "" : "none"; // (a picked seed's info says what to do)
       if (S.phase === G.Phase.GAME_OVER && $("inspector").classList.contains("show")) this.inspect(null);
+      this.seedInfo();
       this.boonBar();
     }
   }
@@ -18203,7 +18260,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // (a function: the key labels follow the player's keyboard layout, ME.keys)
   const HOWTO = () => `
     <p><b>Keep the Heart Tree alive.</b> Creatures of the blight walk the road to it; every one that arrives hurts it.</p>
-    <p>Tap a <b>seed card</b>, then tap the moss to plant it. Plants cost dew; creatures you stop drop more.</p>
+    <p>Tap a <b>seed card</b> to read what it does, then tap the moss: a ghost shows the plant and its reach. Tap the same spot again to plant it. Plants cost dew; creatures you stop drop more.</p>
     <p>Tap a plant to <b>Grow</b> it (up to level 3) or <b>Uproot</b> it for 60% of its dew back.</p>
     <p><b>Begin Wave</b> sends the next wave. The <b>wave almanac</b> lists what is coming, what each creature is
       weak to (▲) and what it resists (▼). Seed cards are marked the same way.</p>
@@ -18212,7 +18269,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     <p>The <b>↺ ↻</b> buttons turn the garden. The <b>☁</b> button picks the mood (the light) and the weather;
       Random rolls new ones every wave. The chips under the readouts are your gifts: tap one to read it.</p>
     <p class="dim">${G.VERSION ? G.VERSION.name + " " + G.VERSION.label : ""}</p>
-    <p class="dim">Drag to pan, pinch or wheel to zoom, ${ME.keys.text(`{KeyQ}/{KeyE} turn. Keys: 1–${G.state.plants.length} seeds, Space wave, {KeyU} grow, {KeyF} speed, {KeyM} sound, Esc pause.`)}</p>`;
+    <p class="dim">Drag to pan, pinch or wheel to zoom, ${ME.keys.text(`{KeyQ}/{KeyE} turn. Keys: 1–${G.state.plants.length} seeds, Space wave, {KeyU} grow, {KeyF} speed (1x, 2x, 3x), {KeyM} sound, Esc pause.`)}</p>`;
 
   class Menu {
     // app: the live app (ME.app); act: { setSpeed, restart, saved, continueRun } (saved() -> the saved run
@@ -18452,7 +18509,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // what each step says, the control it lights, and when it is done
   const STEPS = [
     { id: "seed", text: "Tap a seed below to pick a plant.", spot: "seeds", done: (t) => !!t.app.hud.selected || t.app.game.towers.length > 0 },
-    { id: "plant", text: "Now tap the moss beside the path to plant it there. It fires on its own at creatures in reach.", spot: null, done: (t) => t.app.game.towers.length > 0 },
+    { id: "plant", text: "Now tap the moss beside the path: the ring shows its reach. Tap the same spot again to plant it. It fires on its own at creatures in reach.", spot: null, done: (t) => t.app.game.towers.length > 0 },
     { id: "almanac", text: "The Almanac shows what the next wave brings and what each creature is weak to. Open it.", spot: "almtog", ok: true, done: (t) => t.app.hud.almOpen },
     { id: "wave", text: "Plant more while you have dew, then tap Begin Wave.", spot: "wavebtn", done: () => S.wave > 0 },
     { id: "after", text: "Tap a plant to grow it or uproot it. After each wave the garden offers a gift.", spot: null, ok: true, secs: 9, done: () => S.phase === G.Phase.CHOOSE_BOON || S.phase === G.Phase.GAME_OVER },
@@ -20672,16 +20729,21 @@ function MG_SFX(L) {
 
     // the player's mood and weather (view/atmos.js): the view's mood() ends with its pass
     const atmos = (app.atmos = scene.atmos = new G.Atmos(app));
+    // the game's speed: the HUD's button (and F) steps through SPEEDS; the bot and ?speed= set any
+    const SPEEDS = [1, 2, 3];
     let speed = ME.qn("speed", 1), selected = null;
+    const setSpeed = (s) => { speed = s; hud.showSpeed(s); };
+    // a touch plants in two taps (see tap below): the seed and the cell of the first, until it is planted
+    let pending = null;
     const audio = G.Audio ? new G.Audio(game, app, banks) : null;
     if (audio && ME.qn("mute", 0)) audio.setEnabled(false);
     // the wave button and Space: in the build phase the next wave, while one runs the next called early
     // (Game.callEarly; the plant looked at stays selected)
     const startWave = () => { if (S.phase === G.Phase.BUILD) deselect(); game.startWave(); audio && audio.unlock(); };
     const hud = new G.Hud(game, {
-      seed: (kind) => { deselect(); scene.seed = kind; },
+      seed: (kind) => { deselect(); scene.seed = kind; pending = null; },
       startWave,
-      speed: (fast) => { speed = fast ? 2 : 1; },
+      speed: () => setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]),
       sound: () => (audio ? audio.toggle() : false),
       upgrade: () => { if (selected && game.upgrade(selected)) select(selected); },
       sell: () => { if (selected) { game.sell(selected); deselect(); } },
@@ -20695,9 +20757,9 @@ function MG_SFX(L) {
     };
     G.on("waves", refreshWaves); G.on("phase", refreshWaves);
     G.on("boons_offered", (e) => hud.showBoons(e.boons, (b) => game.chooseBoon(b)));
-    G.on("game_over", (e) => { speed = 1; hud.showGameOver(e.wave, e.best); });
+    G.on("game_over", (e) => { setSpeed(1); hud.showGameOver(e.wave, e.best); });
     G.on("dew", () => { if (selected) hud.inspect(selected); });
-    refreshWaves();
+    refreshWaves(); hud.showSpeed(speed);
 
     const select = (t) => { selected = t; scene.selected = t; hud.inspect(t); };
     const deselect = () => { selected = null; scene.selected = null; hud.inspect(null); };
@@ -20708,7 +20770,7 @@ function MG_SFX(L) {
       if (d && !G.Save.fits(next, d)) { next.dispose(); return false; }
       game.dispose();
       deselect(); hud.clearSeed(); hud.hideGameOver(); document.getElementById("boons").classList.remove("show");
-      game = next; hud.game = game; if (audio) audio.setGame(game); if (bot) bot.game = game;
+      pending = null; game = next; hud.game = game; if (audio) audio.setGame(game); if (bot) bot.game = game;
       if (d) G.Save.restore(game, d); else S.newRun((Date.now() ^ (Math.random() * 1e9)) >>> 0);
       scene.setGame(game);
       refreshWaves();
@@ -20733,20 +20795,27 @@ function MG_SFX(L) {
       if (moved < 10 && dt < 600) tap(e);
     });
     canvas.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse" && !e.buttons) { const c = cellAt(e); scene.hover = c ? { cell: c } : null; } });
-    canvas.addEventListener("pointerleave", () => { scene.hover = null; });
+    canvas.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") scene.hover = null; }); // (a finger leaves on every lift: its ghost stays)
+    // A touch plants in two taps: the first, on a spot the seed can take, shows its ghost and reach there
+    // (scene.hover) and the second, on the same spot, plants it; a tap on another spot moves the ghost. A
+    // mouse plants in one click, its hover being the preview.
     const tap = (e) => {
       if (S.phase === G.Phase.GAME_OVER || S.phase === G.Phase.CHOOSE_BOON) return;
       const c = cellAt(e);
-      if (!c) { deselect(); return; }
+      if (!c) { pending = null; deselect(); return; }
       if (e.pointerType !== "mouse") scene.hover = { cell: c };
       const t = game.towerAt(c[0], c[1]);
-      if (t) { hud.clearSeed(); scene.seed = ""; select(t); return; }
+      if (t) { pending = null; hud.clearSeed(); scene.seed = ""; select(t); return; }
       const kind = hud.selected;
       if (kind && game.canPlace(kind, c[0], c[1])) {
+        const again = pending && pending.kind === kind && pending.x === c[0] && pending.y === c[1];
+        if (e.pointerType !== "mouse" && !again) { pending = { kind, x: c[0], y: c[1] }; deselect(); return; }
+        pending = null;
         const placed = game.place(kind, c[0], c[1]);
         if (placed && !S.canAfford(S.towerCost(D.TOWERS[kind].cost, kind))) { hud.clearSeed(); scene.seed = ""; }
         return;
       }
+      pending = null;
       deselect();
     };
     // keys by physical position (ME.keys), so they sit in the same place on AZERTY; Esc stays on e.key
@@ -20754,9 +20823,9 @@ function MG_SFX(L) {
       if (e.target && e.target.tagName === "INPUT") return;
       if (e.ctrlKey || e.altKey || e.metaKey) return;
       const d = ME.keys.digit(e);
-      if (d >= 1 && d <= S.plants.length) { const kind = S.plants[d - 1]; hud.selected = hud.selected === kind ? "" : kind; scene.seed = hud.selected; deselect(); hud.refresh(); }
+      if (d >= 1 && d <= S.plants.length) { const kind = S.plants[d - 1]; hud.selected = hud.selected === kind ? "" : kind; scene.seed = hud.selected; pending = null; deselect(); hud.refresh(); }
       else if (ME.keys.is(e, "Space")) { e.preventDefault(); if (S.phase === G.Phase.BUILD || S.phase === G.Phase.WAVE) startWave(); }
-      else if (e.key === "Escape") { hud.clearSeed(); scene.seed = ""; deselect(); }
+      else if (e.key === "Escape") { pending = null; hud.clearSeed(); scene.seed = ""; deselect(); }
       else if (ME.keys.is(e, "KeyF")) document.getElementById("speed").click();
       else if (ME.keys.is(e, "KeyM")) document.getElementById("sound").click();
       else if (ME.keys.is(e, "KeyU") && selected) { if (game.upgrade(selected)) select(selected); }
@@ -20793,18 +20862,18 @@ function MG_SFX(L) {
 
     const bot = G.Bot && ME.qn("autoplay", 0) ? new G.Bot(game, {
       maxWaves: ME.qn("waves", 8), early: ME.qn("early", -1) >= 0 ? ME.qn("early", -1) : null, now: () => ME.now(), log: (line) => ME.log("BOT", line),
-      deselect, hideBoons: () => document.getElementById("boons").classList.remove("show"), setSpeed: (s) => { speed = s; },
+      deselect, hideBoons: () => document.getElementById("boons").classList.remove("show"), setSpeed,
       finish: (r) => {
         const out = JSON.stringify(Object.assign({ ok: ME.errors.length === 0 }, r, { audio: audio ? audio.stats() : null, errors: ME.errors }));
         if (audio && audio.mixer && audio.mixer.rec) audio.stopRecording().then((b64) => { result.textContent = out + "\nFILE mix.webm " + b64; });
         else result.textContent = out;
       },
     }) : null;
-    if (bot) speed = ME.qn("speed", 6);
+    if (bot) setSpeed(ME.qn("speed", 6));
     // (a live getter: a new run replaces the game)
     ME.app = Object.defineProperties(Object.assign(app, { cam, hud, audio, bot }), { game: { get: () => game, enumerable: true } });
     // title screen, pause menu and settings (view/menu.js)
-    app.menu = G.Menu ? new G.Menu(app, { setSpeed: (s) => { speed = s; }, restart, saved, continueRun }) : null;
+    app.menu = G.Menu ? new G.Menu(app, { setSpeed, restart, saved, continueRun }) : null;
     // first-run tips (view/tutorial.js): not for ?menu=0, the bot, the self-test or the benchmark
     const tips = G.Tutorial && ME.qn("menu", 1) && !ME.qn("autoplay", 0) && !ME.qn("selftest", 0) && !ME.qn("bench", 0) ? new G.Tutorial(app) : null;
 
@@ -20863,7 +20932,7 @@ function MG_SFX(L) {
         if (best) game.place(kind, best[0], best[1]);
       }
       scene.selected = game.towers[0] || null; scene.seed = "thorn"; scene.hover = { cell: [20, 10] };
-      game.startWave(); speed = 3;
+      game.startWave(); setSpeed(3);
       let prev = ME.now();
       await new Promise((resolve) => {
         let n = 0;
