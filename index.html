@@ -27,6 +27,7 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 .btn:focus-visible { outline: 3px solid #fff6; outline-offset: 2px; }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .btn.pink { border-color: var(--blossom); }
+.btn.pink.armed { outline: 3px solid #e2405a; outline-offset: 2px; } /* Uproot asking for its second tap (an outline: the skin owns the face) */
 .btn.small { width: 54px; height: 48px; font-size: calc(20px * var(--ts)); padding: 0; }
 .btn.small.on { background: #e3f0d6; }
 .btn.small.off { color: #9a8f7a; }
@@ -13094,7 +13095,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "e45fe8d" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "1179ca6" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -17523,6 +17524,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const icon = (table, key) => (G[table] && G[table][key]) || "";
   // a phone-sized screen (game.css's 760 px layout), where the inspector and the open almanac overlap
   const NARROW = window.matchMedia("(max-width: 760px)");
+  // the inspector's buttons wait GRACE_MS after it opens on a plant; Uproot's first tap asks for ARM_MS
+  const GRACE_MS = 450, ARM_MS = 3000;
 
   class Hud {
     constructor(game, actions) {
@@ -17559,13 +17562,34 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.boonArr = null; this.boonN = 0; this.chips = null; this.tipFor = "";
       $("boonbar").addEventListener("click", (e) => { const c = e.target.closest("[data-boon]"); if (c) this.boonTip(c.dataset.boon === this.tipFor ? "" : c.dataset.boon); });
       document.addEventListener("pointerdown", (e) => { if (this.tipFor && !e.target.closest("#boonbar")) this.boonTip(""); });
-      $("grow").addEventListener("click", () => this.act.upgrade());
-      $("uproot").addEventListener("click", () => this.act.sell());
+      // The inspector's buttons ignore taps for a moment after it opens on a plant (the tap that opened it,
+      // or a double tap, can land on a button that appears under the finger), and Uproot takes two taps:
+      // the first asks, the second (within a few seconds) uproots.
+      this.openedAt = 0; this.armed = null; this.armTimer = 0;
+      const settled = () => performance.now() - this.openedAt >= GRACE_MS;
+      $("grow").addEventListener("click", () => { if (settled()) this.act.upgrade(); });
+      $("uproot").addEventListener("click", () => {
+        if (!settled() || !this.inspected) return;
+        if (this.armed !== this.inspected) { this.arm(this.inspected); return; }
+        this.arm(null); this.act.sell();
+      });
       $("again").addEventListener("click", () => this.act.restart());
       for (const ev of ["dew", "heart", "wave", "phase", "mods", "waves"]) G.on(ev, () => this.refresh());
       // links change as plants come and go around the one in the inspector
       G.on("links", () => { if (this.inspected && $("inspector").classList.contains("show") && this.inspected.links) this.inspect(this.inspected); });
       this.refresh();
+    }
+    // Uproot asks first: armed on plant t (null disarms) for ARM_MS, its button saying so
+    arm(t) {
+      clearTimeout(this.armTimer);
+      this.armed = t;
+      if (t) this.armTimer = setTimeout(() => { if (this.armed === t) this.arm(null); }, ARM_MS);
+      if (this.inspected) this.uprootLabel(this.inspected);
+    }
+    uprootLabel(t) {
+      const armed = this.armed === t;
+      label("uproot", armed ? `Tap again to uproot  (+${t.sellValue()})` : `Uproot  (+${t.sellValue()} dew)`);
+      $("uproot").classList.toggle("armed", armed);
     }
     clearSeed() { this.selected = ""; this.refresh(); }
     // On a phone the open almanac folds while a plant is inspected (the two would overlap) and opens again
@@ -17665,7 +17689,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
     inspect(t) {
       const box = $("inspector");
-      if (!t) { box.classList.remove("show"); this.almOver = false; this.showAlmanac(); return; }
+      if (!t) { box.classList.remove("show"); this.inspected = null; this.arm(null); this.almOver = false; this.showAlmanac(); return; }
+      if (t !== this.inspected || !box.classList.contains("show")) { this.openedAt = performance.now(); this.arm(null); }
       const def = D.TOWERS[t.kind];
       const pic = icon("PLANT_ICONS", t.kind);
       $("insptitle").innerHTML = `${pic ? `<span class="picon" style="color:${ink(def.color)}">${pic}</span>` : ""}${esc(def.name)}  ·  Lv ${t.level}`;
@@ -17684,7 +17709,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const grow = $("grow");
       if (t.level >= D.MAX_LEVEL) { label(grow, "Fully grown"); grow.disabled = true; }
       else { label(grow, `Grow  (${t.upgradeCost()} dew)`); grow.disabled = !S.canAfford(t.upgradeCost()); }
-      label("uproot", `Uproot  (+${t.sellValue()} dew)`);
+      this.uprootLabel(t);
       box.classList.add("show");
       this.showAlmanac();
     }
@@ -19468,15 +19493,26 @@ function MG_SFX(L) {
    events and the state's readings (intensity, corruption, field, heart). */
 (function () {
   const G = window.MG, S = G.state, SC = G.Score, MA = window.MA;
+  // A phone or a small device (?lowaudio=1 to hear it on a desktop, ?lowaudio=0 for the full mix anywhere):
+  // the context buffers more (audio.js), the notes are scheduled further ahead, the voice pools are smaller
+  // and Drift's effects cheaper. The crackle the user heard on a phone: the audio thread missing its deadlines.
+  const LOW = (G.AUDIO_LOW = (() => {
+    const f = window.ME ? ME.qn("lowaudio", -1) : -1;
+    if (f >= 0) return f > 0;
+    return matchMedia("(pointer: coarse)").matches || /Android|iPhone|iPad|Mobile/.test(navigator.userAgent) || (navigator.deviceMemory || 8) <= 4 || (navigator.hardwareConcurrency || 8) <= 2;
+  })());
   // How far ahead of the audio clock the notes are scheduled: longer than a slow frame, so a busy main thread
   // (10 fps on a phone at a fine density, a long bake or GC pause) doesn't leave the music without notes.
   // At the first 0.12 s, any frame over ~120 ms let the scheduled notes run out, and the music stopped and
   // started again: the chopping the user heard.
-  const LOOKAHEAD = 0.35;
+  const LOOKAHEAD = LOW ? 0.5 : 0.35;
+  // how often a second the tape's wow and the tone (filters, pans, sends) move (Music.update)
+  const CTL_HZ = LOW ? 15 : 30;
   const SUBS = ["Pads", "Keys", "Lead", "Perc", "Throw"];
   // voices per bus: the shared buses the gestures and the sting play on, and each deck's own
-  const POOL = { MusicPads: 6, MusicKeys: 8, MusicLead: 10, MusicPerc: 4, MusicThrow: 4 };
-  for (const d of ["A", "B"]) Object.assign(POOL, { ["MusicPads" + d]: 16, ["MusicKeys" + d]: 10, ["MusicLead" + d]: 14, ["MusicPerc" + d]: 16, ["MusicThrow" + d]: 6 });
+  const POOL = LOW ? { MusicPads: 4, MusicKeys: 6, MusicLead: 7, MusicPerc: 3, MusicThrow: 3 } : { MusicPads: 6, MusicKeys: 8, MusicLead: 10, MusicPerc: 4, MusicThrow: 4 };
+  for (const d of ["A", "B"]) Object.assign(POOL, LOW ? { ["MusicPads" + d]: 10, ["MusicKeys" + d]: 7, ["MusicLead" + d]: 9, ["MusicPerc" + d]: 10, ["MusicThrow" + d]: 4 }
+    : { ["MusicPads" + d]: 16, ["MusicKeys" + d]: 10, ["MusicLead" + d]: 14, ["MusicPerc" + d]: 16, ["MusicThrow" + d]: 6 });
   const posmod = (a, n) => ((a % n) + n) % n;
   const rf = () => Math.random(), rr = (a, b) => a + (b - a) * Math.random(), ri = (a, b) => a + Math.floor(Math.random() * (b - a + 1)), pick = (a) => a[Math.floor(Math.random() * a.length)];
   const lerp = (a, b, u) => a + (b - a) * u, clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -19709,6 +19745,7 @@ function MG_SFX(L) {
       this.seen = new Set(); this.stinger = ""; this.lastSparkle = -10; this.lastPing = -10; this.lastStrum = -1;
       this.tapeDip = 0; this.tapeSpeed = 1; this.tapeState = 0; this.outroWait = 0;
       this.glides = []; // (Drift's bass slides: voices whose pitch moves at a ctx time, Deck.glide)
+      this.ctlT = 0; this.tapKey = ""; // (the time to the next control-rate move, and the delay times last set, Music.update)
       // in and out: whether the music is in, the ctx time it next turns, and the music-clock time after
       // which an outgoing passage strikes no more notes; ?breath= scales the cycle (0: always in)
       this.on = true; this.breathAt = 0; this.quietAt = 0; this.breathScale = G.devFlag ? G.devFlag("breath", 1) : 1;
@@ -19810,32 +19847,19 @@ function MG_SFX(L) {
         }
       }
       if (this.glides.length) this.glides = this.glides.filter((g) => { if (now < g.at) return true; g.v.pitch = g.pitch; return false; });
-      const wow = Math.sin(q.clock * Math.PI * 2 * 0.55) * (0.0018 + rot * 0.009) + Math.sin(q.clock * Math.PI * 2 * 6.3) * 0.0006;
-      q.setRate((1 + wow) * (1 - 0.14 * this.tapeDip) * Math.max(this.tapeSpeed, 0.25));
+      // The tape and the tone move at a control rate (CTL_HZ, every frame while the tape dips or winds
+      // down), not every frame: each move is an automation event per sounding voice and per bus parameter
+      // on the audio thread, which at 60 to 120 fps on a phone helped it miss its deadlines (the crackle).
+      this.ctlT -= dt;
+      const ctl = this.ctlT <= 0 || this.tapeDip > 0 || this.tapeState === 1;
+      if (ctl) this.ctlT = 1 / CTL_HZ;
+      if (ctl) {
+        const wow = Math.sin(q.clock * Math.PI * 2 * 0.55) * (0.0018 + rot * 0.009) + (LOW ? 0 : Math.sin(q.clock * Math.PI * 2 * 6.3) * 0.0006);
+        const rate = (1 + wow) * (1 - 0.14 * this.tapeDip) * Math.max(this.tapeSpeed, 0.25);
+        if (Math.abs(rate - q.rate) > 2e-5) q.setRate(rate);
+      }
       this.breathe(now);
-
-      // the tone follows the cue (the outro's as soon as the run is lost), opening up with the intensity
-      const D = this.live && this.live.cue === (this.gameOver ? "over" : this.cue) ? this.live.def : this.cues[this.gameOver ? "over" : this.cue || this.want];
-      // (and, with a sweep, closing and opening again slowly: Drift's filter sweep over everything)
-      const sweep = D.sweep ? 1 - D.sweep[1] * (0.5 - 0.5 * Math.cos((q.clock * 2 * Math.PI) / D.sweep[0])) : 1;
-      const cutoff = lerp(D.lp[0], D.lp[1], i) * sweep * (1 - 0.3 * rot) * (1 - 0.6 * this.tapeDip);
-      mx.lp.frequency.setTargetAtTime(clamp(cutoff, 900, 16000), now, this.tapeDip > 0 ? 0.05 : 0.4);
-      mx.wet.gain.setTargetAtTime(lerp(D.wet[0], D.wet[1], i), now, 0.4);
-      mx.keysPan.pan.setTargetAtTime(Math.sin(q.clock * 0.4) * (D.pan || 0.3), now, 0.1);
-      (D.taps || [3, 6, 10]).forEach((n, k) => mx.taps[k].delayTime.setTargetAtTime(q.sixteenth() * n, now, 0.1));
-      // (Drift's: the ping-pong on the first tap, the pads' phaser and the lead's autopan; none otherwise)
-      mx.throw.forEach((d) => d.delayTime.setTargetAtTime(q.sixteenth() * (D.taps || [3])[0], now, 0.1));
-      mx.phase.gain.setTargetAtTime(D.phase || 0, now, 0.5);
-      mx.leadPan.pan.setTargetAtTime(Math.sin(q.clock * 0.27) * (D.lpan || 0), now, 0.1);
-      // Drift's: the lead's resonant lowpass sweeping slowly, its resonance on a cycle of its own, and the
-      // pads' pumping let go when a cue has none
-      const R = D.reso;
-      if (R) {
-        const u = 0.5 - 0.5 * Math.cos((q.clock * 2 * Math.PI) / R[2]), v = 0.5 - 0.5 * Math.cos((q.clock * 2 * Math.PI) / (R[2] * 0.61));
-        mx.leadLp.frequency.setTargetAtTime(R[0] * Math.pow(R[1] / R[0], u), now, 0.2); mx.leadLp.Q.setTargetAtTime(lerp(R[3], R[4], v), now, 0.2);
-      } else { mx.leadLp.frequency.setTargetAtTime(18000, now, 0.4); mx.leadLp.Q.setTargetAtTime(-3, now, 0.4); }
-      if (!D.pump && this.pumping) { const g = mx.pump.gain; g.cancelScheduledValues(now); g.setValueAtTime(g.value, now); g.setTargetAtTime(1, now, 0.1); this.pumping = false; }
-      if (!this.gameOver && this.vinyl) this.vinyl.g.gain.setTargetAtTime(MA.dbToGain(VINYL.calm + rot * VINYL.blight + (this.Y.vinyl || 0)), now, 0.3);
+      if (ctl) this.tone(i, rot, now);
 
       // The music clock follows the audio clock, not the frame's dt (capped at 0.1 s, which slowed the
       // music under it at 10 fps and on every long frame). After a stall longer than the lookahead, the
@@ -19855,6 +19879,39 @@ function MG_SFX(L) {
         q.onStep = on; adt = LOOKAHEAD;
       }
       q.advance(adt, this.tapeSpeed);
+    }
+
+    // the tone follows the cue (the outro's as soon as the run is lost), opening up with the intensity
+    tone(i, rot, now) {
+      const q = this.seq, mx = this.mix;
+      const D = this.live && this.live.cue === (this.gameOver ? "over" : this.cue) ? this.live.def : this.cues[this.gameOver ? "over" : this.cue || this.want];
+      // (and, with a sweep, closing and opening again slowly: Drift's filter sweep over everything)
+      const sweep = D.sweep ? 1 - D.sweep[1] * (0.5 - 0.5 * Math.cos((q.clock * 2 * Math.PI) / D.sweep[0])) : 1;
+      const cutoff = lerp(D.lp[0], D.lp[1], i) * sweep * (1 - 0.3 * rot) * (1 - 0.6 * this.tapeDip);
+      mx.lp.frequency.setTargetAtTime(clamp(cutoff, 900, 16000), now, this.tapeDip > 0 ? 0.05 : 0.4);
+      mx.wet.gain.setTargetAtTime(lerp(D.wet[0], D.wet[1], i), now, 0.4);
+      mx.keysPan.pan.setTargetAtTime(Math.sin(q.clock * 0.4) * (D.pan || 0.3), now, 0.1);
+      // the delay times only when the tempo or the cue's taps change (a moving delay time costs more);
+      // a low-end device has fewer taps (audio.js)
+      const taps = D.taps || [3, 6, 10], key = q.sixteenth().toFixed(5) + taps;
+      if (key !== this.tapKey) {
+        this.tapKey = key;
+        taps.forEach((n, k) => mx.taps[k] && mx.taps[k].delayTime.setTargetAtTime(q.sixteenth() * n, now, 0.1));
+        // (Drift's: the ping-pong on the first tap)
+        mx.throw.forEach((d) => d.delayTime.setTargetAtTime(q.sixteenth() * taps[0], now, 0.1));
+      }
+      // (Drift's: the pads' phaser, none on a low-end device, and the lead's autopan; none otherwise)
+      if (mx.phase) mx.phase.gain.setTargetAtTime(D.phase || 0, now, 0.5);
+      mx.leadPan.pan.setTargetAtTime(Math.sin(q.clock * 0.27) * (D.lpan || 0), now, 0.1);
+      // Drift's: the lead's resonant lowpass sweeping slowly, its resonance on a cycle of its own, and the
+      // pads' pumping let go when a cue has none
+      const R = D.reso;
+      if (R) {
+        const u = 0.5 - 0.5 * Math.cos((q.clock * 2 * Math.PI) / R[2]), v = 0.5 - 0.5 * Math.cos((q.clock * 2 * Math.PI) / (R[2] * 0.61));
+        mx.leadLp.frequency.setTargetAtTime(R[0] * Math.pow(R[1] / R[0], u), now, 0.2); mx.leadLp.Q.setTargetAtTime(lerp(R[3], R[4], v), now, 0.2);
+      } else { mx.leadLp.frequency.setTargetAtTime(18000, now, 0.4); mx.leadLp.Q.setTargetAtTime(-3, now, 0.4); }
+      if (!D.pump && this.pumping) { const g = mx.pump.gain; g.cancelScheduledValues(now); g.setValueAtTime(g.value, now); g.setTargetAtTime(1, now, 0.1); this.pumping = false; }
+      if (!this.gameOver && this.vinyl) this.vinyl.g.gain.setTargetAtTime(MA.dbToGain(VINYL.calm + rot * VINYL.blight + (this.Y.vinyl || 0)), now, 0.3);
     }
 
     // --- cues
@@ -20032,7 +20089,7 @@ function MG_SFX(L) {
   class Soundscape {
     constructor(mixer, game, app) {
       this.mixer = mixer; this.game = game; this.app = app; this.ready = false;
-      this.sp = new MA.Spatial(mixer, { bus: "Sfx", mix: MIX, protect: PROTECTED, voices: 40 });
+      this.sp = new MA.Spatial(mixer, { bus: "Sfx", mix: MIX, protect: PROTECTED, voices: G.AUDIO_LOW ? 24 : 40 });
       this.t = { vocal: 1, bird: 2, cricket: 1, frog: 4, leaves: 5, boss: 6 };
       this.q = []; this.frame = 0; this.merged = 0; this.deferred = 0; this.dropped = 0;
       for (const ev of ["fire", "hit", "kill", "spawn", "heart_hit", "tower_placed", "tower_upgraded", "tower_sold"]) G.on(ev, (d) => this.onEvent(ev, d));
@@ -20115,11 +20172,13 @@ function MG_SFX(L) {
     // --- every frame, real time (the 2x speed toggle doesn't make the forest chatter)
     update(dt, L) {
       if (!this.ready) return;
+      // the loops' gain and pan follow the view, at 30 Hz on a phone (fewer param retargets on the audio thread)
+      this.spT = (this.spT || 0) - dt; const ctl = !G.AUDIO_LOW || this.spT <= 0; if (ctl) this.spT = 1 / 30;
       this.sp.listen(L.vp, L.zoom, L.aspect);
-      this.sp.update();
+      if (ctl) this.sp.update();
       this.flush();
       const now = this.mixer.ctx.currentTime, i = S.intensity;
-      if (this.wind) { this.wind.g.gain.setTargetAtTime(MA.dbToGain(lerp(-24, -13, i)), now, 0.3); this.wind.src.playbackRate.setTargetAtTime(lerp(0.9, 1.15, i), now, 0.3); }
+      if (this.wind && ctl) { this.wind.g.gain.setTargetAtTime(MA.dbToGain(lerp(-24, -13, i)), now, 0.3); this.wind.src.playbackRate.setTargetAtTime(lerp(0.9, 1.15, i), now, 0.3); }
       this.creatureCalls(dt);
       // the Heart Tree's leaves fall as it worsens (view/scene.js heartStage), and it crumbles when lost
       const sc = this.app.scene, w = this.game.world, hp = [w.heart[0], w.heart[1], w.heartZ + 1.4];
@@ -20188,21 +20247,28 @@ function MG_SFX(L) {
   const SOUND_KEY = "mossheart.sound";
   G.SOUND_BANKS = [MG_INSTRUMENTS, MG_SFX];
 
-  // the game's buses on the mixer; returns the controls the music director moves
-  function buildBuses(m) {
+  // the game's buses on the mixer; returns the controls the music director moves. low (a phone, G.AUDIO_LOW):
+  // shorter reverbs, no phaser and two lead taps, the audio thread's heaviest work
+  function buildBuses(m, low) {
     // Music: lowpass -> a long, airy reverb -> compressor (+3 dB, less the ~3.8 dB the node adds by itself)
     // -> fade (the score's fade-in) -> gate (the music coming in and going out, music.js)
-    const fade = m.gain(0), lp = m.lowpass(6000, 0.8), verb = m.verbBus(3.6, 2.6, 0.55, 0.3, 0.9, 0.03), gate = m.gain(1);
+    const fade = m.gain(0), lp = m.lowpass(6000, 0.8), verb = m.verbBus(low ? 2.4 : 3.6, 2.6, 0.55, 0.3, 0.9, 0.03), gate = m.gain(1);
     const comp = m.compressor({ threshold: -16, ratio: 2.5, knee: 6, attack: 0.01, release: 0.2 }), makeup = m.gain(MA.dbToGain(3 - 3.8));
     const music = m.gain();
     music.connect(lp); lp.connect(verb.input); verb.out.connect(comp); comp.connect(makeup); makeup.connect(fade); fade.connect(gate); gate.connect(m.master);
     // pads: through a gain Drift ducks on each beat, a sidechain's pumping (music.js; 1 otherwise), and a
     // phaser beside them (four allpasses swept by a slow LFO) whose share Drift sets (`phase`, 0 otherwise)
     const pads = m.gain(), pump = m.gain(1); pads.connect(pump); pump.connect(music);
-    const c = m.ctx, phaseLfo = c.createOscillator(), phaseAmt = m.gain(500), phase = m.gain(0); let ph = pump;
-    phaseLfo.frequency.value = 0.07; phaseLfo.connect(phaseAmt);
-    for (let k = 0; k < 4; k++) { const f = c.createBiquadFilter(); f.type = "allpass"; f.frequency.value = 700; f.Q.value = 0.7; phaseAmt.connect(f.frequency); ph.connect(f); ph = f; }
-    ph.connect(phase); phase.connect(music); phaseLfo.start();
+    // (four filters whose frequency moves every sample: none on a phone, where `phase` is null)
+    const c = m.ctx;
+    let phase = null;
+    if (!low) {
+      const phaseLfo = c.createOscillator(), phaseAmt = m.gain(500); let ph = pump;
+      phase = m.gain(0);
+      phaseLfo.frequency.value = 0.07; phaseLfo.connect(phaseAmt);
+      for (let k = 0; k < 4; k++) { const f = c.createBiquadFilter(); f.type = "allpass"; f.frequency.value = 700; f.Q.value = 0.7; phaseAmt.connect(f.frequency); ph.connect(f); ph = f; }
+      ph.connect(phase); phase.connect(music); phaseLfo.start();
+    }
     // keys: a light chorus and a slow autopan
     const keys = m.gain(), ch = m.chorus(0.014, 0.0025, 0.8, 0.2), keysPan = m.panner();
     keys.connect(ch.input); ch.out.connect(keysPan); keysPan.connect(music);
@@ -20210,7 +20276,7 @@ function MG_SFX(L) {
     // panner Drift swings (centred otherwise), dry plus three delay taps (3, 6 and 10 sixteenths), panned
     // apart, so a lone note echoes into the space after it
     const lead = m.gain(), leadLp = m.lowpass(18000, -3), leadPan = m.panner(); lead.connect(leadLp); leadLp.connect(leadPan); leadPan.connect(music);
-    const taps = [[-0.35, -14], [0.35, -19], [0, -25]].map(([pan, db]) => m.delayTap(leadLp, music, db, pan));
+    const taps = [[-0.35, -14], [0.35, -19], [0, -25]].slice(0, low ? 2 : 3).map(([pan, db]) => m.delayTap(leadLp, music, db, pan));
     // throw: Drift's odd note thrown into a ping-pong delay, two delays feeding each other from side to
     // side through a lowpass, so its echoes bounce away and darken (the delay times music.js sets)
     const thr = m.gain(), dl = c.createDelay(4), dr = c.createDelay(4), fb = m.gain(0.45), fbLp = m.lowpass(2600, 0.5), pl = m.panner(-0.8), pr = m.panner(0.8), wetL = m.gain(0.7), wetR = m.gain(0.7);
@@ -20218,7 +20284,7 @@ function MG_SFX(L) {
     dr.connect(fbLp); fbLp.connect(fb); fb.connect(dl);
     // perc: dusty, no fizz on top
     const perc = m.gain(), dust = m.lowpass(7000); perc.connect(dust); dust.connect(music);
-    const sfx = m.verbBus(1.2, 2.5, 0.5, 0.12), amb = m.verbBus(2.6, 2, 0.8, 0.28);
+    const sfx = m.verbBus(1.2, 2.5, 0.5, 0.12), amb = m.verbBus(low ? 1.8 : 2.6, 2, 0.8, 0.28);
     sfx.out.connect(m.master); amb.out.connect(m.master);
     for (const [name, input] of [["Music", music], ["MusicPads", pads], ["MusicKeys", keys], ["MusicLead", lead], ["MusicPerc", perc], ["MusicThrow", thr], ["Sfx", sfx.input], ["Ambience", amb.input]]) m.addBus(name, input);
     // two decks of the sub-buses, silent until a cue plays on one (music.js)
@@ -20233,10 +20299,21 @@ function MG_SFX(L) {
       let saved = "1";
       try { saved = localStorage.getItem(SOUND_KEY) ?? "1"; } catch (e) { /* storage blocked */ }
       this.enabled = saved !== "0";
-      try { this.mixer = new MA.Mixer(); } catch (e) { MA.log("WARN no WebAudio:", e.message); this.mixer = null; return; }
+      // a phone (G.AUDIO_LOW, music.js): the context's bigger buffer rides out a busy CPU (the music is
+      // scheduled ahead anyway; the effects answer a touch later)
+      try { this.mixer = new MA.Mixer({ latencyHint: G.AUDIO_LOW ? "playback" : "interactive" }); } catch (e) { MA.log("WARN no WebAudio:", e.message); this.mixer = null; return; }
       const m = this.mixer;
       m.master.gain.value = this.enabled ? 1 : 0;
-      this.music = new G.Music(m, buildBuses(m));
+      this.music = new G.Music(m, buildBuses(m, G.AUDIO_LOW));
+      // A hidden page suspends the context (nothing plays, so nothing underruns while the browser starves
+      // the tab) and a shown one resumes it; a browser that wants a gesture for that (iOS, or a context
+      // interrupted by a call) gets it from the next touch, key or click anywhere on the page.
+      this.resumes = 0;
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) { if (m.ctx.state === "running") m.ctx.suspend().catch(() => {}); }
+        else { this.resumes++; this.unlock(); }
+      });
+      for (const ev of ["pointerup", "touchend", "keydown"]) document.addEventListener(ev, () => { if (m.ctx.state !== "running" && !document.hidden) this.unlock(); }, { passive: true });
       this.sound = new G.Soundscape(m, game, app);
       m.load(banks || G.SOUND_BANKS).then(() => { this.readyAt = Math.round(performance.now()); this.music.start(m.banks[0].items); this.sound.start(); }).catch((e) => MA.err("AUDIO", e.stack || e.message));
       if (G.devFlag && G.devFlag("record")) m.startRecording();
@@ -20261,7 +20338,7 @@ function MG_SFX(L) {
     stats() {
       const m = this.mixer;
       if (!m) return null;
-      return Object.assign({ ready: m.ready, readyAt: this.readyAt, state: m.ctx.state, samples: Object.keys(m.samples).length, renderMs: m.renderMs, worker: m.worker, notes: this.music.notes, late: this.music.late, skipped: this.music.skipped, sfx: this.sound.played, sfxq: this.sound.queue, mood: this.music.mood, style: this.music.style, breath: this.music.on ? "in" : "out", bpm: Math.round(this.music.bpm), cues: this.music.cueLog.join(" ") }, m.meterStats());
+      return Object.assign({ ready: m.ready, readyAt: this.readyAt, state: m.ctx.state, samples: Object.keys(m.samples).length, renderMs: m.renderMs, worker: m.worker, notes: this.music.notes, late: this.music.late, skipped: this.music.skipped, sfx: this.sound.played, sfxq: this.sound.queue, mood: this.music.mood, style: this.music.style, breath: this.music.on ? "in" : "out", bpm: Math.round(this.music.bpm), cues: this.music.cueLog.join(" "), low: !!G.AUDIO_LOW, latency: m.latency(), voices: m.live, peakVoices: m.livePeak, stolen: this.music.seq ? this.music.seq.stolen : 0, resumes: this.resumes }, m.meterStats());
     }
   }
   G.Audio = Audio;
