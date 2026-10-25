@@ -7151,6 +7151,9 @@ fn forest(uv: vec2f) -> f32 {
   if (aux >= 1.0 || aux < -0.5) {
     // models and leaves: the generator's sprite form (renderModel), canopy offset scaled by spriteK
     s = amb * (0.6 + 0.4 * n.z) + (1.0 - amb) * lam * (0.35 + 0.65 * vis) + m1.z + lmod * u.look4.x;
+    // soft knee above 1: a sun pool (lmod ~0.65) on full sun put models at s ~1.5, past the ramp's top, and the
+    // boost below then clipped them white (Thornbloom, the lanterns); s <= 1 is unchanged, the rest rolls off to 1.08
+    let sk = max(0.0, s - 1.0); s -= sk - sk / (1.0 + sk / 0.08);
   } else {
     // terrain form: tops sit at ~0.56, walls 0.3 + 0.5 * (facing the sun horizontally), undersides darker;
     // sun pools on walls weighted by facing * sideK, then cast shadow
@@ -13095,7 +13098,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "1179ca6" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "54f7c4e" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
