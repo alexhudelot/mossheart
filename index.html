@@ -13278,7 +13278,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "7458da9" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "47e1ced" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -14976,9 +14976,10 @@ function MA_DSP() {
 /* Game models: the Mossheart asset set (MossheartEngine/assets/asset-set.js, the user's mix of the
    mockups) cast in the game's roles, how the level is dressed with it, and the list of flipbooks the
    engine bakes for the game (ME.bakeModels opts.models).
-     plants    Thornbloom ms_thorn (Shrine Craft lantern), Sunpetal Lens ms_sun, Puffcap ms_puff (Koke
-               Garden), Willow Wisp ms_wisp (Hotaru Spirit), Briar Vine ms_briar, Stinkhorn ms_toad (a basket
-               stinkhorn), Moonpetal ms_moon, Ghost Lily ms_lily: one flipbook per level (o.lv 1..3)
+     plants    stumps and stones, ms_tw_<kind> (below): Thornbloom on a broken column, Puffcap on a low
+               wide stump, Sunpetal Lens on a pedestal, Willow Wisp on its stump on a stone step, Briar Vine
+               in a split stump, Stinkhorn in a stone well, Moonpetal on a stump beside a carved stele,
+               Ghost Lily on an altar; one still model per level (o.lv 1..3)
      creatures Rot Grub ms_grub, Bark Beetle ms_beetle, Dusk Moth ms_moth, Moss Golem ms_golem, Blight
                Spirit ms_spirit (Hotaru Spirit blight)
      the heart ms_heart (Koke Garden) in place of the valley's big maple; hurt 0..2 as it loses vitality
@@ -14994,6 +14995,8 @@ function MA_DSP() {
     const AK = ME.assetKit;
     Object.assign(st.ramps, AK.RAMPS);
     Object.assign(st.mats, AK.MATS);
+    Object.assign(st.ramps, TOWERS.RAMPS); // the plants' own (stumpsAndStones, below)
+    Object.assign(st.mats, TOWERS.MATS);
   };
 
   // What the game bakes. Creatures: size = world scale relative to the asset's own, fine = voxel density
@@ -15018,12 +15021,386 @@ function MA_DSP() {
     // the blight creatures of the bestiary (authored in tiles, size 1); baked once Defs has the kind
     crow: { name: "ms_crow", size: 1.0, fine: 1.5, fwd: 0, hover: 0, gait: 2.4, flap: true },
   };
-  // frames: the idle loop's flipbook (FRAMES when unset). The sunpetal's nod, the puffcap's breath and the
-  // wisp's flame and blinks hold with two (t 0 and 0.5), which halves their bake; the thornbloom keeps four,
-  // its three-leaf ring turning a third of a turn per loop would only rock with two.
+  // The plants: stumps and stones (the user's pick A3 of the wisp-towers design, #311). Each plant grows from
+  // a dark vessel, a hollow stump or an old mossy temple stone, in the Willow Wisp's language: a moss top, small
+  // white wisplings with dark eyes (one per level; the Willow Wisp's own 1, 3, 4), a restrained glow in the
+  // plant's colour, roots gripping some of the stones. ms_tw_<kind>, o.lv 1..3, still (one frame). The detail
+  // grows with the bake's density (ME.VS, read when the bake builds the model): from 24 moss lumps and drips,
+  // bark grain, lichen, rootlets and chipped stone corners; from 32 bark grooves, cracks, more thorns, petals,
+  // stamens and lattice. Below 24 the models are the design's.
+  function stumpsAndStones() {
+    const AK = ME.assetKit, { P, S, E, C, B, Y, TAU, add, mul, lerp3, norm, cross, rz, orient, near, nz3, cface } = AK;
+    const MAT = {
+      twEmber: [["#d8402e", "#e85a40", "#f07858"], { em: 1, flat: 1 }],
+      // old temple stone, dark and a little green so it stays a dark vessel on the grass; worn bands and fresh
+      // chips a step lighter, cracks a step darker, pale lichen
+      twStone: [["#363c38", 5, 0.07, 0.42, 0.15]], twStoneLt: [["#56605a", 4, 0.14, 0.54, 0.15]], twStoneDk: [["#262a28", 4, 0.05, 0.3]], twLichen: [["#a8b48a", 4, 0.4, 0.8]],
+      // the roots over the stones, a lighter bark than the stumps' so they show on the dark stone; bark grain
+      twRoot: [["#6a5666", 5, 0.14, 0.6, 0.2]], twBarkLt: [["#4e4260", 4, 0.12, 0.5]],
+      twMossLt: [["#a6c860", 5, 0.3, 0.82, 0.3], { cls: 2, wrap: 0.6 }],
+    };
+    const RAMPS = {}, MATS = {};
+    for (const k in MAT) { RAMPS[k] = MAT[k][0]; if (MAT[k][1]) MATS[k] = MAT[k][1]; }
+
+    const BK = "hsBarkDk", WS = "hsKodama", RT = "twRoot", SN = "twStone", SL = "twStoneLt", SD = "twStoneDk", FR = Math.PI / 4; // FR: toward the viewer
+    const G3 = [0.92, 1, 1.06], LS = [0.98, 1.12, 1.22];
+    let HI = 0, chips = 0; // HI: the detail level of the model being built (0 below 24, 1 from 24, 2 from 32)
+    const ring = (n, f, a0 = 0) => { for (let i = 0; i < n; i++) f((i / n) * TAU + a0, i); };
+    const pol = (a, r, z) => [Math.cos(a) * r, Math.sin(a) * r, z];
+    const SC = ["x", "y", "z", "r", "rx", "ry", "rz", "bx", "by", "bz", "ra", "rb", "hx", "hy", "hz", "hh", "rr", "k2"];
+    const scaleP = (p, s) => { for (const q of p) { for (const f of SC) if (typeof q[f] === "number") q[f] *= s; if (q.bb) q.bb *= s * s; } };
+    const frac = (v) => v - Math.floor(v);
+    const MO = () => (HI > 1 ? { disp: 0.016, df: 36 } : HI ? { disp: 0.012, df: 26 } : {}); // lumpy moss
+
+    // a wispling: one soft round body with a little flame-tip curl leaning back, two dark eyes, no mouth
+    const wispling = (p, F, c, s) => {
+      const b = add(c, [0, 0, 0.058 * s]);
+      p.push(E(b, [0.064 * s, 0.064 * s, 0.058 * s], WS, { k2: 0.02 }), C(add(b, [0, 0, 0.035 * s]), add(b, [-0.022 * s, -0.022 * s, 0.1 * s]), 0.03 * s, 0.003, WS, { k2: 0.015 }));
+      F.push([b, 0.064 * s, { ex: 0.36, ey: 0.12, er: 0.2, hi: false }, WS]);
+    };
+    // wispling spots: front first, then to either side, then round the back-left
+    const spots = (rr, z, a0 = FR) => [0, 0.95, -0.95, 1.9].map((d) => pol(a0 + d, rr, z));
+
+    // ---- the plant tops: TOP[kind](L, p, z, D) grows the plant from the vessel's moss at height z and
+    // returns the model's height
+    const TOP = {
+      thorn(L, p, z) { // a twisting thorny cane, red rosebuds, a crown of pale thorns round a green seed
+        const H = [0.3, 0.4, 0.48][L - 1], n = 9 + L;
+        let q0 = [0, 0, z - 0.02];
+        for (let i = 1; i <= n; i++) {
+          const t = i / n, a = t * 6.5 + 0.5, r = 0.045 * Math.sin(Math.PI * t) + 0.01, q = [Math.cos(a) * r, Math.sin(a) * r, z + t * H];
+          p.push(C(q0, q, 0.042 - 0.014 * t, 0.04 - 0.014 * t, "kgStem", { k2: 0.008 }));
+          if (i < n - 1) p.push(C(q, add(q, mul(norm([Math.cos(a + 1.4), Math.sin(a + 1.4), 0.35]), 0.055)), 0.012, 0.002, "kgThorn"));
+          if (HI > 1 && i > 1 && i < n - 1) p.push(C(q, add(q, mul(norm([Math.cos(a - 1.8), Math.sin(a - 1.8), 0.2]), 0.04)), 0.009, 0.002, "kgThorn"));
+          q0 = q;
+        }
+        ring(6 + L + (HI > 1 ? 4 : 0), (a, i) => p.push(C(q0, add(q0, mul(norm([Math.cos(a), Math.sin(a), 1.1]), 0.11 + 0.035 * (i % 2))), 0.02, 0.003, "kgThorn")), 0.3);
+        p.push(S(add(q0, [0, 0, 0.04]), 0.042, "scLitGreen"));
+        for (const [a, t, s] of [[2.2, 0.5, 1], [-0.4, 0.3, 0.85], [4.0, 0.68, 0.8]].slice(0, L)) {
+          const c = pol(a, 0.1, z + t * H);
+          p.push(C(pol(a, 0.03, c[2] - 0.05), c, 0.011, 0.009, "kgStem"), E(c, [0.032 * s, 0.032 * s, 0.04 * s], "scRose", { k2: 0.01 }), E(add(c, [0, 0, -0.032 * s]), [0.034 * s, 0.034 * s, 0.012], "kgLeaf"));
+        }
+        for (const [a, t] of [[1.0, 0.2], [3.4, 0.4], [5.2, 0.6]]) p.push(E(pol(a, 0.07, z + t * H), [0.06, 0.026, 0.009], "kgLeaf", { R: rz(a) }));
+        for (let k = 0; k < L - 1; k++) p.push(S(pol(0.9 + k * 2.6, 0.15, q0[2] - 0.02 + 0.08 * k), 0.016, "scLitGreen"));
+        return q0[2] + 0.12;
+      },
+      puff(L, p, z) { // a lilac spotted cap, spores rising
+        const cr = [0.15, 0.18, 0.21][L - 1], cz = z + [0.18, 0.22, 0.26][L - 1], sr = [0.05, 0.06, 0.07][L - 1];
+        p.push(C([0, 0, z - 0.02], [0, 0, cz], sr * 1.15, sr, "kgStalk", { k2: 0.02 }), E([0, 0, cz], [cr, cr, cr * 0.55], "kgCap", { k2: 0.04 }), E([0, 0, cz - cr * 0.25], [cr * 0.86, cr * 0.86, 0.04], "kgGill"));
+        if (L === 3) for (const [a, s] of [[3.0, 0.9], [4.9, 0.75]]) { const c = pol(a, cr * 0.95, z - 0.01); p.push(C(c, add(c, [0, 0, 0.07 * s]), 0.028 * s, 0.024 * s, "kgStalk"), E(add(c, [0, 0, 0.08 * s]), [0.07 * s, 0.07 * s, 0.04 * s], "kgCap", { k2: 0.01 })); }
+        const top = cz + cr * 0.55;
+        for (let k = 0; k < L; k++) p.push(S(pol(k * 2.4 + 0.5, 0.06 + 0.04 * k, top + 0.07 + 0.09 * k), 0.026 - 0.004 * k, "kgSpore"));
+        return top + 0.1 + 0.09 * (L - 1);
+      },
+      sun(L, p, z) { // a sunflower turned up to the sky, a glass lens for a heart, a gold glint
+        const hz = z + [0.28, 0.36, 0.42][L - 1], hr = [0.11, 0.13, 0.15][L - 1], n = norm([0.5, 0.5, 0.75]), R = orient(n), u = R.slice(0, 3), v = R.slice(3, 6), hc = [0.04, 0.04, hz];
+        p.push(C([0, 0, z - 0.02], [0.01, 0.01, (z + hz) / 2], 0.03, 0.026, "kgStem", { k2: 0.02 }), C([0.01, 0.01, (z + hz) / 2], add(hc, mul(n, -0.05)), 0.026, 0.022, "kgStem", { k2: 0.02 }));
+        for (const [a, f, lf] of [[2.4, 0.3, 0.11], [-0.8, 0.5, 0.1], [3.8, 0.65, 0.09]].slice(0, L)) { const d = [Math.cos(a), Math.sin(a), 0.3]; p.push(E(add([0, 0, z + f * (hz - z)], mul(norm(d), lf)), [lf, lf * 0.42, 0.011], "kgLeaf", { R: orient([0, 0, 1], d) })); }
+        const np = [11, 13, 15][L - 1] + 2 * HI, sz = hr / 0.17;
+        for (let i = 0; i < np; i++) for (const [ph, dn, m] of [[0.5, -0.016, "kgPetalDk"], [0, 0, "kgPetal"]]) {
+          const a = ((i + ph) / np) * TAU, d = add(mul(u, Math.cos(a)), mul(v, Math.sin(a)));
+          p.push(E(add(add(hc, mul(n, dn)), mul(d, hr * (dn ? 0.92 : 1))), [0.08 * sz, 0.036 * sz, 0.012], m, { R: orient(n, d) }));
+        }
+        p.push(Y(hc, hr * 0.62, 0.03, "kgBrass", { R }), Y(add(hc, mul(n, 0.014)), hr * 0.5, 0.026, "kgLens", { R }), S(add(hc, mul(n, 0.045)), 0.02 + 0.004 * L, "hsGlowGold"));
+        for (let k = 0; k < L - 1; k++) p.push(S(add(add(hc, mul(n, 0.16 + 0.1 * k)), mul(u, k ? -0.05 : 0.05)), 0.016, "hsGlowGold"));
+        return hz + hr + 0.08;
+      },
+      wisp(L, p, z) { // the sapling and the cyan spirit flame, orbs circling
+        if (L > 1) {
+          const t = L === 3 ? 0.42 : 0.3, b = pol(-2.3, 0.1, z - 0.02);
+          p.push(C(b, add(b, [-0.02, 0.01, t]), 0.016, 0.01, "hsStem"));
+          for (const [dz, a] of [[0.6, 0.6], [0.8, 2.6], [1, 4.4]].slice(0, L)) p.push(E(add(b, [Math.cos(a) * 0.05, Math.sin(a) * 0.05, t * dz]), [0.055, 0.025, 0.01], "hsLeafLt", { R: rz(a) }));
+        }
+        const fz = z + [0.36, 0.44, 0.52][L - 1], fr = [0.05, 0.065, 0.08][L - 1];
+        p.push(S([0, 0, fz], fr, "hsGlowCyan"), C([0, 0, fz], [0.02, 0.02, fz + fr * 2.3], fr * 0.8, 0.004, "hsGlowCyan"));
+        ring(L === 3 ? 3 : L - 1, (a) => p.push(S(pol(a, 0.22, fz - 0.1 + 0.04 * Math.sin(a * 2)), 0.024, "hsGlowCyan")), 0.5);
+        return fz + fr * 2.4;
+      },
+      briar(L, p, z) { // red thorny canes arching out and over the rim, rose hips, an ember at the knot; level 3 a crown rose
+        const nv = L + 2, R0 = [0.24, 0.28, 0.32][L - 1], H0 = [0.22, 0.27, 0.3][L - 1];
+        const thorn = (q, d, s = 1) => p.push(C(q, add(q, mul(norm(d), 0.045 * s)), 0.014 * s, 0.002, "kgThorn"));
+        p.push(E([0, 0, z], [0.07, 0.07, 0.05], "kgBriar", { k2: 0.02 }));
+        for (let i = 0; i < nv; i++) {
+          const a = (i / nv) * TAU + 1.2, R = R0 * (i % 2 ? 0.85 : 1), H = H0 * (i % 2 ? 0.8 : 1), ca = Math.cos(a), sa = Math.sin(a), n = HI > 1 ? 10 : 7;
+          let q0 = [ca * 0.03, sa * 0.03, z];
+          for (let j = 1; j <= n; j++) {
+            const t = j / n, q = [ca * (0.03 + R * t), sa * (0.03 + R * t), z + H * Math.sin(Math.PI * t * 0.9) - 0.2 * t * t];
+            p.push(C(q0, q, 0.026 - 0.01 * t, 0.024 - 0.01 * t, "kgBriar", { k2: 0.006 }));
+            if (j < n) thorn(q, [-sa * (j % 2 ? 1 : -1) + ca * 0.3, ca * (j % 2 ? 1 : -1) + sa * 0.3, 0.7], (1 - 0.3 * t) * (HI > 1 ? 0.85 : 1));
+            if (L > 1 && j === n - 3) p.push(S(add(q, [0, 0, -0.035]), 0.028, "kgHip"));
+            q0 = q;
+          }
+          p.push(E(add(q0, [ca * 0.03, sa * 0.03, 0]), [0.045, 0.024, 0.009], "kgLeaf", { R: rz(a) }));
+        }
+        p.push(S([0.03, 0.03, z + 0.07], 0.026 + 0.004 * L, "twEmber"));
+        let top = z + H0 + 0.1;
+        if (L === 3) {
+          const rc = [-0.02, -0.02, z + 0.5];
+          p.push(C([0, 0, z], [-0.01, -0.01, z + 0.25], 0.026, 0.022, "kgBriar"), C([-0.01, -0.01, z + 0.25], rc, 0.022, 0.018, "kgBriar"));
+          thorn([0, 0, z + 0.18], [1, 0.2, 0.6]); thorn([-0.01, -0.01, z + 0.34], [-0.4, 1, 0.6]);
+          ring(6, (b) => p.push(E(add(rc, [Math.cos(b) * 0.045, Math.sin(b) * 0.045, 0.01]), [0.05, 0.032, 0.022], "scRose", { R: rz(b), k2: 0.01 })));
+          p.push(S(add(rc, [0, 0, 0.03]), 0.032, "kgRoseLt", { k2: 0.01 }), E(add(rc, [0, 0, -0.045]), [0.045, 0.045, 0.016], "kgLeaf"));
+          top = rc[2] + 0.08;
+        }
+        for (let k = 0; k < L - 1; k++) p.push(S(pol(1.7 + k * 2.5, 0.16, z + H0 + 0.08 + 0.06 * k), 0.014, "twEmber"));
+        return top;
+      },
+      toad(L, p, z) { // an orange lattice ball round glowing slime, a spore bomb swelling out of its top
+        const R = [0.11, 0.13, 0.15][L - 1], bc = [0, 0, z + R * 0.85], nm = (L === 3 ? 8 : 6) + (HI > 1 ? 2 : 0), th = 0.012 + 0.03 * R;
+        const q = (a, v) => [Math.cos(a) * Math.cos(v) * R, Math.sin(a) * Math.cos(v) * R, bc[2] + Math.sin(v) * R];
+        ring(nm, (a) => { for (let k = 1; k <= 6; k++) p.push(C(q(a, -1 + ((k - 1) / 6) * 2.2), q(a, -1 + (k / 6) * 2.2), th, th, "kgStinkOr", { k2: 0.006 })); });
+        for (const v of [-0.25, 0.5]) ring(2 * nm, (a) => p.push(C(q(a, v), q(a + Math.PI / nm, v), th * 0.9, th * 0.9, "kgStinkOr")));
+        p.push(S(bc, R * 0.55, "kgGleba", { k2: 0.02 }), S(add(bc, [0, 0, R * 0.95]), R * 0.32, "kgStinkGlow"));
+        for (let k = 0; k < L - 1; k++) p.push(S(pol(2 + k * 2.4, R + 0.06, bc[2] + R + 0.04 * k), 0.016, "kgStinkGlow"));
+        return bc[2] + R * 1.4;
+      },
+      moon(L, p, z) { // a moonpetal bloom on a slender stem, the crescent (level 3 the full moon) hung above
+        const hb = z + [0.2, 0.25, 0.28][L - 1], br = [0.11, 0.13, 0.15][L - 1];
+        const bloom = (c, r, n) => {
+          const R = orient(n), u = R.slice(0, 3), v = R.slice(3, 6);
+          ring(5, (a) => { const d = add(mul(u, Math.cos(a)), mul(v, Math.sin(a))); p.push(E(add(add(c, mul(d, r * 0.62)), mul(n, 0.02)), [r * 0.62, r * 0.42, 0.013], "kgMoonPetal", { R: orient(norm(add(n, mul(d, -0.35))), d) })); });
+          if (HI > 1) ring(5, (a) => { const d = add(mul(u, Math.cos(a)), mul(v, Math.sin(a))); p.push(E(add(add(c, mul(d, r * 0.34)), mul(n, 0.034)), [r * 0.34, r * 0.24, 0.011], "kgMoonPetal", { R: orient(norm(add(n, mul(d, -0.6))), d) })); }, TAU / 10);
+          p.push(S(add(c, mul(n, 0.02)), r * 0.2, "kgMoon"));
+        };
+        const bc = [0.03, 0.02, hb];
+        p.push(C([0, 0, z - 0.02], bc, 0.022, 0.016, "kgStem"));
+        bloom(bc, br, norm([0.35, 0.3, 1]));
+        for (const [a, s] of [[2.4, 1], [-0.9, 0.85]].slice(0, L)) { const d = [Math.cos(a), Math.sin(a), 0.15]; p.push(E(add([0, 0, z + 0.06], mul(norm(d), 0.09 * s)), [0.09 * s, 0.065 * s, 0.01], "kgLeaf", { R: orient([0, 0, 1], d) })); }
+        if (L > 1) { const b2 = [-0.1, -0.06, z + 0.14]; p.push(C([0, 0, z - 0.02], b2, 0.016, 0.012, "kgStem")); bloom(b2, br * 0.7, norm([-0.3, 0.2, 1])); }
+        const mc = [0.02, 0.02, hb + 0.24], mr = [0.08, 0.095, 0.095][L - 1], VR = [0.707, -0.707, 0];
+        if (L < 3) for (let k = 0; k <= 12; k++) { const b = Math.PI + (k / 12 - 0.5) * 3.6 - 0.3, r = mr * 0.42 * Math.sin(((k + 0.5) / 13) * Math.PI) + 0.01; p.push(S(add(mc, add(mul(VR, Math.cos(b) * mr), [0, 0, Math.sin(b) * mr])), r, "kgMoon")); }
+        else { p.push(S(mc, mr, "kgMoon")); ring(3, (a) => p.push(S(add(mc, pol(a, 0.19, 0.03 * Math.sin(a * 2))), 0.018, "kgMoon")), 0.4); }
+        return mc[2] + mr + 0.06;
+      },
+      lily(L, p, z, D) { // pale trumpet lilies, pink throats and glowing stamens, strap leaves at the back
+        const hb = [0.26, 0.32, 0.36][L - 1], s = [0.85, 1, 1.05][L - 1], blooms = [], ns = HI > 1 ? 5 : 3;
+        for (const [a, i] of [[3.0, 0], [3.9, 1], [4.8, 0], [5.5, 1], [2.3, 0]].slice(0, 2 + L)) {
+          const d = [Math.cos(a), Math.sin(a)];
+          p.push(C([d[0] * 0.03, d[1] * 0.03, z], [d[0] * 0.12, d[1] * 0.12, z + 0.14], 0.018, 0.014, "hsLeaf"), C([d[0] * 0.12, d[1] * 0.12, z + 0.14], [d[0] * 0.22, d[1] * 0.22, z + 0.1 + 0.04 * i], 0.014, 0.004, "hsLeafLt"));
+        }
+        const trumpet = (base, h, n, sc) => {
+          const c = add(base, [n[0] * 0.03, n[1] * 0.03, h]), R = orient(n), u = R.slice(0, 3), v = R.slice(3, 6);
+          p.push(C(base, add(base, [0, 0, h * 0.6]), 0.018, 0.015, "hsStem"), C(add(base, [0, 0, h * 0.6]), c, 0.015, 0.012, "hsStem"));
+          for (let i = 0; i < 6; i++) {
+            const a = (i / 6) * TAU, d = add(mul(u, Math.cos(a)), mul(v, Math.sin(a))), dp = norm(add(mul(n, 0.8), mul(d, 0.55))), tg = cross(n, d);
+            p.push(E(add(c, mul(dp, 0.08 * sc)), [0.085 * sc, 0.03 * sc, 0.009], "kgLily", { R: orient(norm(cross(dp, tg)), dp) }));
+            const d2 = norm(add(mul(n, 0.1), d)), tip = add(add(c, mul(dp, 0.15 * sc)), mul(d2, 0.025 * sc));
+            p.push(E(tip, [0.04 * sc, 0.024 * sc, 0.008], "kgLily", { R: orient(norm(cross(d2, tg)), d2) }));
+          }
+          for (let k = 0; k < ns; k++) { const a = (k / ns) * TAU, e = add(add(c, mul(n, 0.12 * sc)), add(mul(u, Math.cos(a) * 0.022), mul(v, Math.sin(a) * 0.022))); p.push(C(c, e, 0.004, 0.003, "kgLilyPink"), S(e, 0.013, "kgLilyGlow")); }
+          p.push(S(add(c, mul(n, 0.02)), 0.02 * sc, "kgLilyGlow"));
+          blooms.push(c);
+          return c;
+        };
+        const c1 = trumpet([0.02, 0, z - 0.02], hb, norm([0.55, 0.25, 0.8]), s);
+        if (L === 2) { const b = [-0.07, -0.05, z - 0.02], bt = [-0.09, -0.06, z + hb * 0.7]; p.push(C(b, bt, 0.014, 0.011, "hsStem"), E(add(bt, [0, 0, 0.04]), [0.024, 0.024, 0.055], "kgLily")); }
+        if (L === 3) trumpet([-0.07, -0.06, z - 0.02], hb * 0.8, norm([-0.2, -0.55, 0.8]), s * 0.9);
+        for (let k = 0; k < L - 1; k++) p.push(S(add(c1, [0.03 * Math.sin(k * 2.3), 0.03 * Math.cos(k * 2.3), 0.18 + 0.1 * k]), 0.016, "kgLilyGlow"));
+        D.push((x, y, zz, m) => (m === "kgLily" && blooms.some((c) => near([x, y, zz], c, 0.06)) ? "kgLilyPink" : null));
+        return z + hb + 0.2;
+      },
+    };
+
+    // ---- the vessels: VES[kind](L, p, D) builds the vessel and returns { z: its moss top, r, sp: the
+    // wisplings' spots in order }
+    // bark grooves down a trunk's side (from 32), cut after the trunk and before its roots and moss
+    const grooves = (p, c, r, z0, z1) => { if (HI > 1) ring(Math.round(r * 45), (a, i) => p.push(C(add(c, pol(a, r + 0.004, z0 + 0.03)), add(c, pol(a + (i % 2 ? 0.1 : -0.1), r + 0.004, z1 - 0.03)), 0.02, 0.016, BK, { sub: 1, subm: "hsObsidian" })), 0.2); };
+    // a root from q0 down to q1 on the ground; from 24 a rootlet off its side
+    const root = (p, q0, q1, ra, a, m = BK) => {
+      p.push(C(q0, q1, ra, 0.03, m, { k2: 0.04 }));
+      if (HI) { const q = lerp3(q0, q1, 0.6); p.push(C(q, add(q, pol(a + 0.7, 0.08, -q[2])), 0.016, 0.007, m, { k2: 0.01 })); }
+    };
+    // a dark stump, its moss top (from 24 lumpy, spilling over the rim) and roots
+    const stump = (p, r, h, z0 = 0, roots = 5, a0 = 0.4) => {
+      h *= 1.5;
+      p.push(Y([0, 0, z0 + h / 2], r, h / 2, BK, { round: 0.04 }));
+      grooves(p, [0, 0, 0], r, z0, z0 + h);
+      p.push(E([0, 0, z0 + h + 0.008], [r - 0.02, r - 0.02, 0.028], "moss", Object.assign({ k2: 0.03 }, MO())));
+      if (HI) ring(5, (a, i) => p.push(E(pol(a, r - 0.012, z0 + h - 0.012 - 0.008 * (i % 2)), [0.034, 0.022, 0.03], "moss", { R: rz(a + Math.PI / 2), k2: 0.015 })), a0 + 0.7);
+      ring(roots, (a) => root(p, pol(a, r * 0.75, z0 + 0.09), pol(a, r * 1.5, 0), (0.07 * r) / 0.24, a), a0);
+      return z0 + h + 0.02;
+    };
+    // broken shards round the back of a rim (so the front stays open for the wisplings)
+    const jag = (p, c, r, z, angs, hh, m = BK) => angs.forEach((a, i) => p.push(C(add(c, pol(a, r * 0.86, z - 0.05)), add(c, pol(a + 0.12, r * 0.72, z + hh * (0.45 + 0.55 * ((i * 3) % 5) / 4))), 0.034, 0.006, m)));
+    const BACK = [FR + Math.PI, FR + Math.PI - 0.7, FR + Math.PI + 0.7, FR + Math.PI - 1.4, FR + Math.PI + 1.4];
+    const RO = { disp: 0.014, df: 20 }; // weathered, uneven faces
+    // a stone block turned to a; from 24 two of its top corners chipped, the fresh stone a step lighter
+    const slab = (p, c, h, a = FR, m = SN) => {
+      p.push(B(c, h, 0.012, m, Object.assign({ R: rz(a) }, RO)));
+      if (!HI) return;
+      const ca = Math.cos(a), sa = Math.sin(a), cr = Math.min(0.03, 0.6 * Math.min(h[0], h[1], h[2]) + 0.008);
+      for (const [sx, sy] of chips++ % 2 ? [[1, 1], [-1, -1]] : [[1, -1], [-1, 1]]) p.push(S(add(c, [ca * h[0] * sx - sa * h[1] * sy, sa * h[0] * sx + ca * h[1] * sy, h[2]]), cr, SL, { sub: 1, subm: SL }));
+    };
+    const drum = (p, r, z0, h, m = SN) => p.push(Y([0, 0, z0 + h / 2], r, h / 2, m, Object.assign({ round: 0.02 }, RO)));
+    const cap = (p, c, rx, ry = rx, a = 0) => p.push(E(add(c, [0, 0, 0.008]), [rx, ry, 0.026], "moss", Object.assign({ R: rz(a), k2: 0.03 }, MO())));
+    const tufts = (p, r, n, a0 = 0.3) => ring(n, (a, i) => p.push(E(pol(a, r, 0.01), [0.05 + 0.015 * (i % 2), 0.04, 0.025], "moss", Object.assign({ R: rz(a), k2: 0.02 }, MO()))), a0);
+    // a crack (from 32) from q on a stone face along dv, zigzagging along the face's tangent t; cut after its stone
+    const crack = (p, q, dv, t, n = 4) => {
+      if (HI < 2) return;
+      let q0 = q;
+      for (let i = 1; i <= n; i++) { const q1 = add(add(q, mul(dv, i / n)), mul(t, i < n ? (i % 2 ? 0.018 : -0.018) : 0.006)); p.push(C(q0, q1, 0.014, 0.011, SD, { sub: 1, subm: SD })); q0 = q1; }
+    };
+    // down a drum's side at angle a, or a block's face (normal a, d from c, u along it) from height z
+    const crackY = (p, a, r, z, len) => crack(p, pol(a, r, z), [0, 0, -len], [-Math.sin(a), Math.cos(a), 0]);
+    const crackB = (p, c, a, d, u, z, dv) => { const n = [Math.cos(a), Math.sin(a), 0], t = [-n[1], n[0], 0]; crack(p, add(add([c[0], c[1], z], mul(n, d)), mul(t, u)), dv, t); };
+    // the stone's roots: they come over a stone's top at radius r, height z, and down its side to the ground,
+    // in the lighter root bark (and a moss edge, DET); from 24 each puts out a rootlet over the stone
+    const drape = (p, r, z, angs) => angs.forEach((a, i) => {
+      const q0 = pol(a, r * 0.5, z + 0.004), q1 = pol(a, r * 1.04, z - 0.03), q2 = pol(a, r * 1.1, z * 0.45), q3 = pol(a, r * 1.55, 0), o = { k2: 0.02 };
+      p.push(C(q0, q1, 0.026, 0.03, RT, o), C(q1, q2, 0.03, 0.032, RT, o), C(q2, q3, 0.032, 0.022, RT, o));
+      if (HI) { const q = lerp3(q1, q2, 0.45), sd = i % 2 ? 1 : -1; p.push(C(q, pol(a + 0.4 * sd, r * 1.08, q[2] - 0.09), 0.018, 0.006, RT, { k2: 0.01 })); }
+      if (HI > 1) p.push(C(lerp3(q0, q1, 0.5), pol(a - 0.5 * (i % 2 ? 1 : -1), r * 0.62, z + 0.004), 0.014, 0.005, RT, { k2: 0.01 }));
+    });
+    const DR = [FR + Math.PI - 0.5, FR + Math.PI + 0.6, FR + 1.5, FR - 1.7];
+    // a standing stele at the bloom's screen-right (the game camera sees its face), a crescent carved in its
+    // face that glows the moon's blue; returns the wispling spot on its top
+    const stele = (p, D, g) => {
+      const c = pol(FR - Math.PI / 2 - 0.35, 0.27 * g, 0), hh = 0.46 * g, zc = hh * 0.6, rc = 0.07 * g, fx = Math.cos(FR), fy = Math.sin(FR);
+      slab(p, add(c, [0, 0, hh / 2]), [0.035 * g, 0.1 * g, hh / 2]); crackB(p, c, FR, 0.035 * g + 0.012, -0.075 * g, hh, [0, 0, -0.16 * g]);
+      cap(p, add(c, [0, 0, hh]), 0.03 * g, 0.085 * g, FR);
+      D.push((x, y, zz, m) => {
+        if (m !== SN) return null;
+        const dx = x - c[0], dy = y - c[1], d = dx * fx + dy * fy, u = dx * fy - dy * fx, v = zz - zc;
+        if (d < 0.02 * g) return null;
+        return u * u + v * v < rc * rc && (u + 0.03 * g) ** 2 + (v - 0.012 * g) ** 2 > (rc * 0.82) ** 2 ? "kgMoon" : null;
+      });
+      return add(c, [0, 0, hh + 0.02]);
+    };
+    const VES = {
+      thorn(L, p) { // a broken column on a square plinth, its top snapped off, a snag's roots gripping it
+        const g = G3[L - 1], r = 0.15 * g, h = 0.47 * g, z0 = 0.07 * g;
+        slab(p, [0, 0, z0 / 2], [0.2 * g, 0.2 * g, z0 / 2]);
+        drum(p, r, z0, h); crackY(p, FR - 0.45, r, z0 + h - 0.02, 0.2 * g);
+        for (const zz of [z0 + 0.1 * g, z0 + 0.27 * g]) p.push(Y([0, 0, zz], r + 0.008, 0.012, SL));
+        const z = z0 + h + 0.02;
+        jag(p, [0, 0, 0], r, z, BACK, 0.12, SN); cap(p, [0, 0, z0 + h], r - 0.02); tufts(p, 0.26 * g, 4);
+        drape(p, 0.15 * g, 0.54 * g, DR);
+        return { z, r: 0.3 * g, sp: [pol(FR, r * 0.6, z), pol(FR + 0.75, 0.3 * g, 0.01), pol(FR - 0.75, 0.3 * g, 0.01)] };
+      },
+      puff(L, p) { const g = G3[L - 1], r = 0.28 * g, z = stump(p, r, 0.1 * g, 0, 7); return { z, r: r * 1.5, sp: spots(r * 0.78, z) }; }, // a low wide stump
+      sun(L, p) { // a pedestal: a round shaft under a wide square capital, its finial knocked off beside it, roots over it
+        const g = G3[L - 1], z = 0.3 * g + 0.02;
+        slab(p, [0, 0, 0.03 * g], [0.17 * g, 0.17 * g, 0.03 * g]); drum(p, 0.1 * g, 0.06 * g, 0.18 * g); crackY(p, FR + 0.4, 0.1 * g, 0.22 * g, 0.12 * g);
+        slab(p, [0, 0, 0.27 * g], [0.17 * g, 0.17 * g, 0.03 * g]); crackB(p, [0, 0, 0], FR, 0.17 * g + 0.012, -0.07 * g, 0.3 * g, [0, 0, -0.055 * g]);
+        p.push(Y([0, 0, 0.235 * g], 0.12 * g, 0.012, SL));
+        cap(p, [0, 0, 0.3 * g], 0.15 * g);
+        const f = pol(FR + Math.PI + 0.9, 0.3 * g, 0.05);
+        p.push(S(f, 0.05, SN, RO), Y(add(f, [0, 0, -0.035]), 0.04, 0.015, SN)); tufts(p, 0.25 * g, 4);
+        drape(p, 0.17 * g, 0.3 * g, DR.slice(0, 3));
+        return { z, r: 0.32 * g, sp: spots(0.12 * g, z) };
+      },
+      wisp(L, p) { // today's stump, standing on a cracked stone step
+        const g = G3[L - 1], r = 0.24 * g;
+        slab(p, [0, 0, 0.03 * g], [0.3 * g, 0.3 * g, 0.03 * g]); crackB(p, [0, 0, 0], FR, 0.3 * g + 0.012, 0.13 * g, 0.06 * g + 0.012, [-0.05 * g, 0.05 * g, -0.012]);
+        const z = stump(p, r, 0.14 * g, 0.06 * g, L + 3);
+        return { z, r: 0.45 * g, sp: spots(r * 0.62, z) };
+      },
+      briar(L, p) { // a stump split in two, the briar rooted in the cleft
+        const g = G3[L - 1], hs = [[0.1, -0.1, 0.34], [-0.1, 0.1, 0.26]];
+        for (const [x, y, h] of hs) {
+          p.push(Y([x * g, y * g, (h * g) / 2], 0.115 * g, (h * g) / 2, BK, { round: 0.03 })); grooves(p, [x * g, y * g, 0], 0.115 * g, 0, h * g);
+          p.push(E([x * g, y * g, h * g + 0.006], [0.095 * g, 0.095 * g, 0.024], "moss", Object.assign({ k2: 0.02 }, MO())));
+        }
+        ring(6, (a) => root(p, pol(a, 0.15 * g, 0.08), pol(a, 0.3 * g, 0), 0.04, a), 0.2);
+        p.push(E([0, 0, 0.06], [0.08, 0.08, 0.06], BK));
+        const zt = (h) => h * g + 0.02;
+        return { z: 0.2 * g, r: 0.42, sp: [[0.13 * g, -0.07 * g, zt(0.34)], [-0.07 * g, 0.13 * g, zt(0.26)], pol(FR, 0.28 * g, 0.01)] };
+      },
+      toad(L, p) { // a square stone well, a corner broken off, the lattice sunk in its dark mouth, roots over the back
+        const g = G3[L - 1], hw = 0.2 * g, h = 0.24 * g, t = 0.05 * g;
+        slab(p, [0, 0, h / 2], [hw, hw, h / 2]); crackB(p, [0, 0, 0], FR, hw + 0.012, -0.07 * g, h, [0, 0, -0.17 * g]);
+        p.push(B([0, 0, h], [hw - t, hw - t, 0.07], 0, SN, { R: rz(FR), sub: 1, subm: "hsObsidian" }));
+        jag(p, [0, 0, 0], hw, h + 0.02, BACK.slice(0, 3), 0.07, SN);
+        p.push(S(pol(FR + Math.PI - 1.9, 0.31 * g, 0.04), 0.045, SN, RO));
+        ring(4, (a) => p.push(E(pol(a, hw - t / 2, h + 0.005), [0.05, 0.03, 0.02], "moss", Object.assign({ R: rz(a + 1.57) }, MO()))), FR - Math.PI / 2);
+        tufts(p, 0.3 * g, 4);
+        drape(p, 0.2 * g, 0.24 * g, DR.slice(0, 2));
+        const rr = hw - t / 2;
+        return { z: h - 0.02, r: 0.36 * g, sp: [pol(FR, rr, h + 0.01), pol(FR - Math.PI / 2, rr, h + 0.01), pol(FR + Math.PI / 2, rr, h + 0.01)] };
+      },
+      moon(L, p, D) { // a low stump for the bloom, the carved stele beside it
+        const g = G3[L - 1], r = 0.17 * g, z = stump(p, r, 0.13 * g);
+        return { z, r: 0.4, sp: [pol(FR, r * 0.6, z), pol(FR + 0.95, r * 0.62, z), stele(p, D, g)] };
+      },
+      lily(L, p) { // a stone altar: a slab on two blocks over a dark niche (a wispling in its mouth), a short drum on top for the lilies, roots over the back
+        const g = G3[L - 1], z0 = 0.13 * g, r = 0.16 * g;
+        for (const s of [1, -1]) slab(p, add(pol(FR + (s * Math.PI) / 2, 0.13 * g, 0), [0, 0, z0 / 2]), [0.13 * g, 0.045 * g, z0 / 2]);
+        slab(p, add(pol(FR + Math.PI, 0.1 * g, 0), [0, 0, z0 / 2]), [0.03 * g, 0.12 * g, z0 / 2]);
+        p.push(E([0, 0, 0.025], [0.1 * g, 0.1 * g, 0.03], "hsObsidian"));
+        slab(p, [0, 0, z0 + 0.025 * g], [0.2 * g, 0.2 * g, 0.025 * g]); crackB(p, [0, 0, 0], FR, 0.2 * g + 0.012, 0.09 * g, z0 + 0.05 * g, [0, 0, -0.05 * g]);
+        drum(p, r, z0 + 0.05 * g, 0.13 * g); const zt = z0 + 0.18 * g, z = zt + 0.02;
+        crackY(p, FR - 0.6, r, zt - 0.01, 0.1 * g);
+        cap(p, [0, 0, zt], r - 0.02); tufts(p, 0.27 * g, 4, FR + Math.PI / 4);
+        drape(p, 0.17 * g, 0.31 * g, [FR + Math.PI - 0.3, FR + Math.PI + 0.9]);
+        return { z, r: 0.34 * g, sp: [pol(FR, r * 0.6, z), pol(FR - 0.95, r * 0.62, z), pol(FR, 0.19 * g, 0)] };
+      },
+    };
+
+    // moss creeping over the vessels' tops and along the roots, the mushroom's spots, the slime's glow; from 24
+    // lichen on the stone, grain in the bark, the puffcap's gills
+    const DET = (x, y, z, m, nz, hi) => {
+      if (m === "kgCap" && nz > 0.1 && nz3(x, y, z, 9, 8) > 0.64) return "kgSpot";
+      if (m === "kgGleba" && nz3(x, y, z, 18, 2) > 0.7) return "kgStinkGlow";
+      if (m === BK && nz > 0.45 && nz3(x, y, z, 10, 3) > 0.52) return "moss";
+      if (m === RT && nz > 0.35 && nz3(x, y, z, 12, 4) > 0.45) return "moss";
+      if (m === SN && ((nz > 0.45 && nz3(x, y, z, 10, 3) > 0.5) || nz3(x, y, z, 7, 5) > 0.68)) return "moss";
+      if (!hi) return null;
+      if ((m === SN || m === SL) && nz3(x, y, z, 24, 13) > 0.72) return "twLichen";
+      if (m === BK && nz < 0.7 && P.noise(x * 30, y * 30, z * 4, 11) > 0.66) return "twBarkLt";
+      if (m === "kgGill" && frac((Math.atan2(y, x) * 40) / TAU) < 0.3) return "kgGrubDk";
+      return null;
+    };
+
+    // o.lv 1..3; o.hi forces the detail level (the check)
+    const build = (kind, o) => {
+      HI = o.hi ?? (ME.VS >= 32 ? 2 : ME.VS >= 24 ? 1 : 0); chips = 0;
+      const hi = HI, L = Math.max(1, Math.min(3, o.lv || 2)), s = LS[L - 1], p = [], F = [], D = [];
+      const v = VES[kind](L, p, D), h = TOP[kind](L, p, v.z, D), n = kind === "wisp" ? [1, 3, 4][L - 1] : L;
+      for (let i = 0; i < n && i < v.sp.length; i++) wispling(p, F, v.sp[i], [0.92, 1, 1.04][L - 1] * (i ? 0.9 : 1));
+      scaleP(p, s);
+      for (const f of F) { f[0] = mul(f[0], s); f[1] *= s; }
+      return {
+        prims: p, r: v.r * s, h: h * s, k: 1,
+        detail: (x, y, z, m, nx, ny, nz) => {
+          for (const [c, hr, fo, bm] of F) if (m === bm && near([x, y, z], c, hr * 1.12)) { const f = cface([x - c[0], y - c[1], z - c[2]], hr, fo); if (f) return f; }
+          const X = x / s, Yy = y / s, Z = z / s;
+          let r = null;
+          for (const d of D) if ((r = d(X, Yy, Z, m, nx, ny, nz))) break;
+          r = r || DET(X, Yy, Z, m, nz, hi) || m;
+          return hi && r === "moss" && nz > 0.2 && nz3(X, Yy, Z, 20, 17) > 0.62 ? "twMossLt" : r; // lighter moss tips
+        },
+      };
+    };
+    const KINDS = Object.keys(VES);
+    // builds each plant at each level and detail level and runs its detail over a coarse grid: { errs, stats }
+    const check = () => {
+      const errs = [], stats = [];
+      for (const k of KINDS) for (const hi of [0, 1, 2]) for (const lv of [1, 2, 3]) {
+        try {
+          const md = build(k, { lv, hi });
+          for (const q of md.prims) for (const f in q) if (typeof q[f] === "number" && !isFinite(q[f])) throw new Error("bad prim " + f);
+          for (let x = -0.4; x <= 0.4; x += 0.1) for (let y = -0.4; y <= 0.4; y += 0.1) for (let z = 0; z <= 1.2; z += 0.1) for (const m of [WS, BK, RT, SN, SL, "moss", "kgCap", "kgLily", "kgGleba", "kgGill"]) for (const nz of [0, 1]) if (typeof md.detail(x, y, z, m, 0, 0, nz) !== "string") throw new Error("detail");
+          if (lv === 3) stats.push(k + hi + " " + md.prims.length + " h" + md.h.toFixed(2) + " r" + md.r.toFixed(2));
+        } catch (e) { errs.push(k + lv + "/" + hi + ": " + e.message); }
+      }
+      return { errs, stats };
+    };
+    return { RAMPS, MATS, KINDS, build, check };
+  }
+  const TOWERS = stumpsAndStones(), TOWERS_SRC = String(stumpsAndStones);
+  Object.assign(ME.LIGHT_COL, { twEmber: [1.0, 0.5, 0.35, 0.7] });
+  for (const k of TOWERS.KINDS) {
+    const name = "ms_tw_" + k;
+    ME.assetKit.model(name, 1.9, (o) => TOWERS.build(k, o), 1);
+    ME.ASSET_BY[name] += TOWERS_SRC; ME.ASSET_SRC += TOWERS_SRC; // the bake key takes the builder's source too, not only the wrapper's
+  }
+  G.checkTowers = () => JSON.stringify(TOWERS.check());
+
+  // frames: the idle loop's flipbook (FRAMES when unset). The plants hold still for now (one frame each,
+  // 24 volumes for the eight at three levels); their idle loop is a follow-up.
   G.TOWER_MODELS = {
-    thorn: { name: "ms_thorn", size: 0.72 }, sun: { name: "ms_sun", size: 0.72, frames: 2 }, puff: { name: "ms_puff", size: 0.72, frames: 2 }, wisp: { name: "ms_wisp", size: 0.72, frames: 2 },
-    briar: { name: "ms_briar", size: 0.72 }, toad: { name: "ms_toad", size: 0.72 }, moon: { name: "ms_moon", size: 0.72 }, lily: { name: "ms_lily", size: 0.72 },
+    thorn: { name: "ms_tw_thorn", size: 0.72, frames: 1 }, sun: { name: "ms_tw_sun", size: 0.72, frames: 1 }, puff: { name: "ms_tw_puff", size: 0.72, frames: 1 }, wisp: { name: "ms_tw_wisp", size: 0.72, frames: 1 },
+    briar: { name: "ms_tw_briar", size: 0.72, frames: 1 }, toad: { name: "ms_tw_toad", size: 0.72, frames: 1 }, moon: { name: "ms_tw_moon", size: 0.72, frames: 1 }, lily: { name: "ms_tw_lily", size: 0.72, frames: 1 },
   };
   G.HEART_MODEL = { name: "ms_heart", size: 1.25 };
   // the asset models grow by level themselves; the instance adds only a touch
