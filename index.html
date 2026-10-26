@@ -4963,20 +4963,27 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     layer: { need: ["top", "depth", "under"], may: ["mottle", "mottleK", "edge", "stripe"] },
     carpet: { need: ["top", "under"], may: ["mottle", "cushions", "litter"] },
     lane: { need: ["top", "under"], may: ["stones", "edge", "paving"] },
-    water: { need: ["bed", "under"], may: ["shore", "bank", "surface", "depth", "clarity", "tint", "absorb", "calm", "glint", "caustics", "bubbles"] },
+    water: { need: ["bed", "under"], may: ["shore", "bank", "surface", "depth", "clarity", "tint", "absorb", "calm", "glint", "caustics", "bubbles", "falls", "spray"] },
   };
   // A water kind's look (any of these set): the water pass, the caustics and the bubbles read it. A kind
   // with none of them is drawn as before (look 0). At most 8 looks in a map.
-  const LOOK = ["clarity", "tint", "absorb", "calm", "glint", "caustics", "bubbles"], LOOK_MAX = 8;
+  const LOOK = ["clarity", "tint", "absorb", "calm", "glint", "caustics", "bubbles", "falls", "spray"], LOOK_MAX = 8;
   const looked = (k) => !!k && k.recipe === "water" && LOOK.some((p) => k[p] !== undefined);
   // the options' values, the omitted ones filled in (clarity: 0-1 of the floor seen; tint: the deep colour,
   // linear rgb; absorb: the thickness of water, in tiles along the view ray, that takes the tint to 63%;
   // calm: 0-1, smaller and slower ripples and no wind roughness; glint: the sun glint's gain; caustics:
-  // their gain on the floor; bubbles: { rate, seep, size, colour, rise })
+  // their gain on the floor; bubbles: { rate, seep, size, colour, rise }; falls: { speed, foam, thick }, the
+  // falls' flow speed, foam height at the plunge and sheet opacity, gains on today's (1); spray: a rim
+  // spill's voxel spray into the void, ME.SPRAY's values for the omitted ones)
   ME.waterLook = (k) => ({
     clarity: k.clarity ?? 0, tint: k.tint ?? [0.1, 0.3, 0.4], absorb: k.absorb ?? 0.45, calm: k.calm ?? 0, glint: k.glint ?? 1, caustics: k.caustics ?? 1,
     bubbles: k.bubbles ? { rate: k.bubbles.rate ?? 0, seep: k.bubbles.seep ?? 0, size: k.bubbles.size ?? [1, 2], colour: k.bubbles.colour ?? [0.85, 0.95, 1], rise: k.bubbles.rise ?? 0.35 } : null,
+    falls: { speed: (k.falls && k.falls.speed) ?? 1, foam: (k.falls && k.falls.foam) ?? 1, thick: (k.falls && k.falls.thick) ?? 1 },
+    spray: Object.assign({}, ME.SPRAY, k.spray),
   });
+  // the rim spill's spray, per spill falls: n voxels in flight, size in terrain voxels, foam the white share
+  // (0-1), fade the depth below the plinth (tiles) by which they are gone, colour the water's (linear rgb)
+  ME.SPRAY = { n: 200, size: 1, foam: 0.35, fade: 2.5, colour: [0.36, 0.6, 0.72] };
   const FLAGS = ["drape", "overhang", "grass", "fringe", "lamps", "recipe"];
   const AT = ["dx", "dy", "dz", "rot", "flip", "overWater", "as"];
 
@@ -5155,6 +5162,22 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
             if (b.size !== undefined && !(Array.isArray(b.size) && b.size.length === 2 && b.size[0] > 0 && b.size[1] >= b.size[0] && b.size[1] <= 8)) err(K + "bubbles.size: [min, max] voxels, 0 < min <= max <= 8");
             if (b.rise !== undefined && !num(b.rise, 0.05, 4)) err(K + "bubbles.rise: 0.05 to 4 tiles a second");
             if (b.colour !== undefined && !(Array.isArray(b.colour) && b.colour.length === 3 && b.colour.every((c) => num(c, 0, 4)))) err(K + "bubbles.colour: [r, g, b], linear");
+          }
+        }
+        const fl = k.falls;
+        if (fl !== undefined) {
+          if (!fl || typeof fl !== "object") err(K + "falls: { speed, foam, thick }");
+          else for (const p of ["speed", "foam", "thick"]) if (fl[p] !== undefined && !num(fl[p], 0, 4)) err(K + "falls." + p + ": 0 to 4 (1 is today's)");
+        }
+        const sp = k.spray;
+        if (sp !== undefined) {
+          if (!sp || typeof sp !== "object") err(K + "spray: { n, size, foam, fade, colour }");
+          else {
+            if (sp.n !== undefined && !(Number.isInteger(sp.n) && sp.n >= 0 && sp.n <= 1024)) err(K + "spray.n: a whole number, 0 to 1024 per spill");
+            if (sp.size !== undefined && !num(sp.size, 0.25, 4)) err(K + "spray.size: 0.25 to 4 voxels");
+            if (sp.foam !== undefined && !num(sp.foam, 0, 1)) err(K + "spray.foam: 0 to 1");
+            if (sp.fade !== undefined && !num(sp.fade, 0.25, 8)) err(K + "spray.fade: 0.25 to 8 tiles below the plinth");
+            if (sp.colour !== undefined && !(Array.isArray(sp.colour) && sp.colour.length === 3 && sp.colour.every((c) => num(c, 0, 4)))) err(K + "spray.colour: [r, g, b], linear");
           }
         }
       }
@@ -5648,7 +5671,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       let fx = 0, fy = 0;
       for (const [dx, dy] of D4) if (wetAt(cx + dx, cy + dy)) { const d = below(cx + dx, cy + dy); if (d > 0) { fx += dx; fy += dy; } else if (d < 0) { fx -= dx; fy -= dy; } }
       const stream = G.wd && Math.abs(G.wd(cx + 0.5, cy + 0.5)) < 1 && (fx || fy) ? 1 : 0;
-      water.push({ x: cx, y: cy, z: Zw, fx, fy, stream, look: lookOf(full && G.floodKind ? G.floodKind[cy * G.W + cx] : G.names ? G.names[cy * G.W + cx] : null) });
+      const lk = lookOf(full && G.floodKind ? G.floodKind[cy * G.W + cx] : G.names ? G.names[cy * G.W + cx] : null);
+      water.push({ x: cx, y: cy, z: Zw, fx, fy, stream, look: lk });
       for (const [dx, dy] of D4) {
         if (!wetAt(cx + dx, cy + dy) || below(cx + dx, cy + dy) <= 0) continue;
         // wet run along the shared edge, sampled just inside the upper tile (all of it under a flood)
@@ -5662,7 +5686,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         // the falling sheet stands just in front of the cliff face, facing the lower tile
         const ex0 = dx ? cx + (dx > 0 ? 1 + off : -off) : cx + u0, ey0 = dy ? cy + (dy > 0 ? 1 + off : -off) : cy + u0;
         const ex1 = dx ? ex0 : cx + u1, ey1 = dy ? ey0 : cy + u1;
-        falls.push({ a: [ex0, ey0], b: [ex1, ey1], ztop, zbot, n: [dx, dy] });
+        falls.push({ a: [ex0, ey0], b: [ex1, ey1], ztop, zbot, n: [dx, dy], look: lk });
       }
       // the rim spill: a rim tile that notches the drum (rimTile, on its centre's radius) pours over it, one
       // sheet just outside the drum's face, facing out, from its water down to the plinth; its width is the
@@ -5677,7 +5701,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
             if (Math.floor(X) === cx && Math.floor(Y) === cy && (full || wetV(X, Y) > 0)) { t0 = Math.min(t0, t - 0.5 / 32); t1 = Math.max(t1, t + 0.5 / 32); }
           }
           const rf = RG - 0.06 + 0.7 / VS, sc = rf / RS, fx0 = C + nx * rf, fy0 = CY + ny * rf;
-          if (t1 > t0) falls.push({ a: [fx0 - ny * t0 * sc, fy0 + nx * t0 * sc], b: [fx0 - ny * t1 * sc, fy0 + nx * t1 * sc], ztop: Zw, zbot: PL_ZT, n: [nx, ny], spill: true,
+          if (t1 > t0) falls.push({ a: [fx0 - ny * t0 * sc, fy0 + nx * t0 * sc], b: [fx0 - ny * t1 * sc, fy0 + nx * t1 * sc], ztop: Zw, zbot: PL_ZT, n: [nx, ny], spill: true, look: lk,
             lip: [qx - nx * 0.35 - ny * (t0 + t1) / 2, qy - ny * 0.35 + nx * (t0 + t1) / 2, Zw, Math.min(0.6, t1 - t0)] });
         }
       }
@@ -6794,7 +6818,7 @@ struct U {
   psrc: vec4f,    // source counts (leaf, firefly, mist), depth range D1-D0
   geo: vec4f,     // island centre, glass radius, glass top, dome height
   misc2: vec4f,   // frame, shaft z top, shaft z bottom, bloom threshold
-  look4: vec4f,   // spriteK, moss mottling, -, -
+  look4: vec4f,   // spriteK, moss mottling, spray count, spray first source
   wind: vec4f,    // direction xy, strength, -
   canopy3: vec4f, // canopy plane height, shaft haze height, haze base z, moon (0 day .. 1 night)
   water2: vec4f,  // ripple count, caustics strength, water-level grid size, -
@@ -7698,18 +7722,19 @@ fn lake(i: VO, li: u32) -> vec4f {
   ]);
 
   // Falls: ropes of water that wobble sideways as they pour, accelerating streaks, a glassy lip, a ragged
-  // sheet edge and boiling foam at the plunge; lit by the canopy.
+  // sheet edge and boiling foam at the plunge; lit by the canopy. k: its water look's falls gains (speed,
+  // foam, thick), 1 each for today's falls, which then draw as before.
   W.falls = W.common + ME.canopyTex(3) + /* wgsl */ `
 @group(1) @binding(0) var sunV: texture_3d<f32>;
 @group(1) @binding(1) var lin: sampler;
 @group(1) @binding(2) var ramps: texture_2d<f32>;
-struct VO { @builtin(position) pos: vec4f, @location(0) w: vec3f, @location(1) uv: vec4f, @location(2) n: vec3f };
-@vertex fn vs(@location(0) p: vec3f, @location(1) uv: vec4f, @location(2) n: vec4f) -> VO {
-  var o: VO; o.pos = u.vp * vec4f(p, 1.0); o.w = p; o.uv = uv; o.n = n.xyz; return o;
+struct VO { @builtin(position) pos: vec4f, @location(0) w: vec3f, @location(1) uv: vec4f, @location(2) n: vec3f, @location(3) @interpolate(flat) k: vec3f };
+@vertex fn vs(@location(0) p: vec3f, @location(1) uv: vec4f, @location(2) n: vec4f, @location(3) k: vec3f) -> VO {
+  var o: VO; o.pos = u.vp * vec4f(p, 1.0); o.w = p; o.uv = uv; o.n = n.xyz; o.k = k; return o;
 }
 ` + RAMP + /* wgsl */ `
 @fragment fn fs(i: VO) -> @location(0) vec4f {
-  let t = u.vdir.w; let un = i.uv.y; let v = i.uv.z; let dz = i.uv.w - v;
+  let t = u.vdir.w * i.k.x; let un = i.uv.y; let v = i.uv.z; let dz = i.uv.w - v;
   // falling distance grows ~quadratically, so streaks stretch and speed up towards the bottom
   let fall = dz * (1.0 + dz * 0.8);
   let uu = i.uv.x + 0.035 * sin(fall * 5.0 - t * 4.3 + i.uv.x * 7.0) * sstep(0.0, 0.3, dz);
@@ -7717,8 +7742,9 @@ struct VO { @builtin(position) pos: vec4f, @location(0) w: vec3f, @location(1) u
   let str = vnoise(vec2f(uu * 9.0, fall * 1.1 - t * 3.0)) * 0.5 + vnoise(vec2f(uu * 23.0, fall * 2.4 - t * 4.2)) * 0.3 + rope * 0.2;
   var s = 0.7 + 0.6 * (str - 0.5) + sstep(0.55, 0.8, rope) * 0.12;
   if (dz < 0.07) { s = max(s, 0.86 + (vnoise(vec2f(uu * 12.0, t)) - 0.5) * 0.1); }
-  let foamH = 0.16 + 0.12 * vnoise(vec2f(uu * 18.0, t * 2.3)) + 0.05 * sin(t * 6.0 + uu * 30.0);
-  if (v < foamH) { s = 0.82 + vnoise(vec2f(uu * 40.0, v * 40.0 - t * 9.0)) * 0.12 + vnoise(vec2f(uu * 90.0 + t * 3.0, v * 70.0)) * 0.06; }
+  // the plunge foam: a foam gain above 1 makes the band taller and whiter
+  let foamH = (0.16 + 0.12 * vnoise(vec2f(uu * 18.0, t * 2.3)) + 0.05 * sin(t * 6.0 + uu * 30.0)) * i.k.y;
+  if (v < foamH) { s = 0.82 + vnoise(vec2f(uu * 40.0, v * 40.0 - t * 9.0)) * 0.12 + vnoise(vec2f(uu * 90.0 + t * 3.0, v * 70.0)) * 0.06 + max(0.0, i.k.y - 1.0) * 0.08; }
   let sv = textureSampleLevel(sunV, lin, sunUVW(i.w + i.n * 0.2), 0.0).r;
   let cook = canopyS(i.w);
   s += -0.22 + 0.45 * cook * sv;
@@ -7726,7 +7752,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) w: vec3f, @location(1) u
   // ragged sides that flicker as the sheet breaks up
   let rag = 0.1 + 0.08 * vnoise(vec2f(fall * 3.0 - t * 2.5, un * 3.0));
   let edge = sstep(0.0, rag, un) * sstep(1.0, 1.0 - rag, un);
-  return vec4f(col, (0.68 + 0.32 * str) * edge);
+  return vec4f(col, min(1.0, (0.68 + 0.32 * str) * i.k.z) * edge);
 }
 `;
 
@@ -7767,6 +7793,47 @@ const QUAD = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0
   let k = select(exp(-r2 * 2.5), exp(-r2 * 9.0) + 0.15 * exp(-r2 * 2.0), i.c.w > 0.5);
   return vec4f(i.c.rgb * k, 0.0);
 }
+`;
+
+  // The rim spill's spray (W6): each particle after the mist is an axis-aligned voxel cube, water-tinted or
+  // white foam, that shrinks and fades below the plinth (its sources as in W.partsim's spray)
+  W.spray = W.common + /* wgsl */ `
+struct Pt { p: vec4f, v: vec4f };
+@group(1) @binding(0) var<storage, read> pts: array<Pt>;
+@group(1) @binding(1) var<storage, read> srcs: array<vec4f>;
+@group(1) @binding(2) var ramps: texture_2d<f32>;
+@group(1) @binding(3) var lin: sampler;
+struct VO { @builtin(position) pos: vec4f, @location(0) c: vec4f };
+const QUAD = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0), vec2f(-1.0, -1.0), vec2f(1.0, 1.0), vec2f(-1.0, 1.0));
+` + RAMP + /* wgsl */ `
+@vertex fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VO {
+  let P = pts[ii];
+  var o: VO; o.c = vec4f(0.0); o.pos = vec4f(2.0, 2.0, 0.0, 1.0);
+  // six faces of six vertices; a face turned away from the view is dropped (the cubes blend, so their
+  // backs would show through)
+  let f = vi / 6u; let ax = f / 2u; let sg = select(-1.0, 1.0, (f & 1u) == 1u);
+  var nrm = vec3f(0.0); nrm[ax] = sg;
+  if (P.p.w <= 0.0 || dot(P.v.xyz, P.v.xyz) == 0.0 || dot(nrm, u.vdir.xyz) > 0.0) { return o; }
+  let so = u32(u.look4.w) + 4u * u32(P.v.w);
+  let B = srcs[so + 1u]; let C = srcs[so + 2u]; let D = srcs[so + 3u];
+  let below = clamp((D.y - P.p.z) / B.w, 0.0, 1.0);
+  let fade = (1.0 - below) * clamp(P.p.w * 3.0, 0.0, 1.0);
+  if (fade <= 0.0) { return o; }
+  let seed = fract(P.v.w);
+  let foam = fract(seed * 7.31) < C.w;
+  let size = D.x * (0.6 + 0.8 * fract(seed * 13.7)) * (1.0 - 0.5 * below);
+  var q = QUAD; let c = q[vi % 6u];
+  var l = vec3f(c, sg);
+  if (ax == 0u) { l = vec3f(sg, c); } else if (ax == 1u) { l = vec3f(c.x, sg, c.y); }
+  o.pos = u.vp * vec4f(P.p.xyz + l * size * 0.5, 1.0);
+  // lit from the sun's side; the falls' ramp sets the brightness (so it dims at night), C.rgb the water's hue
+  let lam = 0.55 + 0.45 * max(0.0, dot(nrm, u.sun.xyz));
+  let w = vec3f(0.3, 0.5, 0.2);
+  let water = C.rgb * (dot(rampC(u32(u.ids.z), 0.6), w) / max(dot(C.rgb, w), 0.02));
+  o.c = vec4f(select(water, rampC(u32(u.ids.z), 0.95), foam) * lam, select(0.85, 0.95, foam) * fade);
+  return o;
+}
+@fragment fn fs(i: VO) -> @location(0) vec4f { return i.c; }
 `;
 
   // App sprites written by the CPU each frame (Renderer.sprites, ME.SpriteBatch): one storage entry per
@@ -7848,11 +7915,37 @@ struct Pt { p: vec4f, v: vec4f };
 @group(1) @binding(2) var dens: texture_3d<f32>;
 @group(1) @binding(3) var lin: sampler;
 fn rnd(i: u32, k: f32) -> f32 { return hash12(vec2f(f32(i) * 0.731 + k * 1.37, fract(u.vdir.w * 0.0137) * 911.0 + k * 3.1)); }
+// a rim spill's spray (W6), its four sources at look4.w + 4 * floor(seed) (Renderer.buildParticles): voxels
+// leave the sheet's foot on the plinth, skip on its top, fly off its edge and fall into the void, scattering
+fn spray(i: u32, P: ptr<function, Pt>, dt: f32) {
+  let o = u32(u.look4.w) + 4u * u32((*P).v.w);
+  let A = srcs[o]; let B = srcs[o + 1u]; let D = srcs[o + 3u];
+  let n = B.xy; let tg = vec2f(-n.y, n.x);
+  if ((*P).p.w <= 0.0) {
+    let side = (rnd(i, 1.0) * 2.0 - 1.0) * A.w; let out = 0.4 + rnd(i, 2.0) * 0.9;
+    (*P).p = vec4f(A.xy + tg * side + n * 0.03, A.z + 0.02 + rnd(i, 3.0) * 0.06, 1.2 + rnd(i, 4.0) * 1.6);
+    (*P).v = vec4f(n * out + tg * (rnd(i, 6.0) - 0.5) * 0.5, 0.25 + rnd(i, 7.0) * 0.7, floor((*P).v.w) + rnd(i, 5.0) * 0.999);
+    return;
+  }
+  var p = (*P).p.xyz; var v = (*P).v.xyz;
+  if (dot(v, v) == 0.0) { return; } // parked at the start, its wait running down
+  v.z -= 3.6 * dt;
+  // below the plinth the air takes them apart: a slow sideways scatter and some drag
+  let below = clamp((D.y - p.z) / max(B.w, 0.1), 0.0, 1.0);
+  let sd = fract((*P).v.w) * 97.0;
+  v = vec3f(v.xy + vec2f(sin(sd + p.z * 3.1), cos(sd * 1.7 + p.z * 2.3)) * below * 1.4 * dt, v.z * (1.0 - below * 0.6 * dt));
+  p += v * dt;
+  // on the plinth's top (less than B.z past the foot): a skip that loses most of the speed
+  if (p.z < A.z && (*P).p.z >= A.z && dot(p.xy - A.xy, n) < B.z) { p.z = A.z; v = vec3f(v.xy * 0.75, abs(v.z) * 0.35); }
+  var life = (*P).p.w;
+  if (p.z < D.y - B.w * 1.2) { life = 0.0; }
+  (*P).p = vec4f(p, life); (*P).v = vec4f(v, (*P).v.w);
+}
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id: vec3u) {
   let i = id.x;
   let nLeaf = u32(u.part.x); let nFly = u32(u.part.y); let nMist = u32(u.part.z);
-  if (i >= nLeaf + nFly + nMist) { return; }
+  if (i >= nLeaf + nFly + nMist + u32(u.look4.z)) { return; }
   var P = pts[i];
   let dt = u.part.w; let t = u.vdir.w;
   P.p.w -= dt;
@@ -7887,6 +7980,8 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
       P.v = vec4f(w + pull, seed);
       P.p = vec4f(P.p.xyz + P.v.xyz * dt, P.p.w);
     }
+  } else if (i >= nLeaf + nFly + nMist) {
+    spray(i, &P, dt);
   } else {
     // plunge pools: every other particle is a spray droplet thrown up and pulled back by gravity
     let mi = i - nLeaf - nFly; let spray = (mi & 1u) == 0u;
@@ -8537,7 +8632,7 @@ fn boxOf(V: Vox) -> Box {
 <script>/* ../MossheartEngine/src/passes.js */
 /* Renderer: GPU resources, pipelines and the frame graph.
      particles (compute) -> G-buffer [terrain mesh | ray-marched volumes | grass | leaves]
-     -> lighting -> shafts (compute, half res) -> forward [water | falls | sparks | glass] -> bloom -> composite
+     -> lighting -> shafts (compute, half res) -> forward [water | falls | spray | sparks | glass] -> bloom -> composite
    WebGPU has no tile memory or subpasses, so each stage is its own pass; the G-buffer layout is the
    blueprint's (albedo+AO, normal+material, depth). Sun volume recomputes only when the sun moves.
 
@@ -8564,6 +8659,7 @@ fn boxOf(V: Vox) -> Box {
   const BLEND_ALPHA = { color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" }, alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" } };
   const BLEND_ADD = { color: { srcFactor: "one", dstFactor: "one", operation: "add" }, alpha: { srcFactor: "one", dstFactor: "one", operation: "add" } };
   const SPRITE_MAX = 6144, LIGHT_MAX = 255, BUBBLE_MAX = 64; // bubbles: at most 64 sprites, their own buffer
+  const SPRAY_MAX = 4096; // the rim spills' spray voxels, all spills together
 
   // Sprite kinds of the sprite pass (W.sprites): additive and depth tested, except BAR (alpha, on top).
   ME.SPRITE = { ORB: 0, RING: 1, BEAM: 2, STREAK: 3, PUFF: 4, GROUND: 5, BAR: 10 };
@@ -8633,7 +8729,9 @@ fn boxOf(V: Vox) -> Box {
     P.leaves = rp("leaves", mod("leaves"), { targets: G, depthStencil: DEPTH });
     P.lighting = rp("lighting", mod("lighting"), { vsEntry: "vsFull", targets: [{ format: "rgba16float" }] });
     P.water = rp("water", mod("water"), water(false));
-    P.falls = rp("falls", mod("falls"), { targets: [{ format: "rgba16float", blend: BLEND_ALPHA }], depthStencil: DEPTH_RO, vertex: { buffers: [{ arrayStride: 44, attributes: [{ shaderLocation: 0, offset: 0, format: "float32x3" }, { shaderLocation: 1, offset: 12, format: "float32x4" }, { shaderLocation: 2, offset: 28, format: "float32x4" }] }] } });
+    // the falls' vertex: position, uv (along, across, height, sheet height), normal, its look's falls gains
+    P.falls = rp("falls", mod("falls"), { targets: [{ format: "rgba16float", blend: BLEND_ALPHA }], depthStencil: DEPTH_RO, vertex: { buffers: [{ arrayStride: 56, attributes: [{ shaderLocation: 0, offset: 0, format: "float32x3" }, { shaderLocation: 1, offset: 12, format: "float32x4" }, { shaderLocation: 2, offset: 28, format: "float32x4" }, { shaderLocation: 3, offset: 44, format: "float32x3" }] }] } });
+    P.spray = rp("spray", mod("spray"), { targets: [{ format: "rgba16float", blend: BLEND_ALPHA }], depthStencil: DEPTH_RO });
     P.sparks = rp("sparks", mod("sparks"), { targets: [{ format: "rgba16float", blend: BLEND_ADD }], depthStencil: DEPTH_RO });
     const spMod = mod("sprites");
     P.spriteAdd = rp("spriteAdd", spMod, { targets: [{ format: "rgba16float", blend: BLEND_ADD }], depthStencil: DEPTH_RO });
@@ -8767,6 +8865,7 @@ fn boxOf(V: Vox) -> Box {
         spriteAlpha: bg(P.spriteAlpha, 1, [{ buffer: this.spriteBuf }]),
         falls: bg(P.falls, 1, [sunV, this.lin, this.rampTex.createView(), this.canV]),
         sparks: bg(P.sparks, 1, [{ buffer: this.partBuf }]),
+        spray: bg(P.spray, 1, [{ buffer: this.partBuf }, { buffer: this.srcBuf }, this.rampTex.createView(), this.lin]),
       };
       // ---------------- timestamps
       if (this.gpu.features.has("timestamp-query")) {
@@ -8834,13 +8933,15 @@ fn boxOf(V: Vox) -> Box {
       this.pondTiles = T.water.filter((w) => !w.stream);
       const fv = [], fi = [];
       for (const f of T.falls) {
-        const b = fv.length / 11, L = Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]), H = f.ztop - f.zbot, n = [f.n[0], f.n[1], 0, 0];
+        const b = fv.length / 14, L = Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]), H = f.ztop - f.zbot, k = this.fallsLook(f).falls, n = [f.n[0], f.n[1], 0, 0, k.speed, k.foam, k.thick];
         fv.push(f.a[0], f.a[1], f.zbot, 0, 0, 0, H, ...n, f.b[0], f.b[1], f.zbot, L, 1, 0, H, ...n, f.b[0], f.b[1], f.ztop, L, 1, H, H, ...n, f.a[0], f.a[1], f.ztop, 0, 0, H, H, ...n);
         fi.push(b, b + 1, b + 2, b, b + 2, b + 3);
       }
       this.water = { vb: ME.buffer(d, new Float32Array(wv.length ? wv : new Array(VN).fill(0)), BU.VERTEX, "water vb"), ib: ME.buffer(d, new Uint32Array(wi.length ? wi : [0, 0, 0]), BU.INDEX, "water ib"), n: wi.length };
-      this.falls = { vb: ME.buffer(d, new Float32Array(fv.length ? fv : new Array(11).fill(0)), BU.VERTEX, "falls vb"), ib: ME.buffer(d, new Uint32Array(fi.length ? fi : [0, 0, 0]), BU.INDEX, "falls ib"), n: fi.length };
+      this.falls = { vb: ME.buffer(d, new Float32Array(fv.length ? fv : new Array(14).fill(0)), BU.VERTEX, "falls vb"), ib: ME.buffer(d, new Uint32Array(fi.length ? fi : [0, 0, 0]), BU.INDEX, "falls ib"), n: fi.length };
     }
+    // a falls' water look (its kind's falls and spray), today's values for unlooked water
+    fallsLook(f) { return ((this.S.T.looks || [])[f.look || 0]) || (this.lookNone ??= ME.waterLook({})); }
 
     // Bubbles, for water whose look has them (water kinds' bubbles): emitters at the props the content picks
     // (ME.content.particles.bubbles), at the falls' feet and one seep per wet tile; ME.water.bubble adds one.
@@ -8900,8 +9001,9 @@ fn boxOf(V: Vox) -> Box {
     updateRings(time) {
       const H = window.PX.hash, T = this.S.T, out = [];
       T.falls.forEach((f, i) => {
-        const P = 0.55, j0 = Math.floor(time / P + i * 0.37);
-        for (let j = j0 - 2; j <= j0; j++) {
+        // a look's foam gain above 1 lands them more often
+        const fm = Math.max(1, this.fallsLook(f).falls.foam), P = 0.55 / fm, j0 = Math.floor(time / P + i * 0.37);
+        for (let j = j0 - Math.ceil(2 * fm - 1e-6); j <= j0; j++) {
           const t0 = (j - i * 0.37) * P, u = H(i, j, 1, 41), off = 0.08 + 0.12 * H(i, j, 2, 41);
           out.push([lerpN(f.a[0], f.b[0], u) + f.n[0] * off, lerpN(f.a[1], f.b[1], u) + f.n[1] * off, t0, 0.55]);
         }
@@ -9212,20 +9314,37 @@ fn boxOf(V: Vox) -> Box {
       for (const w of T.water) if (H(w.x, w.y, 0, 9) > 0.8) flySrc.push([w.x + 0.5, w.y + 0.5, w.z + 0.15, 1.4]);
       // a rim spill's mist starts at its lip, inside the glass (its foot is on the plinth, outside)
       for (const f of T.falls) mistSrc.push(f.lip ? f.lip.slice() : [(f.a[0] + f.b[0]) / 2 + f.n[0] * 0.15, (f.a[1] + f.b[1]) / 2 + f.n[1] * 0.15, f.zbot, Math.max(0.3, Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]))]);
-      const N = (this.pcount = { leaf: leafSrc.length ? 180 : 0, fly: flySrc.length ? 90 : 0, mist: mistSrc.length ? 200 : 0 });
-      const tot = N.leaf + N.fly + N.mist, data = new Float32Array(Math.max(1, tot) * 8);
+      // a rim spill's spray (W6): four sources per spill falls (A foot centre on the plinth + half width, B
+      // outward normal + plinth ledge + fade depth, C colour + foam share, D voxel size + plinth bottom) and
+      // its look's spray.n voxels per tile of width, SPRAY_MAX in all
+      const spraySrc = [], sprayOf = [], g = T.geo;
+      if (g) for (const f of T.falls) {
+        if (!f.spill) continue;
+        const sp = this.fallsLook(f).spray, w = Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]), mx = (f.a[0] + f.b[0]) / 2, my = (f.a[1] + f.b[1]) / 2;
+        const n = Math.min(Math.round(sp.n * Math.min(1, w)), SPRAY_MAX - sprayOf.length);
+        if (n <= 0) continue;
+        const s = spraySrc.length;
+        spraySrc.push([mx, my, f.zbot, w / 2], [f.n[0], f.n[1], g.PL_R - Math.hypot(mx - g.C, my - g.C), sp.fade], [...sp.colour, sp.foam], [(sp.size / T.VS) * 1.6, g.PL_ZB, 0, 0]);
+        for (let j = 0; j < n; j++) sprayOf.push(s);
+      }
+      const N = (this.pcount = { leaf: leafSrc.length ? 180 : 0, fly: flySrc.length ? 90 : 0, mist: mistSrc.length ? 200 : 0, spray: sprayOf.length });
+      const tot = N.leaf + N.fly + N.mist + N.spray, data = new Float32Array(Math.max(1, tot) * 8);
       // spread initial state so the scene starts mid-flow
       for (let i = 0; i < tot; i++) {
         const r = (k) => H(i, k, 0, 31);
         let s, life;
         if (i < N.leaf) { s = leafSrc[i % leafSrc.length]; life = r(1) * 10; data.set([s[0] + (r(2) - 0.5) * s[3] * 2, s[1] + (r(3) - 0.5) * s[3] * 2, s[2] - r(4) * 2.5, life, 0, 0, -0.2, r(5)], i * 8); }
         else if (i < N.leaf + N.fly) { s = flySrc[(i - N.leaf) % flySrc.length]; data.set([s[0] + (r(2) - 0.5) * s[3], s[1] + (r(3) - 0.5) * s[3], s[2] + r(4) * 0.8, r(1) * 8, 0, 0, 0.01, r(5)], i * 8); }
-        else { s = mistSrc[(i - N.leaf - N.fly) % mistSrc.length]; data.set([s[0], s[1], s[2] + r(4) * 0.4, r(1) * 3, 0, 0, 0.2, r(5)], i * 8); }
+        else if (i < N.leaf + N.fly + N.mist) { s = mistSrc[(i - N.leaf - N.fly) % mistSrc.length]; data.set([s[0], s[1], s[2] + r(4) * 0.4, r(1) * 3, 0, 0, 0.2, r(5)], i * 8); }
+        // spray: parked (no speed, not drawn) for a staggered wait, so they leave over the first 2.8 s; seed = its
+        // spill + a fraction
+        else { const k = sprayOf[i - N.leaf - N.fly - N.mist], A = spraySrc[k]; data.set([A[0], A[1], A[2], 0.001 + r(1) * 2.8, 0, 0, 0, k / 4 + r(5) * 0.999], i * 8); }
       }
       this.partBuf = ME.buffer(this.dev, data, BU.STORAGE, "particles"); this.partInit = data; // the start state, for R.resetParticles (nothing writes into data after this)
-      const src = [...leafSrc, ...flySrc, ...mistSrc].flat();
+      const src = [...leafSrc, ...flySrc, ...mistSrc, ...spraySrc].flat();
       this.srcBuf = ME.buffer(this.dev, new Float32Array(src.length ? src : [0, 0, 0, 1]), BU.STORAGE, "particle sources");
       this.psrc = [leafSrc.length, flySrc.length, mistSrc.length];
+      this.sprayAt = leafSrc.length + flySrc.length + mistSrc.length; // the spray's first source (look4.w)
     }
 
     // Screen-size targets and the bind groups that read them.
@@ -9315,7 +9434,7 @@ fn boxOf(V: Vox) -> Box {
       u.set([...this.psrc, cam.D1 - cam.D0], O.psrc);
       u.set([E.c[0], E.R, E.top, E.dome], O.geo);
       u.set([fno % 64, 18, E.base, BLOOM_THRESHOLD], O.misc2);
-      u.set([st.light.spriteK ?? 1, s.mottle, 0, 0], O.look4);
+      u.set([st.light.spriteK ?? 1, s.mottle, this.pcount.spray, this.sprayAt], O.look4);
       u.set([st.map.W, st.map.H, this.fieldRes, 0], O.field);
       u.set(this.user, O.user);
       this.dev.queue.writeBuffer(this.ubuf, 0, u);
@@ -9367,7 +9486,7 @@ fn boxOf(V: Vox) -> Box {
         c.end(); this.sunCells += (sb[3] - sb[0] + 1) * (sb[4] - sb[1] + 1) * (sb[5] - sb[2] + 1);
       }
       // particles
-      const nP = this.pcount.leaf + this.pcount.fly + this.pcount.mist;
+      const nP = this.pcount.leaf + this.pcount.fly + this.pcount.mist + this.pcount.spray;
       let c = enc.beginComputePass({ timestampWrites: this.ts("prep") });
       if (s.particles && nP) { c.setPipeline(P.partsim); c.setBindGroup(0, g0.partsim); c.setBindGroup(1, g1.partsim); c.dispatchWorkgroups(Math.ceil(nP / 64)); }
       c.setPipeline(P.canopytex); c.setBindGroup(0, g0.canopytex); c.setBindGroup(1, g1.canopytex);
@@ -9415,6 +9534,7 @@ fn boxOf(V: Vox) -> Box {
       if (s.water && this.falls.n) {
         r.setPipeline(P.falls); r.setBindGroup(0, g0.falls); r.setBindGroup(1, g1.falls); r.setVertexBuffer(0, this.falls.vb); r.setIndexBuffer(this.falls.ib, "uint32"); r.drawIndexed(this.falls.n);
       }
+      if (s.water && s.particles && this.pcount.spray) { r.setPipeline(P.spray); r.setBindGroup(0, g0.spray); r.setBindGroup(1, g1.spray); r.draw(36, this.pcount.spray, 0, this.pcount.leaf + this.pcount.fly + this.pcount.mist); }
       if (s.water && this.bubbleN) { r.setPipeline(P.spriteAdd); r.setBindGroup(0, g0.spriteAdd); r.setBindGroup(1, g1.bubbles); r.draw(6, this.bubbleN); }
       if (s.particles && this.pcount.fly + this.pcount.mist) { r.setPipeline(P.sparks); r.setBindGroup(0, g0.sparks); r.setBindGroup(1, g1.sparks); r.draw(6, this.pcount.fly + this.pcount.mist, 0, this.pcount.leaf); }
       if (sp.nAdd) { r.setPipeline(P.spriteAdd); r.setBindGroup(0, g0.spriteAdd); r.setBindGroup(1, g1.spriteAdd); r.draw(6, sp.nAdd); }
@@ -13369,7 +13489,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "0621c98" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "9449595" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
