@@ -37,9 +37,9 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 .hbar { width: 150px; height: 12px; background: #d9d1b8; border-radius: 7px; overflow: hidden; margin-top: 3px; }
 #heartfill { height: 100%; width: 100%; background: var(--blossom); border-radius: 7px; transition: width 0.25s; }
 /* the dew gauge (the user's ask, 2026-10-26: "consolidate dew meter and counter"): one widget in the right column,
-   from under the almanac down to the turn buttons, as wide as they are. The bar (#dewbar) rises into the bank
-   (#dew), the count, which caps its foot */
-#dewgauge { position: fixed; right: calc(12px + var(--sr)); width: 54px; top: calc(120px + var(--st)); bottom: calc(22px + 104px * var(--ts) + 3 * 48px + 16px + 12px + var(--sb));
+   from under the almanac down to the wave button, as wide as the top row's buttons. The bar (#dewbar) rises into the
+   bank (#dew), the count, which caps its foot */
+#dewgauge { position: fixed; right: calc(12px + var(--sr)); width: 54px; top: calc(120px + var(--st)); bottom: calc(22px + 104px * var(--ts) + 12px + var(--sb));
   display: flex; flex-direction: column; align-items: center; pointer-events: none; }
 /* the dew bank, the gauge's cap. A well, not a button: sunk in, no bevel, no pointer. Its rim changes at the bank
    tiers (data-bank 1-3; the bar shows the level); it glows with the rate the dew comes in (data-hot 1-3). hud.js
@@ -95,6 +95,8 @@ body.alm-open #dewbar { visibility: hidden; } /* (the cap stays, under the alman
 #wave { font-size: calc(22px * var(--ts)); }
 #topright { position: fixed; right: calc(12px + var(--sr)); top: calc(12px + var(--st)); display: flex; gap: 8px; align-items: center; pointer-events: none; }
 #topright > * { pointer-events: auto; }
+/* the view buttons (the sky panel, the turns) lead the top row (the user's ask, 2026-10-26) */
+#viewctl { display: flex; gap: 8px; }
 /* the music style (menu.js: a tap cycles Ambient, Drift, Mix): the note over its name */
 #musicbtn { width: calc(78px * var(--ts)); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; line-height: 1; }
 #musicbtn .lb { font-size: calc(17px * var(--ts)); }
@@ -142,8 +144,8 @@ body.alm-open #dewbar { visibility: hidden; } /* (the cap stays, under the alman
 #boontip .rar { font-size: calc(11px * var(--ts)); text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.65; }
 
 /* the camera's turn buttons, the sky button, and the sky panel (mood and weather) beside them */
-#viewctl { position: fixed; right: calc(12px + var(--sr)); bottom: calc(22px + 104px * var(--ts) + var(--sb)); display: flex; flex-direction: column; gap: 8px; }
-#sky { position: fixed; z-index: 2; right: calc(78px + var(--sr)); bottom: calc(22px + 104px * var(--ts) + var(--sb)); width: min(420px, calc(100vw - 100px)); padding: 10px 12px; display: none; flex-direction: column; gap: 8px; }
+/* the mood and weather panel drops down under the top row from its button (atmos.js places it under ☁) */
+#sky { position: fixed; z-index: 2; right: calc(12px + var(--sr)); top: calc(68px + var(--st)); width: min(420px, calc(100vw - 24px - var(--sl) - var(--sr))); padding: 10px 12px; display: none; flex-direction: column; gap: 8px; }
 #sky.show { display: flex; }
 #sky .skyrow { display: flex; flex-direction: column; gap: 4px; }
 #sky .skyrow > b { font-size: calc(13px * var(--ts)); color: var(--moss); text-transform: uppercase; letter-spacing: 0.06em; }
@@ -206,7 +208,7 @@ body.calm .coach-spot { animation: none; }
 #inspector.open #inspbody .tomore::after { content: " ▾"; }
 /* (on a phone it sits above the garden, under the almanac, its levels and matchups folded until a tap) */
 @media (max-width: 760px) {
-  #inspector.seedinfo { top: calc(100px + var(--st)); bottom: auto; }
+  #inspector.seedinfo { top: calc(150px + var(--st)); bottom: auto; }
   #inspector.seedinfo .tomore { display: inline; }
   #inspector.seedinfo:not(.open) .more { display: none; }
 }
@@ -339,29 +341,40 @@ body.calm .coach-spot { animation: none; }
 .fail small { display: block; color: #9a967f; margin-top: 10px; }
 #log, #result { display: none; }
 
+/* (a narrow window or a phone on its side: the top row's buttons at phone size, to clear the heart panel) */
+@media (min-width: 761px) and (max-width: 920px) {
+  #topright, #viewctl { gap: 6px; }
+  #topright .btn.small { width: 44px; height: 42px; font-size: calc(17px * var(--ts)); }
+  #musicbtn .lb { font-size: calc(14px * var(--ts)); }
+  #musicbtn small { font-size: calc(8.5px * var(--ts)); letter-spacing: 0; }
+}
+
 @media (max-width: 760px) {
   #top { gap: 10px; padding: 6px 10px; border-radius: 13px; left: calc(6px + var(--sl)); top: calc(6px + var(--st)); }
   .hbar { width: 84px; }
   #hearttxt { font-size: calc(13px * var(--ts)); }
   #wave { font-size: calc(16px * var(--ts)); }
   .float.dew { font-size: calc(16px * var(--ts) * var(--k, 1)); }
-  #topright { right: calc(6px + var(--sr)); top: calc(6px + var(--st)); }
+  /* (the top row, two rows on a phone: sound, music, speed and the menu beside the heart panel, the sky and
+     the turns under them on the right) */
+  #topright { right: calc(6px + var(--sr)); top: calc(6px + var(--st)); display: grid; grid-template-columns: repeat(4, 44px); gap: 6px; }
+  #viewctl { display: contents; }
+  #topright > button { grid-row: 1; }
+  #skybtn, #turnl, #turnr { grid-row: 2; }
+  #skybtn { grid-column: 2; } #turnl { grid-column: 3; } #turnr { grid-column: 4; }
   .btn.small { width: 44px; height: 42px; font-size: calc(17px * var(--ts)); }
-  #fps { position: fixed; right: calc(8px + var(--sr)); top: calc(52px + var(--st)); margin: 0; font-size: calc(11px * var(--ts)); }
-  #almanac { top: calc(70px + var(--st)); right: calc(6px + var(--sr)); max-height: 40vh; font-size: calc(12.5px * var(--ts)); }
+  #fps { position: fixed; right: calc(8px + var(--sr)); top: calc(100px + var(--st)); margin: 0; font-size: calc(11px * var(--ts)); }
+  #almanac { top: calc(118px + var(--st)); right: calc(6px + var(--sr)); max-height: 40vh; font-size: calc(12.5px * var(--ts)); }
   #giftbox { left: calc(6px + var(--sl)); top: calc(52px + var(--st)); max-width: calc(100vw - 190px); }
   .bchip { height: 28px; min-width: 28px; padding: 0 4px; border-radius: 9px; }
   .bchip .bicon { font-size: calc(15px * var(--ts)); }
   .bchip .bicon svg { width: 15px; height: 15px; }
   #boontip { max-width: calc(100vw - 24px); font-size: calc(12.5px * var(--ts)); }
   body.alm-open #giftbox { display: none; } /* the open almanac lists the gifts */
-  #viewctl { right: calc(6px + var(--sr)); bottom: calc(30px + 184px * var(--ts) + var(--sb)); gap: 6px; }
-  /* (no room in the top row on a phone: the music button sits on top of the turn buttons, their width) */
-  #musicbtn { position: fixed; right: calc(6px + var(--sr)); bottom: calc(30px + 184px * var(--ts) + var(--sb) + 144px); width: 44px; }
+  #musicbtn { width: 44px; }
   #musicbtn .lb { font-size: calc(14px * var(--ts)); }
   #musicbtn small { font-size: calc(8.5px * var(--ts)); letter-spacing: 0; }
-  body.alm-open #musicbtn { visibility: hidden; } /* (the open almanac reaches down to it with larger text) */
-  #sky { right: calc(58px + var(--sr)); bottom: calc(30px + 184px * var(--ts) + var(--sb)); width: calc(100vw - 70px - var(--sl) - var(--sr)); padding: 8px 10px; }
+  #sky { right: calc(6px + var(--sr)); top: calc(102px + var(--st)); width: calc(100vw - 12px - var(--sl) - var(--sr)); padding: 8px 10px; }
   #sky .seg button { font-size: calc(12.5px * var(--ts)); padding: 5px 7px; }
   /* (as wide as the gap between the right-hand buttons, the music button and the turns, and their twin on the left) */
   #hint { top: auto; bottom: calc(176px + 184px * var(--ts) + var(--sb)); font-size: calc(17px * var(--ts)); width: calc(100vw - 112px - 2 * max(var(--sl), var(--sr))); }
@@ -375,9 +388,9 @@ body.calm .coach-spot { animation: none; }
   .seed .picon { width: 14px; height: 14px; right: 5px; top: 5px; }
   #wavebtn { right: calc(6px + var(--sr)); bottom: calc(20px + 128px * var(--ts) + var(--sb)); width: calc(156px * var(--ts)); white-space: nowrap; height: calc(56px * var(--ts)); font-size: calc(18px * var(--ts)); border-radius: 13px; }
   #wavebtn.early { font-size: calc(16px * var(--ts)); line-height: 1.1; }
-  /* (the dew gauge: in the turn buttons' column, their width, from under the almanac to above the music button,
-     clear of the hint on its left; the open almanac reaches down over it, so it hides with the music button) */
-  #dewgauge { right: calc(6px + var(--sr)); width: 44px; top: calc(112px + var(--st)); bottom: calc(30px + 184px * var(--ts) + var(--sb) + 144px + 42px + 12px); }
+  /* (the dew gauge: under the turn buttons, their width, from under the almanac to above the wave button,
+     clear of the hint on its left; the open almanac reaches down over it, so it hides) */
+  #dewgauge { right: calc(6px + var(--sr)); width: 44px; top: calc(160px + var(--st)); bottom: calc(30px + 184px * var(--ts) + var(--sb)); }
   body.alm-open #dewgauge { visibility: hidden; }
   #dew { padding: 5px 1px 4px; border-radius: 10px; border-width: 2px; font-size: calc(15px * var(--ts)); gap: 1px; }
   #dew small { display: none; }
@@ -498,10 +511,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     <div id="heart"><div id="hearttxt">Heart 20/20</div><div class="hbar"><div id="heartfill"></div></div></div>
     <div id="wave">Wave 0</div>
   </div>
-  <div id="topright"><span id="fps"></span><button id="sound" class="btn small" title="sound (M)"><span class="lb">♪</span></button><button id="musicbtn" class="btn small" title="music style"><span class="lb">♫</span><small id="musicname">Ambient</small></button><button id="speed" class="btn small" title="speed (F)"><span class="lb">1x</span></button><button id="pausebtn" class="btn small" title="menu (Esc)">☰</button></div>
+  <div id="topright"><span id="fps"></span><div id="viewctl"><button id="skybtn" class="btn small" title="mood and weather">☁</button><button id="turnl" class="btn small" title="turn left">↺</button><button id="turnr" class="btn small" title="turn right">↻</button></div><button id="sound" class="btn small" title="sound (M)"><span class="lb">♪</span></button><button id="musicbtn" class="btn small" title="music style"><span class="lb">♫</span><small id="musicname">Ambient</small></button><button id="speed" class="btn small" title="speed (F)"><span class="lb">1x</span></button><button id="pausebtn" class="btn small" title="menu (Esc)">☰</button></div>
   <div id="giftbox"><div id="boonbar"></div><div id="boontip" class="panel"></div></div>
   <div id="almanac"><button id="almtog">Almanac ▸</button><div id="almbody"></div></div>
-  <div id="viewctl"><button id="skybtn" class="btn small" title="mood and weather">☁</button><button id="turnl" class="btn small" title="turn left">↺</button><button id="turnr" class="btn small" title="turn right">↻</button></div>
   <div id="sky" class="panel"><div class="skyrow"><b>Mood</b><div class="seg" id="moodseg"></div></div><div class="skyrow"><b>Weather</b><div class="seg" id="wxseg"></div></div></div>
   <div id="hint">Tap a seed, then tap the meadow twice to plant it</div>
   <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspbody"></div><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div>
@@ -6327,6 +6339,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // not scanned: a random cell of a random occupied brick, kept if solid and not drawn before, so it costs about
   // max / fill draws (the full scan of the Heart Tree's bricks still took 54 ms on a phone's first heart hit,
   // warm-up probe 2026-10-26). A model too sparse for that, or a cap near its size, is scanned as before.
+  // (A seeded rnd draws differently since #335: the same seed picks other voxels than the old scan did.)
   ME.sampleVoxels = (MB, mi, max, s = 1, rnd = Math.random) => {
     const { atlas: pool, bricks, models } = MB, [PX, PY] = MB.adims, [BX, BY] = MB.bdims, PB = PX / 8;
     const m = models[mi], [bx, by, bz] = m.base, [nx, ny, nz] = m.dims, [ox, oy, oz] = m.box, out = [];
@@ -7548,7 +7561,8 @@ fn forest(uv: vec2f) -> f32 {
       }
 `]]);
 
-  // Light shafts: march the view ray between the canopy plane and the surface at half resolution. Each
+  // Light shafts: march the view ray between the canopy plane and the surface at half resolution (coarser
+  // past 1080p's pixel count: passes.js resize). Each
   // sample is lit where its sun ray passes a canopy gap (so shafts take the gaps' ragged shapes and sway
   // with them), broken into rays by a streak pattern fixed along the sun direction, shadowed by the sun
   // volume and weighted by haze that thickens towards the ground. Jittered, then a separable blur.
@@ -7590,7 +7604,8 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   let hs = textureDimensions(outT);
   if (id.x >= hs.x || id.y >= hs.y) { return; }
   let full = vec2i(textureDimensions(gD));
-  let fp = min(vec2i(id.xy) * 2, full - 1);
+  let k = i32(round(f32(full.x) / f32(hs.x))); // the target's divisor: 2, or 3+ past 1080p's pixels (passes.js)
+  let fp = min(vec2i(id.xy) * k, full - 1);
   let d = textureLoad(gD, fp, 0);
   let uv = (vec2f(fp) + 0.5) / vec2f(full);
   let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
@@ -7628,7 +7643,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   let p = vec2i(id.xy);
   if (p.x >= hs.x || p.y >= hs.y) { return; }
   let dir = select(vec2i(0, 1), vec2i(1, 0), DIRX);
-  let r = select(3, 5, u.res.x > 1200.0);
+  let r = select(3, 5, u.res.x > 1200.0 && f32(hs.x * 3) > u.res.x); // (3 on a target coarser than half)
   var acc = 0.0; var ws = 0.0;
   for (var k = -r; k <= r; k++) {
     let w = exp(-f32(k * k) / f32(r * r) * 2.0);
@@ -9429,7 +9444,11 @@ fn boxOf(V: Vox) -> Box {
       this.gE = mk("gE", "rgba16float", [w, h], RT);
       this.depth = mk("depth", "depth32float", [w, h], RT);
       this.hdr = mk("hdr", "rgba16float", [w, h], RT);
-      const hw = Math.max(1, w >> 1), hh = Math.max(1, h >> 1);
+      // the shafts' target: half resolution up to 1080p's pixel count, then a third, a quarter...: it never holds
+      // more texels than 1080p at half (960x540), so a phone at its full resolution (~2.9M pixels) marches 56% fewer
+      // rays (Engine's shaft-cost probe, 2026-10-26: 3.0 ms, 21% of the GPU frame, at Full on Fernglass)
+      const sd = (this.shaftDiv = Math.max(2, Math.ceil(Math.sqrt((w * h) / 518400) - 1e-6)));
+      const hw = Math.max(1, sd === 2 ? w >> 1 : Math.floor(w / sd)), hh = Math.max(1, sd === 2 ? h >> 1 : Math.floor(h / sd));
       this.shA = mk("shaftA", "rgba16float", [hw, hh], GU.STORAGE_BINDING | GU.TEXTURE_BINDING);
       this.shB = mk("shaftB", "rgba16float", [hw, hh], GU.STORAGE_BINDING | GU.TEXTURE_BINDING);
       this.bloom = [1, 2, 3].map((k) => mk("bloom" + k, "rgba16float", [Math.max(1, w >> k), Math.max(1, h >> k)], RT));
@@ -13580,12 +13599,14 @@ function MA_DSP() {
 <!-- the game: rules (no engine), art, view, audio, then the app -->
 <script>/* src/version.js */
 /* The game's version, shown small in the bottom-right corner of the menus and the HUD, in the boot
-   failure's details and in How to play. Semver, Game's to bump: the minor on a feature PR, the patch on a
-   fix. `commit` is the commit the build came from: tools\artifact.ps1 stamps main's short hash into the
-   one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
+   failure's details and in How to play. Semver. Each Pages deploy goes up one minor: tools\artifact.ps1
+   -Deployed stamps the next minor above both the live page's and this file's, so `v` here is only a floor
+   (no per-PR bumps; bump the major here by hand). `commit` is the commit the build came from: artifact.ps1 stamps main's
+   short hash into the one-file build, and a page run from a checkout says "dev".
+   G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "b58d311" };
+  G.VERSION = { v: "0.11.0", name: "Mossheart", commit: "202b32a" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -18614,6 +18635,17 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const show = open ?? !box.classList.contains("show");
       box.classList.toggle("show", show);
       $("skybtn") && $("skybtn").classList.toggle("on", show);
+      if (show) this.placePanel();
+    }
+    // the panel drops down under its button in the top row, its left edge at the button's (kept on screen)
+    placePanel() {
+      const box = $("sky"), btn = $("skybtn");
+      if (!box || !btn || !box.classList.contains("show")) return;
+      if (!this._placeHook) { this._placeHook = true; addEventListener("resize", () => this.placePanel()); }
+      const r = btn.getBoundingClientRect(), w = box.offsetWidth;
+      box.style.top = `${Math.round(r.bottom + 8)}px`;
+      box.style.left = `${Math.round(Math.max(6, Math.min(r.left, innerWidth - w - 6)))}px`;
+      box.style.right = "auto";
     }
     renderPanel() {
       const row = (kind, list, current, rolled, names) => list.map((v) => {
