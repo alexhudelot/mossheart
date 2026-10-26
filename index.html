@@ -36,38 +36,42 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 #hearttxt { font-size: calc(16px * var(--ts)); }
 .hbar { width: 150px; height: 12px; background: #d9d1b8; border-radius: 7px; overflow: hidden; margin-top: 3px; }
 #heartfill { height: 100%; width: 100%; background: var(--blossom); border-radius: 7px; transition: width 0.25s; }
-/* the dew bank: a seed card's size, beside the wave button (the user's ask, 2026-10-26). A well, not a button: sunk
-   in, no bevel, no pointer. Its rim changes at the bank tiers (data-bank 1-3; the dew bar, #dewbar, shows the level);
-   it glows with the rate the dew comes in (data-hot 1-3). hud.js counts it up and pulses it */
-#dew { position: fixed; right: calc(230px + var(--sr)); bottom: calc(12px + var(--sb)); width: 130px; height: calc(104px * var(--ts)); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; isolation: isolate;
-  pointer-events: none; color: var(--dewc); font-size: calc(34px * var(--ts)); font-weight: 800; line-height: 1; white-space: nowrap; transform-origin: 50% 100%;
+/* the dew gauge (the user's ask, 2026-10-26: "consolidate dew meter and counter"): one widget in the right column,
+   from under the almanac down to the turn buttons, as wide as they are. The bar (#dewbar) rises into the bank
+   (#dew), the count, which caps its foot */
+#dewgauge { position: fixed; right: calc(12px + var(--sr)); width: 54px; top: calc(120px + var(--st)); bottom: calc(22px + 104px * var(--ts) + 3 * 48px + 16px + 12px + var(--sb));
+  display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+/* the dew bank, the gauge's cap. A well, not a button: sunk in, no bevel, no pointer. Its rim changes at the bank
+   tiers (data-bank 1-3; the bar shows the level); it glows with the rate the dew comes in (data-hot 1-3). hud.js
+   counts it up and pulses it */
+#dew { position: relative; z-index: 1; flex: none; width: 100%; padding: 6px 2px 5px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; isolation: isolate;
+  pointer-events: none; color: var(--dewc); font-size: calc(21px * var(--ts)); font-weight: 800; line-height: 1; white-space: nowrap; letter-spacing: -0.02em; transform-origin: 50% 100%;
   transition: filter 0.4s, border-color 0.6s, outline-color 0.6s; }
 /* (the paper's well; a skin's board, src/art/skin.js, wins over it) */
 :where(#dew) { border-color: #8fbcd4; background: linear-gradient(#f2f6ec, #e6efe9); box-shadow: inset 0 3px 7px rgba(26, 60, 80, 0.2), var(--shadow); }
 #dew svg { width: 0.62em; height: 0.83em; flex: none; fill: currentColor; transition: filter 0.4s; }
 #dew svg .glint { fill: none; stroke: #fff; stroke-opacity: 0.7; stroke-width: 1.2; stroke-linecap: round; }
-#dew small { font-size: calc(12px * var(--ts)); font-weight: 600; color: var(--mute, #6b7560); letter-spacing: 0.06em; }
+#dew small { font-size: calc(11px * var(--ts)); font-weight: 600; color: var(--mute, #6b7560); letter-spacing: 0.06em; }
 #dew[data-hot="1"] svg { filter: drop-shadow(0 0 3px #7fd0ff); }
 #dew[data-hot="2"] svg { filter: drop-shadow(0 0 5px #9fdcff) drop-shadow(0 0 2px #fff); }
 #dew[data-hot="2"] { filter: drop-shadow(0 0 8px rgba(127, 208, 255, 0.75)); }
 #dew[data-hot="3"] svg { filter: drop-shadow(0 0 7px #bfe8ff) drop-shadow(0 0 3px #fff); }
 #dew[data-hot="3"] { filter: drop-shadow(0 0 10px rgba(140, 215, 255, 0.95)) drop-shadow(0 0 22px rgba(140, 215, 255, 0.6)); }
 #dew[data-bank="1"] { border-color: #5f9fc4; }
-#dew[data-bank="2"] { border-color: #3f86b4; outline: 2px solid rgba(255, 255, 255, 0.75); outline-offset: -7px; }
-#dew[data-bank="3"] { border-color: #d2a648; outline: 2px solid rgba(255, 236, 170, 0.9); outline-offset: -7px; }
-#dew[data-bank="3"]::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 13px;
-  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.55) 50%, transparent 65%) -130px 0 / 260px 100% no-repeat; animation: dewshine 3.2s ease-in-out infinite; }
-@keyframes dewshine { 0%, 40% { background-position: -130px 0; } 100% { background-position: 130px 0; } }
-/* the dew bar (the user's ask, 2026-10-26): a slim gauge in the right column, between the almanac and the turn
-   buttons, whose water rises with the bank (--fill, hud.js barFill: the tiers at the ticks, 30/55/80%). At each
-   tier (data-tier 1-3, Defs.DEW_TIERS) the water goes brighter and glows more: blue, cyan, white-hot, gold; the
+#dew[data-bank="2"] { border-color: #3f86b4; outline: 2px solid rgba(255, 255, 255, 0.75); outline-offset: -5px; }
+#dew[data-bank="3"] { border-color: #d2a648; outline: 2px solid rgba(255, 236, 170, 0.9); outline-offset: -5px; }
+#dew[data-bank="3"]::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 9px;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.55) 50%, transparent 65%) -60px 0 / 120px 100% no-repeat; animation: dewshine 3.2s ease-in-out infinite; }
+@keyframes dewshine { 0%, 40% { background-position: -60px 0; } 100% { background-position: 60px 0; } }
+/* the dew bar, the gauge's tube: it runs down into the cap, its water rising with the bank (--fill, hud.js
+   barFill: the tiers at the ticks, 30/55/80%). At each tier (data-tier 1-3, Defs.DEW_TIERS) the water goes brighter and glows more: blue, cyan, white-hot, gold; the
    tag beside its surface says the gifts' odds are up (Defs.DEW_LUCK). The rate's glow (data-hot) brightens it, and
    a fast gain bounces its surface and sprays droplets from it (hud.js dewPulse). The open almanac hides it */
-#dewbar { position: fixed; right: calc(30px + var(--sr)); width: 18px; /* (it takes the pointer, for its tooltip) */ top: calc(120px + var(--st)); bottom: calc(22px + 104px * var(--ts) + 3 * 48px + 16px + 12px + var(--sb));
-  border-radius: 9px; border: 2px solid rgba(26, 23, 18, 0.7); background: linear-gradient(90deg, rgba(20, 30, 36, 0.55), rgba(40, 56, 64, 0.45) 60%, rgba(20, 30, 36, 0.55));
+#dewbar { position: relative; flex: 1 1 auto; min-height: 40px; width: 18px; margin-bottom: -6px; /* (it takes the pointer, for its tooltip) */
+  border-radius: 9px 9px 0 0; border: 2px solid rgba(26, 23, 18, 0.7); background: linear-gradient(90deg, rgba(20, 30, 36, 0.55), rgba(40, 56, 64, 0.45) 60%, rgba(20, 30, 36, 0.55));
   box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.35); pointer-events: auto; transition: filter 0.4s; }
 #dewbar > * { pointer-events: none; }
-body.alm-open #dewbar { display: none; }
+body.alm-open #dewbar { visibility: hidden; } /* (the cap stays, under the almanac) */
 #dewbar .tick { position: absolute; left: -4px; right: -4px; bottom: calc(var(--at) * 100%); height: 2px; margin-bottom: -1px; z-index: 2; background: rgba(255, 255, 255, 0.55); border-radius: 1px; }
 #dewbar .fill { position: absolute; left: 1px; right: 1px; bottom: 1px; height: calc(var(--fill, 0) * (100% - 2px)); border-radius: 7px; transform-origin: 50% 100%;
   background: linear-gradient(90deg, #4f93c2, #8fd0f2 45%, #5aa5d2); border-top: 2px solid rgba(255, 255, 255, 0.75);
@@ -98,7 +102,7 @@ body.alm-open #dewbar { display: none; }
 #musicbtn:disabled { opacity: 0.6; cursor: default; }
 #fps { color: #fffd; font: calc(12px * var(--ts)) ui-monospace, Consolas, monospace; text-shadow: 0 0 4px #000; margin-right: 6px; pointer-events: none; }
 
-#almanac { position: fixed; right: calc(12px + var(--sr)); top: calc(72px + var(--st)); width: min(340px, calc(100vw - 24px)); max-height: calc(100vh - 400px); display: flex; flex-direction: column; align-items: flex-start;
+#almanac { position: fixed; right: calc(12px + var(--sr)); top: calc(72px + var(--st)); width: min(340px, calc(100vw - 24px)); max-height: calc(100vh - 460px); display: flex; flex-direction: column; align-items: flex-start;
   background: rgba(26, 23, 18, 0.78); border: 2px solid #8c6b42; border-radius: 12px; color: #ede6d1; padding: 4px 10px 6px; font-weight: 500; font-size: calc(13px * var(--ts)); }
 /* folded: a small tab with the wave and the creatures it holds */
 #almanac.closed { width: auto; max-width: calc(100vw - 24px); padding: 2px 10px; background: rgba(26, 23, 18, 0.55); border-color: #8c6b4299; }
@@ -163,7 +167,7 @@ body.coaching #hint { display: none !important; }
 body.calm .coach-spot { animation: none; }
 
 /* eight seed cards: they shrink to stay clear of the wave button, and wrap to two rows on phones */
-#seeds { position: fixed; left: calc(12px + var(--sl)); right: calc(378px + var(--sr)); /* (clear of the dew bank) */ bottom: calc(12px + var(--sb)); display: flex; gap: 8px; pointer-events: none; }
+#seeds { position: fixed; left: calc(12px + var(--sl)); right: calc(234px + var(--sr)); /* (clear of the wave button) */ bottom: calc(12px + var(--sb)); display: flex; gap: 8px; pointer-events: none; }
 .seed { position: relative; flex: 0 1 130px; min-width: 0; height: calc(104px * var(--ts)); padding: 8px 8px 6px; pointer-events: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
   font: inherit; color: var(--ink); background: var(--paper); border: 3px solid var(--acc); border-radius: 16px; box-shadow: var(--shadow); cursor: pointer; touch-action: manipulation; }
 .seed b { max-width: calc(100% - 12px); font-size: calc(14px * var(--ts)); line-height: 1.12; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -371,12 +375,13 @@ body.calm .coach-spot { animation: none; }
   .seed .picon { width: 14px; height: 14px; right: 5px; top: 5px; }
   #wavebtn { right: calc(6px + var(--sr)); bottom: calc(20px + 128px * var(--ts) + var(--sb)); width: calc(156px * var(--ts)); white-space: nowrap; height: calc(56px * var(--ts)); font-size: calc(18px * var(--ts)); border-radius: 13px; }
   #wavebtn.early { font-size: calc(16px * var(--ts)); line-height: 1.1; }
-  /* (the dew bank on the wave button's row, to its left, a seed card wide) */
-  #dew { right: calc(12px + 156px * var(--ts) + var(--sr)); bottom: calc(20px + 128px * var(--ts) + var(--sb)); width: calc((100vw - 24px - var(--sl) - var(--sr)) / 3); height: calc(56px * var(--ts));
-    flex-direction: row; gap: 0.22em; font-size: calc(24px * var(--ts)); }
+  /* (the dew gauge: in the turn buttons' column, their width, from under the almanac to above the music button,
+     clear of the hint on its left; the open almanac reaches down over it, so it hides with the music button) */
+  #dewgauge { right: calc(6px + var(--sr)); width: 44px; top: calc(112px + var(--st)); bottom: calc(30px + 184px * var(--ts) + var(--sb) + 144px + 42px + 12px); }
+  body.alm-open #dewgauge { visibility: hidden; }
+  #dew { padding: 5px 1px 4px; border-radius: 10px; border-width: 2px; font-size: calc(15px * var(--ts)); gap: 1px; }
   #dew small { display: none; }
-  /* (the dew bar: in the turn buttons' column, from under the almanac to above the music button) */
-  #dewbar { right: calc(21px + var(--sr)); width: 14px; top: calc(112px + var(--st)); bottom: calc(30px + 184px * var(--ts) + var(--sb) + 144px + 42px + 12px); }
+  #dewbar { width: 14px; margin-bottom: -5px; }
   #dewbar .luck { font-size: calc(11px * var(--ts)); padding: 1px 5px; }
   #inspector { left: calc(6px + var(--sl)); top: auto; bottom: calc(28px + 184px * var(--ts) + var(--sb)); max-height: calc(100vh - 58px - 260px * var(--ts) - var(--st) - var(--sb)); transform: none; width: min(320px, calc(100vw - 12px)); padding: 10px 12px; gap: 6px; }
   #inspector .btn { flex: none; height: 44px; font-size: calc(16px * var(--ts)); }
@@ -501,8 +506,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   <div id="hint">Tap a seed, then tap the meadow twice to plant it</div>
   <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspbody"></div><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div>
   <div id="seeds"></div>
-  <div id="dewbar" role="meter" aria-label="Dew bank" aria-valuemin="0" aria-valuenow="0"><i class="tick" style="--at: 0.3"></i><i class="tick" style="--at: 0.55"></i><i class="tick" style="--at: 0.8"></i><i class="fill"></i><b class="luck"></b></div>
-  <div id="dew" class="panel" role="status" aria-label="Dew 0"><svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 .6C4.4 3.4 1 7.2 1 10.6a5 5 0 0 0 10 0C11 7.2 7.6 3.4 6 .6z"/><path class="glint" d="M3.6 10.2a2.6 2.6 0 0 0 1.9 3.1"/></svg><b id="dewn">0</b><small>dew</small></div>
+  <div id="dewgauge"><div id="dewbar" role="meter" aria-label="Dew bank" aria-valuemin="0" aria-valuenow="0"><i class="tick" style="--at: 0.3"></i><i class="tick" style="--at: 0.55"></i><i class="tick" style="--at: 0.8"></i><i class="fill"></i><b class="luck"></b></div><div id="dew" class="panel" role="status" aria-label="Dew 0"><svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 .6C4.4 3.4 1 7.2 1 10.6a5 5 0 0 0 10 0C11 7.2 7.6 3.4 6 .6z"/><path class="glint" d="M3.6 10.2a2.6 2.6 0 0 0 1.9 3.1"/></svg><b id="dewn">0</b><small>dew</small></div></div>
   <button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button>
   <div id="boons" class="veil"><div class="col"><h2>The garden offers a gift</h2><div id="boonrow"></div></div></div>
   <div id="over" class="veil dark"><div class="panel card"><h2>The Heart Tree sleeps</h2><div class="cscroll"><p id="overtxt"></p><div id="oversum" class="oversum"></div></div><button id="again" class="btn pink">Plant anew</button></div></div>
@@ -13518,7 +13522,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "676f5cc" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "84f3295" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
