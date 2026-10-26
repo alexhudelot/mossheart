@@ -6796,7 +6796,7 @@ struct U {
   misc2: vec4f,   // frame, shaft z top, shaft z bottom, bloom threshold
   look4: vec4f,   // spriteK, moss mottling, -, -
   wind: vec4f,    // direction xy, strength, -
-  canopy3: vec4f, // canopy plane height, shaft haze height, haze base z, -
+  canopy3: vec4f, // canopy plane height, shaft haze height, haze base z, moon (0 day .. 1 night)
   water2: vec4f,  // ripple count, caustics strength, water-level grid size, -
   lgrid: vec4f,   // light grid origin xy, size wh
   field: vec4f,   // app ground maps: map size wh (tiles), field texels per tile, -
@@ -6937,9 +6937,12 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   let n = textureDimensions(outT);
   if (id.x >= n.x || id.y >= n.y) { return; }
   let q = u.shadow.xy + (vec2f(id.xy) + 0.5) / (vec2f(n) * u.shadow.z);
-  // b: the streaks inside the shafts (static along the plane, so they can live here too)
+  // b: the streaks inside the shafts (fixed along the plane, so they can live here too), with a slow
+  // shimmer that swells across the plane (not a flicker); the moon's are softer, less broken into rays
+  let t = u.vdir.w;
   let streak = 0.35 + 0.65 * sstep(0.28, 0.72, vnoise(q * 2.3)) * (0.7 + 0.3 * vnoise(q * 6.1));
-  textureStore(outT, id.xy, vec4f(canopyAt(q, u.vdir.w), streak, 1.0));
+  let shim = 0.86 + 0.14 * sin(t * 0.45 + q.x * 0.31 + 1.3 * sin(t * 0.23 + q.y * 0.27));
+  textureStore(outT, id.xy, vec4f(canopyAt(q, t), mix(streak, 0.75, 0.5 * u.canopy3.w) * shim, 1.0));
 }
 `;
 
@@ -8670,6 +8673,7 @@ fn boxOf(V: Vox) -> Box {
         shaftK: 0.13, bloomK: hd.bloom ?? 0.85, exposure: 1.0, haze: hd.haze ?? 0.06, vignette: hd.vignette ?? 0.5,
         shafts: true, water: true, particles: true, glass: true, glassK: 1, wind: true, windK: 1, grass: true, critters: true,
         sunAz: 0, sunEl: 0, scale: 1, autoScale: true, dusk: 0, cycle: 0, // dusk, cycle: src/daycycle.js
+        beamDrift: 1, moonK: 5, // the sun pools wander this far (units); the moon beams' gain at full night
       };
       this.set0 = Object.assign({}, this.set);
       this.L0 = st.L.slice();
@@ -9272,26 +9276,38 @@ fn boxOf(V: Vox) -> Box {
       u.set([...T.cdims, 0], O.cdims);
       u.set([s.shade, s.pool, s.amb, s.aoK], O.look);
       u.set([BEVEL, s.ramp ? 1 : 0, 0, s.canopy ? 1 : 0], O.look2);
-      u.set([s.debug, s.shafts ? s.shaftK : 0, s.bloomK, s.exposure], O.look3);
+      // the moon, 0 by day to 1 at night (the dusk blend, as in daycycle.js): the shafts turn pale blue-silver,
+      // fewer (every other pool fades), less streaky, and gain moonK so they still read once the dusk has
+      // dimmed shaftK (the gain comes in late, so dusk itself stays soft)
+      const dk = s.cycle > 0 ? 0.5 - 0.5 * Math.cos((time / s.cycle) * Math.PI * 2) : Math.max(0, Math.min(1, s.dusk));
+      const mt = Math.max(0, Math.min(1, (dk - 0.55) / 0.45)), moon = mt * mt * (3 - 2 * mt);
+      u.set([s.debug, s.shafts ? s.shaftK * (1 + s.moonK * moon * moon * moon) : 0, s.bloomK, s.exposure], O.look3);
       const fog = (st.hd && st.hd.fog) || [40, 32, 18];
       u.set([ME.lin(fog[0]), ME.lin(fog[1]), ME.lin(fog[2]), s.haze], O.fog);
-      const bc = (st.hd && st.hd.beamCol) || [255, 212, 146];
-      u.set([bc[0] / 255, bc[1] / 255, bc[2] / 255, s.vignette], O.beamCol);
+      const bc = (st.hd && st.hd.beamCol) || [255, 212, 146], MOON = [168, 196, 244];
+      u.set([0, 1, 2].map((k) => lerpN(bc[k], MOON[k], moon) / 255).concat(s.vignette), O.beamCol);
       const g = st.light;
       u.set([0.62, 0.38, 1.7, 3.1], O.canopy);
       u.set([0.68, 0, 0.4, Math.min(0.6, (g.soft ?? 0.16) * 2.2)], O.canopy2);
       u.set([...ME.WIND_DIR, s.wind ? s.windK : 0, 0], O.wind);
-      u.set([15, 4.5, 1.0, 0], O.canopy3);
+      u.set([15, 4.5, 1.0, moon], O.canopy3);
       u.set([this.ripples ? this.ripples.n : 0, s.water ? 1 : 0, this.wl ? this.wl.W : 0, this.wl ? this.wl.H : 0], O.water2);
       u.set(this.lgrid, O.lgrid);
       // canopy texture domain: the island projected along the sun onto the canopy plane (z = 15), with
       // room for the island's height range and the wind sway
       const E = this.ext, kL = 1 / Math.max(L[2], 0.2), lxy = Math.hypot(L[0], L[1]) * kL;
-      const cH = E.R + 1.2 + 4.2 * lxy, cx = E.c[0] + (15 - 1.5) * L[0] * kL, cy = E.c[1] + (15 - 1.5) * L[1] * kL;
+      const cH = E.R + 1.2 + s.beamDrift + 4.2 * lxy, cx = E.c[0] + (15 - 1.5) * L[0] * kL, cy = E.c[1] + (15 - 1.5) * L[1] * kL;
       u.set([cx - cH, cy - cH, 1 / (2 * cH), 0], O.shadow);
       const beams = T.beams.slice(0, 8);
       u.set([0, beams.length, g.sideK ?? 1.3, st.shadowK ?? 0.3], O.shadow2);
-      beams.forEach((b, i) => { u.set([b.x, b.y, b.z, b.r], O.beams + i * 4); u[O.beamK + i] = b.k ?? 1; });
+      // the pools (and their shafts) wander slowly through the leaves, each on its own loop of about a minute
+      // and a half; at night every other one fades out
+      const dr = s.beamDrift;
+      beams.forEach((b, i) => {
+        const ph = i * 2.39;
+        u.set([b.x + dr * Math.sin(time * 0.071 + ph), b.y + dr * 0.8 * Math.sin(time * 0.053 + ph * 1.7 + 1), b.z, b.r], O.beams + i * 4);
+        u[O.beamK + i] = (b.k ?? 1) * (i % 2 ? 1 - 0.9 * moon : 1);
+      });
       u.set([S.ids.sky, S.ids.water, S.ids.fall, S.ids.maple], O.ids);
       u.set([s.glass ? s.glassK : 0, s.water ? 1 : 0, s.particles ? 1 : 0, s.shafts ? 1 : 0], O.misc);
       u.set([this.out[0], this.out[1], 1 / this.out[0], 1 / this.out[1]], O.outres);
@@ -13353,7 +13369,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "f1d3459" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "0621c98" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
