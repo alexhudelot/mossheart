@@ -183,7 +183,25 @@ body.calm .coach-spot { animation: none; }
 .seed .picon svg, #insptitle .picon svg { width: 100%; height: 100%; display: block; }
 #insptitle .picon { display: inline-block; width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px; }
 .seed.on { background: #fffbe8; transform: translateY(-6px); box-shadow: 0 8px 14px rgba(26, 38, 13, 0.35), 0 0 0 3px #fff8 inset; }
-.seed.poor { opacity: 0.55; }
+/* a seed too dear: greyed, its cost in the short colour (the dew it lacks, hud.short, says so in a toast
+   and shakes the counter); the toast sits over the cards */
+.seed.poor { filter: grayscale(0.85); opacity: 0.6; border-color: #a9a69c; }
+.seed.poor .cost { color: #c0304a; font-weight: 800; }
+#toast { position: fixed; left: 50%; bottom: calc(12px + 104px * var(--ts) + 22px + var(--sb)); transform: translate(-50%, 8px); z-index: 4; max-width: calc(100vw - 24px - var(--sl) - var(--sr));
+  padding: 8px 14px; border-radius: 12px; background: rgba(40, 22, 30, 0.88); color: #ffd9e0; font-size: calc(17px * var(--ts)); font-weight: 800; text-align: center;
+  pointer-events: none; opacity: 0; transition: opacity 0.18s, transform 0.18s; }
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+#dew.short { animation: dewshort 0.42s; }
+@keyframes dewshort { 0%, 100% { transform: none; } 20% { transform: translateX(-5px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(3px); }
+  30% { outline: 3px solid #e0506a; } }
+/* the seed in hand over a cell (scene.ghostTag): the links it would make there, the dew it lacks */
+.ghosttag { position: absolute; left: 0; top: 0; max-width: min(340px, 72vw); padding: 5px 9px; border-radius: 10px; background: rgba(26, 38, 13, 0.78); color: #f4f1e2;
+  font-size: calc(13.5px * var(--ts)); font-weight: 600; line-height: 1.25; text-align: center; animation: tagpulse 1.6s ease-in-out infinite; }
+.ghosttag b { font-weight: 800; }
+.ghosttag i { font-style: normal; font-weight: 800; color: #cfe7ff; }
+.ghosttag i.short { color: #ffb3c0; }
+@keyframes tagpulse { 50% { opacity: 0.8; } }
+body.calm .ghosttag, body.calm #dew.short { animation: none; }
 #wavebtn { position: fixed; right: calc(12px + var(--sr)); bottom: calc(12px + var(--sb)); width: 210px; height: calc(104px * var(--ts)); font-size: calc(24px * var(--ts)); }
 /* (while a wave runs: the next one called early, Game.callEarly, with the dew it pays) */
 #wavebtn.early { border-color: var(--moss); }
@@ -384,6 +402,8 @@ body.calm .coach-spot { animation: none; }
   .seed .el { display: none; }
   .seed b { font-size: calc(12.5px * var(--ts)); max-width: calc(100% - 18px); } /* (clear of the plant's icon) */
   .seed .cost, .seed .tag { font-size: calc(11.5px * var(--ts)); }
+  #toast { bottom: calc(6px + 128px * var(--ts) + 6px + 16px + var(--sb)); font-size: calc(15px * var(--ts)); } /* (over the two rows of cards) */
+  .ghosttag { font-size: calc(12.5px * var(--ts)); }
   .seed .dot { width: 9px; height: 9px; right: 6px; top: 6px; }
   .seed .picon { width: 14px; height: 14px; right: 5px; top: 5px; }
   #wavebtn { right: calc(6px + var(--sr)); bottom: calc(20px + 128px * var(--ts) + var(--sb)); width: calc(156px * var(--ts)); white-space: nowrap; height: calc(56px * var(--ts)); font-size: calc(18px * var(--ts)); border-radius: 13px; }
@@ -518,6 +538,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   <div id="hint">Tap a seed, then tap the meadow twice to plant it</div>
   <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspbody"></div><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div>
   <div id="seeds"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
   <div id="dewgauge"><div id="dewbar" role="meter" aria-label="Dew bank" aria-valuemin="0" aria-valuenow="0"><i class="tick" style="--at: 0.3"></i><i class="tick" style="--at: 0.55"></i><i class="tick" style="--at: 0.8"></i><i class="fill"></i><b class="luck"></b></div><div id="dew" class="panel" role="status" aria-label="Dew 0"><svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 .6C4.4 3.4 1 7.2 1 10.6a5 5 0 0 0 10 0C11 7.2 7.6 3.4 6 .6z"/><path class="glint" d="M3.6 10.2a2.6 2.6 0 0 0 1.9 3.1"/></svg><b id="dewn">0</b><small>dew</small></div></div>
   <button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button>
   <div id="boons" class="veil"><div class="col"><h2>The garden offers a gift</h2><div id="boonrow"></div></div></div>
@@ -4045,19 +4066,13 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   if (ME.vsPinned) ME.setVS(ME.qn("vs", 16));
   // The densest level this device should offer. Engine's measure (2026-10-24, Mossheart's gardens on a 16 GB
   // Iris Xe laptop, cold bake and the machine's commit charge): 24 bakes in ~34 s for +0.9 GB, 32 in 50-59 s
-  // for +1.3-1.5 GB, and 40 passed +2.7 GB and stopped the run. So phones and small-memory machines get 16, the
-  // rest 32. 40 and 48 wait on a follow-up (the Architect's review of #210): the largest buffer and storage
-  // binding a bake makes (the largest is ~2.2x T.vox, not T.vox), the library's bricks against
-  // ME.poolMaxBricks, and a desktop measure. Then a discrete GPU (by the adapter's vendor, a guess: AMD makes
-  // integrated ones too) whose limits hold those sizes may get 40 or 48. The adapter is taken already, and
-  // ME.initGPU keeps the last one it saw (localStorage ME.gpuClass) for a menu that runs before the GPU starts,
-  // so the follow-up changes only this function. 64 is never a game's. ?vsmax=N overrides it (tests).
-  ME.vsCeiling = (adapter = null) => {
-    if (ME.params.has("vsmax")) return ME.qn("vsmax", 24);
-    const nav = window.navigator || {}, mem = nav.deviceMemory || 8;
-    if (/Android|iPhone|iPad|Mobile/.test(nav.userAgent || "") || mem <= 4) return 16;
-    return 32;
-  };
+  // for +1.3-1.5 GB, 40 for +2-2.7 GB (docs/decisions/2026-10-24-density-levels.md). It is 40, Ultimate, on
+  // every device, phones and small-memory machines included (the user, 2026-10-26: "Enable 40 density
+  // (ultimate)", "have 40 option available on phones as well"). A game's default stays below it, so 40 is
+  // opt-in, and a load that dies is caught by the game's own crash guard (Mossheart's menu.js starts the next
+  // boot a level coarser). 48 and 64 are never a game's. The adapter argument and ME.initGPU's ME.gpuClass stay
+  // for a later per-device tier. ?vsmax=N overrides it (tests).
+  ME.vsCeiling = (adapter = null) => (ME.params.has("vsmax") ? ME.qn("vsmax", 24) : 40);
 
   // Let the page paint between bake steps, but only every ~40 ms: each real yield costs a frame, and the
   // bake calls this often. A message-channel post is not clamped like setTimeout.
@@ -7605,7 +7620,8 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   if (id.x >= hs.x || id.y >= hs.y) { return; }
   let full = vec2i(textureDimensions(gD));
   let k = i32(round(f32(full.x) / f32(hs.x))); // the target's divisor: 2, or 3+ past 1080p's pixels (passes.js)
-  let fp = min(vec2i(id.xy) * k, full - 1);
+  // the ray at its texel's centre, where the composite reads it; k = 2 keeps the top-left pixel (desktop hashes)
+  let fp = min(vec2i(id.xy) * k + select(vec2i(0), vec2i(k / 2), k > 2), full - 1);
   let d = textureLoad(gD, fp, 0);
   let uv = (vec2f(fp) + 0.5) / vec2f(full);
   let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
@@ -8710,7 +8726,8 @@ fn boxOf(V: Vox) -> Box {
 <script>/* ../MossheartEngine/src/passes.js */
 /* Renderer: GPU resources, pipelines and the frame graph.
      particles (compute) -> G-buffer [terrain mesh | ray-marched volumes | grass | leaves]
-     -> lighting -> shafts (compute, half res) -> forward [water | falls | spray | sparks | glass] -> bloom -> composite
+     -> lighting -> shafts (compute, half res; coarser past 1080p, R.shaftDiv) -> forward [water | falls | spray | sparks | glass]
+     -> bloom -> composite
    WebGPU has no tile memory or subpasses, so each stage is its own pass; the G-buffer layout is the
    blueprint's (albedo+AO, normal+material, depth). Sun volume recomputes only when the sun moves.
 
@@ -10586,12 +10603,12 @@ fn boxOf(V: Vox) -> Box {
     if (phys) walk(phys, "phys.", 0);
     walk(R, "R.", 0);
     // render targets follow the render size (full, half, the bloom chain): those are the screen's
-    const [W, H] = R.size, screen = (m) => m.d !== "3d" && m.w && [0, 1, 2, 3, 4, 5, 6, 7].some((k) => Math.abs(m.w - (W >> k)) <= 1 && Math.abs(m.h - (H >> k)) <= 1);
+    const [W, H] = R.size, screen = (m) => m.d !== "3d" && m.w && [1, 2, 4, 8, 16, 32, 64, 128, R.shaftDiv || 2].some((d) => Math.abs(m.w - Math.floor(W / d)) <= 1 && Math.abs(m.h - Math.floor(H / d)) <= 1);
     const sum = (f) => items.filter(f).reduce((s, m) => s + m.b, 0);
     const tb = (o, d = 0, s = new Set()) => { if (!o || typeof o !== "object" || s.has(o) || d > 5) return 0; s.add(o); if (ArrayBuffer.isView(o)) return o.byteLength; let b = 0; for (const k in o) b += tb(o[k], d + 1, s); return b; };
     return {
       gpu: MBy(sum(() => true)), static: MBy(sum((m) => !m.phys && !screen(m))), screen: MBy(sum((m) => !m.phys && screen(m))), phys: MBy(sum((m) => m.phys)),
-      pool: MB.stats.poolMB, heap: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null, cache: MBy(tb({ T, mesh, MB, grass })),
+      pool: MB.stats.poolMB, shaftDiv: R.shaftDiv, heap: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null, cache: MBy(tb({ T, mesh, MB, grass })),
     };
   }
 
@@ -13606,7 +13623,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.11.0", name: "Mossheart", commit: "202b32a" };
+  G.VERSION = { v: "0.12.0", name: "Mossheart", commit: "5d076a2" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -14877,9 +14894,13 @@ function MA_DSP() {
 
     // --- building
     // (a Briar Vine grows its patch onto the road, so it needs the road within reach)
-    canPlace(kind, cx, cy) {
-      if (!this.world.isBuildable(cx, cy) || !S.canAfford(S.towerCost(D.TOWERS[kind].cost, kind)) || S.phase === G.Phase.GAME_OVER) return false;
-      return kind !== "briar" || G.Tower.patchesFor(this.world, cx + 0.5, cy + 0.5, D.TOWERS.briar.range, 1).length > 0;
+    canPlace(kind, cx, cy) { return !this.placeBlock(kind, cx, cy); }
+    // why a seed can't go there: "" (it can), "spot" (not a spot for it) or "dew" (a spot for it, too dear),
+    // so the view can say which (the dew last: a spot it can't take is never "too dear")
+    placeBlock(kind, cx, cy) {
+      if (!this.world.isBuildable(cx, cy) || S.phase === G.Phase.GAME_OVER) return "spot";
+      if (kind === "briar" && !G.Tower.patchesFor(this.world, cx + 0.5, cy + 0.5, D.TOWERS.briar.range, 1).length) return "spot";
+      return S.canAfford(S.towerCost(D.TOWERS[kind].cost, kind)) ? "" : "dew";
     }
     place(kind, cx, cy) {
       if (!this.canPlace(kind, cx, cy)) return null;
@@ -16780,8 +16801,11 @@ fn hookMark(m: u32, flash: f32, n: vec3f, lp: vec3f, hc: f32, seed: f32) -> Mark
     g.tint = vec4f(fc, max(g.tint.a, fa));
     g.emit += fc * fa * 0.6;
   }
-  if ((m & ${G.MARK.GHOST_OK}u) != 0u) { g.emit += vec3f(0.35, 1.0, 0.45) * (0.35 + 0.2 * sin(tm * 5.0)) * (0.4 + rim); }
-  if ((m & ${G.MARK.GHOST_BAD}u) != 0u) { g.emit += vec3f(1.0, 0.3, 0.25) * (0.45 + 0.2 * sin(tm * 7.0)) * (0.4 + rim); }
+  // the placement ghost: green, red where it can't go, both marks dew blue (a spot it could take, too dear)
+  let gh = m & ${G.MARK.GHOST_OK | G.MARK.GHOST_BAD}u;
+  if (gh == ${G.MARK.GHOST_OK}u) { g.emit += vec3f(0.35, 1.0, 0.45) * (0.35 + 0.2 * sin(tm * 5.0)) * (0.4 + rim); }
+  else if (gh == ${G.MARK.GHOST_BAD}u) { g.emit += vec3f(1.0, 0.3, 0.25) * (0.45 + 0.2 * sin(tm * 7.0)) * (0.4 + rim); }
+  else if (gh != 0u) { g.tint = vec4f(0.6, 0.66, 0.78, max(g.tint.a, 0.55)); g.emit += vec3f(0.4, 0.68, 1.0) * (0.4 + 0.15 * sin(tm * 3.0)) * (0.4 + rim); }
   if ((m & ${G.MARK.SELECTED}u) != 0u) { g.emit += vec3f(1.0, 0.92, 0.65) * rim * (0.9 + 0.3 * sin(tm * 3.0)); }
   return g;
 }`,
@@ -16827,7 +16851,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       col = mix(col, vec3f(1.0, 0.95, 0.75), (0.1 + 0.4 * line) * top);
     }
     if (all(cl == vec2i(u.user[0].zw))) {
-      let hc = select(vec3f(1.0, 0.35, 0.3), vec3f(0.55, 1.0, 0.5), u.user[2].w > 0.5);
+      let hc = select(select(vec3f(1.0, 0.35, 0.3), vec3f(0.5, 0.75, 1.0), u.user[2].w > 0.15), vec3f(0.55, 1.0, 0.5), u.user[2].w > 0.5); // (dew blue: too dear)
       let line = 1.0 - sstep(0.04, 0.1, edge);
       col = mix(col, hc * 1.4, (0.25 + 0.55 * line) * top);
     }
@@ -17653,11 +17677,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (o.cx * 1000 + o.cy < tw.cx * 1000 + tw.cy) continue; // each pair once
         this.vine(sp, [tw.X, tw.Y, tw.Z + 0.14], [o.X, o.Y, o.Z + 0.14], col(tw.kind), col(o.kind), t + tw.cx * 0.7 + tw.cy, 1, l.link);
       }
-      // the seed in hand, over a cell: the links it would make, fainter
+      // the seed in hand, over a cell: the links it would make, fainter and pulsing (named over the ghost, scene.ghostTag)
       const sc = this.scene, hv = sc.hover, w = game.world;
       if (sc.seed && hv && hv.cell && w.inside(hv.cell[0], hv.cell[1]) && !game.towerAt(hv.cell[0], hv.cell[1])) {
         const [X, Y, Z] = w.cellCentre(hv.cell[0], hv.cell[1]);
-        for (const l of game.linksAt(sc.seed, hv.cell[0], hv.cell[1])) this.vine(sp, [X, Y, Z + 0.14], [l.other.X, l.other.Y, l.other.Z + 0.14], col(sc.seed), col(l.other.kind), t * 1.5, 0.55, l.link);
+        for (const l of game.linksAt(sc.seed, hv.cell[0], hv.cell[1])) this.vine(sp, [X, Y, Z + 0.14], [l.other.X, l.other.Y, l.other.Z + 0.14], col(sc.seed), col(l.other.kind), t * 1.5, 0.5 + 0.25 * Math.sin(t * 4), l.link);
       }
       // poison puddles, fading as they dry
       for (const p of game.shots.puddles) sp.put(p.x, p.y, p.z + 0.04, 0.75, 0, 0, 0, K.GROUND, ...mul(POISON, 0.45 * Math.min(1, p.t)), 1);
@@ -17790,6 +17814,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 (function () {
   const G = window.MG, D = G.Defs, S = G.state, ME = window.ME;
   const K = ME.SPRITE, MARK = G.MARK, TAU = Math.PI * 2;
+  const POOR_RING = [0.55, 0.72, 0.95]; // (the reach of a seed too dear for the spot: dew blue, as its ghost)
   // a dying creature bursts into [n] of its voxels (each a terrain voxel, chunkier than the creature's own),
   // thrown at [speed] for [life] seconds; the boss also blasts the ground under it
   const BURST = { grub: [10, 1.3, 2.5], beetle: [14, 1.4, 2.5], moth: [10, 1.1, 2.5], golem: [32, 1.6, 3.5], spirit: [220, 2.2, 7],
@@ -18177,9 +18202,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
       const hv = this.hover, w = game.world;
       if (this.seed && hv && hv.cell && !game.towerAt(hv.cell[0], hv.cell[1]) && w.inside(hv.cell[0], hv.cell[1])) {
-        const ok = game.canPlace(this.seed, hv.cell[0], hv.cell[1]), [X, Y, Z] = w.cellCentre(hv.cell[0], hv.cell[1]);
-        const fr = MD.towerFrames(this.seed, 1), f = fr[Math.floor(((time * 1.1) % 1) * fr.length) % fr.length], bob = 1 + Math.sin(time * 4) * 0.03;
-        sim.put(i++, f, X, Y, Z, 0, false, [bob, bob, bob], [0, 0], 1, 0, (ok ? MARK.GHOST_OK : MARK.GHOST_BAD) | G.plantMark(this.seed), 0);
+        // (a little smaller than the plant it would be, and breathing, so it reads as a preview; tinted green,
+        // red where it can't go, dew blue where it could but the seed is too dear: both ghost marks)
+        const block = game.placeBlock(this.seed, hv.cell[0], hv.cell[1]), [X, Y, Z] = w.cellCentre(hv.cell[0], hv.cell[1]);
+        const fr = MD.towerFrames(this.seed, 1), f = fr[Math.floor(((time * 1.1) % 1) * fr.length) % fr.length], bob = 0.86 + Math.sin(time * 4) * 0.05;
+        const gm = block === "dew" ? MARK.GHOST_OK | MARK.GHOST_BAD : block ? MARK.GHOST_BAD : MARK.GHOST_OK;
+        sim.put(i++, f, X, Y, Z, 0, false, [bob, bob, bob], [0, 0], 1, 0, gm | G.plantMark(this.seed), 0);
       }
       const E = game.enemies;
       for (let k = 0; k < G.ENEMY_CAPACITY; k++) {
@@ -18239,21 +18267,52 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       sp.end();
     }
 
+    // the seed in hand over a free cell: a label over its ghost (main.js, each frame, after fx.place) with
+    // the links it would make there (Game.linksAt, as relink: name and bonus; three or more, the names),
+    // the dew it lacks, and after a touch's first tap (armed: main.js's pending) "tap again to plant"
+    ghostTag(cam, canvas) {
+      let el = this.tagEl;
+      if (!el) { el = this.tagEl = document.createElement("div"); el.className = "ghosttag"; document.getElementById("floats").appendChild(el); }
+      const game = this.game, hv = this.hover, kind = this.seed, w = game.world, c = hv && hv.cell;
+      let html = "";
+      if (kind && c && w.inside(c[0], c[1]) && !game.towerAt(c[0], c[1])) {
+        const block = game.placeBlock(kind, c[0], c[1]), seen = new Map();
+        if (block !== "spot") for (const l of game.linksAt(kind, c[0], c[1])) seen.set(l.link.id, [l.link, (seen.get(l.link.id) || [0, 0])[1] + 1, l.other.kind]);
+        const lines = [...seen.values()].map(([link, n, other]) => {
+          const art = G.LINK_ART && G.LINK_ART[link.id], col = (art && art.color) || D.TOWERS[kind].color.map((v, k) => (v + D.TOWERS[other].color[k]) / 2);
+          const name = `<b style="color:${G.css(col.map((v) => v + (1 - v) * 0.35))}">${link.name}${n > 1 ? ` ×${n}` : ""}</b>`;
+          return seen.size > 2 ? name : `${name} ${link.desc}`;
+        });
+        if (lines.length > 2) lines.splice(0, lines.length, `${lines.length} links: ${lines.join(", ")}`);
+        if (block === "dew") lines.push(`<i class="short">Need ${S.towerCost(D.TOWERS[kind].cost, kind)} dew</i>`);
+        const a = this.armed;
+        if (!block && a && a.kind === kind && a.x === c[0] && a.y === c[1]) lines.push(`<i>tap again to plant</i>`);
+        html = lines.map((s) => `<div>${s}</div>`).join("");
+      }
+      if (html !== this.tagHtml) { this.tagHtml = html; el.innerHTML = html; el.style.display = html ? "" : "none"; this.tagW = el.offsetWidth; }
+      if (!html) return;
+      const dpr = canvas.width / Math.max(1, canvas.clientWidth), [X, Y, Z] = w.cellCentre(c[0], c[1]);
+      const [sx, sy] = cam.toScreen([X, Y, Z + 1.7], canvas.width, canvas.height), h = this.tagW / 2 + 8; // (kept on the screen)
+      const x = Math.min(Math.max(sx / dpr, h), innerWidth - h);
+      el.style.transform = `translate(${x.toFixed(1)}px, ${(sy / dpr).toFixed(1)}px) translate(-50%, -100%)`;
+    }
+
     // --- overlays (shader hooks' user slots, see shaders.js) and the mood
     overlays() {
       const u = this.R.user, game = this.game, hv = this.hover, seedKind = this.seed, sel = this.selected;
       let ring = [0, 0, 0, 0], ring2 = [0, 0, 0, 0];
       if (seedKind && hv && hv.cell && game.world.inside(hv.cell[0], hv.cell[1])) {
-        this.hoverOk = game.canPlace(seedKind, hv.cell[0], hv.cell[1]);
+        const block = game.placeBlock(seedKind, hv.cell[0], hv.cell[1]);
+        this.hoverOk = !block; this.hoverPoor = block === "dew";
         const def = D.TOWERS[seedKind], r = def.range * S.mod("range_" + seedKind) * S.mod("range_all");
         ring = [hv.cell[0] + 0.5, hv.cell[1] + 0.5, r, 0.85];
-        this.ringCol = def.color;
+        this.ringCol = this.hoverPoor ? POOR_RING : def.color;
       }
       if (sel) { ring2 = [sel.X, sel.Y, sel.range(), 1]; if (!seedKind) this.ringCol = sel.def.color; }
       const cell = hv && hv.cell ? hv.cell : [-1, -1];
       u.set([1, seedKind ? 1 : 0, cell[0], cell[1]], 0);
       u.set(ring, 4);
-      u.set([...this.ringCol, this.hoverOk ? 1 : 0], 8);
+      u.set([...this.ringCol, this.hoverOk ? 1 : this.hoverPoor ? 0.3 : 0], 8); // (the cell: green, dew blue, red)
       u.set(ring2, 12);
     }
     // the garden darkens and blooms as the battle gets dramatic (world.set_mood in the Godot build), then
@@ -18837,6 +18896,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("uproot").classList.toggle("armed", armed);
     }
     clearSeed() { this.selected = ""; this.refresh(); }
+    // a seed too dear (a pick or a tap where it could go, main.js): a toast with the dew it needs and has,
+    // and the counter shakes; one toast at a time, the last one's text, silent
+    short(kind) {
+      const cost = S.towerCost(D.TOWERS[kind].cost, kind), t = $("toast"), d = $("dew");
+      t.textContent = `Need ${fmtDew(cost)} dew (you have ${fmtDew(S.dew)})`;
+      t.classList.add("show"); clearTimeout(this.toastT); this.toastT = setTimeout(() => t.classList.remove("show"), 1800);
+      d.classList.remove("short"); void d.offsetWidth; d.classList.add("short"); // (restarts the shake)
+    }
     // On a phone the open almanac folds while a plant is inspected (the two would overlap) and opens again
     // when the inspector closes; the player's choice (almOpen, kept on the device) stays as it was.
     almFolded() { return this.almOpen && !this.almOver && NARROW.matches && $("inspector").classList.contains("show"); }
@@ -19431,12 +19498,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // The crash guard. main.js marks a load (G.BAKE_KEY: its density, and whether ?vs= pinned it) before the
   // bake starts and clears the mark once the garden is up. A mark still here means the last load died on the
   // way, most likely out of memory on a phone at a fine density: this one starts a level coarser (not below
-  // 16), keeps that as the player's choice and says so. A pinned density is left as it is.
+  // 16), keeps that as the player's choice and says so. A pinned density is left as it is. A phone reporting
+  // under 8 GB that died above 24 drops straight to 24 (16 with 4 GB or less) instead of one level per crash,
+  // as each dead load there costs minutes; one reporting 8 (the cap: a 12 GB phone says 8 and runs 32) steps a
+  // level like a desktop, 40 to 32 to 24 (Orchestrator and the user, 2026-10-26, Ultimate (40) open to phones).
   G.BAKE_KEY = "mossheart.bake";
   try {
     const m = JSON.parse(localStorage.getItem(G.BAKE_KEY) || "null");
     localStorage.removeItem(G.BAKE_KEY);
-    const lower = m && !m.pinned && !ME.vsPinned ? ME.VS_LEVELS.filter((v) => v >= 16 && v < m.vs).pop() : undefined;
+    const jump = mobile && mem < 8 && m && m.vs > 24 ? (mem <= 4 ? 16 : 24) : 0;
+    const lower = m && !m.pinned && !ME.vsPinned ? jump || ME.VS_LEVELS.filter((v) => v >= 16 && v < m.vs).pop() : undefined;
     if (lower) {
       Object.assign(boot, { vs: lower, vsPicked: true }); save(boot);
       const t = document.createElement("div");
@@ -19669,7 +19740,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         choice("preset", "Preset", presets().map((k) => [k, PRESET_NAMES[k]]).concat(s.preset === "custom" ? [["custom", "Custom"]] : [])) +
         `<div class="note dim">Sets every graphics setting here at once (${presets().map((k) => { const p = presetSet(k); return PRESET_NAMES[k] + ": " + p.vs + ", " + (p.res === "full" ? "Full" : p.res + "x") + ", quality " + p.quality + (p.glass === false ? ", no glass" : ""); }).join("; ")}; the weather Subtle in all). Ultra is the default. Custom once one is changed by hand.</div>` +
         choice("vs", "Voxel density", G.vsChoices().map((v) => [v, VS_NAMES[v] || String(v)])) +
-        `<div class="note dim">Voxels per tile edge. Finer looks smoother and bakes longer (now ${vsNow}).${VS_MAX < 24 ? ` This device stops at ${VS_MAX}.` : VS_MAX > 24 ? " Extreme (32) bakes about twice as long as 24 the first time, then loads from the cache." + (VS_MAX > 32 ? " Above it, longer still, with a strong GPU and plenty of memory." : "") : ""}${mobile || mem <= 4 ? " On this device the finer ones bake slowly; if a load fails, the next one steps down a level." : ""}</div>` + vsNote +
+        `<div class="note dim">Voxels per tile edge. Finer looks smoother and bakes longer (now ${vsNow}).${VS_MAX < 24 ? ` This device stops at ${VS_MAX}.` : VS_MAX > 24 ? " Extreme (32) bakes about twice as long as 24 the first time, then loads from the cache." + (VS_MAX > 32 ? " Above it, longer still, with a strong GPU and plenty of memory." : "") : ""}${mobile && VS_MAX >= 40 ? " Ultimate (40) and above may not load on most phones." : ""}${mobile || mem <= 4 ? ` On this device the finer ones bake slowly; if a load fails, the next one ${mobile && mem < 8 ? `drops to ${mem <= 4 ? 16 : 24} (a level, from 24 or below)` : "steps down a level"}.` : ""}</div>` + vsNote +
         choice("res", "Resolution", [["full", "Full"], ["2", "2x"], ["1.5", "1.5x"], ["1", "1x"], ["0.75", "0.75x"]]) +
         `<div class="note dim">${resNote}</div>` +
         choice("quality", "Quality", [["low", "Low"], ["medium", "Medium"], ["high", "High"]]) +
@@ -22004,7 +22075,7 @@ function MG_SFX(L) {
     const t0 = ME.now();
     ME.progress("starting WebGPU", 0.01);
     // Android can drop the GPU device when the tab is backgrounded: offer a reload instead of a frozen frame
-    ME.onDeviceLost = () => { const l = document.getElementById("lost"); if (l) l.style.display = "grid"; };
+    ME.onDeviceLost = () => { G.bootDied = true; const l = document.getElementById("lost"); if (l) l.style.display = "grid"; };
     // the sound banks render (worker, or the IndexedDB cache) while the GPU starts and the bake runs; G.Audio takes the promise
     const banks = window.MA && G.SOUND_BANKS ? MA.renderBanks(G.SOUND_BANKS, { cache: !ME.qn("nocache", 0) }) : null;
     const gpu = await ME.initGPU(canvas);
@@ -22046,10 +22117,12 @@ function MG_SFX(L) {
     const bakeOpts = { walkers: false, models: G.bakeList() };
     // (no model finer than G.HERO_MAX voxels per tile edge, menu.js: 32 on phones)
     for (const k in bakeOpts.models) { const o = bakeOpts.models[k][1]; if (o && o.fine && o.fine * ME.VS > G.HERO_MAX) o.fine = G.HERO_MAX / ME.VS; }
-    // (the crash guard's mark, menu.js: cleared once the garden is up, and when the player reloads or leaves
-    // mid-bake: no pagehide comes from a tab that crashed)
+    // (the crash guard's mark, menu.js: cleared once the garden has drawn its first frames, and when the player
+    // reloads or leaves mid-bake: no pagehide comes from a tab that crashed. Not when the load died, the GPU
+    // device lost or the boot thrown (G.bootDied): a reload then is a retry and must find the mark, or a phone
+    // at 40 would retry 40 for ever, the Architect's P1 on #341)
     try { localStorage.setItem(G.BAKE_KEY, JSON.stringify({ vs: ME.VS, pinned: !!ME.vsPinned })); } catch (e) { /* storage blocked */ }
-    const leftMidBake = () => { try { localStorage.removeItem(G.BAKE_KEY); } catch (e) { /* storage blocked */ } };
+    const leftMidBake = () => { if (G.bootDied) return; try { localStorage.removeItem(G.BAKE_KEY); } catch (e) { /* storage blocked */ } };
     addEventListener("pagehide", leftMidBake);
     const key = ME.bakeCache.key(st, JSON.stringify(bakeOpts)), hit = await ME.bakeCache.get(key);
     let T, mesh, MB, grass;
@@ -22121,7 +22194,7 @@ function MG_SFX(L) {
     let game = new G.Game(level, G.body);
     scene.setGame(game);
     const bakeMs = Math.round(ME.now() - t0);
-    leftMidBake(); removeEventListener("pagehide", leftMidBake);
+    const drawn = () => { leftMidBake(); removeEventListener("pagehide", leftMidBake); };
     ME.log("READY", { bakeMs, materials: pal.names.length - 1, route: +sim.len.toFixed(1), statics: MB.statics.length, volumes: MB.stats.variants, buildable: game.world.buildCount, seed });
 
     // ------------------------------------------------------------------ camera, HUD, audio
@@ -22166,8 +22239,17 @@ function MG_SFX(L) {
     // the wave button and Space: in the build phase the next wave, while one runs the next called early
     // (Game.callEarly; the plant looked at stays selected)
     const startWave = () => { if (S.phase === G.Phase.BUILD) deselect(); game.startWave(); audio && audio.unlock(); };
+    // picking a seed (a card or a key) never plants: it drops the first tap of the two and, unless the mouse
+    // hovers the meadow, the ghost a finger left where it last tapped (an old ghost read as a plant planted
+    // by the pick, the user 2026-10-26); a seed too dear says so
+    let mouseHover = false;
+    const pickSeed = (kind) => {
+      deselect(); pending = null; scene.seed = kind;
+      if (!mouseHover) scene.hover = null;
+      if (kind && !S.canAfford(S.towerCost(D.TOWERS[kind].cost, kind))) hud.short(kind);
+    };
     const hud = new G.Hud(game, {
-      seed: (kind) => { deselect(); scene.seed = kind; pending = null; },
+      seed: (kind) => pickSeed(kind),
       startWave,
       speed: () => setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]),
       sound: () => (audio ? audio.toggle() : false),
@@ -22223,9 +22305,9 @@ function MG_SFX(L) {
     // the mouse hover is the click's preview, so it picks as the click does (a plant's leaves are that plant):
     // R.pick runs on the CPU, so once a frame at most, on the last move
     let hoverEv = null;
-    const hoverNow = () => { if (!hoverEv) return; const c = cellAt(hoverEv, { plants: true }); hoverEv = null; scene.hover = c ? { cell: c } : null; };
+    const hoverNow = () => { if (!hoverEv) return; const c = cellAt(hoverEv, { plants: true }); hoverEv = null; scene.hover = c ? { cell: c } : null; mouseHover = !!c; };
     canvas.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse" && !e.buttons) { if (!hoverEv) requestAnimationFrame(hoverNow); hoverEv = e; } });
-    canvas.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") { hoverEv = null; scene.hover = null; } }); // (a finger leaves on every lift: its ghost stays)
+    canvas.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") { hoverEv = null; scene.hover = null; mouseHover = false; } }); // (a finger leaves on every lift: its ghost stays)
     // A touch plants in two taps: the first, on a spot the seed can take, shows its ghost and reach there
     // (scene.hover) and the second, on the same spot, plants it; a tap on another spot moves the ghost. A
     // mouse plants in one click, its hover being the preview.
@@ -22233,11 +22315,13 @@ function MG_SFX(L) {
       if (S.phase === G.Phase.GAME_OVER || S.phase === G.Phase.CHOOSE_BOON) return;
       const c = cellAt(e, { plants: true }); // (a tap on a plant's leaves is that plant, as the mouse hover shows)
       if (!c) { pending = null; deselect(); return; }
-      if (e.pointerType !== "mouse") scene.hover = { cell: c };
+      if (e.pointerType !== "mouse") { scene.hover = { cell: c }; mouseHover = false; }
       const t = game.towerAt(c[0], c[1]);
       if (t) { pending = null; hud.clearSeed(); scene.seed = ""; select(t); return; }
-      const kind = hud.selected;
-      if (kind && game.canPlace(kind, c[0], c[1])) {
+      const kind = hud.selected, block = kind ? game.placeBlock(kind, c[0], c[1]) : "spot";
+      // a spot it could take but too dear: say so at once, a touch's first tap too (the ghost there is tinted)
+      if (block === "dew") { pending = null; deselect(); hud.short(kind); return; }
+      if (!block) {
         const again = pending && pending.kind === kind && pending.x === c[0] && pending.y === c[1];
         if (e.pointerType !== "mouse" && !again) { pending = { kind, x: c[0], y: c[1] }; deselect(); return; }
         pending = null;
@@ -22253,7 +22337,7 @@ function MG_SFX(L) {
       if (e.target && e.target.tagName === "INPUT") return;
       if (e.ctrlKey || e.altKey || e.metaKey) return;
       const d = ME.keys.digit(e);
-      if (d >= 1 && d <= S.plants.length) { const kind = S.plants[d - 1]; hud.selected = hud.selected === kind ? "" : kind; scene.seed = hud.selected; pending = null; deselect(); hud.refresh(); }
+      if (d >= 1 && d <= S.plants.length) { const kind = S.plants[d - 1]; hud.selected = hud.selected === kind ? "" : kind; pickSeed(hud.selected); hud.refresh(); }
       else if (ME.keys.is(e, "Space")) { e.preventDefault(); if (S.phase === G.Phase.BUILD || S.phase === G.Phase.WAVE) startWave(); }
       else if (e.key === "Escape") { pending = null; hud.clearSeed(); scene.seed = ""; deselect(); }
       else if (ME.keys.is(e, "KeyF")) document.getElementById("speed").click();
@@ -22343,6 +22427,7 @@ function MG_SFX(L) {
       const cpu = ME.now() - c0;
       cam.pan[0] -= jx; cam.pan[1] -= jy;
       scene.fx.place(cam, canvas);
+      scene.armed = pending; scene.ghostTag(cam, canvas);
       if (audio) audio.update(rdt, listener());
       fpsMeter(rdt);
       hud.setFps(perf.fps, R.set.scale);
@@ -22399,11 +22484,13 @@ function MG_SFX(L) {
         game: { wave: S.wave, enemies: game.enemies.count, towers: game.towers.length, dew: S.dew, heart: S.heartHp, corruption: +S.corruption.toFixed(3), sprites: R.sprites.nAdd + R.sprites.nAlpha, volumes: sim.count, looseVoxels: phys.spawned, dusk: +scene.dusk.toFixed(2) },
         banks: bankStats, errors: ME.errors,
       });
+      drawn();
       document.title = "SELFTEST DONE";
       return;
     }
 
-    const loop = () => { step(); if (bot) bot.afterFrame(canvas); requestAnimationFrame(loop); };
+    let frames = 0; // (the crash mark goes after the tenth frame: a phone can die on its first frames at 40)
+    const loop = () => { step(); if (++frames === 10) drawn(); if (bot) bot.afterFrame(canvas); requestAnimationFrame(loop); };
     requestAnimationFrame(loop);
     // the benchmark (the engine's src/bench.js) on a still build phase: the self-test's four plants, no wave,
     // so every run measures the same frame. While it runs it wraps R.frame and sim.update (R.frame calls
@@ -22414,6 +22501,7 @@ function MG_SFX(L) {
         .then((b) => { report(b.line); ME.showBench(b.line); }, (e) => { ME.err("BENCH", e.stack || e.message); report("BENCH failed: " + e.message); });
     }
   } catch (e) {
+    G.bootDied = true;
     ME.err("BOOT", e.stack || e.message);
     const l = document.getElementById("loading");
     l.style.display = "";
