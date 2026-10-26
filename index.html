@@ -36,7 +36,8 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 #hearttxt { font-size: calc(16px * var(--ts)); }
 .hbar { width: 150px; height: 12px; background: #d9d1b8; border-radius: 7px; overflow: hidden; margin-top: 3px; }
 #heartfill { height: 100%; width: 100%; background: var(--blossom); border-radius: 7px; transition: width 0.25s; }
-#dew { color: var(--dewc); font-size: calc(22px * var(--ts)); }
+/* the dew you hold sits on the seed bar, just above its first card, beside the prices (the user's ask, 2026-10-26) */
+#dew { position: absolute; left: 0; bottom: calc(100% + 12px); padding: 3px 14px; border-radius: 12px; white-space: nowrap; pointer-events: none; color: var(--dewc); font-size: calc(22px * var(--ts)); }
 #wave { font-size: calc(22px * var(--ts)); }
 #topright { position: fixed; right: calc(12px + var(--sr)); top: calc(12px + var(--st)); display: flex; gap: 8px; align-items: center; pointer-events: none; }
 #topright > * { pointer-events: auto; }
@@ -278,7 +279,8 @@ body.calm .coach-spot { animation: none; }
   #top { gap: 10px; padding: 6px 10px; border-radius: 13px; left: calc(6px + var(--sl)); top: calc(6px + var(--st)); }
   .hbar { width: 84px; }
   #hearttxt { font-size: calc(13px * var(--ts)); }
-  #dew, #wave { font-size: calc(16px * var(--ts)); }
+  #wave { font-size: calc(16px * var(--ts)); }
+  #dew { bottom: calc(100% + 10px); padding: 2px 10px; border-radius: 10px; font-size: calc(16px * var(--ts)); }
   #topright { right: calc(6px + var(--sr)); top: calc(6px + var(--st)); }
   .btn.small { width: 44px; height: 42px; font-size: calc(17px * var(--ts)); }
   #fps { position: fixed; right: calc(8px + var(--sr)); top: calc(52px + var(--st)); margin: 0; font-size: calc(11px * var(--ts)); }
@@ -416,7 +418,6 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 <div id="ui">
   <div id="top" class="panel">
     <div id="heart"><div id="hearttxt">Heart 20/20</div><div class="hbar"><div id="heartfill"></div></div></div>
-    <div id="dew">Dew 0</div>
     <div id="wave">Wave 0</div>
   </div>
   <div id="topright"><span id="fps"></span><button id="sound" class="btn small" title="sound (M)"><span class="lb">♪</span></button><button id="speed" class="btn small" title="speed (F)"><span class="lb">1x</span></button><button id="pausebtn" class="btn small" title="menu (Esc)">☰</button></div>
@@ -426,7 +427,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   <div id="sky" class="panel"><div class="skyrow"><b>Mood</b><div class="seg" id="moodseg"></div></div><div class="skyrow"><b>Weather</b><div class="seg" id="wxseg"></div></div></div>
   <div id="hint">Tap a seed, then tap the meadow twice to plant it</div>
   <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspbody"></div><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div>
-  <div id="seeds"></div>
+  <div id="seeds"><div id="dew" class="panel">Dew 0</div></div>
   <button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button>
   <div id="boons" class="veil"><div class="col"><h2>The garden offers a gift</h2><div id="boonrow"></div></div></div>
   <div id="over" class="veil dark"><div class="panel card"><h2>The Heart Tree sleeps</h2><div class="cscroll"><p id="overtxt"></p><div id="oversum" class="oversum"></div></div><button id="again" class="btn pink">Plant anew</button></div></div>
@@ -13277,7 +13278,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "2f477fc" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "7458da9" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
