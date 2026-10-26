@@ -7995,10 +7995,10 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     spray(i, &P, dt);
   } else {
     // plunge pools: every other particle is a spray droplet thrown up and pulled back by gravity
-    let mi = i - nLeaf - nFly; let spray = (mi & 1u) == 0u;
+    let mi = i - nLeaf - nFly; let isDrop = (mi & 1u) == 0u;
     let s = srcs[nls + nfs + mi % nms];
     if (P.p.w <= 0.0) {
-      if (spray) {
+      if (isDrop) {
         let a = rnd(i, 6.0) * 6.283; let sp = 0.2 + rnd(i, 7.0) * 0.45;
         P.p = vec4f(s.x + (rnd(i, 1.0) - 0.5) * s.w, s.y + (rnd(i, 2.0) - 0.5) * s.w, s.z + 0.03, 0.45 + rnd(i, 4.0) * 0.5);
         P.v = vec4f(cos(a) * sp, sin(a) * sp, 0.6 + rnd(i, 8.0) * 0.7, rnd(i, 5.0));
@@ -8007,7 +8007,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
         P.v = vec4f((rnd(i, 6.0) - 0.5) * 0.25, (rnd(i, 7.0) - 0.5) * 0.25, 0.16 + rnd(i, 8.0) * 0.12, rnd(i, 5.0));
       }
     } else {
-      if (spray) { P.v.z -= 3.0 * dt; }
+      if (isDrop) { P.v.z -= 3.0 * dt; }
       P.p = vec4f(P.p.xyz + P.v.xyz * dt, P.p.w);
     }
   }
@@ -8953,6 +8953,12 @@ fn boxOf(V: Vox) -> Box {
     }
     // a falls' style (its water kind's falls and spray, f.fk), today's values for plain water
     fallsLook(f) { return f.fk || (this.lookNone ??= ME.waterLook({})); }
+    // where beam i's pool sits at time: its foot point wandering on two slow sines, about a minute and a half a
+    // loop, by its own drift (b.drift, units) or R.set.beamDrift. The shaft pass and the critters both read it.
+    beamAt(i, time) {
+      const b = this.S.T.beams[i], dr = b.drift ?? this.set.beamDrift, ph = i * 2.39;
+      return [b.x + dr * Math.sin(time * 0.071 + ph), b.y + dr * 0.8 * Math.sin(time * 0.053 + ph * 1.7 + 1)];
+    }
 
     // Bubbles, for water whose look has them (water kinds' bubbles): emitters at the props the content picks
     // (ME.content.particles.bubbles), at the falls' feet and one seep per wet tile; ME.water.bubble adds one.
@@ -9426,16 +9432,15 @@ fn boxOf(V: Vox) -> Box {
       // canopy texture domain: the island projected along the sun onto the canopy plane (z = 15), with
       // room for the island's height range and the wind sway
       const E = this.ext, kL = 1 / Math.max(L[2], 0.2), lxy = Math.hypot(L[0], L[1]) * kL;
-      const cH = E.R + 1.2 + s.beamDrift + 4.2 * lxy, cx = E.c[0] + (15 - 1.5) * L[0] * kL, cy = E.c[1] + (15 - 1.5) * L[1] * kL;
+      const cH = E.R + 1.2 + T.beams.reduce((m, b) => Math.max(m, b.drift ?? 0), s.beamDrift) + 4.2 * lxy, cx = E.c[0] + (15 - 1.5) * L[0] * kL, cy = E.c[1] + (15 - 1.5) * L[1] * kL;
       u.set([cx - cH, cy - cH, 1 / (2 * cH), 0], O.shadow);
       const beams = T.beams.slice(0, 8);
       u.set([0, beams.length, g.sideK ?? 1.3, st.shadowK ?? 0.3], O.shadow2);
       // the pools (and their shafts) wander slowly through the leaves, each on its own loop of about a minute
-      // and a half; at night every other one fades out
-      const dr = s.beamDrift;
+      // and a half (beamAt); at night every other one fades out
       beams.forEach((b, i) => {
-        const ph = i * 2.39;
-        u.set([b.x + dr * Math.sin(time * 0.071 + ph), b.y + dr * 0.8 * Math.sin(time * 0.053 + ph * 1.7 + 1), b.z, b.r], O.beams + i * 4);
+        const p = this.beamAt(i, time);
+        u.set([p[0], p[1], b.z, b.r], O.beams + i * 4);
         u[O.beamK + i] = (b.k ?? 1) * (i % 2 ? 1 - 0.9 * moon : 1);
       });
       u.set([S.ids.sky, S.ids.water, S.ids.fall, S.ids.maple], O.ids);
@@ -10344,7 +10349,9 @@ fn boxOf(V: Vox) -> Box {
 /* Day and dusk: blends the lighting settings from the current (day) values toward ME.DUSK.
    set.dusk (0..1) holds a fixed blend; set.cycle (seconds, 0 = off) loops day -> dusk -> day instead.
    The day values are captured when the blend leaves 0 and again after a preset, so presets and ?set=
-   still define the day look; at dusk the emissive towers and point lights carry the scene. */
+   still define the day look; at dusk the emissive towers and point lights carry the scene.
+   At night the shaft pass multiplies shaftK by 1 + moonK·moon³ (src/passes.js; moonK 5, so x6 at full night),
+   haze and blur included: a level that raises its night shaftK gets six times that too. */
 (function () {
   const ME = window.ME;
   ME.DUSK = { shade: 0.75, amb: 0.06, pool: 0.2, shaftK: 0.05, bloomK: 1.8, exposure: 0.72, vignette: 0.8 };
@@ -11708,7 +11715,6 @@ fn boxOf(V: Vox) -> Box {
         if (w && Math.abs(w.z - this.hgt(x, y)) < 0.6) this.banks.push({ x: x + 0.5 + dx * 0.32, y: y + 0.5 + dy * 0.32, wx: x + 0.5 + dx * 0.85, wy: y + 0.5 + dy * 0.85, w });
       }
       this.lamps = lights.filter((l) => l.mat === "glow" || l.mat === "lanternPaper" || l.mat === "candle" || !l.mat); // (no mat: a map's own lights)
-      this.sunny = T.beams.map((b) => [b.x, b.y]);
       this.agents = [];
       for (const kind in COUNTS) for (let k = 0; k < COUNTS[kind]; k++) this.agents.push({ kind, k, ph: this.rnd(), seed: this.rnd() });
       // a map's own extra critters (ME.content.critterExtra by map id: Fernglass's minnow school) and the
@@ -11749,6 +11755,8 @@ fn boxOf(V: Vox) -> Box {
       return null;
     }
     anyMoss() { const c = this.cells.m[Math.floor(this.rnd() * this.cells.m.length)]; return [c[0] + 0.15 + this.rnd() * 0.7, c[1] + 0.15 + this.rnd() * 0.7]; }
+    // sun pool i where the shaft pass draws it at t (R.beamAt: the pools drift); its fixed foot without a renderer
+    sunAt(i, t) { const R = ME.app && ME.app.R, b = this.T.beams[i]; return R && R.beamAt ? R.beamAt(i, t) : [b.x, b.y]; }
     wetPoint(w) { return [w.x + 0.15 + this.rnd() * 0.7, w.y + 0.15 + this.rnd() * 0.7]; }
     threat(a, R) {
       const W = this.wpos;
@@ -11768,7 +11776,10 @@ fn boxOf(V: Vox) -> Box {
       const place = (p) => { a.x = p[0]; a.y = p[1]; a.z = this.gz(p[0], p[1]); };
       switch (a.kind) {
         case "butterfly": {
-          const s = this.sunny.length && a.k % 2 === 0 ? this.sunny[a.k % this.sunny.length] : this.anyMoss();
+          // every other one keeps to a sun pool (a.sun, its beam) and follows it as it drifts
+          const nb = this.T.beams.length;
+          if (nb && a.k % 2 === 0) a.sun = a.k % nb;
+          const s = a.sun !== undefined ? this.sunAt(a.sun, t) : this.anyMoss();
           a.home = this.spot(s[0], s[1], 0, 1.2) || [...this.anyMoss()];
           place(a.home); a.fr = this.F[["butterflyOrange", "butterflyBlue", "butterflyYellow"][a.k % 3]];
           this.go(a, "fly", null, t, 0);
@@ -11822,7 +11833,8 @@ fn boxOf(V: Vox) -> Box {
       switch (a.kind) {
         case "butterfly": {
           if (a.state === "fly" && a.to && R() < 0.35) { this.wait(a, "perch", t, 1.5 + R() * 4); a.z = a.to[2] = this.gz(a.x, a.y); break; }
-          const p = this.spot(a.home[0], a.home[1], 0, 1.6) || [a.home[0], a.home[1], this.gz(a.home[0], a.home[1])];
+          const c = a.sun !== undefined ? this.sunAt(a.sun, t) : a.home;
+          const p = this.spot(c[0], c[1], 0, 1.6) || this.spot(a.home[0], a.home[1], 0, 1.6) || [a.home[0], a.home[1], this.gz(a.home[0], a.home[1])];
           p[2] += 0.2 + R() * 0.5;
           this.go(a, "fly", p, t, 0.8 + Math.hypot(p[0] - a.x, p[1] - a.y) / 0.45);
           break;
@@ -13506,7 +13518,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "940da44" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "676f5cc" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
