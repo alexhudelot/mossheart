@@ -399,7 +399,8 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   .coach { top: auto; bottom: calc(168px + 128px * var(--ts) + var(--sb)); font-size: calc(14.5px * var(--ts)); padding: 10px 12px 8px; }
   /* (the two bottom rows: the seeds in a grid, a garden's five three over two, eight five over three, and the
      wave button in the slot after them, hud.js's --seedcols; nothing floats over the field above them) */
-  #seeds { left: calc(6px + var(--sl)); right: calc(6px + var(--sr)); bottom: calc(6px + var(--sb)); gap: 6px; display: grid; grid-template-columns: repeat(var(--seedcols, 3), minmax(0, 1fr)); }
+  #seeds { left: calc(6px + var(--sl)); right: calc(6px + var(--sr)); bottom: calc(6px + var(--sb)); gap: 6px; display: grid; grid-template-columns: repeat(var(--seedcols, 3), minmax(0, 1fr));
+    grid-template-rows: repeat(2, calc(64px * var(--ts))); } /* (always two rows: three plants filled only one, the wave button's, and it sat on the third) */
   .seed { height: calc(64px * var(--ts)); padding: 5px 6px 4px; border-radius: 13px; }
   .seed .el { display: none; }
   .seed b { font-size: calc(12.5px * var(--ts)); max-width: calc(100% - 18px); } /* (clear of the plant's icon) */
@@ -434,6 +435,12 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   .veil h2 { font-size: calc(24px * var(--ts)); }
   .help { display: none; }
   #version { right: calc(10px + var(--sr)); bottom: calc(13px + 128px * var(--ts) + var(--sb)); font-size: calc(9px * var(--ts)); }
+}
+/* (a narrow phone: the wave under the heart, as "Wave 1" ran under the music button at 360 px; the gifts below it) */
+@media (max-width: 400px) {
+  #top { flex-direction: column; align-items: flex-start; gap: 1px; padding: 4px 9px 5px; }
+  #wave { font-size: calc(14px * var(--ts)); line-height: 1.1; }
+  #giftbox { top: calc(74px + var(--st)); }
 }
 @media (prefers-reduced-motion: reduce) { #dew::after, #dewbar .fill, #dewbar .luck, .veil, .seed, #heartfill, #bar, .boon, .boon .aura, .boon .shine::before, .boon .rays { animation: none !important; transition: none; } }
 body.calm #dew::after, body.calm #dewbar .fill, body.calm #dewbar .luck, body.calm .veil, body.calm .seed, body.calm #heartfill, body.calm #bar, body.calm .boon, body.calm .boon .aura, body.calm .boon .shine::before, body.calm .boon .rays { animation: none !important; transition: none; } /* (the Motion setting) */
@@ -13628,7 +13635,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.13.0", name: "Mossheart", commit: "1a62dce" };
+  G.VERSION = { v: "0.14.0", name: "Mossheart", commit: "92d15a9" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -18317,11 +18324,15 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
           y = Math.max(foot, r.bottom + 6); under = true;
         }
       }
-      // (and between the safe top and the seed rows: over a top-row ghost it ran off the screen, and under a
-      // ghost near the rows it ran into the seeds and the wave button)
-      let low = sa.bottom - 6;
+      // (and between the top HUD and the seed rows: over a top-row ghost it ran off the screen or under the heart
+      // panel and the buttons above it, and under a ghost near the rows it ran into the seeds and the wave button)
+      let low = sa.bottom - 6, high = sa.top + 8;
       for (const e of [document.getElementById("seeds"), document.getElementById("wavebtn")]) if (e && e.offsetWidth) low = Math.min(low, e.getBoundingClientRect().top - 6);
-      const top = sa.top + 8 + (under ? 0 : this.tagH), bottom = low - (under ? this.tagH : 0);
+      for (const e of [document.getElementById("top"), document.getElementById("topright")]) if (e && e.offsetWidth) {
+        const r = e.getBoundingClientRect();
+        if (x + h - 8 > r.left && x - h + 8 < r.right) high = Math.max(high, r.bottom + 6);
+      }
+      const top = high + (under ? 0 : this.tagH), bottom = low - (under ? this.tagH : 0);
       y = Math.max(Math.min(y, bottom), top);
       el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, ${under ? 0 : -100}%)`;
     }
