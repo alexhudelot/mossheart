@@ -5895,30 +5895,35 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       for (let c = 0; c < PLANE; c++) { const va = s > 0 ? vox[a + c] : 0, vb = s < NZ ? vox[b + c] : 0; const m = va && !vb ? va : 0; mask[c] = m; any = any || m !== 0; }
       if (any) merge(mask, NX, NY, (i, j, w, h, c) => emit(4, c, [i, j, s], [i + w, j, s], [i + w, j + h, s], [i, j + h, s]));
     }
-    // x faces: mask over (y, z) per slice s. All slices are filled in one pass along the voxel rows
-    // (reading the grid column-wise per slice was cache-hostile), then merged slice by slice.
+    // x faces: mask over (y, z) per slice s. A slab of XS slices is filled in one pass along the voxel rows
+    // (reading the grid column-wise per slice was cache-hostile), then merged slice by slice; the slab's
+    // masks are reused (merge leaves them zero). All NX + 1 slices at once was 2 bytes a voxel (~600 MB at vs40).
     ME.progress("meshing x sides", 0.4); await ME.tick();
-    const SL = NY * ZN, xm = new Int16Array((NX + 1) * SL), xany = new Uint8Array(NX + 1);
-    for (let z = 0; z < ZN; z++) {
-      const zo = (z + kLo) * PLANE;
-      for (let y = 0; y < NY; y++) {
-        const ro = zo + y * NX, mo = y + z * NY;
-        let va = 0;
-        for (let s = 0; s <= NX; s++) {
-          const vb = s < NX ? vox[ro + s] : 0;
-          if (va !== vb && !(va && vb)) { xm[s * SL + mo] = va ? va : -vb; xany[s] = 1; }
-          va = vb;
+    const XS = 32, SL = NY * ZN, xm = new Int16Array(XS * SL), xany = new Uint8Array(XS);
+    for (let s0 = 0; s0 <= NX; s0 += XS) {
+      ME.progress("meshing x sides " + s0, 0.4 + 0.04 * (s0 / NX)); await ME.tick();
+      const s1 = Math.min(NX, s0 + XS - 1);
+      xany.fill(0);
+      for (let z = 0; z < ZN; z++) {
+        const zo = (z + kLo) * PLANE;
+        for (let y = 0; y < NY; y++) {
+          const ro = zo + y * NX, mo = y + z * NY;
+          let va = s0 > 0 ? vox[ro + s0 - 1] : 0;
+          for (let s = s0; s <= s1; s++) {
+            const vb = s < NX ? vox[ro + s] : 0;
+            if (va !== vb && !(va && vb)) { xm[(s - s0) * SL + mo] = va ? va : -vb; xany[s - s0] = 1; }
+            va = vb;
+          }
         }
       }
-    }
-    for (let s = 0; s <= NX; s++) {
-      if ((s & 31) === 0) { ME.progress("meshing x sides " + s, 0.4 + 0.04 * (s / NX)); await ME.tick(); }
-      mask = xm.subarray(s * SL, (s + 1) * SL);
-      if (xany[s]) merge(mask, NY, ZN, (i, j, w, h, c) => {
-        const z0 = j + kLo, z1 = z0 + h;
-        if (c > 0) emit(0, c, [s, i, z0], [s, i + w, z0], [s, i + w, z1], [s, i, z1]);
-        else emit(1, -c, [s, i, z0], [s, i + w, z0], [s, i + w, z1], [s, i, z1]);
-      });
+      for (let s = s0; s <= s1; s++) {
+        mask = xm.subarray((s - s0) * SL, (s - s0 + 1) * SL);
+        if (xany[s - s0]) merge(mask, NY, ZN, (i, j, w, h, c) => {
+          const z0 = j + kLo, z1 = z0 + h;
+          if (c > 0) emit(0, c, [s, i, z0], [s, i + w, z0], [s, i + w, z1], [s, i, z1]);
+          else emit(1, -c, [s, i, z0], [s, i + w, z0], [s, i + w, z1], [s, i, z1]);
+        });
+      }
     }
     // y faces: mask over (x, z)
     mask = new Int16Array(NX * ZN);
@@ -13722,7 +13727,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.17.0", name: "Mossheart", commit: "9500b6e" };
+  G.VERSION = { v: "0.18.0", name: "Mossheart", commit: "3beb78b" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
