@@ -359,7 +359,8 @@ body.calm .coach-spot { animation: none; }
   body.alm-open #musicbtn { visibility: hidden; } /* (the open almanac reaches down to it with larger text) */
   #sky { right: calc(58px + var(--sr)); bottom: calc(30px + 184px * var(--ts) + var(--sb)); width: calc(100vw - 70px - var(--sl) - var(--sr)); padding: 8px 10px; }
   #sky .seg button { font-size: calc(12.5px * var(--ts)); padding: 5px 7px; }
-  #hint { top: auto; bottom: calc(176px + 184px * var(--ts) + var(--sb)); font-size: calc(17px * var(--ts)); }
+  /* (as wide as the gap between the right-hand buttons, the music button and the turns, and their twin on the left) */
+  #hint { top: auto; bottom: calc(176px + 184px * var(--ts) + var(--sb)); font-size: calc(17px * var(--ts)); width: calc(100vw - 112px - 2 * max(var(--sl), var(--sr))); }
   .coach { top: auto; bottom: calc(176px + 184px * var(--ts) + var(--sb)); font-size: calc(14.5px * var(--ts)); padding: 10px 12px 8px; }
   #seeds { left: calc(6px + var(--sl)); right: calc(6px + var(--sr)); bottom: calc(6px + var(--sb)); gap: 6px; flex-wrap: wrap; }
   .seed { flex: 1 1 calc(33.4% - 6px); height: calc(64px * var(--ts)); padding: 5px 6px 4px; border-radius: 13px; } /* (a garden's five seeds, three over two) */
@@ -13352,7 +13353,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "55a84f1" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "f5b56cc" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
