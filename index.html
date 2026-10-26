@@ -518,6 +518,9 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
    (art/star-garden.js) on canvas.stars, over its base colour (G.StarGarden.BG) until the first frame */
 .veil.void { background: #04080a; padding: 0; overflow: hidden; }
 .void .stars { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+/* the menu wisplings (view/wisplings.js): a strip along the void's bottom, under the jars, the buttons and the card */
+.wisps { position: absolute; left: var(--sl); right: var(--sr); bottom: calc(2px + var(--sb)); height: 0; z-index: 0; pointer-events: none; }
+.wisps i { position: absolute; left: 0; top: 0; background-repeat: no-repeat; image-rendering: pixelated; will-change: transform; }
 .jar { position: absolute; transform: translate(-50%, -50%); background: none; border: 0; padding: 0; cursor: pointer; border-radius: 30%; font: inherit; transition: opacity 0.5s; }
 .jar .bob { display: block; animation: bob 7s ease-in-out infinite; }
 @keyframes bob { 0%, 100% { transform: translateY(-1.6%); } 50% { transform: translateY(1.6%); } }
@@ -13761,7 +13764,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.20.0", name: "Mossheart", commit: "b13d731" };
+  G.VERSION = { v: "0.21.0", name: "Mossheart", commit: "499459e" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -19715,6 +19718,206 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 })();
 
 </script>
+<script>/* src/view/wisplings.js */
+/* Mossheart's menu wisplings (Game): Art's sprite sheets (MG.WISPLINGS, art/wisplings-sprites.js) as DOM sprites
+   along the bottom of the title and terrarium screens. They peek up out of the ground, idle and blink, hop about,
+   meet one another, and duck away from a pointer that comes close, to rise again somewhere else.
+     const w = new G.Wisplings()   .show(el | null) (the .void screen to live on) / .setCalm(bool)
+   One rAF stepped at the sheets' 12 fps, stopped while no such screen shows or the tab is hidden; with Motion
+   reduced they stand still. Every sprite faces right; scaleX(-1) about the feet's anchor faces it left. */
+(function () {
+  const G = (window.MG = window.MG || {});
+  const rnd = (a, b) => a + Math.random() * (b - a), ri = (a, b) => Math.floor(rnd(a, b + 1));
+  const SHOWN = { idle: 1, blink: 1, hop: 1 }; // (the acts a wispling stands in, open to a meet or a scare)
+  const HOP = 0.035; // (a hop's travel per tick, in frame widths)
+
+  class Wisplings {
+    constructor() {
+      this.W = G.WISPLINGS; this.host = null; this.calm = false; this.raf = 0; this.all = []; this.ptr = null;
+      if (!this.W) return;
+      this.tick = 1000 / (this.W.fps || 12);
+      this.layer = document.createElement("div");
+      this.layer.className = "wisps"; this.layer.setAttribute("aria-hidden", "true");
+      this.loop = this.loop.bind(this);
+      // a mouse is near until it moves away; a finger only for a moment after it lands
+      const point = (e) => { if (this.host) this.ptr = { x: e.clientX, y: e.clientY, until: e.pointerType === "mouse" ? Infinity : performance.now() + 700 }; };
+      window.addEventListener("pointermove", point, { passive: true });
+      window.addEventListener("pointerdown", point, { passive: true });
+      document.addEventListener("mouseleave", () => { this.ptr = null; });
+      document.addEventListener("visibilitychange", () => this.run());
+      let rs = 0;
+      window.addEventListener("resize", () => { clearTimeout(rs); rs = setTimeout(() => { if (this.host) { this.cast(); this.run(); } }, 250); });
+    }
+    show(el) {
+      if (!this.W || el === this.host) return this.run();
+      this.host = el;
+      if (el) { const st = el.querySelector(".stars"); el.insertBefore(this.layer, st ? st.nextSibling : el.firstChild); this.cast(); }
+      else this.layer.remove();
+      this.run();
+    }
+    setCalm(v) {
+      if (this.calm === !!v) return;
+      this.calm = !!v;
+      if (this.host) this.cast();
+      this.run();
+    }
+    run() {
+      const on = !!this.host && !this.calm && !document.hidden;
+      if (on && !this.raf) { this.last = performance.now(); this.raf = requestAnimationFrame(this.loop); }
+      else if (!on && this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; }
+    }
+    // a fresh troupe: 48 px frames on a phone, 96 on a wider screen; one wispling per ~3 frames of width (2 to 5)
+    cast() {
+      this.size = innerWidth < 700 || innerHeight < 560 ? 48 : 96;
+      this.w = this.layer.clientWidth || innerWidth;
+      this.gap = this.size * 0.62; // (two wisplings meet this far apart)
+      const n = Math.max(2, Math.min(5, Math.floor(this.w / (this.size * 3.2))));
+      const names = this.W.order.slice().sort(() => Math.random() - 0.5);
+      this.layer.textContent = ""; this.all = []; this.fence(); this.fenceT = 0;
+      for (let i = 0; i < n; i++) {
+        const a = { el: document.createElement("i"), x: (i + 0.5 + rnd(-0.2, 0.2)) * this.w / n, dir: Math.random() < 0.5 ? 1 : -1, act: "", f: 0, wait: 6 + i * ri(8, 20), meet: null, away: 0 };
+        this.layer.appendChild(a.el); this.dress(a, names[i]); this.all.push(a);
+      }
+      // standing still: each at a free spot out of the text, or not at all
+      if (this.calm) for (const a of this.all) { const x = this.spot(a); if (x !== null) { a.x = x; a.act = "idle"; } }
+      for (const a of this.all) this.draw(a);
+    }
+    // the stretches of the strip a wispling keeps out of: the text and buttons over it (the terrariums' hint and
+    // new-garden buttons, the build tag), in layer px, widened by about half a figure
+    fence() {
+      const r = this.layer.getBoundingClientRect(), top = r.top - this.size, pad = this.size * 0.35, out = [];
+      this.ox = r.left; this.oy = r.top;
+      const els = [...(this.host ? this.host.querySelectorAll(".jfoot > *") : []), document.getElementById("version")];
+      for (const e of els) {
+        if (!e || !e.textContent.trim()) continue;
+        const b = e.getBoundingClientRect();
+        if (b.width && b.bottom > top && b.top < r.top + 2) out.push([b.left - r.left - pad, b.right - r.left + pad]);
+      }
+      this.keep = out;
+    }
+    fenced(x) { return this.keep.some((k) => x > k[0] && x < k[1]); }
+    // a free spot to rise at: out of the text, furthest from the others and the pointer (null: none free)
+    spot(a) {
+      const m = a.s.frame * 0.6, px = this.ptr && performance.now() < this.ptr.until ? this.ptr.x - this.ox : null;
+      let best = null, far = -1;
+      for (let i = 0; i < 16; i++) {
+        const x = rnd(m, this.w - m);
+        if (this.fenced(x)) continue;
+        let d = px === null ? Infinity : Math.abs(x - px) * 0.7;
+        for (const b of this.all) if (b !== a && (this.W.rows[b.act] || this.calm)) d = Math.min(d, Math.abs(b.x - x));
+        if (d > far) { far = d; best = x; }
+      }
+      return best;
+    }
+    dress(a, name) {
+      const s = this.W.variants[name][this.size], st = a.el.style, rows = Object.keys(this.W.rows).length;
+      a.name = name; a.s = s;
+      st.width = st.height = s.frame + "px";
+      st.backgroundImage = `url("${s.sheet}")`;
+      st.backgroundSize = `${this.W.cols * s.frame}px ${rows * s.frame}px`;
+      st.transformOrigin = `${s.anchor[0]}px ${s.anchor[1]}px`;
+    }
+    draw(a) {
+      const R = this.W.rows[a.act], s = a.s, st = a.el.style;
+      st.visibility = R ? "" : "hidden";
+      if (!R) return;
+      st.backgroundPosition = `${-a.f * s.frame}px ${-R.row * s.frame}px`;
+      st.transform = `translate(${Math.round(a.x - s.anchor[0])}px, ${-s.anchor[1]}px) scaleX(${a.dir})`;
+    }
+    loop(now) {
+      this.raf = requestAnimationFrame(this.loop);
+      let k = Math.floor((now - this.last) / this.tick);
+      if (k <= 0) return;
+      this.last = k > 3 ? now : this.last + k * this.tick; // (after a stall: carry on, no catching up)
+      k = Math.min(k, 3);
+      const r = this.layer.getBoundingClientRect(); this.ox = r.left; this.oy = r.top;
+      if (++this.fenceT % 12 === 0) this.fence(); // (once a second: the hint's text changes as the ring turns)
+      while (k--) for (const a of this.all) this.step(a);
+      for (const a of this.all) this.draw(a);
+    }
+    // a pointer over the figure (its middle, about a height around) sends it under
+    near(a) {
+      const p = this.ptr;
+      if (!p || performance.now() > p.until) return false;
+      return Math.hypot(p.x - (this.ox + a.x), p.y - (this.oy - a.s.height / 2)) < a.s.height * 0.9;
+    }
+    step(a) {
+      const R = this.W.rows[a.act];
+      if (!R) { if (--a.wait <= 0) this.rise(a); return; }
+      if (SHOWN[a.act] && this.near(a)) return this.go(a, "duck");
+      if (a.act === "hop") {
+        // at the strip's ends and the text's edges it turns back (and gives up a meet across them)
+        const m = a.s.frame * 0.4, nx = a.x + a.dir * a.s.frame * HOP;
+        if (nx < m || nx > this.w - m || this.fenced(nx)) { a.dir = -a.dir; if (a.meet) { a.meet = null; a.wait = ri(4, 16); } }
+        else a.x = nx;
+      }
+      if (!R.loop) { if (a.f < R.n - 1) a.f++; else this.next(a); return; }
+      a.f = (a.f + 1) % R.n;
+      if (a.meet && !SHOWN[a.meet.act]) { a.meet = null; a.wait = ri(4, 16); } // (the one it went to meet has gone)
+      // a hop ends at the gap to the one it goes to meet, or to one in its way, a cycle ahead (it stops on frame 0)
+      if (a.act === "hop" && !a.f && (a.meet ? Math.abs(a.meet.x - a.x) <= this.reach(a) : this.ahead(a))) a.wait = 0;
+      if (--a.wait > 0 || a.f) return; // (a loop ends on its first frame)
+      this.next(a);
+    }
+    go(a, act) { a.act = act; a.f = 0; a.meet = null; }
+    hop(a, wait) {
+      const m = a.s.frame * 1.2;
+      if ((a.x < m && a.dir < 0) || (a.x > this.w - m && a.dir > 0)) a.dir = -a.dir;
+      this.go(a, "hop"); a.wait = wait || ri(8, 40);
+    }
+    settle(a) { this.go(a, "idle"); a.wait = ri(24, 84); }
+    // the gap plus one hop cycle's travel: a hop checked on its frame 0 stops a gap or a little more short
+    reach(a) { return this.gap + this.W.rows.hop.n * a.s.frame * HOP; }
+    // the nearest wispling standing ahead within reach
+    ahead(a) {
+      let best = null; const r = this.reach(a);
+      for (const b of this.all) { const d = (b.x - a.x) * a.dir; if (b !== a && this.W.rows[b.act] && d > 0 && d <= r && (!best || d < (best.x - a.x) * a.dir)) best = b; }
+      return best;
+    }
+    next(a) {
+      const was = a.act;
+      if (was === "duck") { this.go(a, ""); a.wait = ri(18, 72); return; }
+      if (was === "hop") {
+        const b = a.meet || this.ahead(a);
+        if (b && SHOWN[b.act] && Math.abs(b.x - a.x) <= this.reach(a) * 1.15) return this.greet(a, b);
+        if (b) a.dir = -a.dir; // (one rising or ducking there: turn back)
+        return this.settle(a);
+      }
+      if (was === "idle") {
+        if (a.away) { a.dir = a.away; a.away = 0; return this.hop(a); }
+        const r = Math.random();
+        if (r < 0.12) return this.go(a, "duck"); // (slips away, to rise again elsewhere)
+        if (r < 0.3) {
+          const b = this.all.find((b) => b !== a && b.act === "idle" && Math.abs(b.x - a.x) > this.gap * 1.5 && Math.abs(b.x - a.x) < this.w * 0.45
+            && !this.keep.some((k) => k[1] > Math.min(a.x, b.x) && k[0] < Math.max(a.x, b.x))); // (none with text between)
+          if (b) { a.dir = Math.sign(b.x - a.x); this.hop(a, 1e6); a.meet = b; return; }
+        }
+        if (r < 0.55) return this.go(a, "blink");
+        if (r < 0.65) { a.dir = -a.dir; return this.settle(a); }
+        return this.hop(a);
+      }
+      this.settle(a); // (after a peek, a blink or a greeting)
+    }
+    // two meet: face each other, blink, and the one who came hops off again after a while
+    greet(a, b) {
+      a.dir = Math.sign(b.x - a.x) || 1; b.dir = -a.dir;
+      this.go(a, "blink"); this.go(b, "blink");
+      a.away = -a.dir;
+    }
+    // up again, as any wispling not on show, at a free spot (no spot: it waits a while longer)
+    rise(a) {
+      const used = new Set(this.all.map((b) => b.name)), free = this.W.order.filter((n) => !used.has(n));
+      if (free.length && Math.random() < 0.7) this.dress(a, free[ri(0, free.length - 1)]);
+      const x = this.spot(a);
+      if (x === null) { a.wait = ri(18, 72); return; }
+      a.x = x; a.dir = Math.random() < 0.5 ? 1 : -1; a.away = 0;
+      this.go(a, "peek");
+    }
+  }
+  G.Wisplings = Wisplings;
+})();
+
+</script>
 <script>/* src/view/menu.js */
 /* Menus: the terrarium screen (view/terrariums.js), the title screen, the in-game pause menu, settings and
    how-to-play, and the screen shown when WebGPU cannot start. Settings live in localStorage
@@ -19877,6 +20080,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
           <button class="btn pink big" data-a="back">Back</button></div></div>`;
       document.body.appendChild(root);
       this.terr = new G.Terrariums(this, $("jars"));
+      this.wisps = G.Wisplings ? new G.Wisplings() : null; // (the wisplings along the title's and the terrariums' ground)
       ME.keys.onChange(() => { root.querySelector(".howto").innerHTML = HOWTO(); });
       root.addEventListener("click", (e) => { const b = e.target.closest("[data-a]"); if (b) this.action(b.dataset.a); });
       $("pausebtn").addEventListener("click", () => this.show("pause"));
@@ -19924,6 +20128,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (!tj.firstChild || tj.firstChild.dataset.id !== id) { tj.innerHTML = ""; const b = G.Terrariums.jarEl(id, 0.15); b.tabIndex = -1; b.setAttribute("aria-hidden", "true"); tj.appendChild(b); }
       }
       G.Terrariums.loop(name === "title" || name === "jars");
+      if (this.wisps) this.wisps.show(name === "title" || name === "jars" ? $(name) : null);
       this.open = name || "";
       this.app.paused = !!name;
       document.body.dataset.menu = name || "";
@@ -19987,6 +20192,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       G.flashK = calm ? 0.35 : 1; // (main.js: the heart's red flash; scene.js: the creatures' hit flashes)
       if (this.app.atmos) this.app.atmos.reduced = calm;
       document.body.classList.toggle("calm", calm);
+      if (this.wisps) this.wisps.setCalm(calm);
       document.documentElement.style.setProperty("--ts", s.text);
       if (G.Skin) G.Skin.use((ME.params.get("skin") || s.theme) === "paper" ? null : "overgrown"); // (?skin=paper|overgrown pins it, as a check or a screenshot wants)
       if (a && a.mixer) {
@@ -22533,6 +22739,7 @@ function MG_SFX(L) {
     const pickSeed = (kind) => {
       deselect(); pending = null; scene.seed = kind;
       if (!mouseHover) scene.hover = null;
+      else if (lastHover) { if (!hoverEv) requestAnimationFrame(hoverNow); hoverEv = lastHover; } // (a key or a card: the hover under a still mouse picks again, ground or leaves)
       if (kind && !S.canAfford(S.towerCost(D.TOWERS[kind].cost, kind))) hud.short(kind);
     };
     const hud = new G.Hud(game, {
@@ -22594,10 +22801,10 @@ function MG_SFX(L) {
     // (with a seed held a press is the ground tile under the pointer: a tall plant's shaft or leaves over the
     // spot behind or beside it took the press, selected that plant and dropped the seed)
     const byLeaves = () => !hud.selected;
-    let hoverEv = null;
-    const hoverNow = () => { if (!hoverEv) return; const c = cellAt(hoverEv, { plants: byLeaves() }); hoverEv = null; scene.hover = c ? { cell: c } : null; mouseHover = !!c; };
+    let hoverEv = null, lastHover = null; // (lastHover: the move the hover shows, picked again when a seed is picked or dropped)
+    const hoverNow = () => { if (!hoverEv) return; const c = cellAt(hoverEv, { plants: byLeaves() }); lastHover = hoverEv; hoverEv = null; scene.hover = c ? { cell: c } : null; mouseHover = !!c; };
     canvas.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse" && !e.buttons) { if (!hoverEv) requestAnimationFrame(hoverNow); hoverEv = e; } });
-    canvas.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") { hoverEv = null; scene.hover = null; mouseHover = false; } }); // (a finger leaves on every lift: its ghost stays)
+    canvas.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") { hoverEv = lastHover = null; scene.hover = null; mouseHover = false; } }); // (a finger leaves on every lift: its ghost stays)
     // A touch plants in two taps: the first, on a spot the seed can take, shows its ghost and reach there
     // (scene.hover) and the second, on the same spot, plants it; a tap on another spot moves the ghost. A
     // mouse plants in one click, its hover being the preview.
