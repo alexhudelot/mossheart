@@ -11225,7 +11225,7 @@ fn boxOf(V: Vox) -> Box {
     pondSand: ["#6a6252", "#7f7664", "#948a76", "#a89e88", "#bab19b", "#cac2ad", "#d8d1be", "#e4dfcf"],
     pondGravel: ["#4c5050", "#5c6160", "#6d7270", "#7f8381", "#909492", "#a2a5a2", "#b3b5b2", "#c3c5c1"],
     pondPebble: ["#4e463c", "#615849", "#756a58", "#897d69", "#9c907b", "#ada28e", "#bdb3a0"],
-    eelgrass: ["#86a040", 6, 0.2, 0.84, 0.2], eelgrassDk: ["#56682a", 5, 0.1, 0.52, 0.2], eelgrassLt: ["#c4d064", 5, 0.3, 0.92, 0.15],
+    eelgrass: ["#9eb040", 6, 0.24, 0.9, 0.08], eelgrassDk: ["#56682a", 5, 0.1, 0.52, 0.2], eelgrassLt: ["#c4d064", 5, 0.3, 0.92, 0.15],
     hornwort: ["#2e5c2c", 6, 0.12, 0.6, 0.25], cabomba: ["#58a048", 6, 0.18, 0.8, 0.25],
     lilyPad: ["#3f8434", 6, 0.15, 0.72, 0.25], lilyRim: ["#7a4434", 4, 0.15, 0.55, 0.1], lilyStem: ["#5e6e38", 4, 0.12, 0.55, 0.1],
     lilyPetal: ["#d89cae", "#e8b4c4", "#f2cad6", "#f8dee6", "#fcf0f4"], lilyHeart: ["#e0a428", 4, 0.3, 0.88, 0.1],
@@ -11452,25 +11452,25 @@ fn boxOf(V: Vox) -> Box {
   // keep below it; the lily pads float on it. They sway (CT.sway), and wherever a prop's base is under the
   // water the engine drives that with the current instead of the wind: slower, with no gusts.
   const POND_DEPTH = 0.45;
-  // Tape grass (eelgrass): a clump of long olive ribbons from a tuft of roots. They rise to just under the
-  // surface and trail along it with the current (o.dir, radians), as tape grass does in shallow water, so
-  // from above they read as long ribbons rather than a bush. Dark at the roots, yellow at the trailing tips.
+  // Tape grass (eelgrass): a clump of long yellow-olive ribbons from a tuft of roots. They stand nearly upright to
+  // the surface, the tips bending over along it with the current (o.dir, radians), so at vs16 they read as bright
+  // upright blades through the water rather than a dark mat on the floor. Dark at the roots, yellow at the tips.
   model("fg_eelgrass", (o = {}) => {
     const h = (i, s) => P.hash(o.seed || 1, i, 0, s), n = o.n || 7, top = POND_DEPTH - 0.03, p = [E([0, 0, 0.01], [0.11, 0.11, 0.03], "eelgrassDk", { k2: 0.02 })];
     const dir = o.dir == null ? 0.6 : o.dir;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * TAU + 0.5 * h(i, 1), c = Math.cos(a), s = Math.sin(a), r0 = 0.03 + 0.06 * h(i, 2), ph = TAU * h(i, 6);
-      const rise = top * (0.75 + 0.2 * h(i, 3)), trail = 0.2 + 0.25 * h(i, 4), td = dir + (h(i, 5) - 0.5) * 0.7, tc = Math.cos(td), ts = Math.sin(td);
+      const rise = top * (0.9 + 0.1 * h(i, 3)), trail = 0.08 + 0.12 * h(i, 4), td = dir + (h(i, 5) - 0.5) * 0.7, tc = Math.cos(td), ts = Math.sin(td);
       let q = [c * r0, s * r0, 0.01];
       const seg = (nq, ra, rb, m) => { p.push(C(q, nq, ra, rb, m)); q = nq; }; // two voxels wide at vs16, so a ribbon reads through the water
-      for (let k = 1; k <= 3; k++) {
-        const u = k / 3, d = r0 + 0.05 * u * u;
-        seg([c * d + tc * 0.06 * u ** 3, s * d + ts * 0.06 * u ** 3, 0.01 + rise * u], 0.062, 0.06, "eelgrass");
+      for (let k = 1; k <= 4; k++) { // upright, leaning a little out and down the current near the top
+        const u = k / 4, d = r0 + 0.03 * u * u;
+        seg([c * d + tc * 0.05 * u ** 3, s * d + ts * 0.05 * u ** 3, 0.01 + rise * u], 0.064, 0.062, u > 0.6 ? "eelgrassLt" : "eelgrass");
       }
       const [bx, by] = q;
-      for (let k = 1; k <= 3; k++) { // along the current, waving a little across it
-        const u = k / 3, along = trail * u, side = 0.05 * (Math.sin(ph + u * 4) - Math.sin(ph));
-        seg([bx + tc * along - ts * side, by + ts * along + tc * side, Math.min(top, 0.01 + rise + 0.04 * u)], 0.058, 0.05, k === 3 ? "eelgrassLt" : "eelgrass");
+      for (let k = 1; k <= 2; k++) { // the tip bends over along the current, waving a little across it
+        const u = k / 2, along = trail * u, side = 0.04 * (Math.sin(ph + u * 3) - Math.sin(ph));
+        seg([bx + tc * along - ts * side, by + ts * along + tc * side, Math.min(top, 0.01 + rise + 0.02 * u)], 0.06, 0.05, "eelgrassLt");
       }
     }
     return { prims: p, r: 0.62, h: top + 0.02, k: 1, detail: (x, y, z, m) => (m !== "eelgrass" ? m : z < 0.06 ? "eelgrassDk" : m) };
@@ -11770,6 +11770,16 @@ fn boxOf(V: Vox) -> Box {
     // inside the island by margin m (the jar's circle; a box frame's bounds)
     inside(x, y, m) { const g = this.T.geo, b = this.T.bounds; return g ? Math.hypot(x - g.C, y - g.C) < g.RI - m : x > b.min[0] + m && y > b.min[1] + m && x < b.max[0] - m && y < b.max[1] - m; }
     gz(x, y) { return this.T.groundAt(x, y, this.hgt(x, y) + 0.6); }
+    // the moss nearest a sun pool whose own foot has none (on water, a lane or a terrace's lip): rings out to r1,
+    // the nearest moss point clear of trunks, then a spot on its terrace round it
+    ringMoss(x, y, r1 = 2.4) {
+      for (let r = 0.3; r <= r1; r += 0.3) for (let k = 0, n = Math.ceil((TAU * r) / 0.3); k < n; k++) {
+        const a = (k / n) * TAU, px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
+        if (this.typ(px, py) !== "m" || !this.inside(px, py, 0.6) || this.trees.some((t) => Math.hypot(t.X - px, t.Y - py) < 0.3)) continue;
+        return this.spot(px, py, 0, 0.6) || [px, py, this.gz(px, py)];
+      }
+      return null;
+    }
     // a ground point near (x, y): same terrace, on moss (or lanes), clear of tree trunks, straight path
     spot(x, y, r0, r1, lanes) {
       const h = this.hgt(x, y), ok = (px, py) => { const t = this.typ(px, py); return (t === "m" || (lanes && t === "u")) && this.hgt(px, py) === h && this.inside(px, py, 0.6); };
@@ -11806,7 +11816,7 @@ fn boxOf(V: Vox) -> Box {
           const nb = this.T.beams.length;
           if (nb && a.k % 2 === 0) a.sun = a.k % nb;
           const s = a.sun !== undefined ? this.sunAt(a.sun, t) : this.anyMoss();
-          a.home = this.spot(s[0], s[1], 0, 1.2) || [...this.anyMoss()];
+          a.home = this.spot(s[0], s[1], 0, 1.2) || (a.sun !== undefined && this.ringMoss(s[0], s[1])) || [...this.anyMoss()];
           place(a.home); a.fr = this.F[["butterflyOrange", "butterflyBlue", "butterflyYellow"][a.k % 3]];
           this.go(a, "fly", null, t, 0);
           break;
@@ -11860,7 +11870,7 @@ fn boxOf(V: Vox) -> Box {
         case "butterfly": {
           if (a.state === "fly" && a.to && R() < 0.35) { this.wait(a, "perch", t, 1.5 + R() * 4); a.z = a.to[2] = this.gz(a.x, a.y); break; }
           const c = a.sun !== undefined ? this.sunAt(a.sun, t) : a.home;
-          const p = this.spot(c[0], c[1], 0, 1.6) || this.spot(a.home[0], a.home[1], 0, 1.6) || [a.home[0], a.home[1], this.gz(a.home[0], a.home[1])];
+          const p = this.spot(c[0], c[1], 0, 1.6) || (a.sun !== undefined && this.ringMoss(c[0], c[1])) || this.spot(a.home[0], a.home[1], 0, 1.6) ||[a.home[0], a.home[1], this.gz(a.home[0], a.home[1])];
           p[2] += 0.2 + R() * 0.5;
           this.go(a, "fly", p, t, 0.8 + Math.hypot(p[0] - a.x, p[1] - a.y) / 0.45);
           break;
@@ -13544,7 +13554,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "d09f8ec" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "36ac230" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -17772,12 +17782,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.selected = null; this.seed = ""; this.hover = null;
       this.hoverOk = true; this.ringCol = [1, 0.95, 0.7];
       this.upload = null; this.heartRot = 0;
-      // the sand banks' tiles (kinds in G.SAND_KINDS), splashes still to land [seconds, p, strength], each boss's last footfall
+      // the sand banks' tiles (kinds in G.SAND_KINDS), splashes still to land [seconds, p, strength], each boss's last footfall, each Root Mole's last mound step
       const map = app.st.map;
       this.banks = [];
       const TL = app.T.tiles;
       for (let y = 0; y < map.H; y++) for (let x = 0; x < map.W; x++) if (G.SAND_KINDS.has(TL.name[y * TL.W + x])) this.banks.push([x, y]);
-      this.later = []; this.footfall = new Map();
+      this.later = []; this.footfall = new Map(); this.burrow = new Map(); this.plantsDrawn = []; this.plantsFrom = 0;
       // the pots (MB.statics), the shards still flying (seconds left per pot), the frame count (draw), and
       // the frames of the last slam and the last pot (breakPots spreads them over frames)
       this.pots = this.MB.statics.filter((s) => POTS.has(s.place.name)); this.potsFlying = []; this.potWaves = []; this.potStep = new Map();
@@ -17792,7 +17802,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       // the boss comes through the rift: the banks beside it give way
       on("boss", () => { const c = this.game.world.level.path[0]; this.slam(c[0] + 0.5, c[1] + 0.5, 2.5, 0.3); });
       // (creature uids start over each wave, so the last footfalls go with the last wave)
-      on("wave_start", (e) => { this.bossWave = !!e.boss; this.footfall.clear(); });
+      on("wave_start", (e) => { this.bossWave = !!e.boss; this.footfall.clear(); this.burrow.clear(); });
       on("game_over", () => this.fellHeart());
       on("fire", (e) => {
         const a = this.anim.get(e.tower);
@@ -17820,7 +17830,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.heartStage = 0; this.bossWave = false; this.beat.t = -1e9; this.beat.hit = false;
       // every loose voxel goes, and the sand banks are as they were baked (dug sand stays within a run)
       this.phys.clear(); this.phys.resetTerrain();
-      this.later = []; this.footfall.clear();
+      this.later = []; this.footfall.clear(); this.burrow.clear();
       for (const p of this.pots) p.hidden = false; // (the pots stand again)
       this.potsFlying = []; this.potWaves = []; this.potStep.clear();
       this.upload = new Uint8Array(b.w * b.h);
@@ -17993,20 +18003,35 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
     }
     // splashes landing, and the boss's footfalls: every 0.9 tiles it walks beside a bank, the sand at its
-    // feet is kicked loose (and a Root Mole under the road caves in the bank beside it)
+    // feet is kicked loose (and a Root Mole under the road caves in the bank beside it). The moles share the
+    // dig pool: one mole digs a frame and one mound heaves a frame, and the moles stop digging while the sand
+    // kept loose fills a quarter of the pool, so many moles never take the room a boss's slam needs (half)
     updateSand(dt) {
       for (const s of this.later) if ((s[0] -= dt) <= 0) this.phys.splash(s[1], s[2]);
       this.later = this.later.filter((s) => s[0] > 0);
-      const E = this.game.enemies;
+      const E = this.game.enemies, P = this.phys;
+      let heaved = false, moleDug = false;
       for (let k = 0; k < G.ENEMY_CAPACITY; k++) {
         // (and a Root Mole digging under the road: the bank beside it caves in, a smaller dig)
         const mole = E.under[k] === 1;
         if (!E.alive[k] || !(mole || E.isBoss(k))) continue;
+        // the Root Mole's burrow mound: every 0.2 of road, the road's own voxels heave up over it and heap
+        // where it passed, gone in about 2 s, so the player sees where it will come up (the look only)
+        if (mole) {
+          const st = Math.floor(E.dist[k] / 0.2), was = this.burrow.get(E.uid[k]);
+          this.burrow.set(E.uid[k], st);
+          if (was !== undefined && st !== was && !heaved) {
+            heaved = true;
+            const T = this.app.T, x = E.px[k], y = E.py[k];
+            P.explode([x, y, T.groundAt(x, y, T.O[2] + T.NZ / T.VS)], 0.12, 20, { speed: 0.35, life: 2.2 });
+          }
+        }
         const step = Math.floor(E.dist[k] / 0.9), last = this.footfall.get(E.uid[k]);
         this.footfall.set(E.uid[k], step);
         if (last === undefined || step === last) continue;
+        if (mole && (moleDug || P.keepLive + P.keepQueued >= P.capacity / 4)) continue;
         const s = this.sandNear(E.px[k], E.py[k], mole ? 1.0 : 1.4);
-        if (s) this.phys.dig(s, mole ? 0.12 : 0.16, { speed: mole ? 0.3 : 0.45 });
+        if (s) { P.dig(s, mole ? 0.12 : 0.16, { speed: mole ? 0.3 : 0.45 }); if (mole) moleDug = true; }
       }
     }
     // A boss that passes a pot breaks it into its voxels (the look only; the pots stand again next run): a
@@ -18076,7 +18101,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // --- the instance layer: the sim calls this every frame. Creatures are also points the wildlife
     // scatters from.
     writeInstances(time, sim, i) {
-      const game = this.game, MD = G.models, sel = this.selected;
+      const game = this.game, MD = G.models, sel = this.selected, i0 = i;
       const hs = this.heartStatic;
       if (hs && !hs.hidden) {
         // a hit: two beats from now (a hit during them starts them again) and the glow's flare
@@ -18089,7 +18114,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         const sx = f * (1 + SWELL[0] * v), sz = f * (1 + SWELL[1] * v);
         sim.put(i++, mi, p.X, p.Y, p.Z, p.rot ? (p.rot * Math.PI) / 2 : 0, p.flip, [sx, sx, sz], [kick, -kick * 0.6], 0, 0, MARK.HEART | (st << MARK.HEART_SHIFT), glow);
       }
+      // (the plants as drawn this frame, from the layer's instance plantsFrom: cellAt maps an R.pick hit back to its plant)
+      this.plantsFrom = i - i0; this.plantsDrawn.length = 0;
       for (const t of game.towers) {
+        this.plantsDrawn.push(t);
         const a = this.anim.get(t), sc = this.plantScale(t, a);
         const fr = MD.towerFrames(t.kind, t.level), f = fr[Math.floor((((time * 1.1 + a.phase) % 1) + 1) % 1 * fr.length) % fr.length];
         const sway = Math.sin(time * 0.9 + a.phase) * 0.025;
@@ -18225,11 +18253,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // the map cell under a canvas pixel, or null
     // (opt.plants, for a tap: through R.pick first, so a tap on a plant's leaves, above the ground behind
     // it, is that plant's tile; the view's own instances only, so a creature or a ghost in the way takes
-    // nothing)
+    // nothing; leaves hanging over a neighbour tile are their plant's, within 1 tile)
     cellAt(px, py, cam, w, h, opt = {}) {
       const R = this.R, o = opt.plants && R && R.pick && R.out;
       const hit = o && R.pick((px * o[0]) / w, (py * o[1]) / h, cam, { accept: (L) => L === this }); // (R.pick: in R.out's pixels; a hill in front hides the plant)
-      if (hit && hit.kind === "instance" && this.game.towerAt(hit.tile[0], hit.tile[1])) return hit.tile;
+      if (hit && hit.kind === "instance") {
+        // a plant's leaves are that plant's, also where they hang over a neighbour tile (within 1 tile)
+        const t = this.plantsDrawn[hit.index - this.plantsFrom];
+        if (t && this.game.towerAt(t.cx, t.cy) === t && Math.max(Math.abs(t.cx - hit.tile[0]), Math.abs(t.cy - hit.tile[1])) <= 1) return [t.cx, t.cy];
+        if (this.game.towerAt(hit.tile[0], hit.tile[1])) return hit.tile;
+      }
       const p = this.pick(px, py, cam, w, h);
       return p ? [Math.floor(p[0]), Math.floor(p[1])] : null;
     }
@@ -22124,14 +22157,18 @@ function MG_SFX(L) {
       down = null;
       if (moved < 10 && dt < 600) tap(e);
     });
-    canvas.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse" && !e.buttons) { const c = cellAt(e); scene.hover = c ? { cell: c } : null; } });
-    canvas.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") scene.hover = null; }); // (a finger leaves on every lift: its ghost stays)
+    // the mouse hover is the click's preview, so it picks as the click does (a plant's leaves are that plant):
+    // R.pick runs on the CPU, so once a frame at most, on the last move
+    let hoverEv = null;
+    const hoverNow = () => { if (!hoverEv) return; const c = cellAt(hoverEv, { plants: true }); hoverEv = null; scene.hover = c ? { cell: c } : null; };
+    canvas.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse" && !e.buttons) { if (!hoverEv) requestAnimationFrame(hoverNow); hoverEv = e; } });
+    canvas.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") { hoverEv = null; scene.hover = null; } }); // (a finger leaves on every lift: its ghost stays)
     // A touch plants in two taps: the first, on a spot the seed can take, shows its ghost and reach there
     // (scene.hover) and the second, on the same spot, plants it; a tap on another spot moves the ghost. A
     // mouse plants in one click, its hover being the preview.
     const tap = (e) => {
       if (S.phase === G.Phase.GAME_OVER || S.phase === G.Phase.CHOOSE_BOON) return;
-      const c = cellAt(e, { plants: true }); // (a tap on a plant's leaves is that plant; the hover marches the ground)
+      const c = cellAt(e, { plants: true }); // (a tap on a plant's leaves is that plant, as the mouse hover shows)
       if (!c) { pending = null; deselect(); return; }
       if (e.pointerType !== "mouse") scene.hover = { cell: c };
       const t = game.towerAt(c[0], c[1]);
