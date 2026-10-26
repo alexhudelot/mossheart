@@ -163,10 +163,49 @@ body.calm .coach-spot { animation: none; }
 .boon b { font-size: calc(21px * var(--ts)); }
 .boon span { font-weight: 500; font-size: calc(16px * var(--ts)); }
 /* boon rarity frames (common moss, rare blue ink, epic gold), the boon's icon or glyph in its colour,
-   its level and pips */
+   its level and pips; --rg the tier's glow, --rs its shine */
 .boon.r-common { border-color: #6f9a4a; }
-.boon.r-rare { border-color: #3d5f9e; box-shadow: var(--shadow), 0 0 0 3px #3d5f9e33; }
-.boon.r-epic { border-color: #d6a32e; box-shadow: var(--shadow), 0 0 18px #f2c45a88; }
+.boon.r-rare { border-color: #3d5f9e; box-shadow: var(--shadow), 0 0 0 3px #3d5f9e33; --rg: 0 0 14px 2px #5b86d6aa; --rs: #b9d0ffb0; }
+.boon.r-epic { border-color: #d6a32e; box-shadow: var(--shadow), 0 0 18px #f2c45a88; --rg: 0 0 22px 5px #f2c45acc; --rs: #fff0b0d0; }
+/* the rarity at a glance (hud.js showBoons). A ribbon over the top edge names it. Rare and up glow (.aura,
+   pulsing) and a band of light sweeps over them now and then (.shine). The cards are dealt one by one
+   (--deal): a common card rises in, rare and up turn over with a flash, epic and fused with a burst of rays
+   behind (.rays). The Motion setting and reduced motion keep the ribbon and the glow and drop the motion. */
+.boon { position: relative; isolation: isolate; animation: deal 0.42s cubic-bezier(0.2, 0.8, 0.3, 1.15) var(--deal, 0s) backwards; }
+.boon.r-rare, .boon.r-epic, .boon.r-fused { animation: flip 0.7s cubic-bezier(0.2, 0.8, 0.3, 1) var(--deal, 0s) backwards; }
+.boon .aura, .boon .shine, .boon .rays { position: absolute; z-index: -1; pointer-events: none; border-radius: inherit; }
+.boon .aura { inset: -3px; display: none; box-shadow: var(--rg); opacity: 0.8; }
+.boon.r-rare .aura, .boon.r-epic .aura, .boon.r-fused .aura { display: block; animation: auraflash 0.8s ease-out var(--deal, 0s) backwards, aura 2.6s ease-in-out calc(var(--deal, 0s) + 0.8s) infinite; }
+.boon.r-epic .aura, .boon.r-fused .aura { animation-duration: 0.8s, 1.9s; }
+.boon .shine { inset: 0; overflow: hidden; }
+.boon .shine::before { content: ""; position: absolute; inset: 0; opacity: 0; transform: translateX(-100%);
+  background: linear-gradient(105deg, transparent 30%, var(--rs, transparent) 46%, var(--rs, transparent) 54%, transparent 70%); }
+.boon.r-rare .shine::before { animation: shine 6s ease-in-out calc(var(--deal, 0s) + 0.6s) infinite; }
+.boon.r-epic .shine::before, .boon.r-fused .shine::before { animation: shine 3.8s ease-in-out calc(var(--deal, 0s) + 0.5s) infinite; }
+.boon .rays { inset: -70px -46px; border-radius: 50%; opacity: 0; animation: rays 1.3s ease-out calc(var(--deal, 0s) + 0.25s) both;
+  background: repeating-conic-gradient(from 0deg, var(--rr) 0deg 6deg, transparent 6deg 20deg);
+  -webkit-mask: radial-gradient(closest-side, #000 45%, transparent); mask: radial-gradient(closest-side, #000 45%, transparent); }
+.boon.r-epic .rays { --rr: #ffd86a; }
+.boon.r-fused .rays { --rr: #f590b6; }
+.boon .ribbon { position: absolute; z-index: 2; top: -13px; left: 50%; transform: translateX(-50%); padding: 3px 14px 2px; border-radius: 8px; pointer-events: none;
+  font: 800 calc(12px * var(--ts))/1.25 "Trebuchet MS", system-ui, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap;
+  color: #fff; background: linear-gradient(180deg, #6f9a4a, #4f7a2c); box-shadow: 0 2px 0 #0004; text-shadow: 0 1px 0 #0006; }
+.boon.r-rare .ribbon { background: linear-gradient(180deg, #5b80c4, #34538c); }
+.boon.r-epic .ribbon { color: #3a2804; text-shadow: 0 1px 0 #fff6; background: linear-gradient(180deg, #fbe08a, #e0ac34 55%, #b8861c); box-shadow: 0 2px 0 #0004, 0 0 10px #f2c45acc; }
+.boon.r-fused .ribbon { background: linear-gradient(90deg, #a03a60, #d9658f 50%, #a03a60); box-shadow: 0 0 0 2px #f2c45a, 0 2px 0 2px #0004, 0 0 12px #e2709acc; }
+.boon.r-rare .ribbon::before { content: "◆ "; }
+.boon.r-rare .ribbon::after { content: " ◆"; }
+.boon.r-epic .ribbon::before { content: "★ "; }
+.boon.r-epic .ribbon::after { content: " ★"; }
+.boon.r-fused .ribbon::before { content: "❀ "; }
+.boon.r-fused .ribbon::after { content: " ❀"; }
+@keyframes deal { from { opacity: 0; transform: translateY(28px) scale(0.94); } to { opacity: 1; transform: none; } }
+@keyframes flip { 0% { opacity: 0; transform: perspective(800px) translateY(20px) rotateY(-95deg); } 35% { opacity: 1; }
+  60% { transform: perspective(800px) rotateY(10deg) scale(1.05); filter: brightness(1.3); } 100% { opacity: 1; transform: none; filter: none; } }
+@keyframes auraflash { 0% { opacity: 0; transform: scale(1.3); } 35% { opacity: 1; transform: scale(1.06); filter: brightness(1.8); } 100% { opacity: 0.8; transform: none; } }
+@keyframes aura { 0%, 100% { opacity: 0.8; } 50% { opacity: 0.35; } }
+@keyframes shine { 0% { opacity: 0; transform: translateX(-100%); } 4% { opacity: 1; } 26% { opacity: 1; transform: translateX(100%); } 27%, 100% { opacity: 0; transform: translateX(100%); } }
+@keyframes rays { 0% { opacity: 0; transform: scale(0.4) rotate(0deg); } 30% { opacity: 1; } 100% { opacity: 0; transform: scale(1.15) rotate(50deg); } }
 .boon .bicon { font-size: calc(34px * var(--ts)); line-height: 1; color: var(--bc); text-shadow: 0 1px 0 #0003; }
 .boon .bicon svg { width: 40px; height: 40px; }
 .boon b em { font-style: normal; color: var(--bc); filter: brightness(0.7); }
@@ -179,7 +218,9 @@ body.calm .coach-spot { animation: none; }
 .gift.r-epic { box-shadow: 0 0 6px #f2c45a88; }
 /* fused boons: a double frame in blossom and gold; the hints at fusions on the other cards; the
    almanac's recipes (the parts owned in full in the boon's ink) */
-.boon.r-fused { border: 4px double #b5486e; background: linear-gradient(160deg, var(--paper) 55%, #f7dfe6); box-shadow: var(--shadow), 0 0 22px #e2709a99, 0 0 0 3px #f2c45a66; }
+.boon.r-fused { border: 4px double #b5486e; background: linear-gradient(160deg, var(--paper) 55%, #f7dfe6); box-shadow: var(--shadow), 0 0 22px #e2709a99, 0 0 0 3px #f2c45a66;
+  --rg: 0 0 24px 5px #e2709acc, 0 0 0 2px #f2c45a88; --rs: #ffd0e2d0; }
+.boon.r-fused .aura { inset: -4px; }
 .boon.r-fused .rar { text-transform: none; letter-spacing: 0; opacity: 0.85; }
 .boon .rar .have { color: var(--bc); filter: brightness(0.75); font-weight: 700; }
 .boon .hint { font-size: calc(13px * var(--ts)); font-weight: 600; color: #8a4a66; background: #f3e4ea; border-radius: 8px; padding: 2px 6px; }
@@ -269,13 +310,15 @@ body.calm .coach-spot { animation: none; }
   .boon { width: min(320px, calc(100vw - 32px)); min-height: 0; padding: 12px; gap: 6px; }
   .boon b { font-size: calc(18px * var(--ts)); }
   .boon span { font-size: calc(14px * var(--ts)); }
-  #boonrow { gap: 10px; }
+  .boon { padding-top: 16px; }
+  .boon .ribbon { top: -11px; padding: 2px 12px 1px; font-size: calc(11px * var(--ts)); }
+  #boonrow { gap: 16px; }
   .veil h2 { font-size: calc(24px * var(--ts)); }
   .help { display: none; }
   #version { right: calc(10px + var(--sr)); bottom: calc(25px + 128px * var(--ts) + var(--sb)); font-size: calc(9px * var(--ts)); }
 }
-@media (prefers-reduced-motion: reduce) { .veil, .seed, #heartfill, #bar { animation: none; transition: none; } }
-body.calm .veil, body.calm .seed, body.calm #heartfill, body.calm #bar { animation: none; transition: none; } /* (the Motion setting) */
+@media (prefers-reduced-motion: reduce) { .veil, .seed, #heartfill, #bar, .boon, .boon .aura, .boon .shine::before, .boon .rays { animation: none !important; transition: none; } }
+body.calm .veil, body.calm .seed, body.calm #heartfill, body.calm #bar, body.calm .boon, body.calm .boon .aura, body.calm .boon .shine::before, body.calm .boon .rays { animation: none !important; transition: none; } /* (the Motion setting) */
 
 /* menus (view/menu.js): title, terrariums, pause, settings, how to play; the boot failure screen */
 .menu { z-index: 10; overflow: auto; }
@@ -312,9 +355,10 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
 }
 /* the terrarium screen (view/terrariums.js) and the title over the same void: the jars on a slow ring, one
    in front, the card beside the jar (a sheet from the bottom on a phone). The card is a .panel and its
-   buttons .btn, so a menu skin dresses them; the jars carry data-orn="none" */
-.veil.void { background: radial-gradient(ellipse 70% 60% at 50% 46%, #0f1410 0%, #060705 70%); padding: 0; overflow: hidden; }
-.void .motes { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+   buttons .btn, so a menu skin dresses them; the jars carry data-orn="none". Behind them, the star garden
+   (art/star-garden.js) on canvas.stars, over its base colour (G.StarGarden.BG) until the first frame */
+.veil.void { background: #04080a; padding: 0; overflow: hidden; }
+.void .stars { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .jar { position: absolute; transform: translate(-50%, -50%); background: none; border: 0; padding: 0; cursor: pointer; border-radius: 30%; font: inherit; transition: opacity 0.5s; }
 .jar .bob { display: block; animation: bob 7s ease-in-out infinite; }
 @keyframes bob { 0%, 100% { transform: translateY(-1.6%); } 50% { transform: translateY(1.6%); } }
@@ -5823,26 +5867,29 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     return Promise.all(Array.from({ length: n }, one)).then((ws) => { URL.revokeObjectURL(url); return ws.filter(Boolean); });
   }
   // jobs ({ id, name, q }) handed to whichever worker is free: id -> a promise of its result, or of null where it
-  // failed (a prim that is not plain data, an error, a worker lost), and that variant bakes on the main thread
+  // failed (a prim that is not plain data, an error, a worker lost, a job past ME.bakeJobMs), and that variant
+  // bakes on the main thread. The watchdog terminates a worker whose job runs past ME.bakeJobMs (30 s by default):
+  // a hung job would otherwise hold the bake forever, as the main thread waits on each variant in order.
   function runJobs(ws, jobs) {
-    const out = new Map(), queue = jobs.slice();
+    const out = new Map(), queue = jobs.slice(), limit = ME.bakeJobMs || 30000;
     let alive = ws.length;
     for (const j of jobs) out.set(j.id, new Promise((r) => { j.res = r; }));
     const failed = (j, why) => { ME.log("WARN BAKE worker: " + j.name + ": " + why + "; baked on the main thread"); j.res(null); };
+    const lose = (w, why) => {
+      const j = w.job; w.job = null; clearTimeout(w.dog); w.terminate(); w.onmessage = w.onerror = null;
+      if (j) failed(j, why);
+      if (--alive === 0) while (queue.length) queue.shift().res(null);
+    };
     const next = (w) => {
       const j = queue.shift();
       if (!j) return;
       w.job = j;
-      try { w.postMessage(j.q); } catch (e) { w.job = null; failed(j, e.message); next(w); }
+      w.dog = setTimeout(() => lose(w, "no answer in " + limit + " ms"), limit);
+      try { w.postMessage(j.q); } catch (e) { clearTimeout(w.dog); w.job = null; failed(j, e.message); next(w); }
     };
     for (const w of ws) {
-      w.onmessage = (e) => { const j = w.job; w.job = null; if (e.data.error) failed(j, e.data.error); else j.res(e.data); next(w); };
-      w.onerror = (e) => {
-        if (e.preventDefault) e.preventDefault();
-        const j = w.job; w.job = null; w.terminate();
-        if (j) failed(j, e.message || "worker error");
-        if (--alive === 0) while (queue.length) queue.shift().res(null);
-      };
+      w.onmessage = (e) => { clearTimeout(w.dog); const j = w.job; w.job = null; if (e.data.error) failed(j, e.data.error); else j.res(e.data); next(w); };
+      w.onerror = (e) => { if (e.preventDefault) e.preventDefault(); lose(w, e.message || "worker error"); };
       next(w);
     }
     return out;
@@ -5915,27 +5962,36 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // the data-only ones (no function prim, no contour, no focus to bake) go to the bake workers, all at once;
     // opts.worker = false or ME.bakeWorkers = false keeps them here
     const focusOn = (md) => opts.focus && md.focus && md.focus.length;
-    const dataOnly = (md) => !md.contour && !focusOn(md) && md.prims.every((p) => p.k !== 5 && Object.values(p).every((x) => typeof x !== "function"));
-    const def = pal.defaultName ? pal.defaultName() : CT.defaultMaterial;
-    const jobs = opts.worker === false || ME.bakeWorkers === false ? [] : mds.flatMap(({ md }, i) => (dataOnly(md) ? [{ id: i, name: variants[i].name, q: { id: i, md: { prims: md.prims, k: md.k, r: md.r, h: md.h }, vs: VS, cull: ME.sdf.cull, def, detail: !!md.detail } }] : []));
+    // why a model stays here (stats.offWorker: name -> reason), or null for a data-only one
+    const notData = (md) => (md.contour ? "contour" : focusOn(md) ? "focus" : md.prims.some((p) => p.k === 5) ? "function prim"
+      : md.prims.some((p) => Object.values(p).some((x) => typeof x === "function")) ? "function field" : null);
+    const def = pal.defaultName ? pal.defaultName() : CT.defaultMaterial, offWorker = {};
+    const jobs = opts.worker === false || ME.bakeWorkers === false ? [] : mds.flatMap(({ md }, i) => {
+      const why = notData(md);
+      if (why) { offWorker[variants[i].name] = why; return []; }
+      return [{ id: i, name: variants[i].name, q: { id: i, md: { prims: md.prims, k: md.k, r: md.r, h: md.h }, vs: VS, cull: ME.sdf.cull, def, detail: !!md.detail } }];
+    });
     const ws = jobs.length ? await startWorkers(Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 2) - 1), jobs.length)) : [];
     const res = ws.length ? runJobs(ws, jobs) : new Map();
 
     // each kept in variant order, wherever it was voxelised: the palette numbers materials in the order the
     // single-thread bake meets them, so the pool is byte-identical to it (tools/worker-check.js)
     const vols = [];
-    let inWorkers = 0;
+    // the main thread's time (stats): waiting on the workers, voxelising here, taking in worker volumes (md.detail)
+    let inWorkers = 0, waitMs = 0, hereMs = 0, takeMs = 0;
     try {
       for (let i = 0; i < variants.length; i++) {
         const v = variants[i], { md, vf } = mds[i];
         if ((i & 1) === 0) { ME.progress("voxelising " + v.name + " (" + (i + 1) + "/" + variants.length + ")", 0.5 + 0.3 * (i / variants.length)); await ME.tick(); }
+        let t = ME.now();
         const r = res.has(i) ? await res.get(i) : null;
+        if (res.has(i)) { waitMs += ME.now() - t; t = ME.now(); if (!r) offWorker[v.name] = "worker failed"; }
         const vx = r ? fromWorker(r, md) : sparse(ME.voxelizeModel(md, VS, pal, { focus: !!opts.focus })); // the game never waits for a focus: opts.focus bakes it here
-        if (r) inWorkers++;
+        if (r) { inWorkers++; takeMs += ME.now() - t; } else hereMs += ME.now() - t;
         vx.md = md; vx.name = v.name; vx.fine = vf;
         vols.push(vx);
       }
-    } finally { for (const w of ws) w.terminate(); }
+    } finally { for (const w of ws) { clearTimeout(w.dog); w.terminate(); } }
 
     // shelf-pack brick-aligned volumes into the atlas; short volumes stack in z inside a column whose
     // footprint fits them (critters and ferns would otherwise each reserve the full atlas depth)
@@ -6017,7 +6073,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 
     // h and r in world units (a fine model is drawn at 1/fine scale)
     const models = vols.map((v) => ({ name: v.name, base: v.base, dims: v.dims, box: v.box, k: v.md.k, fine: v.fine, h: (v.md.h * v.md.k) / v.fine, r: (v.md.r * v.md.k) / v.fine }));
-    const stats = { variants: vols.length, layout: [AX, AY, AZ], bricks: nb, pool: [PX, PY, PZ], poolMB: +((pool.byteLength / 1048576).toFixed(1)), solid, surface: vols.reduce((a, v) => a + v.surf, 0), lights: lights.length, workers: ws.length, inWorkers, ms: Math.round(ME.now() - t0) };
+    const stats = { variants: vols.length, layout: [AX, AY, AZ], bricks: nb, pool: [PX, PY, PZ], poolMB: +((pool.byteLength / 1048576).toFixed(1)), solid, surface: vols.reduce((a, v) => a + v.surf, 0), lights: lights.length, workers: ws.length, inWorkers, offWorker, waitMs: Math.round(waitMs), hereMs: Math.round(hereMs), takeMs: Math.round(takeMs), ms: Math.round(ME.now() - t0) };
     const MB = { atlas: pool, adims: [PX, PY, PZ], bricks, bdims: [BX, BY, BZ], models, statics, walkerTypes, walkerFrames, critterFrames, extraFrames, lights, stats };
     MB.voxel = ME.brickVoxel(MB);
     return MB;
@@ -13111,7 +13167,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "c42da58" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "0790711" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -15627,6 +15683,128 @@ ${K} .coachrow .btn { box-shadow: 0 2px 0 #2b2c22; }
 })();
 
 </script>
+<script>/* src/art/star-garden.js */
+/* The star garden (V1, the user's pick, D8): the void behind the terrarium screen and the title becomes a
+   night sky, so the jars float like little worlds. A faint moss-teal nebula runs as a soft band from low
+   left to high right behind the ring, with a few dark dust lanes in it. Small stars, thickest along the
+   band, twinkle slowly; a handful of bright ones carry a four-point glint. It replaces the old motes and
+   the near-black gradient of .veil.void.
+     G.StarGarden.draw(cv, t, still)   paints the sky on cv, a 2D canvas the size of the screen (it sizes
+                                       the canvas to its box at up to 2x the device pixels, as the motes did).
+                                       t: seconds. still: reduced motion, so the stars hold, drawn once per
+                                       canvas size (cv.dataset.drawn = "1" after that).
+     G.StarGarden.BG                   the CSS background under the canvas (the sky's base colour, so the
+                                       screen is right before the first frame).
+   Cheap on phones: the nebula is painted once, small (320 x 200), then scaled once per canvas size to
+   cover the screen (cropped, never stretched, so a phone keeps the band's shape) with a soft blur that hides
+   the small canvas's texel grid; each frame is one 1:1 drawImage of that. There are 170 stars on a desktop and 90 on a screen under 800 px, each a fillRect
+   (the bright ones a few more). The twinkle redraws at most 20 times a second. The sky is seeded, so it is
+   the same at every visit. */
+(function () {
+  const G = window.MG;
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+  // the band's centre line and half-width, in 0..1 of the screen (x right, y down)
+  const bandY = (x) => 0.66 - 0.4 * x + 0.05 * Math.sin(x * 5.2 + 0.6);
+  const BW = 0.15;
+
+  // the nebula, painted once: soft teal and moss blobs added up along the band, a few dark lanes, then a
+  // vignette so the screen's edges fall to the base colour
+  const NW = 320, NH = 200;
+  let neb = null;
+  const nebula = () => {
+    if (neb) return neb;
+    neb = document.createElement("canvas"); neb.width = NW; neb.height = NH;
+    const c = neb.getContext("2d");
+    c.fillStyle = "#04080a"; c.fillRect(0, 0, NW, NH);
+    const blob = (x, y, r, col, a) => {
+      const g = c.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(${col}, ${a})`); g.addColorStop(1, `rgba(${col}, 0)`);
+      c.fillStyle = g; c.fillRect(x - r, y - r, 2 * r, 2 * r);
+    };
+    c.globalCompositeOperation = "lighter";
+    for (let k = 0; k < 70; k++) {
+      const u = rnd(), x = u * NW, y = (bandY(u) + (rnd() - 0.5) * BW * 1.6) * NH, r = (0.06 + rnd() * 0.14) * NW;
+      blob(x, y, r, rnd() < 0.7 ? "46, 118, 112" : "88, 132, 70", (0.035 + rnd() * 0.05).toFixed(3));
+    }
+    // the band's brighter core, behind the ring, and a faint warm glow low in the middle (the jars' light)
+    blob(NW * 0.5, NH * 0.47, NW * 0.3, "70, 150, 140", 0.07);
+    blob(NW * 0.5, NH * 0.6, NW * 0.22, "120, 110, 80", 0.035);
+    c.globalCompositeOperation = "source-over";
+    for (let k = 0; k < 14; k++) {
+      const u = 0.1 + rnd() * 0.8, x = u * NW, y = (bandY(u) + (rnd() - 0.5) * BW * 0.8) * NH, r = (0.025 + rnd() * 0.05) * NW;
+      blob(x, y, r, "3, 6, 8", (0.25 + rnd() * 0.25).toFixed(3));
+    }
+    const v = c.createRadialGradient(NW / 2, NH * 0.46, NH * 0.35, NW / 2, NH * 0.46, NW * 0.62);
+    v.addColorStop(0, "rgba(4, 8, 10, 0)"); v.addColorStop(1, "rgba(4, 8, 10, 0.85)");
+    c.fillStyle = v; c.fillRect(0, 0, NW, NH);
+    return neb;
+  };
+  // the cover frame for a W x H canvas: the scale and offsets that crop the 320 x 200 sky to fill it
+  const cover = (W, H) => { const sc = Math.max(W / NW, H / NH); return { sc, ox: (NW * sc - W) / 2, oy: (NH * sc - H) / 2 }; };
+  // the nebula at the canvas's size, made once per size
+  let full = null;
+  const sky = (W, H) => {
+    if (full && full.width === W && full.height === H) return full;
+    full = document.createElement("canvas"); full.width = W; full.height = H;
+    const c = full.getContext("2d"), f = cover(W, H);
+    c.fillStyle = "#04080a"; c.fillRect(0, 0, W, H);
+    c.imageSmoothingEnabled = true; c.imageSmoothingQuality = "low";
+    if ("filter" in c) c.filter = `blur(${(f.sc * 0.8).toFixed(1)}px)`;
+    c.drawImage(nebula(), -f.ox, -f.oy, NW * f.sc, NH * f.sc);
+    return full;
+  };
+
+  // the stars: x, y in 0..1; size in css px; a base alpha; the twinkle's speed and phase; one of four
+  // tints (cool white, pale teal, pale gold, faint blossom). The first 90 are spread so a phone keeps an
+  // even sky.
+  const TINT = ["236, 242, 255", "196, 240, 228", "255, 236, 196", "250, 214, 226"];
+  const stars = [];
+  for (let k = 0; k < 170; k++) {
+    let x = rnd(), y;
+    if (rnd() < 0.55) y = bandY(x) + (rnd() + rnd() - 1) * BW * 1.4; else y = rnd();
+    const big = rnd() < 0.06, s = big ? 1.6 + rnd() * 0.8 : 0.7 + rnd() * rnd() * 1.1;
+    stars.push({ x, y, s, a: big ? 0.9 : 0.25 + rnd() * 0.55, w: 0.35 + rnd() * 1.1, ph: rnd() * 6.283, tint: TINT[rnd() < 0.55 ? 0 : rnd() < 0.5 ? 1 : rnd() < 0.7 ? 2 : 3], big });
+  }
+  for (let k = stars.length - 1; k > 0; k--) { const j = Math.floor(rnd() * (k + 1)); [stars[k], stars[j]] = [stars[j], stars[k]]; }
+
+  const draw = (cv, t, still) => {
+    const dpr = Math.min(2, devicePixelRatio || 1), W = Math.round(cv.clientWidth * dpr), H = Math.round(cv.clientHeight * dpr);
+    if (!W || !H) return;
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; delete cv.dataset.drawn; delete cv.dataset.t; }
+    if (still && cv.dataset.drawn) return;
+    if (!still && cv.dataset.t && t - +cv.dataset.t < 0.05) return;
+    cv.dataset.t = t;
+    const c = cv.getContext("2d"), n = W < 800 * dpr ? 90 : stars.length;
+    c.globalAlpha = 1;
+    c.drawImage(sky(W, H), 0, 0);
+    // the stars sit in the same cover frame as the band, wrapped round so a cropped side keeps its stars
+    const f = cover(W, H), CW = NW * f.sc, CH = NH * f.sc;
+    for (let k = 0; k < n; k++) {
+      const m = stars[k], s = m.s * dpr;
+      const x = (((m.x * CW - f.ox) % W) + W) % W, y = (((m.y * CH - f.oy) % H) + H) % H;
+      const tw = still ? 0.85 : 0.6 + 0.4 * Math.sin(t * m.w + m.ph);
+      c.globalAlpha = m.a * tw;
+      c.fillStyle = `rgb(${m.tint})`;
+      c.fillRect(x - s / 2, y - s / 2, s, s);
+      if (m.big) {
+        // the glint: a thin cross that breathes with the star, and a soft halo
+        const L = s * (2.2 + 1.6 * tw);
+        c.globalAlpha = 0.35 * tw;
+        c.fillRect(x - L, y - dpr * 0.35, 2 * L, dpr * 0.7);
+        c.fillRect(x - dpr * 0.35, y - L, dpr * 0.7, 2 * L);
+        c.globalAlpha = 0.12 * tw;
+        c.fillRect(x - s * 1.3, y - s * 1.3, s * 2.6, s * 2.6);
+      }
+    }
+    c.globalAlpha = 1;
+    if (still) cv.dataset.drawn = "1";
+  };
+
+  G.StarGarden = { draw, BG: "#04080a" };
+})();
+
+</script>
 <script>/* src/view/shaders.js */
 /* The game's look in the engine's shader hooks (ME.SHADER_HOOKS; spliced in by the Renderer):
      mark     creature halos and veins (element matchups), hit flashes, spore dust, the placement ghost
@@ -17677,21 +17855,27 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // The gifts on offer: each card framed by its rarity, with its icon (Art's, or the element's glyph),
     // the level it would reach (I-III, pips for the levels) and that level's description. A fused boon
     // shows what it fuses; any other card hints at the fusions it would unlock or bring a step closer.
+    // The rarity reads at a glance (game.css): a ribbon on the frame names it (Common, Rare, Epic, Fused);
+    // a rare card glows blue, an epic one gold, a fused one blossom; light sweeps over rare and up; the
+    // cards are dealt one by one, rare and up turning over with a flash, epic and fused with a burst of rays.
     showBoons(boons, choose) {
       const row = $("boonrow");
       row.innerHTML = "";
-      for (const b of boons) {
+      boons.forEach((b, i) => {
         const el = document.createElement("button"), top = b.levels.length, lv = Math.min(top, S.boonLevel(b.id) + 1), look = G.boonLook(b.id, lv);
+        const tier = b.needs ? "fused" : b.rarity;
         let pips = "";
         if (top > 1) for (let k = 1; k <= top; k++) pips += `<i class="${k <= lv ? "on" : ""}"></i>`;
         el.className = "boon r-" + b.rarity;
         el.style.setProperty("--bc", ink(look.color));
-        const rar = b.needs ? `Fused · ${this.recipe(b)}` : `${D.RARITY[b.rarity].name}${lv > 1 ? " · grows to " + ROMAN[lv] : ""}`;
-        el.innerHTML = `<span class="bicon">${G.boonIcon(b.id) || icon("PLANT_ICONS", b.el) || GLYPH[b.el] || "❀"}</span><b>${esc(b.name)}${top > 1 ? ` <em>${ROMAN[lv]}</em>` : ""}</b>` +
-          `<span class="rar">${rar}</span><span>${esc(b.levels[lv - 1].desc)}</span>${pips ? `<span class="pips">${pips}</span>` : ""}${b.needs ? "" : this.hints(b)}`;
+        el.style.setProperty("--deal", `${0.12 + i * 0.16}s`);
+        const rar = b.needs ? this.recipe(b) : lv > 1 ? `Grows to ${ROMAN[lv]}` : "";
+        el.innerHTML = `<span class="aura"></span><span class="shine"></span>${tier === "epic" || tier === "fused" ? `<span class="rays"></span>` : ""}<span class="ribbon">${tier === "fused" ? "Fused" : D.RARITY[b.rarity].name}</span>` +
+          `<span class="bicon">${G.boonIcon(b.id) || icon("PLANT_ICONS", b.el) || GLYPH[b.el] || "❀"}</span><b>${esc(b.name)}${top > 1 ? ` <em>${ROMAN[lv]}</em>` : ""}</b>` +
+          `${rar ? `<span class="rar">${rar}</span>` : ""}<span>${esc(b.levels[lv - 1].desc)}</span>${pips ? `<span class="pips">${pips}</span>` : ""}${b.needs ? "" : this.hints(b)}`;
         el.addEventListener("click", () => { $("boons").classList.remove("show"); choose(b); });
         row.appendChild(el);
-      }
+      });
       $("boons").classList.add("show");
     }
     showGameOver(wave, best) {
@@ -17907,7 +18091,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
    the garden that is up mid-wave takes its run back to the start of that wave: the hint line says so.
    The game opens here when no garden has a run (menu.js); with one, the title menu's Terrariums opens it.
      new G.Terrariums(menu, el)   .open() / .close() / .key(e) -> handled / .runOf(id) / .latest()
-     G.Terrariums.loop(on)        turns every jar canvas on the page (the title's one too) while on
+     G.Terrariums.loop(on)        turns every jar canvas on the page (the title's one too) and paints the star
+                                  garden (G.StarGarden, art/star-garden.js) behind them, while on
    Start new and its question are .btn / .btn.pink buttons; they and the jars carry data-orn="none", so a
    menu skin (art/skin.js) gives them no ivy to grow over the question and the hint line. */
 (function () {
@@ -17959,23 +18144,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     return b;
   };
 
-  // the motes drifting up the void (a 2D canvas the size of the screen; fewer on a phone)
-  const motes = Array.from({ length: 40 }, () => ({ x: Math.random(), y: Math.random(), r: 0.6 + Math.random() * 1.4, v: 0.004 + Math.random() * 0.01, ph: Math.random() * 6.28, w: 0.3 + Math.random() * 0.7 }));
-  const drawMotes = (cv, t) => {
-    const dpr = Math.min(2, devicePixelRatio || 1), W = Math.round(cv.clientWidth * dpr), H = Math.round(cv.clientHeight * dpr);
-    if (!W || !H) return;
-    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
-    const c = cv.getContext("2d"), still = calm(), n = W < 800 * dpr ? 24 : motes.length;
-    c.clearRect(0, 0, W, H);
-    for (let k = 0; k < n; k++) {
-      const m = motes[k], y = still ? m.y : (((m.y - t * m.v) % 1) + 1) % 1, x = m.x + (still ? 0 : 0.012 * Math.sin(t * 0.4 + m.ph));
-      const a = still ? 0.35 : 0.18 + 0.5 * Math.max(0, Math.sin(t * m.w + m.ph));
-      c.fillStyle = `rgba(214, 236, 150, ${a.toFixed(3)})`;
-      c.beginPath(); c.arc(x * W, y * H, m.r * dpr, 0, 6.283); c.fill();
-    }
-  };
-
-  // the one loop for every turning jar on the page and the motes, while a screen that shows them is open
+  // the one loop for every turning jar on the page and the star garden behind them (art/star-garden.js), while a screen that shows them is open
   let raf = 0, ticks = [];
   const loop = (on) => {
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
@@ -17984,7 +18153,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const t = ms / 1000;
       for (const fn of ticks) fn(t);
       for (const cv of document.querySelectorAll(".veil.show canvas[data-id]")) drawJar(cv, cv.dataset.id, t, +cv.dataset.ph || 0);
-      for (const cv of document.querySelectorAll(".veil.show canvas.motes")) drawMotes(cv, t);
+      for (const cv of document.querySelectorAll(".veil.show canvas.stars")) G.StarGarden.draw(cv, t, calm());
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
@@ -17994,7 +18163,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // menu: the Menu (its inRun, set, go, action and the app's act); el: the screen's element (#jars)
     constructor(menu, el) {
       this.menu = menu; this.el = el; this.confirm = null; this.rot = 0; this.rotTo = 0; this.last = 0; this.said = 0;
-      el.innerHTML = `<canvas class="motes"></canvas>
+      el.innerHTML = `<canvas class="stars"></canvas>
         <div class="jtop"><button class="btn jback" data-j="back">‹ Title</button><h2>Choose a terrarium</h2>
           <span class="jgap"></span><button class="btn jlink" data-a="settings">Settings</button><button class="btn jlink" data-a="howto">How to play</button></div>
         <button class="btn jarrow l" data-j="left" aria-label="Turn the ring left">‹</button><button class="btn jarrow r" data-j="right" aria-label="Turn the ring right">›</button>
@@ -18282,7 +18451,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const root = document.createElement("div");
       root.id = "menus";
       root.innerHTML = `
-        <div id="title" class="veil menu void"><canvas class="motes"></canvas><div class="tjar"></div><div class="col">
+        <div id="title" class="veil menu void"><canvas class="stars"></canvas><div class="tjar"></div><div class="col">
           <h1>Moss<em>heart</em></h1><p class="sub">a cozy roguelike tower defence in a voxel bell jar</p>
           <button class="btn pink big" data-a="cont">Continue</button>
           <button class="btn big" data-a="jars">Terrariums</button>
@@ -18430,7 +18599,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       body.innerHTML =
         `<h3>Sound</h3>` + slider("master", "Volume") + slider("music", "Music") + slider("sfx", "Effects") + slider("ambience", "Ambience") +
         choice("musicStyle", "Music style", [["ambient", "Ambient"], ["drift", "Drift"]]) +
-        `<div class="note dim">Ambient: single notes far apart over a warm pad. Drift: chill, psychedelic synth electronica in D minor, a squelchy rolling bass, modal arpeggios, a soft four-on-the-floor and slow filter sweeps. A change comes in on the next bar.</div>` +
+        `<div class="note dim">Ambient: single notes far apart over a warm pad. Drift: chill, psychedelic synth electronica in D minor, a squelchy rolling bass answered by short modal synth phrases through delays and glitch edits, a soft four-on-the-floor and slow filter sweeps. A change comes in on the next bar.</div>` +
         `<h3>Graphics</h3>` +
         choice("preset", "Preset", presets().map((k) => [k, PRESET_NAMES[k]]).concat(s.preset === "custom" ? [["custom", "Custom"]] : [])) +
         `<div class="note dim">Sets every graphics setting here at once (${presets().map((k) => { const p = presetSet(k); return PRESET_NAMES[k] + ": " + p.vs + ", " + (p.res === "full" ? "Full" : p.res + "x") + ", quality " + p.quality + (p.glass === false ? ", no glass" : ""); }).join("; ")}; the weather Subtle in all). Ultra is the default. Custom once one is changed by hand.</div>` +
@@ -18609,14 +18778,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const DR_BOSS = [DSUS, DSUS, DSUS, DSUS, EM11, EM11, GM9, GM9]; // isus | ii iv
   const DR_BOSS_B = [GM9, GM9, GM9, GM9, DM9, DM9, DM9, DM9]; // iv | i
   const DR_OUTRO = [DM9, DM9, DM9, DM9, DM9, DM9, DM9, DM9]; // one chord, on its drone
-  // Drift's arpeggio material: its modes over D (semitones), and cells of 5, 7 or 11 steps over the key's D
-  // (null a gap), stacked fourths and fifths, ninths, minor sevenths and elevenths, octave jumps, the
-  // Dorian B (9) or the Phrygian Eb (1, 13); none of them spells a major triad
+  // Drift's phrase material: its modes over D (semitones), and short motifs of two to six notes, one
+  // token a 16th: semitones over the key's D (12 the D an octave up), "." a rest. Fourths, fifths and
+  // minor thirds, the Dorian B (9, 21) or the Phrygian Eb (13); none of them spells a major triad
   const DORIAN = [0, 2, 3, 5, 7, 9, 10], PHRYGIAN = [0, 1, 3, 5, 7, 8, 10];
-  const AR5 = [0, 7, 14, null, 10], AR5B = [0, 12, 7, 17, 10], AR7 = [0, 7, 14, null, 10, 19, 12];
-  const AR7B = [7, null, 14, 5, 12, null, 19], AR7D = [0, 9, 14, null, 7, 21, 12];
-  const AR11 = [0, 7, 15, 12, null, 5, 14, 2, null, 19, 17];
-  const AR7P = [0, 13, 7, null, 12, 1, 10], AR11P = [0, 7, 13, 5, null, 15, 12, 1, null, 17, 7];
+  const MA = "12 . . 15 . . 10", MB = "7 10 . 12", MC = "15 . 14 . 12 . . 7", MD = "19 . . 17 15";
+  const ME = "12 . 7 . . 3 . 5", MF = "10 12", MG = "22 . . 19 . 17 . 12", MH = "14 15 . . 12 . 7";
+  const MP1 = "13 . . 12 . . 7", MP2 = "12 13 . . 10 . 8 7", MP3 = "19 . 20 . . 15 . 13", MP4 = "7 . 8 7";
 
   // a voice: an instrument on a sub-bus at `db`, playing a loop `len` 16ths long (picked in that range for
   // each phrase) with `notes` struck in it, each on a degree of the pentatonic in `deg` (0: the F above
@@ -18684,19 +18852,22 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // - kit: a soft kick on the 16ths in `kick` (four on the floor, or half-time), soft hats on those in
     //   `hat` (the offbeats) and a ghost of a shaker on those in `shaker`, at `db` [kick, hat, shaker],
     //   once the intensity reaches `i`.
-    // - arp: a resonant pluck, one step every `every` 16ths, on a cell of `cells` (one picked for each
-    //   phrase): semitones over the key's D (wide fourths and fifths, ninths, sevenths and elevenths,
-    //   octave jumps; null a gap, the note before left ringing), 5, 7 or 11 steps long so it cycles
-    //   against the bar. At each new section one of its notes moves a fourth or a fifth within `mode`
-    //   (the cell never spelling a major triad), so it changes slowly over many bars. Into the lead's
-    //   delays; `rest` the odds a note is left out (less as the intensity rises), `i` the intensity it
-    //   waits for.
+    // - phr: the high synth, short motifs answering the bass. Every `every` bars (on its last bar) it
+    //   may play one, with odds `odds`, once the intensity reaches `i`: a motif of `motifs` (one picked
+    //   for each phrase), in the first rest of the roll from the 16th `at`, on an instrument of `insts`
+    //   (`mote` a chorused saw whose filter moves inside each note, `pling` an FM glint) at `db`, into
+    //   the lead's delays or (odds `keys`) the keys' chorus; its last note thrown into the ping-pong delay
+    //   with odds `throw`, its middle notes left out with odds `rest` (less as the intensity rises). At
+    //   each new section one of its notes moves a fourth or a fifth within `mode`. Then, with odds `edit`
+    //   (twice that on a fill bar), a glitch edit of `edits`: `stutter` the last note re-struck on 32nds,
+    //   `gate` it gated on 16ths, `rev` the first note reversed into its strike, `drop` repeats a fifth
+    //   and an octave down, the last bent lower.
     // - acid: a squelchy, very soft line in the minor pentatonic, `notes` [min, max] 16ths of each bar
     //   (picked for each phrase), degrees in `deg`, once the intensity reaches `i`.
     // - spark: the odds of a bar getting a little granular sparkle on a chord tone, high up.
     // - fx, each used sparingly: `whoosh` the dB of a low noise whoosh on each section change, `riser`
     //   [dB, odds] of a riser into the next section, `rev` the dB of a reverse swell into a chord change,
-    //   `throw` the odds an arpeggio note is thrown into the ping-pong delay, `blip` [dB, odds a bar] of
+    //   `blip` [dB, odds a bar] of
     //   a bit-crushed glitch blip (now and then a stutter of two or three).
     // - sweep: [seconds, depth]: the music bus's lowpass closes by up to `depth` and opens again over
     //   that long, the slow filter sweep over everything. reso: [lo, hi, seconds, lo dB, hi dB]: the
@@ -18704,6 +18875,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     //   two (on a shorter cycle, so they drift apart). pump: how far the pads duck on each beat (a
     //   sidechain's pumping). phase: the share of the pads' phaser. pan: how far the keys' autopan swings,
     //   lpan the lead's. taps: the lead's delays in 16ths (the ping-pong's too, its first).
+    //   wob: [bars, octaves]: the lead's lowpass also swings by up to `octaves` over that many bars, in
+    //   time, so each phrase's filter moves.
     DRIFT: {
       build: { bpm: 90, drive: 0, progs: [DR_A, DR_B], lp: [3600, 5200], wet: [0.32, 0.34], fadeIn: 3, fadeOut: 4, sweep: [32, 0.45],
         reso: [700, 3600, 24, 1, 6], pump: 0.3, phase: 0.35, pan: 0.6, lpan: 0.4, taps: [3, 6, 9],
@@ -18711,37 +18884,37 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         pulse: { db: -18, at: [0] },
         roll: { db: -22, pats: [". 0 . 0 . 0 0 . . 0 . 0 . 12s 0 10", ". . 0 . . 0 . 0 . . 0 . . 0 7 ."], fill: ". 0 . 0 . 0 10s 12 . 0 . 0 7 . 1s 0" },
         kit: { kick: [0, 8], hat: [6, 14], shaker: [], db: [-22, -30, -36] },
-        arp: { inst: "reso", db: -21, every: 2, cells: [AR7, AR5, AR7D], mode: DORIAN, rest: 0.3 },
+        phr: { insts: ["mote", "mote", "pling"], db: -21, motifs: [MA, MB, MF, ME], mode: DORIAN, every: 2, at: 8, odds: 1, rest: 0.2, throw: 0.4, keys: 0.3, edit: 0.25, edits: ["rev", "stutter", "drop"] }, wob: [2, 0.5],
         spark: { db: -24, odds: 0.25 },
-        fx: { whoosh: -31, riser: [-32, 0.25], rev: -31, throw: 0.08, blip: [-30, 0.15] },
+        fx: { whoosh: -31, riser: [-32, 0.25], rev: -31, blip: [-30, 0.15] },
         voices: [V("spark", "Keys", -23, [48, 72], 1, [5, 10])],
         breath: { on: [60, 120], off: [20, 50] },
         alt: { progs: [DR_C, DR_A],
           roll: { db: -22, pats: [". 0 . 0 0 . 0 . . 0 . 0 0 . 10s 0"], fill: ". 0 . 0 0 . 7s 0 . 0 . 12 0 . 10s 0" },
-          arp: { inst: "reso", db: -21, every: 3, cells: [AR5B, AR11], mode: DORIAN, rest: 0.35 } } },
+          phr: { insts: ["mote", "pling"], db: -21, motifs: [MH, MD, MB], mode: DORIAN, every: 2, at: 8, odds: 1, rest: 0.2, throw: 0.4, keys: 0.4, edit: 0.25, edits: ["rev", "stutter", "drop"] } } },
       wave: { bpm: 94, drive: 4, progs: [DR_WAVE, DR_B], tense: DR_TENSE, lp: [4000, 6400], wet: [0.3, 0.34], fadeIn: 2, fadeOut: 3, sweep: [24, 0.4],
         reso: [900, 4600, 18, 2, 7], pump: 0.42, phase: 0.45, pan: 0.65, lpan: 0.5, taps: [3, 6, 9],
         bed: { every: 2, inst: "saw", pad: -26, breath: -32, drone: -25 },
         pulse: { db: -17, at: [0] },
         roll: { db: -20, pats: [". 0 0a 0 . 0 0 10s . 0 0a 0 . 12 0 7", ". 0 0 0a . 0 7 0 . 0 0 0a . 10s 12 0"], fill: ". 0 0 0a . 0 0 0 . 0 10 0 . 12s 0 1s" },
         kit: { kick: [0, 4, 8, 12], hat: [2, 6, 10, 14], shaker: [3, 7, 11, 15], db: [-21, -29, -36] },
-        arp: { inst: "reso", db: -21, every: 1, cells: [AR11, AR7B, AR7D], mode: DORIAN, rest: 0.4 },
+        phr: { insts: ["mote", "mote", "pling"], db: -21, motifs: [MA, MC, MD, MG, MH], mode: DORIAN, every: 2, at: 4, odds: 0.9, rest: 0.25, throw: 0.55, keys: 0.3, edit: 0.35, edits: ["stutter", "gate", "rev", "drop"] }, wob: [2, 0.6],
         acid: { db: -31, notes: [2, 3], deg: [0, 4], i: 0.4 },
         spark: { db: -24, odds: 0.35 },
-        fx: { whoosh: -30, riser: [-30, 0.5], rev: -30, throw: 0.1, blip: [-29, 0.3] },
-        voices: [V("spark", "Keys", -23, [44, 60], 1, [5, 10]), V("reso", "Lead", -23, [40, 56], 1, [0, 5], 0.5)],
+        fx: { whoosh: -30, riser: [-30, 0.5], rev: -30, blip: [-29, 0.3] },
+        voices: [V("spark", "Keys", -23, [44, 60], 1, [5, 10])],
         breath: { on: [90, 160], off: [10, 25] },
-        alt: { progs: [DR_B, DR_WAVE], arp: { inst: "reso", db: -21, every: 2, cells: [AR7, AR11], mode: DORIAN, rest: 0.3 } } },
+        alt: { progs: [DR_B, DR_WAVE], phr: { insts: ["mote", "pling"], db: -21, motifs: [MB, ME, MG], mode: DORIAN, every: 1, at: 4, odds: 0.6, rest: 0.2, throw: 0.55, keys: 0.4, edit: 0.35, edits: ["stutter", "gate", "rev", "drop"] } } },
       boss: { bpm: 98, drive: 2, progs: [DR_BOSS, DR_BOSS_B], lp: [4400, 6800], wet: [0.32, 0.36], fadeIn: 1.5, fadeOut: 3, sweep: [16, 0.35],
         reso: [1100, 5400, 14, 2, 8], pump: 0.48, phase: 0.5, pan: 0.7, lpan: 0.55, taps: [3, 6, 9],
         bed: { every: 2, inst: "saw", pad: -25, breath: -31, drone: -24 },
         pulse: { db: -16, at: [0] },
         roll: { db: -19, pats: [". 0 0a 0 . 0a 0 0 . 0 0a 12 . 0 1s 0", ". 0a 0 0 . 0 0a 10s . 0 0 0a . 12 7 0"], fill: ". 0 0a 0 . 0a 0 1s . 0 0a 12s . 10 7 1s" },
         kit: { kick: [0, 4, 8, 12], hat: [2, 6, 10, 14], shaker: [3, 7, 11, 15], db: [-20, -28, -35] },
-        arp: { inst: "reso", db: -20, every: 1, cells: [AR7P, AR11P, AR7], mode: PHRYGIAN, rest: 0.35 },
+        phr: { insts: ["mote", "mote", "pling"], db: -20, motifs: [MP1, MP2, MP3, MP4], mode: PHRYGIAN, every: 1, at: 4, odds: 0.7, rest: 0.2, throw: 0.5, keys: 0.3, edit: 0.45, edits: ["stutter", "gate", "rev", "drop"] }, wob: [1, 0.7],
         acid: { db: -30, notes: [2, 4], deg: [0, 4] },
         spark: { db: -24, odds: 0.3 },
-        fx: { whoosh: -29, riser: [-29, 0.6], rev: -30, throw: 0.12, blip: [-29, 0.35] },
+        fx: { whoosh: -29, riser: [-29, 0.6], rev: -30, blip: [-29, 0.35] },
         voices: [V("spark", "Keys", -22, [32, 48], 1, [4, 9])],
         breath: { on: [120, 200], off: [8, 15] },
         alt: { progs: [DR_BOSS_B, DR_BOSS] } },
@@ -18749,9 +18922,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         reso: [600, 2200, 30, 1, 4], pump: 0.2, phase: 0.3, pan: 0.5, lpan: 0.35, taps: [3, 6, 9],
         bed: { every: 2, inst: "saw", pad: -27, breath: -32, drone: -23 },
         pulse: { db: -19, at: [0] },
-        arp: { inst: "reso", db: -23, every: 3, cells: [AR5, AR7D], mode: DORIAN, rest: 0.4 },
+        phr: { insts: ["mote", "pling"], db: -23, motifs: [MA, MF, MD], mode: DORIAN, every: 4, at: 4, odds: 0.7, rest: 0.25, throw: 0.7, keys: 0.5, edit: 0.15, edits: ["rev", "drop"] }, wob: [4, 0.3],
         spark: { db: -25, odds: 0.3 },
-        fx: { whoosh: -32, rev: -31, throw: 0.15 },
+        fx: { whoosh: -32, rev: -31 },
         voices: [V("spark", "Keys", -22, [64, 96], 1, [0, 5])],
         breath: { on: [40, 60], off: [40, 90] } },
     },
@@ -18768,7 +18941,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     ambient: { cues: SC.CUES, key: SC.KEY, scale: SC.SCALE, sting: SC.STING },
     // D minor pentatonic; the sting a low D, then D, F and A, then a sparkle
     drift: { cues: SC.DRIFT, key: 62, scale: [0, 3, 5, 7, 10], sting: { bass: 38, notes: [62, 65, 69], bell: 74 }, vinyl: -40,
-      swap: { kalimba: ["reso", 0, -1], glass: ["spark", 0, 0], bell: ["spark", 12, -3], bass: ["sub", 0, 0] } },
+      swap: { kalimba: ["mote", 0, -1], glass: ["spark", 0, 0], bell: ["spark", 12, -3], bass: ["sub", 0, 0] } },
   };
 })();
 
@@ -18778,8 +18951,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
    FM electric piano, additive felt piano, a round bass, a glassy FM pluck, a kalimba, a Karplus-Strong
    harp, a music box, a warm pad, a breath (sung noise, the floor the ambient score lies on), a temple
    bell, a heartbeat and vinyl crackle, and the Drift score's synths: a deep sub, a muted kick, a shaker
-   and hats, a supersaw pad, a PWM drone, a resonant pluck, an acid line, granular sparkles, a squelchy
-   rolling bass (and its accent) and a few effects: a riser, a low whoosh, a reverse swell and a
+   and hats, a supersaw pad, a PWM drone, the phrase synths (a chorused saw lead, its reverse and an FM glint), an
+   acid line, granular sparkles, a squelchy rolling bass (and its accent) and a few effects: a riser, a low whoosh, a reverse swell and a
    bit-crushed blip. Each is synthesised once at a base pitch; the sequencer pitch-shifts it per note.
    Keyboards have a "_hi" twin so no note is shifted far. Self-contained: it runs in the bank worker
    with only the DSP library L (MA_DSP). */
@@ -18793,7 +18966,7 @@ function MG_INSTRUMENTS(L) {
     glass: [76, 32000], kalimba: [64, 32000], celesta: [81, 32000], harp: [57, 32000], warm: [57, 22050],
     breath: [57, 22050], bell: [57, 32000], heartbeat: [40, 22050], vinyl: [60, 22050],
     sub: [36, 22050], kick: [36, 22050], shaker: [60, 32000], hat: [60, 32000], saw: [57, 22050], pwm: [50, 22050],
-    reso: [69, 32000], acid: [50, 22050], spark: [81, 32000],
+    mote: [74, 32000], motr: [74, 32000], pling: [81, 32000], acid: [50, 22050], spark: [81, 32000],
     roll: [38, 22050], rolla: [38, 22050], riser: [62, 22050], whoosh: [50, 22050], rev: [57, 22050], blip: [81, 32000],
   };
 
@@ -18921,7 +19094,7 @@ function MG_INSTRUMENTS(L) {
   }
 
   // --- the Drift score's (music.js), all synths: a sub, a soft kick, a shaker and hats, a supersaw pad,
-  // a PWM drone, a resonant pluck, a squelchy acid line, granular sparkles, the rolling bass and the effects
+  // a PWM drone, the phrase synths, a squelchy acid line, granular sparkles, the rolling bass and the effects
   // a deep sub: a sine with a touch of its second and third harmonics (so a small speaker still hears
   // the pitch), a rounded attack and a short body, so the pulse breathes rather than booms
   function sub(f, sr, secs) {
@@ -18983,13 +19156,28 @@ function MG_INSTRUMENTS(L) {
     }
     return out;
   }
-  // a resonant pluck for the arpeggios: two saws a hair apart through a singing lowpass that snaps open
-  // and closes as the note falls, ringing on into the lead's delays
-  function reso(f, sr, secs) {
-    const out = buf(secs, sr), lp = lowSvf(sr), ia = (f * TABLE) / sr, ib = ia * 1.006; let a = 0, b = rnd() * TABLE;
+  // Drift's phrase synths (music.js, its short motifs): `mote`, three saws a few cents apart whose detune
+  // drifts slowly (a chorus baked into the sample, so the audio thread runs none), through a resonant
+  // lowpass that snaps open on the strike, dips and swells open again before it closes (the filter moving
+  // inside each note); `motr` (back) the same note played backwards, swelling into the motif's first note
+  // and stopping at its strike
+  function mote(f, sr, secs, back) {
+    const out = buf(secs, sr), n = out.length, lp = lowSvf(sr), inc = (f * TABLE) / sr; let a = 0, b = rnd() * TABLE, c = rnd() * TABLE;
+    for (let i = 0; i < n; i++) {
+      const t = i / sr, x = (SAW[Math.floor(a) & MASK] + SAW[Math.floor(b) & MASK] + SAW[Math.floor(c) & MASK]) / 3, u = sin(Math.PI * min(t / 0.9, 1));
+      const y = lp(x, f * (1.2 + 5 * exp(-t * 9) + 2.2 * u * u), 0.32) * min(t / 0.004, 1) * exp(-t * 2.6) * min((secs - t) / 0.15, 1);
+      out[back ? n - 1 - i : i] = tanh(1.4 * y);
+      a += inc; b += inc * (1 + 0.004 * sin(TAU * 0.7 * t)); c += inc * (1 - 0.0045 * sin(TAU * 0.53 * t + 1.3));
+    }
+    return out;
+  }
+  // an FM glint for the phrases: a sine modulated an octave up (a hair sharp, so it shimmers), its index
+  // falling fast from bright to nearly pure, glassy and digital
+  function pling(f, sr, secs) {
+    const out = buf(secs, sr), w = (TAU * f) / sr;
     for (let i = 0; i < out.length; i++) {
-      const t = i / sr, x = (SAW[Math.floor(a) & MASK] + SAW[Math.floor(b) & MASK]) * 0.5;
-      out[i] = lp(x, f * (1.1 + 6 * exp(-t * 7)), 0.3) * min(t / 0.003, 1) * exp(-t * 2.4) * min((secs - t) / 0.2, 1); a += ia; b += ib;
+      const t = i / sr;
+      out[i] = 0.8 * sin(w * i + (0.4 + 2.6 * exp(-t * 14)) * sin(2.005 * w * i)) * min(t / 0.002, 1) * exp(-t * 3.4) * min((secs - t) / 0.1, 1);
     }
     return out;
   }
@@ -19092,7 +19280,9 @@ function MG_INSTRUMENTS(L) {
       case "hat": s = hat(sr, 0.12); break;
       case "saw": s = saw(f, sr, 9); break;
       case "pwm": s = pwm(f, sr, 12); break;
-      case "reso": s = reso(f, sr, 1.6); break;
+      case "mote": s = mote(f, sr, 1.4, false); break;
+      case "motr": s = mote(f, sr, 0.6, true); break;
+      case "pling": s = pling(f, sr, 1.2); break;
       case "acid": s = acid(f, sr, 0.6); break;
       case "spark": s = spark(f, sr, 1.6); break;
       case "roll": s = roll(f, sr, 0.7, false); break;
@@ -19527,10 +19717,15 @@ function MG_SFX(L) {
    major triad) and synths only, at 80-98 bpm. A squelchy rolling bass drives it (16ths with rests,
    accents and slides on the root, its b7, 5th and octave, the flat second over D), over a deep sub on
    the downbeat and a soft kick (half-time in the build, four on the floor in a wave) with offbeat hats.
-   A detuned supersaw pad pumps on the beat through a slow phaser; a resonant pluck arpeggio plays modal
-   cells of 5, 7 or 11 steps (fourths, fifths, ninths, Dorian or Phrygian) that cycle against the bar and
-   change a note at each section, through a lowpass sweeping slowly and a slow autopan into the lead's
-   delays, its odd note thrown into a ping-pong delay. A very soft acid line, granular sparkles, glitch
+   A detuned supersaw pad pumps on the beat through a slow phaser. Over the bass (the user's words,
+   2026-10-26: "good bass synth but high note synth sounds basic. replace with short synth phrases with
+   delay, chorus etc.. effects and glitch-editing to complement the squelchy bass"), short modal motifs
+   of two to six notes (fourths, fifths and minor thirds, Dorian or Phrygian, a note moved at each
+   section) answer it in the roll's rests every bar or few: a chorused saw whose filter moves inside the
+   note, or an FM glint, into the lead's delays (its lowpass swinging in time) or the keys' chorus, the
+   last note now and then thrown into a ping-pong delay, and now and then a glitch edit after it (a
+   stutter, a gated repeat, a reversed note swelling into the motif, repeats dropping a fifth and an
+   octave, the last bent down). A very soft acid line, granular sparkles, glitch
    blips, reverse swells into chord changes, risers into sections and a low whoosh on each section
    change, all sparing, and a slow sweep of the music bus's lowpass. The gestures and the sting play in
    its synths too (score.js, STYLES[].swap). A style change crossfades on the next bar line like a cue
@@ -19577,6 +19772,8 @@ function MG_SFX(L) {
   const rf = () => Math.random(), rr = (a, b) => a + (b - a) * Math.random(), ri = (a, b) => a + Math.floor(Math.random() * (b - a + 1)), pick = (a) => a[Math.floor(Math.random() * a.length)];
   const lerp = (a, b, u) => a + (b - a) * u, clamp = (x, a, b) => Math.min(b, Math.max(a, x));
   // Drift's rolling bass bar (score.js, DRIFT roll): 16 tokens, "." a rest, else { n semitones, a accent, s slide }
+  // a Drift motif (score.js, DRIFT phr): one token a 16th, semitones over the key, null a rest
+  const parseMotif = (p) => p.split(" ").map((w) => (w === "." ? null : parseInt(w, 10)));
   const parseRoll = (p) => p.split(" ").map((w) => (w === "." ? null : { n: parseInt(w, 10), a: w.includes("a"), s: w.includes("s") }));
   // whether the notes (semitones; nulls left out) hold a major triad's three pitch classes
   const majorIn = (c) => { const pc = new Set(c.filter((v) => v !== null).map((v) => posmod(v, 12))); for (let r = 0; r < 12; r++) if (pc.has(r) && pc.has((r + 4) % 12) && pc.has((r + 7) % 12)) return true; return false; };
@@ -19619,7 +19816,9 @@ function MG_SFX(L) {
       }
     }
     silence(when) { const m = this.m; for (const k of SUBS) for (const v of m.seq.voices[this.bus[k]]) m.mixer.stop(v, when); }
-    play(inst, note, db, sub, at) { this.m.play(inst, note, db, this.bus[sub], at, true); }
+    play(inst, note, db, sub, at) { return this.m.play(inst, note, db, this.bus[sub], at, true); }
+    // a note cut `len` music-clock seconds after it is struck (Drift's glitch edits)
+    gated(inst, note, db, sub, at, len) { const v = this.play(inst, note, db, sub, at); if (v) this.m.mixer.stop(v, this.m.ctxTime(at + len), 0.004); return v; }
 
     // --- song form
     barStart(t) {
@@ -19638,19 +19837,19 @@ function MG_SFX(L) {
       const odds = this.cue === "over" ? 0 : clamp((S.corruption - 0.3) * 1.6, 0, 0.85) + (this.cue === "boss" ? 0.2 : 0);
       this.dark = [];
       for (let b = 0; b < 8; b++) this.dark.push(b > 0 && this.prog[b] === this.prog[b - 1] ? this.dark[b - 1] : rf() < odds);
-      // Drift's: a low whoosh on the section change, and one note of the arpeggio's cell moved
+      // Drift's: a low whoosh on the section change, and one note of the phrase's motif moved
       if (D.fx && D.fx.whoosh !== undefined && t !== undefined) this.play("whoosh", 50, D.fx.whoosh + rr(-2, 0), "Perc", t);
-      if (this.cell && rf() < 0.7) this.mutate(D.arp.mode);
+      if (this.motif && rf() < 0.7) this.mutate(D.phr.mode);
     }
-    // moves one note of the arpeggio's cell a fourth, a fifth or an octave, within `mode` and the cell's
-    // range, unless that would spell a major triad in it
+    // moves one note of the motif a fourth, a fifth or an octave, within `mode` and the motif's range,
+    // unless that would spell a major triad in it
     mutate(mode) {
-      const c = this.cell, at = c.map((v, k) => (v === null ? -1 : k)).filter((k) => k >= 0), k = pick(at);
+      const c = this.motif, at = c.map((v, k) => (v === null ? -1 : k)).filter((k) => k >= 0), k = pick(at);
       let v = c[k] + pick([-5, 5, -7, 7, 12, -12]);
       if (!mode.includes(posmod(v, 12))) v -= 1;
       if (v < 0 || v > 22 || !mode.includes(posmod(v, 12))) return;
       const next = c.slice(); next[k] = v;
-      if (!majorIn(next)) this.cell = next;
+      if (!majorIn(next)) this.motif = next;
     }
     // A phrase: for each of the cue's voices a loop `len` 16ths long (in steps of the cue's grid) with one
     // or two notes in it, on the 8ths (on the beats with a grid), the second 4 to 10 16ths after the
@@ -19670,8 +19869,8 @@ function MG_SFX(L) {
         this.acid = new Map();
         for (let want = ri(A.notes[0], A.notes[1]); this.acid.size < want; ) { const s = rf() < 0.75 ? 2 * ri(0, 7) + 1 : 2 * ri(0, 7); if (!this.acid.has(s)) this.acid.set(s, ri(A.deg[0], A.deg[1])); }
       }
-      // Drift's arpeggio cell and rolling bass bar (and its fill), one of each for the phrase
-      this.cell = D.arp && D.arp.cells ? pick(D.arp.cells).slice() : null;
+      // Drift's motif and rolling bass bar (and its fill), one of each for the phrase
+      this.motif = D.phr ? parseMotif(pick(D.phr.motifs)) : null;
       const R = D.roll;
       this.rollPat = R ? parseRoll(pick(R.pats)) : null; this.rollFill = R && R.fill ? parseRoll(R.fill) : null;
       this.n = 0; this.lastChord = null; this.sparkAt = -1; this.blipAt = -1;
@@ -19702,12 +19901,11 @@ function MG_SFX(L) {
       this.n++;
     }
     // the Drift style's moving floor (score.js, DRIFT): the sub on the root, the rolling bass (the groove)
-    // with its slides, the kit once the intensity reaches it, the arpeggio on its cell, its count running
-    // across the bar lines (5, 7 or 11 steps against 16), fewer notes left out as the fighting heats up,
-    // the acid line, now and then a sparkle, a glitch blip or a riser into the next section, and the pads
-    // ducking on each beat
+    // with its slides, the kit once the intensity reaches it, a phrase every bar or few (phrase), the acid
+    // line, now and then a sparkle, a glitch blip or a riser into the next section, and the pads ducking
+    // on each beat
     drift(s, t, i) {
-      const D = this.def, P = D.pulse, K = D.kit, A = D.arp, C = D.acid, R = D.roll, F = D.fx || {}, ch = this.chord, bar = this.sectionBar;
+      const D = this.def, P = D.pulse, K = D.kit, H = D.phr, C = D.acid, R = D.roll, F = D.fx || {}, ch = this.chord, bar = this.sectionBar;
       // (the sub folded into the octave from G1 up, deep whatever the chord's bass)
       if (P.at.includes(s)) this.play("sub", 31 + posmod(ch.bass - 31, 12), P.db + (s === P.at[0] ? 0 : -3) + rr(-1, 0), "Perc", t);
       // (the roll on the chord's root folded into the octave from A1 up; its flat second only over D)
@@ -19723,20 +19921,7 @@ function MG_SFX(L) {
         if (K.hat.includes(s)) this.play("hat", 60 + rr(-0.3, 0.3), K.db[1] + rr(-3, 0), "Perc", t + rr(0, 0.008));
         if (K.shaker.includes(s)) this.play("shaker", 60 + rr(-0.5, 0.5), K.db[2] + rr(-3, 0), "Perc", t + rr(0, 0.012));
       }
-      if (A && this.cell && i >= (A.i || 0) && this.n % A.every === 0) {
-        // (a gap leaves the note before ringing; a note a semitone over a chord tone moves onto the chord,
-        // but the flat second over D, even in a dark bar, so the modal colour stays; none is the major third
-        // over the bass)
-        const v = this.cell[(this.n / A.every) % this.cell.length];
-        if (v !== null && rf() >= A.rest * (1 - 0.5 * i)) {
-          const pcs = this.pcs(bar), key = posmod(this.Y.key, 12), bass = posmod(ch.bass, 12);
-          let note = this.Y.key + v;
-          const rub = pcs.some((p) => posmod(note - p, 12) === 1 && !(p === key && bass === key));
-          if (rub) note = this.nearestTone(note, pcs);
-          if (posmod(note - ch.bass, 12) === 4) note -= 1;
-          this.play(A.inst, note, A.db + rr(-2, 0), rf() < (F.throw || 0) ? "Throw" : "Lead", t + rr(0, 0.006));
-        }
-      }
+      if (H && this.motif && s === 0 && i >= (H.i || 0) && bar % H.every === H.every - 1 && rf() < H.odds) this.phrase(t, i, bar);
       if (C && this.acid && i >= (C.i || 0) && this.acid.has(s) && rf() >= 0.15) {
         this.play("acid", this.fit(this.degreeNote(this.acid.get(s)), bar, this.pcs(bar)), C.db + rr(-2, 0), "Perc", t);
       }
@@ -19754,6 +19939,57 @@ function MG_SFX(L) {
       }
       if (F.riser && s === 0 && bar === 7 && rf() < F.riser[1]) this.play("riser", 62, F.riser[0], "Perc", t);
       if (D.pump && s % 4 === 0) this.m.pump(this.m.ctxTime(t), D.pump);
+    }
+    // Drift's phrase (score.js, DRIFT phr), on the bar line at music-clock time `t`: the motif from the
+    // first rest of the bar's roll at or after its 16th `at`, so it answers the bass, its middle notes now
+    // and then left out (fewer as the fighting heats up), its last now and then thrown into the ping-pong
+    // delay; then now and then a glitch edit on it, more often on a fill bar
+    phrase(t, i, bar) {
+      const H = this.def.phr, M = this.motif, sx = this.m.sixteenth(), st = this.m.phr, roll = bar % 4 === 3 && this.rollFill ? this.rollFill : this.rollPat;
+      let s0 = H.at || 0;
+      if (roll) { while (s0 < 16 && roll[s0]) s0++; if (s0 + M.length > 18) s0 = H.at || 0; }
+      const inst = pick(H.insts), sub = rf() < (H.keys || 0) ? "Keys" : "Lead", on = M.map((v, k) => (v === null ? -1 : k)).filter((k) => k >= 0);
+      const first = on[0], last = on[on.length - 1], at = (k) => t + (s0 + k) * sx;
+      let head = 0, tail = 0;
+      for (const k of on) {
+        if (k !== first && k !== last && rf() < H.rest * (1 - 0.5 * i)) continue;
+        const note = this.modal(M[k], bar + Math.floor((s0 + k) / 16)), thrown = k === last && rf() < (H.throw || 0);
+        this.play(inst, note, H.db + rr(-2, 0) + (k === first ? 1 : 0), thrown ? "Throw" : sub, at(k) + rr(0, 0.006));
+        st.notes++; if (thrown) st.thrown++;
+        if (k === first) head = note;
+        if (k === last) tail = note;
+      }
+      st.phrases++;
+      if (!H.edits || rf() >= (H.edit || 0) * (bar % 4 === 3 ? 2 : 1) * (LOW ? 0.5 : 1)) return;
+      const e = pick(H.edits), after = at(last) + sx;
+      if (e === "stutter") {
+        // (the last note re-struck on 32nds, cut short, into the keys' chorus)
+        for (let k = 0, n = LOW ? 3 : ri(3, 5); k < n; k++) this.gated(inst, tail, H.db - 2 - 2 * k, "Keys", after + k * sx * 0.5, sx * 0.28);
+      } else if (e === "gate") {
+        for (let k = 0; k < 4; k++) this.gated(inst, tail, H.db - 1.5 * (k + 1), sub, after + k * sx, sx * 0.4);
+      } else if (e === "rev") {
+        // (the first note backwards, ending on its strike: skipped if it would have had to start already)
+        const dur = 0.6 / (Math.pow(2, (head - this.m.seq.instruments.motr[0]) / 12) * this.m.seq.rate);
+        if (at(first) - dur < this.m.seq.clock) return;
+        this.play("motr", head, H.db - 3, sub, at(first) - dur);
+      } else if (e === "drop") {
+        // (repeats a fifth and an octave down, the last one bent lower still, like a tape slowing)
+        this.gated(inst, tail - 7, H.db - 3, sub, after, sx * 0.6);
+        const d = this.gated(inst, tail - 12, H.db - 6, sub, after + sx, sx * 1.2);
+        if (d) this.m.glide(d, d.pitch * 0.71, this.m.ctxTime(after + sx + 0.03));
+      }
+      st[e] = (st[e] || 0) + 1;
+    }
+    // a motif's note (semitones over the key) held to the chord of bar `b`: a note a semitone over a chord
+    // tone moves onto the chord, but the flat second over D, even in a dark bar, so the modal colour
+    // stays; none is the major third over the bass
+    modal(n, b) {
+      b = Math.min(b, 7);
+      const ch = this.prog[b % this.prog.length], pcs = this.pcs(b), key = posmod(this.Y.key, 12), bass = posmod(ch.bass, 12);
+      let note = this.Y.key + n;
+      if (pcs.some((p) => posmod(note - p, 12) === 1 && !(p === key && bass === key))) note = this.nearestTone(note, pcs);
+      if (posmod(note - ch.bass, 12) === 4) note -= 1;
+      return note;
     }
     // a slide into `note` at music-clock time `t`: the roll still sounding bends to it (as a 303's glide);
     // false if none is, so the note is struck
@@ -19805,6 +20041,7 @@ function MG_SFX(L) {
       this.seen = new Set(); this.stinger = ""; this.lastSparkle = -10; this.lastPing = -10; this.lastStrum = -1;
       this.tapeDip = 0; this.tapeSpeed = 1; this.tapeState = 0; this.outroWait = 0;
       this.glides = []; // (Drift's bass slides: voices whose pitch moves at a ctx time, Deck.glide)
+      this.phr = { phrases: 0, notes: 0, thrown: 0 }; // (Drift's phrases, their notes, and the glitch edits by kind, Deck.phrase; for the checks)
       this.ctlT = 0; this.tapKey = ""; // (the time to the next control-rate move, and the delay times last set, Music.update)
       // in and out: whether the music is in, the ctx time it next turns, and the music-clock time after
       // which an outgoing passage strikes no more notes; ?breath= scales the cycle (0: always in)
@@ -19844,12 +20081,14 @@ function MG_SFX(L) {
     logCue(what) { this.cueLog.push(what + "@" + Math.round(this.mixer.ctx.currentTime)); if (this.cueLog.length > 60) this.cueLog.shift(); }
 
     // (no new notes once a passage has gone out and its last notes are struck; the gestures' and the
-    // sting's instruments swapped for the style's own, score.js, STYLES[].swap, the decks' never)
+    // sting's instruments swapped for the style's own, score.js, STYLES[].swap, the decks' never); the voice
+    // struck, if one was
     play(inst, note, db, bus, at, deck) {
       if (!this.ready || !(this.on || this.seq.clock < this.quietAt)) return;
       const w = !deck && this.Y.swap && this.Y.swap[inst];
       if (w) { inst = w[0]; note += w[1]; db += w[2]; }
-      this.seq.play(inst, note, db, bus, at);
+      const n = this.seq.played; this.seq.play(inst, note, db, bus, at);
+      return this.seq.played > n ? this.seq.voices[bus][this.seq.voices[bus].length - 1] : null;
     }
     // Drift's sidechain: the pads duck by `depth` at ctx time `at` and swell back within the beat
     pump(at, depth) {
@@ -19963,12 +20202,13 @@ function MG_SFX(L) {
       // (Drift's: the pads' phaser, none on a low-end device, and the lead's autopan; none otherwise)
       if (mx.phase) mx.phase.gain.setTargetAtTime(D.phase || 0, now, 0.5);
       mx.leadPan.pan.setTargetAtTime(Math.sin(q.clock * 0.27) * (D.lpan || 0), now, 0.1);
-      // Drift's: the lead's resonant lowpass sweeping slowly, its resonance on a cycle of its own, and the
-      // pads' pumping let go when a cue has none
+      // Drift's: the lead's resonant lowpass sweeping slowly (and swinging every bar or few, in time, `wob`),
+      // its resonance on a cycle of its own, and the pads' pumping let go when a cue has none
       const R = D.reso;
       if (R) {
         const u = 0.5 - 0.5 * Math.cos((q.clock * 2 * Math.PI) / R[2]), v = 0.5 - 0.5 * Math.cos((q.clock * 2 * Math.PI) / (R[2] * 0.61));
-        mx.leadLp.frequency.setTargetAtTime(R[0] * Math.pow(R[1] / R[0], u), now, 0.2); mx.leadLp.Q.setTargetAtTime(lerp(R[3], R[4], v), now, 0.2);
+        const W = D.wob, wob = W ? Math.pow(2, W[1] * Math.sin((2 * Math.PI * (q.bar + q.step / q.stepsPerBar)) / W[0])) : 1;
+        mx.leadLp.frequency.setTargetAtTime(R[0] * Math.pow(R[1] / R[0], u) * wob, now, 0.2); mx.leadLp.Q.setTargetAtTime(lerp(R[3], R[4], v), now, 0.2);
       } else { mx.leadLp.frequency.setTargetAtTime(18000, now, 0.4); mx.leadLp.Q.setTargetAtTime(-3, now, 0.4); }
       if (!D.pump && this.pumping) { const g = mx.pump.gain; g.cancelScheduledValues(now); g.setValueAtTime(g.value, now); g.setTargetAtTime(1, now, 0.1); this.pumping = false; }
       if (!this.gameOver && this.vinyl) this.vinyl.g.gain.setTargetAtTime(MA.dbToGain(VINYL.calm + rot * VINYL.blight + (this.Y.vinyl || 0)), now, 0.3);
@@ -20297,7 +20537,7 @@ function MG_SFX(L) {
      Music      lowpass -> reverb -> gentle compressor; sub-buses MusicPads (a gain Drift pumps, and a
                 phaser), MusicKeys (chorus + slow autopan), MusicLead (a lowpass Drift sweeps and a panner,
                 then three delay taps on the 16th grid), MusicPerc (dusty lowpass), MusicThrow (a ping-pong
-                delay for Drift's odd note), and two decks of those five (MusicPadsA ... MusicThrowB)
+                delay for a Drift phrase's last note), and two decks of those five (MusicPadsA ... MusicThrowB)
                 the director crossfades its cues on
      Sfx        short reverb       Ambience   longer reverb
    G.Audio is what the game talks to: it unlocks the context on the first tap and remembers the sound
@@ -20337,7 +20577,7 @@ function MG_SFX(L) {
     // apart, so a lone note echoes into the space after it
     const lead = m.gain(), leadLp = m.lowpass(18000, -3), leadPan = m.panner(); lead.connect(leadLp); leadLp.connect(leadPan); leadPan.connect(music);
     const taps = [[-0.35, -14], [0.35, -19], [0, -25]].slice(0, low ? 2 : 3).map(([pan, db]) => m.delayTap(leadLp, music, db, pan));
-    // throw: Drift's odd note thrown into a ping-pong delay, two delays feeding each other from side to
+    // throw: a Drift phrase's last note thrown into a ping-pong delay, two delays feeding each other from side to
     // side through a lowpass, so its echoes bounce away and darken (the delay times music.js sets)
     const thr = m.gain(), dl = c.createDelay(4), dr = c.createDelay(4), fb = m.gain(0.45), fbLp = m.lowpass(2600, 0.5), pl = m.panner(-0.8), pr = m.panner(0.8), wetL = m.gain(0.7), wetR = m.gain(0.7);
     thr.connect(leadLp); thr.connect(dl); dl.connect(wetL); wetL.connect(pl); pl.connect(music); dl.connect(dr); dr.connect(wetR); wetR.connect(pr); pr.connect(music);
@@ -20398,7 +20638,7 @@ function MG_SFX(L) {
     stats() {
       const m = this.mixer;
       if (!m) return null;
-      return Object.assign({ ready: m.ready, readyAt: this.readyAt, state: m.ctx.state, samples: Object.keys(m.samples).length, renderMs: m.renderMs, worker: m.worker, notes: this.music.notes, late: this.music.late, skipped: this.music.skipped, sfx: this.sound.played, sfxq: this.sound.queue, mood: this.music.mood, style: this.music.style, breath: this.music.on ? "in" : "out", bpm: Math.round(this.music.bpm), cues: this.music.cueLog.join(" "), low: !!G.AUDIO_LOW, latency: m.latency(), voices: m.live, peakVoices: m.livePeak, stolen: this.music.seq ? this.music.seq.stolen : 0, resumes: this.resumes }, m.meterStats());
+      return Object.assign({ ready: m.ready, readyAt: this.readyAt, state: m.ctx.state, samples: Object.keys(m.samples).length, renderMs: m.renderMs, worker: m.worker, notes: this.music.notes, late: this.music.late, skipped: this.music.skipped, sfx: this.sound.played, sfxq: this.sound.queue, mood: this.music.mood, style: this.music.style, breath: this.music.on ? "in" : "out", bpm: Math.round(this.music.bpm), cues: this.music.cueLog.join(" "), low: !!G.AUDIO_LOW, latency: m.latency(), voices: m.live, peakVoices: m.livePeak, stolen: this.music.seq ? this.music.seq.stolen : 0, phr: this.music.phr, resumes: this.resumes }, m.meterStats());
     }
   }
   G.Audio = Audio;
