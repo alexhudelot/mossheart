@@ -13635,7 +13635,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.14.0", name: "Mossheart", commit: "92d15a9" };
+  G.VERSION = { v: "0.15.0", name: "Mossheart", commit: "902462c" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -22352,10 +22352,13 @@ function MG_SFX(L) {
       down = null;
       if (moved < 10 && dt < 600) tap(e);
     });
-    // the mouse hover is the click's preview, so it picks as the click does (a plant's leaves are that plant):
-    // R.pick runs on the CPU, so once a frame at most, on the last move
+    // the mouse hover is the click's preview, so it picks as the click does (a plant's leaves are that plant,
+    // unless a seed is held: see byLeaves): R.pick runs on the CPU, so once a frame at most, on the last move
+    // (with a seed held a press is the ground tile under the pointer: a tall plant's shaft or leaves over the
+    // spot behind or beside it took the press, selected that plant and dropped the seed)
+    const byLeaves = () => !hud.selected;
     let hoverEv = null;
-    const hoverNow = () => { if (!hoverEv) return; const c = cellAt(hoverEv, { plants: true }); hoverEv = null; scene.hover = c ? { cell: c } : null; mouseHover = !!c; };
+    const hoverNow = () => { if (!hoverEv) return; const c = cellAt(hoverEv, { plants: byLeaves() }); hoverEv = null; scene.hover = c ? { cell: c } : null; mouseHover = !!c; };
     canvas.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse" && !e.buttons) { if (!hoverEv) requestAnimationFrame(hoverNow); hoverEv = e; } });
     canvas.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") { hoverEv = null; scene.hover = null; mouseHover = false; } }); // (a finger leaves on every lift: its ghost stays)
     // A touch plants in two taps: the first, on a spot the seed can take, shows its ghost and reach there
@@ -22363,7 +22366,7 @@ function MG_SFX(L) {
     // mouse plants in one click, its hover being the preview.
     const tap = (e) => {
       if (S.phase === G.Phase.GAME_OVER || S.phase === G.Phase.CHOOSE_BOON) return;
-      const c = cellAt(e, { plants: true }); // (a tap on a plant's leaves is that plant, as the mouse hover shows)
+      const c = cellAt(e, { plants: byLeaves() }); // (a tap on a plant's leaves is that plant, as the mouse hover shows, unless a seed is held)
       if (!c) { pending = null; deselect(); return; }
       if (e.pointerType !== "mouse") { scene.hover = { cell: c }; mouseHover = false; }
       const t = game.towerAt(c[0], c[1]);
