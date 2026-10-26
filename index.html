@@ -4975,6 +4975,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   const LOOK = ["clarity", "tint", "absorb", "calm", "glint", "caustics", "bubbles"], FALL = ["falls", "spray"], LOOK_MAX = 8;
   const looked = (k) => !!k && k.recipe === "water" && LOOK.some((p) => k[p] !== undefined);
   const styled = (k) => looked(k) || (!!k && k.recipe === "water" && FALL.some((p) => k[p] !== undefined));
+  ME.waterLooked = looked; // a water kind with a look (it takes a look slot)
+  ME.waterStyled = styled; // a water kind with a look or styled falls
   // the options' values, the omitted ones filled in (clarity: 0-1 of the floor seen; tint: the deep colour,
   // linear rgb; absorb: the thickness of water, in tiles along the view ray, that takes the tint to 63%;
   // calm: 0-1, smaller and slower ripples and no wind roughness; glint: the sun glint's gain; caustics:
@@ -6321,15 +6323,34 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // Up to max of model mi's solid voxels, a uniform sample in random order: [x, y, z, material] at the voxel
   // centres in the model's frame (its box offset included), times s. It reads only the occupied bricks, so a
   // big model costs its bricks, not its whole box: a voxelsOf that scanned the box through MB.voxel took
-  // 74 ms for the Heart Tree on a heart hit (Engine's boss-wave probe, 2026-10-24).
+  // 74 ms for the Heart Tree on a heart hit (Engine's boss-wave probe, 2026-10-24). A capped sample is drawn,
+  // not scanned: a random cell of a random occupied brick, kept if solid and not drawn before, so it costs about
+  // max / fill draws (the full scan of the Heart Tree's bricks still took 54 ms on a phone's first heart hit,
+  // warm-up probe 2026-10-26). A model too sparse for that, or a cap near its size, is scanned as before.
   ME.sampleVoxels = (MB, mi, max, s = 1, rnd = Math.random) => {
     const { atlas: pool, bricks, models } = MB, [PX, PY] = MB.adims, [BX, BY] = MB.bdims, PB = PX / 8;
     const m = models[mi], [bx, by, bz] = m.base, [nx, ny, nz] = m.dims, [ox, oy, oz] = m.box, out = [];
-    let seen = 0;
+    const occ = []; // the occupied bricks: [cx, cy, cz, qx, qy, qz]
     for (let cz = 0; cz < nz; cz += 8) for (let cy = 0; cy < ny; cy += 8) for (let cx = 0; cx < nx; cx += 8) {
       const k = bricks[(((bz + cz) >> 3) * BY + ((by + cy) >> 3)) * BX + ((bx + cx) >> 3)] - 1;
-      if (k < 0) continue;
-      const qx = (k % PB) * 8, qy = (Math.floor(k / PB) % PB) * 8, qz = Math.floor(k / (PB * PB)) * 8;
+      if (k >= 0) occ.push([cx, cy, cz, (k % PB) * 8, (Math.floor(k / PB) % PB) * 8, Math.floor(k / (PB * PB)) * 8]);
+    }
+    if (max * 8 <= occ.length * 512) {
+      const got = new Set();
+      for (let tries = max * 64; out.length < max && tries > 0; tries--) {
+        const b = Math.floor(rnd() * occ.length), i = Math.floor(rnd() * 512), [cx, cy, cz, qx, qy, qz] = occ[b];
+        const x = cx + (i & 7), y = cy + ((i >> 3) & 7), z = cz + (i >> 6);
+        if (x >= nx || y >= ny || z >= nz || got.has(b * 512 + i)) continue;
+        const mat = pool[(((qz + (i >> 6)) * PY + qy + ((i >> 3) & 7)) * PX + qx + (i & 7)) * 4 + 3];
+        if (!mat) continue;
+        got.add(b * 512 + i);
+        out.push([(ox + x + 0.5) * s, (oy + y + 0.5) * s, (oz + z + 0.5) * s, mat]);
+      }
+      if (out.length === max) return out; // drawn in random order already
+      out.length = 0;
+    }
+    let seen = 0;
+    for (const [cx, cy, cz, qx, qy, qz] of occ) {
       for (let z = cz; z < Math.min(nz, cz + 8); z++) for (let y = cy; y < Math.min(ny, cy + 8); y++) for (let x = cx; x < Math.min(nx, cx + 8); x++) {
         const mat = pool[(((qz + (z & 7)) * PY + qy + (y & 7)) * PX + qx + (x & 7)) * 4 + 3];
         if (!mat) continue;
@@ -6816,7 +6837,7 @@ struct U {
   cgrid: vec4f,   // coarse/sun grid origin, cells per unit
   cdims: vec4f,   // coarse dims, light count
   look: vec4f,    // shade, pool, amb, aoK
-  look2: vec4f,   // bevelK, rampMode, dome height (0: a box frame), canopyOn
+  look2: vec4f,   // bevelK, rampMode, dome height (a box frame: minus its half y), canopyOn
   look3: vec4f,   // debugView, shaftK, bloomK, exposure
   fog: vec4f,     // fog rgb, haze
   beamCol: vec4f, // beam rgb, vignette
@@ -6831,7 +6852,7 @@ struct U {
   outres: vec4f,  // canvas w, h, 1/w, 1/h
   part: vec4f,    // leaf, firefly, mist counts, dt
   psrc: vec4f,    // source counts (leaf, firefly, mist), depth range D1-D0
-  geo: vec4f,     // the frame: centre xy, glass radius (box: half diagonal), glass top
+  geo: vec4f,     // the frame: centre xy, glass radius (box: half x), glass top
   misc2: vec4f,   // frame, shaft z top, shaft z bottom, bloom threshold
   look4: vec4f,   // spriteK, moss mottling, spray count, spray first source
   wind: vec4f,    // direction xy, strength, -
@@ -7539,15 +7560,22 @@ const NS = 8; // samples per ray (jittered per pixel and frame, then blurred)
 @group(1) @binding(3) var outT: texture_storage_2d<rgba16float, write>;
 fn ign(p: vec2f) -> f32 { return fract(52.9829189 * fract(dot(p, vec2f(0.06711056, 0.00583715)))); }
 // The span (fractions of a..b) inside the frame: the jar's glass cylinder under its half-ellipsoid dome, or
-// the box's upright cylinder. Outside it the sun volume clamps to its edge, so the air off the island would
-// be lit and the canopy's streaks drawn there as bands. Empty when x > y.
+// the box's sides (u.geo.z its half x, -u.look2.z its half y). Outside it the sun volume clamps to its edge,
+// so the air off the island would be lit and the canopy's streaks drawn there as bands. Empty when x > y.
 fn hitSphere(o: vec3f, v: vec3f, R: f32) -> vec2f {
-  let A = dot(v, v); let B = dot(o, v); let D = B * B - A * (dot(o, o) - R * R);
-  if (D < 0.0 || A < 1e-8) { return vec2f(1.0, 0.0); }
+  let A = dot(v, v); let B = dot(o, v); let C = dot(o, o) - R * R;
+  if (A < 1e-8) { if (C <= 0.0) { return vec2f(-1e9, 1e9); } return vec2f(1.0, 0.0); } // a ray along the axis: all inside or none
+  let D = B * B - A * C;
+  if (D < 0.0) { return vec2f(1.0, 0.0); }
   let s = sqrt(D); return vec2f(-B - s, -B + s) / A;
+}
+fn inSlab(o: f32, v: f32, h: f32) -> vec2f {
+  if (abs(v) < 1e-6) { if (abs(o) <= h) { return vec2f(-1e9, 1e9); } return vec2f(1.0, 0.0); }
+  let p = (-h - o) / v; let q = (h - o) / v; return vec2f(min(p, q), max(p, q));
 }
 fn inFrame(a: vec3f, b: vec3f) -> vec2f {
   let o = a - vec3f(u.geo.xy, u.geo.w); let v = b - a; let R = u.geo.z; let H = u.look2.z;
+  if (H < 0.0) { let x = inSlab(o.x, v.x, R); let y = inSlab(o.y, v.y, -H); return vec2f(max(x.x, y.x), min(x.y, y.y)); }
   var c = hitSphere(vec3f(o.xy, 0.0), vec3f(v.xy, 0.0), R);
   if (H <= 0.0) { return c; }
   if (abs(v.z) > 1e-6) { let s = -o.z / v.z; if (v.z < 0.0) { c.x = max(c.x, s); } else { c.y = min(c.y, s); } }
@@ -8860,11 +8888,11 @@ fn boxOf(V: Vox) -> Box {
       this.tVB = ME.buffer(d, S.mesh.verts, BU.VERTEX, "terrain vb");
       this.tIB = ME.buffer(d, S.mesh.index, BU.INDEX, "terrain ib");
       // the frame's extent: the jar's centre, glass radius, glass top, dome height and plinth foot, or the
-      // box's centre, half diagonal, top and floor (a bake from before T.frame is a jar)
+      // box's centre, half sides, half diagonal, top and floor (a bake from before T.frame is a jar)
       const F = T.frame || { type: "jar", c: [T.geo.C, T.geo.C] }, g = T.geo, b = T.bounds;
       this.ext = F.type === "jar"
         ? { jar: true, c: F.c, R: g.RG, top: g.glassZt, dome: 7.2 * (g.RI / 7), base: g.PL_ZB, foot: g.PL_ZT, RI: g.RI }
-        : { jar: false, c: [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2], R: Math.hypot(b.max[0] - b.min[0], b.max[1] - b.min[1]) / 2, top: b.max[2], dome: 0, base: b.min[2] };
+        : { jar: false, c: [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2], half: [(b.max[0] - b.min[0]) / 2, (b.max[1] - b.min[1]) / 2], R: Math.hypot(b.max[0] - b.min[0], b.max[1] - b.min[1]) / 2, top: b.max[2], dome: 0, base: b.min[2] };
       this.buildWater(); this.buildGlass(); this.buildParticles(); this.buildLights();
       this.grassBuf = ME.buffer(d, S.grass.blades, BU.STORAGE, "grass blades");
       const map = S.st.map;
@@ -9435,7 +9463,7 @@ fn boxOf(V: Vox) -> Box {
       u.set([...T.O, T.CPU], O.cgrid);
       u.set([...T.cdims, 0], O.cdims);
       u.set([s.shade, s.pool, s.amb, s.aoK], O.look);
-      u.set([BEVEL, s.ramp ? 1 : 0, this.ext.dome, s.canopy ? 1 : 0], O.look2);
+      u.set([BEVEL, s.ramp ? 1 : 0, this.ext.jar ? this.ext.dome : -this.ext.half[1], s.canopy ? 1 : 0], O.look2);
       // the moon, 0 by day to 1 at night (the dusk blend, as in daycycle.js): the shafts turn pale blue-silver,
       // fewer (every other pool fades), less streaky, and gain moonK so they still read once the dusk has
       // dimmed shaftK (the gain comes in late, so dusk itself stays soft)
@@ -9472,7 +9500,7 @@ fn boxOf(V: Vox) -> Box {
       u.set([this.out[0], this.out[1], 1 / this.out[0], 1 / this.out[1]], O.outres);
       u.set([this.pcount.leaf, this.pcount.fly, this.pcount.mist, Math.min(0.05, dt)], O.part);
       u.set([...this.psrc, cam.D1 - cam.D0], O.psrc);
-      u.set([E.c[0], E.c[1], E.R, E.top], O.geo);
+      u.set([E.c[0], E.c[1], E.jar ? E.R : E.half[0], E.top], O.geo); // (a box: its half x here, minus its half y in look2.z)
       u.set([fno % 64, 18, E.base, BLOOM_THRESHOLD], O.misc2);
       u.set([st.light.spriteK ?? 1, s.mottle, this.pcount.spray, this.sprayAt], O.look4);
       u.set([st.map.W, st.map.H, this.fieldRes, 0], O.field);
@@ -9696,6 +9724,9 @@ fn boxOf(V: Vox) -> Box {
     // slots that have ever held a voxel (dispatch and draw size)
     get used() { return Math.min(this.capacity, this.spawned); }
     get queued() { return (this.qt - this.qh) / F; }
+    // the share left, 1..0, of the sand that kept digs (o.keep, the default) may have loose at once (half the
+    // capacity; with none left such a dig takes nothing): a game that digs often backs off early with it
+    keepRoom() { const half = Math.floor(this.capacity / 2); return half > 0 ? Math.max(0, 1 - (this.keepLive + this.keepQueued) / half) : 0; }
     get active() { return this.enabled && (this.clock < this.activeUntil || this.queued > 0 || this.clearReq || this.pours.length > 0 || this.digs.length > 0 || this.carveQ.length > 0 || this.jobs.length > 0 || this.occReset > 0 || (this.keepLive > 0 && this.clock < this.keepUntil)); }
     rng() { let t = (this.seed = (this.seed + 0x6d2b79f5) | 0); t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }
 
@@ -13554,7 +13585,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "36ac230" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "b58d311" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
