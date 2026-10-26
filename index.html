@@ -63,6 +63,11 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 #wave { font-size: calc(22px * var(--ts)); }
 #topright { position: fixed; right: calc(12px + var(--sr)); top: calc(12px + var(--st)); display: flex; gap: 8px; align-items: center; pointer-events: none; }
 #topright > * { pointer-events: auto; }
+/* the music style (menu.js: a tap cycles Ambient, Drift, Mix): the note over its name */
+#musicbtn { width: calc(78px * var(--ts)); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; line-height: 1; }
+#musicbtn .lb { font-size: calc(17px * var(--ts)); }
+#musicbtn small { font-size: calc(11px * var(--ts)); letter-spacing: 0.02em; }
+#musicbtn:disabled { opacity: 0.6; cursor: default; }
 #fps { color: #fffd; font: calc(12px * var(--ts)) ui-monospace, Consolas, monospace; text-shadow: 0 0 4px #000; margin-right: 6px; pointer-events: none; }
 
 #almanac { position: fixed; right: calc(12px + var(--sr)); top: calc(72px + var(--st)); width: min(340px, calc(100vw - 24px)); max-height: calc(100vh - 400px); display: flex; flex-direction: column; align-items: flex-start;
@@ -319,6 +324,11 @@ body.calm .coach-spot { animation: none; }
   #boontip { max-width: calc(100vw - 24px); font-size: calc(12.5px * var(--ts)); }
   body.alm-open #giftbox { display: none; } /* the open almanac lists the gifts */
   #viewctl { right: calc(6px + var(--sr)); bottom: calc(30px + 184px * var(--ts) + var(--sb)); gap: 6px; }
+  /* (no room in the top row on a phone: the music button sits on top of the turn buttons, their width) */
+  #musicbtn { position: fixed; right: calc(6px + var(--sr)); bottom: calc(30px + 184px * var(--ts) + var(--sb) + 144px); width: 44px; }
+  #musicbtn .lb { font-size: calc(14px * var(--ts)); }
+  #musicbtn small { font-size: calc(8.5px * var(--ts)); letter-spacing: 0; }
+  body.alm-open #musicbtn { visibility: hidden; } /* (the open almanac reaches down to it with larger text) */
   #sky { right: calc(58px + var(--sr)); bottom: calc(30px + 184px * var(--ts) + var(--sb)); width: calc(100vw - 70px - var(--sl) - var(--sr)); padding: 8px 10px; }
   #sky .seg button { font-size: calc(12.5px * var(--ts)); padding: 5px 7px; }
   #hint { top: auto; bottom: calc(176px + 184px * var(--ts) + var(--sb)); font-size: calc(17px * var(--ts)); }
@@ -453,7 +463,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     <div id="heart"><div id="hearttxt">Heart 20/20</div><div class="hbar"><div id="heartfill"></div></div></div>
     <div id="wave">Wave 0</div>
   </div>
-  <div id="topright"><span id="fps"></span><button id="sound" class="btn small" title="sound (M)"><span class="lb">♪</span></button><button id="speed" class="btn small" title="speed (F)"><span class="lb">1x</span></button><button id="pausebtn" class="btn small" title="menu (Esc)">☰</button></div>
+  <div id="topright"><span id="fps"></span><button id="sound" class="btn small" title="sound (M)"><span class="lb">♪</span></button><button id="musicbtn" class="btn small" title="music style"><span class="lb">♫</span><small id="musicname">Ambient</small></button><button id="speed" class="btn small" title="speed (F)"><span class="lb">1x</span></button><button id="pausebtn" class="btn small" title="menu (Esc)">☰</button></div>
   <div id="giftbox"><div id="boonbar"></div><div id="boontip" class="panel"></div></div>
   <div id="almanac"><button id="almtog">Almanac ▸</button><div id="almbody"></div></div>
   <div id="viewctl"><button id="skybtn" class="btn small" title="mood and weather">☁</button><button id="turnl" class="btn small" title="turn left">↺</button><button id="turnr" class="btn small" title="turn right">↻</button></div>
@@ -13312,7 +13322,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "2ed379c" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "c154639" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -18987,13 +18997,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // (it starts as the system's reduced-motion choice); text: the HUD's and the menus' text size, a factor; weather: how strong the sky panel's weather is (atmos.js)
   // glass: the terrarium glass, "auto" as the quality has it (none on Low), or true/false over it (the Settings row)
   // res: the resolution, the canvas's pixels per CSS pixel: "full" (the screen's own, however fine) or "2", "1.5", "1", "0.75" (main.js fitCanvas; ?dpr= pins it)
-  // musicStyle: the music's style, "ambient" or "drift" (music.js setStyle; ?music= pins it)
+  // musicStyle: the music's style, "ambient", "drift" or "mix" (music.js setStyle; ?music= pins it); the HUD's ♫ button cycles them (MUSIC_STYLES)
   const calmOS = !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
   const DEFAULTS = {
     master: 0.7, music: 0.5, sfx: 0.7, ambience: 0.45, musicStyle: "ambient",
     quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, camera: true, vs: 32, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, weather: "subtle", glass: "auto", res: "full",
   };
-  const OLD_VOLUMES = { master: 0.9, music: 0.8, sfx: 0.9, ambience: 0.8 };
+  const MUSIC_STYLES = [["ambient", "Ambient"], ["drift", "Drift"], ["mix", "Mix"]];
+  const OLD_VOLUMES ={ master: 0.9, music: 0.8, sfx: 0.9, ambience: 0.8 };
   // vs: the voxel density, Extreme (32) unless the player picked one (vsPicked; the device's cap still applies).
   // Before 24 became the default every save held vs 16 unless picked, so only another value was a choice.
   // (Extreme at full resolution is the default since 2026-10-24, the user: "default to extreme density and
@@ -19139,8 +19150,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }, true);
       // a phone backgrounding the tab mid-run comes back paused
       document.addEventListener("visibilitychange", () => { if (document.hidden && !this.open && this.inRun()) this.show("pause"); });
+      // the HUD's music button: a tap moves to the next style, saved like the Settings row
+      $("musicbtn").addEventListener("click", () => { const i = MUSIC_STYLES.findIndex(([v]) => v === this.s.musicStyle); this.set("musicStyle", MUSIC_STYLES[(i + 1) % MUSIC_STYLES.length][0]); });
       this.apply();
-      const skip = !ME.qn("menu", 1) || ME.qn("autoplay", 0) || ME.qn("selftest", 0) || ME.qn("bench", 0);
+      const skip =!ME.qn("menu", 1) || ME.qn("autoplay", 0) || ME.qn("selftest", 0) || ME.qn("bench", 0);
       // a garden picked on the terrarium screen reloads into it and starts playing at once
       let go = "";
       try { go = sessionStorage.getItem(GO_KEY) || ""; sessionStorage.removeItem(GO_KEY); } catch (e) { /* storage blocked */ }
@@ -19238,8 +19251,19 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (a && a.mixer) {
         const bus = a.mixer.bus, set = (n, v) => { if (bus[n] && bus[n].gain) bus[n].gain.value = v * s.master; };
         set("Music", s.music); set("Sfx", s.sfx); set("Ambience", s.ambience);
-        if (a.music) a.music.setStyle(ME.params.get("music") || s.musicStyle); // (?music=ambient|drift pins it, for a check)
+        // (?music=ambient|drift|mix pins it, for a check; a style music.js does not know yet plays as ambient)
+        if (a.music) { const st = ME.params.get("music") || s.musicStyle; a.music.setStyle(!G.Score || !G.Score.STYLES || G.Score.STYLES[st] ? st : "ambient"); }
       }
+      this.showMusic();
+    }
+    // the HUD's music button shows the style playing and the one a tap brings (disabled while ?music= pins it)
+    showMusic() {
+      const b = $("musicbtn"); if (!b) return;
+      const pin = ME.params.get("music"), cur = pin || this.s.musicStyle, i = Math.max(0, MUSIC_STYLES.findIndex(([v]) => v === cur));
+      const name = (MUSIC_STYLES.find(([v]) => v === cur) || [cur, cur])[1];
+      $("musicname").textContent = name; b.dataset.style = cur; b.disabled = !!pin;
+      b.title = pin ? `Music: ${name}, pinned by the page address (?music=)` : `Music: ${name} · tap for ${MUSIC_STYLES[(i + 1) % MUSIC_STYLES.length][1]}`;
+      b.setAttribute("aria-label", b.title);
     }
     renderSettings() {
       const s = Object.assign({}, this.s, { vs: Math.min(VS_MAX, this.s.vs), preset: presetOf(this.s) }), body = $("setbody"); // (the density as this device bakes it)
@@ -19250,8 +19274,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const vsNow = ME.VS, vsNote = Math.min(VS_MAX, s.vs) !== vsNow && !ME.vsPinned ? `<div class="note">Takes effect on reload. <button class="btn" data-a="reload">Reload now</button></div>` : ME.vsPinned ? `<div class="note">Pinned to ${vsNow} by the page address (?vs=).</div>` : "";
       body.innerHTML =
         `<h3>Sound</h3>` + slider("master", "Volume") + slider("music", "Music") + slider("sfx", "Effects") + slider("ambience", "Ambience") +
-        choice("musicStyle", "Music style", [["ambient", "Ambient"], ["drift", "Drift"]]) +
-        `<div class="note dim">Ambient: single notes far apart over a warm pad. Drift: chill, psychedelic synth electronica in D minor, a squelchy rolling bass answered by short modal synth phrases through delays and glitch edits, a soft four-on-the-floor and slow filter sweeps. A change comes in on the next bar.</div>` +
+        choice("musicStyle", "Music style", MUSIC_STYLES) +
+        `<div class="note dim">Ambient: single notes far apart over a warm pad. Drift: chill, psychedelic synth electronica in D minor, a squelchy rolling bass answered by short modal synth phrases through delays and glitch edits, a soft four-on-the-floor and slow filter sweeps. Mix: the two together. A change comes in on the next bar; the ♫ button beside the sound button cycles them too.${ME.params.has("music") ? ` Pinned to ${(MUSIC_STYLES.find(([v]) => v === ME.params.get("music")) || ["", "another style"])[1]} by the page address (?music=).` : ""}</div>` +
         `<h3>Graphics</h3>` +
         choice("preset", "Preset", presets().map((k) => [k, PRESET_NAMES[k]]).concat(s.preset === "custom" ? [["custom", "Custom"]] : [])) +
         `<div class="note dim">Sets every graphics setting here at once (${presets().map((k) => { const p = presetSet(k); return PRESET_NAMES[k] + ": " + p.vs + ", " + (p.res === "full" ? "Full" : p.res + "x") + ", quality " + p.quality + (p.glass === false ? ", no glass" : ""); }).join("; ")}; the weather Subtle in all). Ultra is the default. Custom once one is changed by hand.</div>` +
