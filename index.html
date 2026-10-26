@@ -6480,6 +6480,78 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     r.onupgradeneeded = () => r.result.createObjectStore(STORE);
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   });
+  // Packed arrays. put() packs every typed array of 1 MB or more (the voxel grid, the mips, the coarse grid,
+  // the brick pool) into run-length chunks of CHUNK bytes before the write: the packing is the record's copy
+  // (the caller writes T and MB in place once put returns), and IndexedDB then clones only the chunks, where
+  // it cloned the whole grid (413 MB at vs40). A chunk is a list of tokens, each a varint v and then: when v
+  // is odd, one byte repeated v >> 1 times; when even, v >> 1 bytes as they are. A chunk that packs no
+  // smaller is kept as it is (raw). get() unpacks the arrays in place; a record from before packing has none.
+  const CHUNK = 1 << 22, BIG = 1 << 20, RUN = 4;
+  let scratch = null;
+  const packBytes = (src) => {
+    const chunks = [];
+    if (!scratch) scratch = new Uint8Array(CHUNK + (CHUNK >> 3) + 16);
+    const out = scratch;
+    for (let a = 0; a < src.length; a += CHUNK) {
+      const b = Math.min(src.length, a + CHUNK), lim = b - a;
+      let o = 0, i = a, lit = a;
+      const vint = (v) => { while (v > 127) { out[o++] = (v & 127) | 128; v >>>= 7; } out[o++] = v; };
+      const flush = (e) => {
+        const n = e - lit; vint(n * 2);
+        if (n < 32) for (let k = lit; k < e; k++) out[o++] = src[k]; else { out.set(src.subarray(lit, e), o); o += n; }
+      };
+      while (i < b && o < lim) {
+        const v = src[i]; let j = i + 1;
+        while (j < b && src[j] === v) j++;
+        if (j - i >= RUN) { if (lit < i) flush(i); vint((j - i) * 2 + 1); out[o++] = v; lit = j; }
+        i = j;
+      }
+      if (o < lim && lit < b) flush(b);
+      chunks.push(o < lim ? { n: lim, d: out.slice(0, o) } : { n: lim, raw: src.slice(a, b) });
+    }
+    return chunks;
+  };
+  const unpackBytes = (chunks, dst) => {
+    let p = 0;
+    for (const c of chunks) {
+      if (c.raw) { dst.set(c.raw, p); p += c.n; continue; }
+      const d = c.d, end = p + c.n;
+      let q = 0;
+      while (p < end) {
+        let v = 0, s = 0, x;
+        do { x = d[q++]; v += (x & 127) * 2 ** s; s += 7; } while (x & 128);
+        const n = Math.floor(v / 2);
+        if (v & 1) { dst.fill(d[q++], p, p + n); p += n; }
+        else if (n < 32) { for (let k = 0; k < n; k++) dst[p++] = d[q++]; }
+        else { dst.set(d.subarray(q, q + n), p); q += n; p += n; }
+      }
+    }
+  };
+  // the record with its big typed arrays packed (plain objects and arrays walked; anything else kept as is,
+  // and a part with nothing to pack kept as the same object). st: the sizes, for checks
+  const pack = (x, st) => {
+    if (ArrayBuffer.isView(x)) {
+      if (x.byteLength < BIG || x instanceof DataView) return x;
+      const t0 = performance.now(), chunks = packBytes(new Uint8Array(x.buffer, x.byteOffset, x.byteLength));
+      st.raw += x.byteLength; st.packed += chunks.reduce((s, c) => s + (c.d || c.raw).byteLength, 0); st.ms += performance.now() - t0;
+      return { packed: 1, type: x.constructor.name, length: x.length, chunks };
+    }
+    if (Array.isArray(x)) { let same = true; const y = x.map((v) => { const p = pack(v, st); if (p !== v) same = false; return p; }); return same ? x : y; }
+    if (x && typeof x === "object" && Object.getPrototypeOf(x) === Object.prototype) {
+      let y = null;
+      for (const k in x) { const v = x[k], p = pack(v, st); if (p !== v) (y || (y = Object.assign({}, x)))[k] = p; }
+      return y || x;
+    }
+    return x;
+  };
+  const isPacked = (x) => x && x.packed === 1 && Array.isArray(x.chunks) && typeof x.type === "string";
+  const unpack = (x) => {
+    if (isPacked(x)) { const a = new window[x.type](x.length); unpackBytes(x.chunks, new Uint8Array(a.buffer)); return a; }
+    if (Array.isArray(x)) { for (let i = 0; i < x.length; i++) x[i] = unpack(x[i]); return x; }
+    if (x && typeof x === "object" && Object.getPrototypeOf(x) === Object.prototype) { for (const k in x) x[k] = unpack(x[k]); return x; }
+    return x;
+  };
+
   const fnv = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return (h >>> 0).toString(36); };
   // a key's slot: "<app>/<map id>/" (each part URI-encoded, so neither holds a "/")
   const slotOf = (key) => { const m = /^([^/]*\/[^/]*\/)/.exec(key); return m ? m[1] : null; };
@@ -6527,17 +6599,24 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       if (ME.qn("nocache", 0) || !window.indexedDB) return null;
       try {
         const db = (held = await open());
-        return await new Promise((res, rej) => { const r = db.transaction(STORE).objectStore(STORE).get(key); r.onsuccess = () => res(r.result || null); r.onerror = () => rej(r.error); });
+        const rec = await new Promise((res, rej) => { const r = db.transaction(STORE).objectStore(STORE).get(key); r.onsuccess = () => res(r.result || null); r.onerror = () => rej(r.error); });
+        if (!rec) return null;
+        const t0 = performance.now();
+        unpack(rec); // (in place: the chunks go with the record's packed parts)
+        ME.bakeCache.unpackMs = Math.round(performance.now() - t0);
+        return rec;
       } catch (e) { ME.log("WARN bake cache read failed:", e.message); return null; }
     },
-    // fire and forget: the record is cloned here, before the first await (the caller goes on to R.init, the sim
-    // and the critters, which write some of T and MB in place: a later clone would store a played scene), and
-    // the write commits in the background. With the database get() opened, IndexedDB's put() is that clone
-    // (synchronous, the only copy); without it, structuredClone keeps a copy while the database opens. It
-    // replaces its slot's other records and any record without a slot (from before slots).
+    // fire and forget: the record is copied here, before the first await (the caller goes on to R.init, the sim
+    // and the critters, which write some of T and MB in place: a later copy would store a played scene), and
+    // the write commits in the background. Packing copies the big arrays; with the database get() opened,
+    // IndexedDB's put() clones the rest (synchronous); without it, structuredClone keeps a copy while the
+    // database opens. It replaces its slot's other records and any record without a slot (from before slots).
     async put(key, rec) {
       if (ME.qn("nocache", 0) || !window.indexedDB) return;
-      const slot = slotOf(key);
+      const slot = slotOf(key), st = { raw: 0, packed: 0, ms: 0 };
+      try { rec = pack(rec, st); } catch (e) { ME.log("WARN bake cache pack failed:", e && e.message); return; }
+      ME.bakeCache.packed = { rawMB: +(st.raw / 1048576).toFixed(1), packedMB: +(st.packed / 1048576).toFixed(1), ms: Math.round(st.ms) }; // (checks read it)
       const write = (db, r) => {
         const tx = db.transaction(STORE, "readwrite"), s = tx.objectStore(STORE);
         try {
@@ -8916,6 +8995,7 @@ fn boxOf(V: Vox) -> Box {
       this.rampTex = d.createTexture({ label: "ramps", size: [16, 256], format: "rgba8unorm-srgb", usage: GU.TEXTURE_BINDING | GU.COPY_DST });
       d.queue.writeTexture({ texture: this.rampTex }, S.tables.ramps, { bytesPerRow: 64 }, [16, 256]);
       this.densTex = ME.tex3d(d, "density", "r8unorm", [T.NX >> 1, T.NY >> 1, T.NZ >> 1], T.mips, 1); // half-res base: terrain shading never needed full res
+      T.mips = null; // on the GPU now; carve recomputes the region it changes from vox (58 MB at vs40)
       this.occTex = ME.tex3d(d, "coarse", "r8unorm", T.cdims, [T.coarse], 1);
       this.sunTex = d.createTexture({ label: "sunvol", size: T.cdims, dimension: "3d", format: "rgba8unorm", usage: GU.STORAGE_BINDING | GU.TEXTURE_BINDING | GU.COPY_SRC });
       this.sunBoxBuf = d.createBuffer({ label: "sunvol box", size: 32, usage: BU.UNIFORM | BU.COPY_DST }); this.sunQ = []; this.sunCells = 0; this.sunSlabs = 0; this.sunWhole = 0;
@@ -9262,35 +9342,42 @@ fn boxOf(V: Vox) -> Box {
       // the patch is rebuilt once a frame, before the G-buffer (carvePatch): a boss's slam carved four times in
       // a frame, and each call rebuilt it from every cell carved so far (32-97 ms; Engine's probe, 2026-10-24)
       this.patchDirty = true;
-      // density mips over the box (mip 0 = 2x2x2 average of occupancy, mip 1 = 2x2x2 average of mip 0)
-      // and the coarse occupancy over its cells there (ME.coarseFill, as the bake builds it)
-      const up = (tex, mip, src, dims, lo, hi) => {
+      // density mips over the box (mip 0 = 2x2x2 average of occupancy, mip 1 = 2x2x2 average of mip 0, as the
+      // bake's) and the coarse occupancy over its cells there (ME.coarseFill, as the bake builds it). The mips
+      // live only on the GPU (init drops T.mips after the upload: 58 MB at vs40), so mip 0 is recomputed from
+      // vox into a local array over every cell mip 1 reads (each is what the bake or an earlier carve gave it)
+      // up: src covers dims from its corner o, the region lo..hi goes to the texture at lo
+      const up = (tex, mip, src, dims, lo, hi, o = [0, 0, 0]) => {
         const w = hi[0] - lo[0] + 1, h = hi[1] - lo[1] + 1, z = hi[2] - lo[2] + 1, out = new Uint8Array(w * h * z);
-        for (let c = 0; c < z; c++) for (let b = 0; b < h; b++) for (let a = 0; a < w; a++) out[(c * h + b) * w + a] = src[((lo[2] + c) * dims[1] + lo[1] + b) * dims[0] + lo[0] + a];
+        for (let c = 0; c < z; c++) for (let b = 0; b < h; b++) for (let a = 0; a < w; a++) out[(c * h + b) * w + a] = src[((lo[2] - o[2] + c) * dims[1] + lo[1] - o[1] + b) * dims[0] + lo[0] - o[0] + a];
         d.queue.writeTexture({ texture: tex, mipLevel: mip, origin: lo }, out, { bytesPerRow: w, rowsPerImage: h }, [w, h, z]);
       };
-      const [d1, d2] = T.mips, D1 = [NX >> 1, NY >> 1, NZ >> 1], D2 = [NX >> 2, NY >> 2, NZ >> 2];
+      const D1 = [NX >> 1, NY >> 1, NZ >> 1], D2 = [NX >> 2, NY >> 2, NZ >> 2], two = D2.every((n) => n > 0);
       const lo1 = [0, 1, 2].map((a) => Math.max(0, (box[a] >> 1) - 1)), hi1 = [0, 1, 2].map((a) => Math.min(D1[a] - 1, (box[a + 3] >> 1) + 1));
-      for (let z = lo1[2]; z <= hi1[2]; z++) for (let y = lo1[1]; y <= hi1[1]; y++) for (let x = lo1[0]; x <= hi1[0]; x++) {
+      const lo2 = lo1.map((x) => x >> 1), hi2 = [0, 1, 2].map((a) => Math.min(D2[a] - 1, hi1[a] >> 1));
+      // the local mip 0, from corner L0 to L1: the box's cells and the 2x2x2 blocks under mip 1's
+      const L0 = two ? lo2.map((x) => 2 * x) : lo1, L1 = [0, 1, 2].map((a) => (two ? Math.max(hi1[a], 2 * hi2[a] + 1) : hi1[a]));
+      const LD = [0, 1, 2].map((a) => L1[a] - L0[a] + 1), d1 = new Uint8Array(LD[0] * LD[1] * LD[2]);
+      for (let z = L0[2]; z <= L1[2]; z++) for (let y = L0[1]; y <= L1[1]; y++) for (let x = L0[0]; x <= L1[0]; x++) {
         let s = 0;
         for (let c = 0; c < 8; c++) s += vox[((2 * z + (c >> 2)) * NY + 2 * y + ((c >> 1) & 1)) * NX + 2 * x + (c & 1)] ? 255 : 0;
-        d1[(z * D1[1] + y) * D1[0] + x] = s >> 3;
+        d1[((z - L0[2]) * LD[1] + y - L0[1]) * LD[0] + x - L0[0]] = s >> 3;
       }
-      up(this.densTex, 0, d1, D1, lo1, hi1);
+      up(this.densTex, 0, d1, LD, lo1, hi1, L0);
       if (T.coarse) {
         const f = T.VS / T.CPU, top = [T.cdims[0], T.cdims[1], NZ / f].map((n) => n - 1);
         const lo = [0, 1, 2].map((a) => Math.max(0, Math.floor(box[a] / f) - 1)), hi = [0, 1, 2].map((a) => Math.min(top[a], Math.floor(box[a + 3] / f) + 1));
         ME.coarseFill(T, lo, hi);
         up(this.occTex, 0, T.coarse, T.cdims, lo, hi); this.sunRegion(lo, hi);
       }
-      if (d2) {
-        const lo2 = lo1.map((x) => x >> 1), hi2 = [0, 1, 2].map((a) => Math.min(D2[a] - 1, hi1[a] >> 1));
+      if (two) {
+        const W = [0, 1, 2].map((a) => hi2[a] - lo2[a] + 1), d2 = new Uint8Array(W[0] * W[1] * W[2]);
         for (let z = lo2[2]; z <= hi2[2]; z++) for (let y = lo2[1]; y <= hi2[1]; y++) for (let x = lo2[0]; x <= hi2[0]; x++) {
           let s = 0;
-          for (let c = 0; c < 8; c++) s += d1[((2 * z + (c >> 2)) * D1[1] + 2 * y + ((c >> 1) & 1)) * D1[0] + 2 * x + (c & 1)];
-          d2[(z * D2[1] + y) * D2[0] + x] = s >> 3;
+          for (let c = 0; c < 8; c++) s += d1[((2 * z + (c >> 2) - L0[2]) * LD[1] + 2 * y + ((c >> 1) & 1) - L0[1]) * LD[0] + 2 * x + (c & 1) - L0[0]];
+          d2[((z - lo2[2]) * W[1] + y - lo2[1]) * W[0] + x - lo2[0]] = s >> 3;
         }
-        up(this.densTex, 1, d2, D2, lo2, hi2);
+        up(this.densTex, 1, d2, W, lo2, hi2, lo2);
       }
     }
 
@@ -13635,7 +13722,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.16.0", name: "Mossheart", commit: "ae53407" };
+  G.VERSION = { v: "0.17.0", name: "Mossheart", commit: "9500b6e" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
