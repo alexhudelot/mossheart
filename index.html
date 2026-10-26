@@ -13522,7 +13522,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "84f3295" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "db0ef4a" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -15301,11 +15301,14 @@ function MA_DSP() {
       // the roots over the stones, a lighter bark than the stumps' so they show on the dark stone; bark grain
       twRoot: [["#6a5666", 5, 0.14, 0.6, 0.2]], twBarkLt: [["#4e4260", 4, 0.12, 0.5]],
       twMossLt: [["#a6c860", 5, 0.3, 0.82, 0.3], { cls: 2, wrap: 0.6 }],
-      // each plant its own hue (the user, 2026-10-26): the Thornbloom magenta roses on a dark thorn bush with plum
-      // canes, the Briar a brighter red, the Puffcap violet, the Stinkhorn an orange lattice and glow, the Moonpetal blue, the
+      // each plant its own hue (the user, 2026-10-26): the Thornbloom a green thorn bush, deep green canes to fresh tips,
+      // bone-pale thorns and a few small magenta roses (the user: "greener thornbloom with spikes"), the Briar a brighter red, the Puffcap violet, the Stinkhorn an orange lattice and glow, the Moonpetal blue, the
       // Ghost Lily white with a jade throat and stamens, the Sunpetal lemon yellow (the kit's
       // petal and lattice ramps shift their shadows through red, hue shift 0.3); the Willow Wisp (cyan) keeps the kit's
-      twRose: [["#e02aa8", 6, 0.26, 0.76, 0.12]], twRoseLt: [["#f070c8", 4, 0.4, 0.85, 0.1]], twThornDk: [["#8a2c5a", 4, 0.18, 0.56, 0.15]],
+      twRose: [["#e02aa8", 6, 0.26, 0.76, 0.12]], twRoseLt: [["#f070c8", 4, 0.4, 0.85, 0.1]],
+      twCaneDk: [["#24502c", 4, 0.12, 0.46, 0.15]], twCane: [["#33803a", 4, 0.18, 0.6, 0.15]], twCaneLt: [["#66b83c", 4, 0.28, 0.76, 0.15]],
+      twSpike: [["#dce4a0", 3, 0.56, 0.92, 0]], // no hue shift: a yellow shadow shifted toward blue runs through red (makeRamp)
+      twSkirt: [["#1e4238", 6, 0.07, 0.4, 0.3]], twSkirtLt: [["#3c6c52", 4, 0.16, 0.54, 0.3]],
       twBriar: [["#ac2e28", 5, 0.18, 0.62, 0.15]], twCap: [["#8448d8", 6, 0.22, 0.72, 0.2]],
       twStinkGlow: [["#f08a20", "#f4a040", "#f8b860"], { em: 1, flat: 1 }],
       twPetal: [["#f8d828", 6, 0.38, 0.9, 0.06]], twPetalDk: [["#eab820", 5, 0.3, 0.76, 0.06]], twStinkOr: [["#f08c1c", 6, 0.3, 0.8, 0.06]],
@@ -15337,27 +15340,27 @@ function MA_DSP() {
     // ---- the plant tops: TOP[kind](L, p, z, D) grows the plant from the vessel's moss at height z and
     // returns the model's height
     const TOP = {
-      thorn(L, p, z, D) { // an upright thorn bush: angular plum canes fanning up and out of a low leaf skirt, long pale thorns out past their outline, gaps between them; magenta roses on the canes (3 at level 1, 5 and a big glowing crown rose at 3)
+      thorn(L, p, z, D) { // an upright thorn bush: angular green canes (deep at the foot, fresh at the tips) fanning up and out of a low leaf skirt, many long bone-pale thorns out past their outline, gaps between them; small magenta roses on the canes (2 at level 1, 4 and a glowing crown rose at 3)
         const H = [0.66, 0.76, 0.84][L - 1], W = [0.22, 0.25, 0.28][L - 1], FO = Object.assign({ k2: 0.02 }, HI > 1 ? { disp: 0.016, df: 18 } : HI ? { disp: 0.012, df: 14 } : {});
-        // the skirt: low flat leaf lobes round the canes' feet, so the bush keeps no round mass
-        ring(5, (a, i) => p.push(E(pol(a, W * 0.45, z + 0.035 + 0.02 * (i % 2)), [W * 0.4, W * 0.26, 0.06], "scPine", Object.assign({ R: rz(a) }, FO))), 0.2);
-        D.push((x, y, zz, m, nx, ny, nz) => (m === "scPine" && nz > 0.4 && nz3(x, y, zz, 8, 4) > 0.5 ? "scPineLt" : null)); // lit leaf tips
-        const spike = (q, d, s = 1) => p.push(C(q, add(q, mul(norm(d), 0.085 * s)), 0.016 * s, 0.002, "kgThorn")); // long, pale, wide at its foot
-        const leaf = (q, d) => p.push(E(add(q, mul(d, 0.045)), [0.05, 0.026, 0.012], "scPine", { R: orient(norm(add([0, 0, 1], mul(d, -0.5))), d) }));
+        // the skirt: low flat dark teal leaf lobes round the canes' feet, so the bush keeps no round mass and the canes stand out of it
+        ring(5, (a, i) => p.push(E(pol(a, W * 0.45, z + 0.035 + 0.02 * (i % 2)), [W * 0.4, W * 0.26, 0.06], "twSkirt", Object.assign({ R: rz(a) }, FO))), 0.2);
+        D.push((x, y, zz, m, nx, ny, nz) => (m === "twSkirt" && nz > 0.4 && nz3(x, y, zz, 8, 4) > 0.5 ? "twSkirtLt" : null)); // lit leaf tips
+        const spike = (q, d, s = 1) => p.push(C(q, add(q, mul(norm(d), 0.11 * s)), 0.017 * s, 0.002, "twSpike")); // long, bone-pale, wide at its foot
+        const leaf = (q, d) => p.push(E(add(q, mul(d, 0.045)), [0.05, 0.026, 0.012], "twSkirtLt", { R: orient(norm(add([0, 0, 1], mul(d, -0.5))), d) }));
         // a cane: three straight runs from its foot by the stub's centre, kinked at each joint (bending out a little and
         // swinging left and right), thinning to a thorn tip; thorns along each run on alternate sides, pointing out and a
         // little down; a leaf at its first joint (and its second from 24). Returns its joints.
-        const nt = HI ? 3 : 2;
+        const nt = HI ? 4 : 3, CM = ["twCaneDk", "twCane", "twCaneLt"];
         const cane = (a, el, len) => {
           const out = [Math.cos(a), Math.sin(a), 0], J = [pol(a, 0.025, z - 0.02)];
           for (let k = 0; k < 3; k++) {
             const e = el - 0.12 * k, b = a + (k % 2 ? 0.22 : -0.22), d = [Math.cos(b) * Math.cos(e), Math.sin(b) * Math.cos(e), Math.sin(e)];
             const q0 = J[k], q1 = add(q0, mul(d, len / 3)), sd = norm(cross(d, [0, 0, 1]));
-            p.push(C(q0, q1, 0.028 - 0.007 * k, 0.021 - 0.007 * k, "twThornDk", { k2: 0.004 }));
+            p.push(C(q0, q1, 0.028 - 0.007 * k, 0.021 - 0.007 * k, CM[k], { k2: 0.004 }));
             for (let j = 1; j <= nt; j++) spike(lerp3(q0, q1, j / (nt + 1)), add(add(mul(sd, (k * nt + j) % 2 ? 1 : -1), mul(out, 0.7)), [0, 0, -0.25]), 1.15 - 0.15 * k);
             J.push(q1);
           }
-          spike(J[3], add(J[3], mul(J[2], -1)), 0.8);
+          spike(J[3], add(J[3], mul(J[2], -1)), 0.9);
           leaf(J[1], norm(add(out, [-out[1] * 0.6, out[0] * 0.6, 0])));
           if (HI) leaf(J[2], norm(add(out, [out[1] * 0.6, -out[0] * 0.6, 0])));
           return J;
@@ -15373,19 +15376,19 @@ function MA_DSP() {
           p.push(S(add(c, mul(n, r * 0.45)), r * (glow ? 0.3 : 0.24), glow ? "hsGlowPink" : "twRose"));
           for (const s of [1, -1]) { const d = norm(add(mul(u, s * 0.8), mul(v, -0.6))); p.push(E(add(add(c, mul(d, r * 0.85)), mul(n, -r * 0.15)), [r * 0.7, r * 0.34, 0.01], "kgLeaf", { R: orient(n, d) })); }
         };
-        // the roses on the front canes, at their second joint or half way up their last run, facing out and up
-        const rr = [0.065, 0.07, 0.075][L - 1];
-        cj.slice(0, 2 + L).forEach((J, i) => {
+        // the roses (small, so the green leads) on the front canes, at their second joint or half way up their last run, facing out and up
+        const rr = [0.048, 0.052, 0.056][L - 1];
+        cj.slice(0, 1 + L).forEach((J, i) => {
           const q = i % 2 ? lerp3(J[2], J[3], 0.5) : J[2], o = norm([q[0], q[1], 0]);
           rose(add(q, mul(o, rr * 0.5)), norm(add(o, [0, 0, 0.9])), rr * (i > 2 ? 0.85 : 1), i === 0);
         });
         let top = z + H + 0.04;
-        if (L === 3) { // the crown rose, the biggest, on a thin thorny cane up the middle, kinked once, glowing
+        if (L === 3) { // the crown rose, the biggest, on a thin thorny cane up the middle (fresh green above its kink), kinked once, glowing
           const cc = [0.02, 0.02, z + H + 0.06], c0 = [0, 0, z - 0.02], ck = [0.05, -0.04, z + H * 0.5], ce = add(cc, [0, 0, -0.04]);
-          p.push(C(c0, ck, 0.024, 0.017, "twThornDk", { k2: 0.004 }), C(ck, ce, 0.017, 0.012, "twThornDk", { k2: 0.004 }));
+          p.push(C(c0, ck, 0.024, 0.017, "twCane", { k2: 0.004 }), C(ck, ce, 0.017, 0.012, "twCaneLt", { k2: 0.004 }));
           [[1, -0.3], [-0.4, 1], [-1, 0.2], [0.3, -1]].forEach(([x, y], k) => spike(k < 2 ? lerp3(c0, ck, 0.45 + 0.35 * k) : lerp3(ck, ce, 0.35 * k - 0.4), [x, y, -0.2]));
-          rose(cc, norm([0.35, 0.35, 1]), 0.12, true);
-          p.push(S(add(cc, [0.012, 0.012, 0.07]), 0.045, "hsGlowPink"));
+          rose(cc, norm([0.35, 0.35, 1]), 0.088, true);
+          p.push(S(add(cc, [0.01, 0.01, 0.05]), 0.034, "hsGlowPink"));
           top = cc[2] + 0.13;
         }
         for (let k = 0; k < L - 1; k++) p.push(S(pol(0.9 + k * 2.6, W * 0.9, top - 0.1 + 0.07 * k), 0.016, "hsGlowPink"));
@@ -15684,7 +15687,7 @@ function MA_DSP() {
         try {
           const md = build(k, { lv, hi });
           for (const q of md.prims) for (const f in q) if (typeof q[f] === "number" && !isFinite(q[f])) throw new Error("bad prim " + f);
-          for (let x = -0.4; x <= 0.4; x += 0.1) for (let y = -0.4; y <= 0.4; y += 0.1) for (let z = 0; z <= 1.2; z += 0.1) for (const m of [WS, BK, RT, SN, SL, "moss", "twCap", "twLily", "kgGleba", "kgGill"]) for (const nz of [0, 1]) if (typeof md.detail(x, y, z, m, 0, 0, nz) !== "string") throw new Error("detail");
+          for (let x = -0.4; x <= 0.4; x += 0.1) for (let y = -0.4; y <= 0.4; y += 0.1) for (let z = 0; z <= 1.2; z += 0.1) for (const m of [WS, BK, RT, SN, SL, "moss", "twCap", "twLily", "twSkirt", "kgGleba", "kgGill"]) for (const nz of [0, 1]) if (typeof md.detail(x, y, z, m, 0, 0, nz) !== "string") throw new Error("detail");
           if (lv === 3) stats.push(k + hi + " " + md.prims.length + " h" + md.h.toFixed(2) + " r" + md.r.toFixed(2));
         } catch (e) { errs.push(k + lv + "/" + hi + ": " + e.message); }
       }
