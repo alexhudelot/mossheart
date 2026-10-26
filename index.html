@@ -6816,7 +6816,7 @@ struct U {
   cgrid: vec4f,   // coarse/sun grid origin, cells per unit
   cdims: vec4f,   // coarse dims, light count
   look: vec4f,    // shade, pool, amb, aoK
-  look2: vec4f,   // bevelK, rampMode, -, canopyOn
+  look2: vec4f,   // bevelK, rampMode, dome height (0: a box frame), canopyOn
   look3: vec4f,   // debugView, shaftK, bloomK, exposure
   fog: vec4f,     // fog rgb, haze
   beamCol: vec4f, // beam rgb, vignette
@@ -6831,7 +6831,7 @@ struct U {
   outres: vec4f,  // canvas w, h, 1/w, 1/h
   part: vec4f,    // leaf, firefly, mist counts, dt
   psrc: vec4f,    // source counts (leaf, firefly, mist), depth range D1-D0
-  geo: vec4f,     // island centre, glass radius, glass top, dome height
+  geo: vec4f,     // the frame: centre xy, glass radius (box: half diagonal), glass top
   misc2: vec4f,   // frame, shaft z top, shaft z bottom, bloom threshold
   look4: vec4f,   // spriteK, moss mottling, spray count, spray first source
   wind: vec4f,    // direction xy, strength, -
@@ -7538,6 +7538,25 @@ const NS = 8; // samples per ray (jittered per pixel and frame, then blurred)
 @group(1) @binding(2) var lin: sampler;
 @group(1) @binding(3) var outT: texture_storage_2d<rgba16float, write>;
 fn ign(p: vec2f) -> f32 { return fract(52.9829189 * fract(dot(p, vec2f(0.06711056, 0.00583715)))); }
+// The span (fractions of a..b) inside the frame: the jar's glass cylinder under its half-ellipsoid dome, or
+// the box's upright cylinder. Outside it the sun volume clamps to its edge, so the air off the island would
+// be lit and the canopy's streaks drawn there as bands. Empty when x > y.
+fn hitSphere(o: vec3f, v: vec3f, R: f32) -> vec2f {
+  let A = dot(v, v); let B = dot(o, v); let D = B * B - A * (dot(o, o) - R * R);
+  if (D < 0.0 || A < 1e-8) { return vec2f(1.0, 0.0); }
+  let s = sqrt(D); return vec2f(-B - s, -B + s) / A;
+}
+fn inFrame(a: vec3f, b: vec3f) -> vec2f {
+  let o = a - vec3f(u.geo.xy, u.geo.w); let v = b - a; let R = u.geo.z; let H = u.look2.z;
+  var c = hitSphere(vec3f(o.xy, 0.0), vec3f(v.xy, 0.0), R);
+  if (H <= 0.0) { return c; }
+  if (abs(v.z) > 1e-6) { let s = -o.z / v.z; if (v.z < 0.0) { c.x = max(c.x, s); } else { c.y = min(c.y, s); } }
+  else if (o.z > 0.0) { c = vec2f(1.0, 0.0); }
+  let k = R / H; let e = hitSphere(vec3f(o.xy, o.z * k), vec3f(v.xy, v.z * k), R);
+  if (c.x > c.y) { return e; }
+  if (e.x > e.y) { return c; }
+  return vec2f(min(c.x, e.x), max(c.y, e.y));
+}
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) id: vec3u) {
   let hs = textureDimensions(outT);
@@ -7552,6 +7571,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   let dz = b.z - a.z;
   var t0 = 0.0; var t1 = 1.0;
   if (dz < -1e-4) { t0 = clamp((u.canopy3.x - a.z) / dz, 0.0, 1.0); t1 = clamp((u.misc2.z - a.z) / dz, 0.0, 1.0); }
+  let fr = inFrame(a, b); t0 = max(t0, fr.x); t1 = min(t1, fr.y);
   var I = 0.0;
   if (t1 > t0) {
     let jit = fract(ign(vec2f(id.xy)) + u.misc2.x * 0.618034);
@@ -9415,7 +9435,7 @@ fn boxOf(V: Vox) -> Box {
       u.set([...T.O, T.CPU], O.cgrid);
       u.set([...T.cdims, 0], O.cdims);
       u.set([s.shade, s.pool, s.amb, s.aoK], O.look);
-      u.set([BEVEL, s.ramp ? 1 : 0, 0, s.canopy ? 1 : 0], O.look2);
+      u.set([BEVEL, s.ramp ? 1 : 0, this.ext.dome, s.canopy ? 1 : 0], O.look2);
       // the moon, 0 by day to 1 at night (the dusk blend, as in daycycle.js): the shafts turn pale blue-silver,
       // fewer (every other pool fades), less streaky, and gain moonK so they still read once the dusk has
       // dimmed shaftK (the gain comes in late, so dusk itself stays soft)
@@ -9452,7 +9472,7 @@ fn boxOf(V: Vox) -> Box {
       u.set([this.out[0], this.out[1], 1 / this.out[0], 1 / this.out[1]], O.outres);
       u.set([this.pcount.leaf, this.pcount.fly, this.pcount.mist, Math.min(0.05, dt)], O.part);
       u.set([...this.psrc, cam.D1 - cam.D0], O.psrc);
-      u.set([E.c[0], E.R, E.top, E.dome], O.geo);
+      u.set([E.c[0], E.c[1], E.R, E.top], O.geo);
       u.set([fno % 64, 18, E.base, BLOOM_THRESHOLD], O.misc2);
       u.set([st.light.spriteK ?? 1, s.mottle, this.pcount.spray, this.sprayAt], O.look4);
       u.set([st.map.W, st.map.H, this.fieldRes, 0], O.field);
@@ -13522,7 +13542,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "db0ef4a" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "55b250f" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
