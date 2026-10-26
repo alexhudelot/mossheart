@@ -3825,14 +3825,16 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   const VAL = (x, y) => Math.hypot(x - 8, y - 7.5) + warp(x, y, 2.0);
   const VALLEY = garden({
     N: 24,
-    height: (x, y) => { const d = VAL(x, y); return 2 + 2 * (d < 10.4) + 2 * (d < 7.9) + 2 * (d < 5.4) + 2 * (d < 2.9); },
-    water: [{ seg: [9.6, 8.2, 9.6, 17.8], r: 0.6, carve: true }, { e: { x: 10.4, y: 19.6, rx: 3.2, ry: 2.0 }, h: 2 }],
+    // W6: the lake spills south through a one-tile gorge, ledge by ledge (z 0, then -0.5 on the rim), and
+    // off the island's edge down the drum (the engine's rim spill)
+    height: (x, y) => { if (Math.abs(x - 10.5) < 0.5 && y > 22) return y > 23 ? -1 : 0; const d = VAL(x, y); return 2 + 2 * (d < 10.4) + 2 * (d < 7.9) + 2 * (d < 5.4) + 2 * (d < 2.9); },
+    water: [{ seg: [9.6, 8.2, 9.6, 17.8], r: 0.6, carve: true }, { seg: [10.5, 21.2, 10.5, 24.0], r: 0.27, carve: true }, { e: { x: 10.4, y: 19.6, rx: 3.2, ry: 2.0 }, h: 2 }],
     // enemies enter through the torii on the right, snake through the lowland, climb onto the first
     // terrace, cross the river on the red bridge, then switch back up three more terraces to the summit
     paths: [[[23, 8], [21, 8], [21, 4], [19, 4], [19, 12], [22, 12], [22, 16], [13, 16], [4, 16], [4, 14], [7, 14], [7, 12], [5, 12], [5, 10], [6, 10], [6, 7]]], lane: "u",
   });
   falls({
-    id: "mf-valley", name: "Momiji Valley", jp: "紅葉の谷間", map: VALLEY, seed: 47, tw: 60, dumpMap: true,
+    id: "mf-valley", name: "Momiji Valley", jp: "紅葉の谷間", map: VALLEY, seed: 47, tw: 60, dumpMap: true, spill: true,
     deco: [MAPLE({ x: 7, y: 5, t: { H: 3.4 } }), ["lantern", { t: 0.2 }, 5, 7], ["torii", {}, 22, 8],
       // towers on the build spots beside the route, enemies on it
       ["hotaru", { t: 0.1 }, 20, 6], ["puffcap", { t: 0.4 }, 20, 10], ["sprout", { t: 0.6 }, 17, 14], ["hotaru", { t: 0.5 }, 14, 18], ["puffcap", { t: 0.2 }, 5, 15], ["sprout", { t: 0.3 }, 6, 13], ["hotaru", { t: 0.7 }, 4, 11],
@@ -3840,7 +3842,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       // garden: small maples, moss mounds, ferns
       ["niwaki", { seed: 6, H: 1.7, girth: 0.8, spread: 0.6, padR: 0.45, n: 5, flat: 0.24, mat: "maple", bumps: 3 }, 14, 5], ["niwaki", { seed: 7, H: 1.5, girth: 0.7, spread: 0.55, padR: 0.42, n: 5, flat: 0.24, mat: "maple", bumps: 3 }, 2, 10],
       ["niwaki", { seed: 8, H: 1.6, girth: 0.75, spread: 0.6, padR: 0.44, n: 5, flat: 0.24, mat: "maple", bumps: 3 }, 16, 21], ["niwaki", { seed: 9, H: 2.0, girth: 0.9, spread: 0.7, padR: 0.5, n: 6, flat: 0.26 }, 12, 3],
-      ["mound", { seed: 1, sz: 1.6 }, 3, 19], ["mound", { seed: 2, sz: 1.4 }, 16, 9], ["mound", { seed: 5, sz: 1.5 }, 10, 22], ["mound", { seed: 6, sz: 1.3 }, 13, 10], ["mound", { seed: 4, sz: 1.3 }, 3, 6],
+      ["mound", { seed: 1, sz: 1.6 }, 3, 19], ["mound", { seed: 2, sz: 1.4 }, 16, 9], ["mound", { seed: 6, sz: 1.3 }, 13, 10], ["mound", { seed: 4, sz: 1.3 }, 3, 6],
       ["fern", { seed: 3, sz: 1.2 }, 17, 6], ["fern", { seed: 4, sz: 1.1 }, 20, 18], ["rock", { sz: 1.1 }, 12, 20]],
     beams: [{ x: 9.6, y: 16.4, r: 1.3, len: 24 }, { x: 10.4, y: 19.8, r: 1.2, k: 0.95, len: 24 }, { x: 9.4, y: 9.2, r: 1.0, k: 0.9, len: 24 }, { x: 20.0, y: 8.0, r: 1.3, k: 0.9, len: 24 }, { x: 5.6, y: 13.0, r: 0.9, k: 0.85, len: 24 }],
   });
@@ -5114,6 +5116,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     else if (f.type === "jar") {
       if (!(Array.isArray(f.c) && f.c.length === 2 && f.c.every(Number.isFinite)) || !(f.r > 0)) err("frame (jar): c: [x, y], r > 0");
       if (f.foot !== undefined && !Number.isFinite(f.foot)) err("frame (jar): foot is the drum top (tiles)");
+      if (f.spill !== undefined && typeof f.spill !== "boolean") err("frame (jar): spill is true or false (the rim spill, W6)");
     }
     // the bake box: given, or derived
     if (range) {
@@ -5129,6 +5132,23 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       if (cells24 > 256e6) warn("box: " + Math.round(cells24 / 1e6) + "M voxels at vs=24 (memory: keep a phone map under 256M)");
     }
     return { errors, warnings, box };
+  };
+
+  // a map's props as [model, options, x, y, at]: a versioned map's options default to {} (so they key the model
+  // bake's variants as {}), a generator map's (st.deco) are kept as they are
+  const propsOf = (st) => (st.map.v !== undefined ? (st.map.props || []).map(([name, o, x, y, at]) => [name, o ?? {}, x, y, at || {}])
+    : st.deco.filter(Boolean).map(([name, o, x, y, ex]) => [name, o, x, y, ex || {}]));
+  // the content's volume and walker deco names
+  const decoSets = (CT) => [new Set([...(CT.volumeDeco || []), ...ME.VOLUME_DECO]), new Set(Object.keys(CT.walkers || {}))];
+  // what the terrain bake does with a prop: null (no model loaded), "walker", "volume" (baked by the model bake)
+  // or "stamp"; at.as ("stamp" or "volume") overrides the content pack's walkers and volumeDeco for this prop
+  const propRole = (name, ex, VOLUME_DECO, WALKER_DECO) => (!name || !window.MODELS[name] ? null : !ex.as && WALKER_DECO.has(name) ? "walker"
+    : ex.as === "volume" || (!ex.as && VOLUME_DECO.has(name)) ? "volume" : "stamp");
+  // The props of st the terrain bake hands the model bake as volumes ([{ name, o }], T.volumes' order), from st
+  // and the content alone: ME.bakeModels.start builds its variant list from them before the terrain bake.
+  ME.volumeDecoOf = (st, CT = ME.content || {}) => {
+    const [V, W] = decoSets(CT);
+    return propsOf(st).filter(([name, , , , ex]) => propRole(name, ex, V, W) === "volume").map(([name, o]) => ({ name, o }));
   };
 
   // ---- The bake's view of a map: per tile its top Z (tiles), its height (for comparing neighbours) and
@@ -5149,9 +5169,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       return {
         W: m.W, H: m.H, hv: hs, z, names, kinds: names.map((n) => (n === null ? null : kinds[n])), kindTable: kinds, flood, floodKind,
         floorZ: m.floor * hStep, wd, wholeWater: !wd,
-        props: (m.props || []).map(([name, o, x, y, at]) => [name, o ?? {}, x, y, at || {}]),
+        props: propsOf(st),
         frame: f.type === "jar"
-          ? { type: "jar", c: f.c.slice(), r: f.r, foot: f.foot ?? 0.92, glassTop: f.glassTop ?? 3.4, strata: f.strata || [] }
+          ? { type: "jar", c: f.c.slice(), r: f.r, foot: f.foot ?? 0.92, glassTop: f.glassTop ?? 3.4, strata: f.strata || [], spill: !!f.spill }
           : { type: "box", edge: f.edge ?? "cut" },
         box: v.box, lights: m.lights || [],
       };
@@ -5176,8 +5196,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     }
     return {
       W, H, hv, z, names: null, kinds, kindTable: Object.assign({ other }, LETTER), floorZ: (m.floor ?? -3) * 0.5, wd: m.waterD || null, wholeWater: false,
-      props: st.deco.filter(Boolean).map(([name, o, x, y, ex]) => [name, o, x, y, ex || {}]),
-      frame: { type: "jar", c: [m.geo.C, m.geo.C], r: m.geo.RI, foot: (st.clip && st.clip.foot) ?? 0.92, glassTop: st.glassZt ?? 3.4, strata: st.strata },
+      props: propsOf(st),
+      frame: { type: "jar", c: [m.geo.C, m.geo.C], r: m.geo.RI, foot: (st.clip && st.clip.foot) ?? 0.92, glassTop: st.glassZt ?? 3.4, strata: st.strata, spill: !!st.spill },
       box: FIXED_BOX, lights: [],
     };
   };
@@ -5317,7 +5337,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const R = new Map();
     for (const kd of Object.values(G.kindTable)) if (kd && G.kinds.includes(kd)) R.set(kd, resolve(kd, id, VS));
     const kinds = G.kinds.map((kd) => kd && R.get(kd));
-    const VOLUME_DECO = new Set([...(CT.volumeDeco || []), ...ME.VOLUME_DECO]), WALKER_DECO = new Set(Object.keys(CT.walkers || {}));
+    const [VOLUME_DECO, WALKER_DECO] = decoSets(CT);
     const kOf = (Z) => Math.round((Z - O[2]) * VS);
     const kindAt = (x, y) => (x < 0 || y < 0 || x >= G.W || y >= G.H ? null : kinds[y * G.W + x]);
     const recipeAt = (x, y) => { const kd = kindAt(x, y); return kd && kd.recipe; };
@@ -5378,6 +5398,13 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       return Math.max(0, Math.round(v));
     };
     const kPB = kOf(PL_ZB), kPT = kOf(PL_ZT), kD = kOf(DRUM), kF = kOf(ZF);
+    // the rim spill (W6, frame.spill or st.spill): a drum column under a wet map tile on the rim (half a tile
+    // inside the island's edge, on the column's own radius) that lies lower than the drum top is notched down
+    // to that tile's top; the tile's water falls down the drum's face below (the falls)
+    const RS = RI - 0.5, rimTile = (X, Y) => {
+      const r = Math.hypot(X - C, Y - CY), s = RS / r, tx = Math.floor(C + (X - C) * s), ty = Math.floor(CY + (Y - CY) * s);
+      return F.spill && wetAt(tx, ty) && kOf(G.z[ty * G.W + tx]) < kD ? ty * G.W + tx : -1;
+    };
     let wetCols = 0;
     const trees = TR.litterTree ? G.props.filter((d) => TR.litterTree(d)).map((d) => [d[2] + 0.5, d[3] + 0.5]) : [];
     const nameAt = (x, y) => (G.names && x >= 0 && y >= 0 && x < G.W && y < G.H ? G.names[y * G.W + x] : null);
@@ -5397,18 +5424,18 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           top[col] = kPT; lobe[col] = M.moss;
           if (r > RG - 0.06) continue;
           // drum: soil strata seen through the glass, a moss lip under the rim, a moss ring on top
-          const U = Math.atan2(Y - CY, X - C) * RG, shell = r > RG - 0.06 - 2.5 / VS;
-          for (let k = kPT; k < kD; k++) {
+          const U = Math.atan2(Y - CY, X - C) * RG, shell = r > RG - 0.06 - 2.5 / VS, rt = r > RI ? rimTile(X, Y) : -1, kN = rt < 0 ? kD : kOf(G.z[rt]), ZN = rt < 0 ? DRUM : O[2] + kN / VS;
+          for (let k = kPT; k < kN; k++) {
             let m = M.earth;
             if (shell) {
               const Zc = O[2] + (k + 0.5) / VS, sr = F.strata && P.strataAt(F, U, Zc, 1);
               if (sr) m = id(sr.ramp);
-              if (DRUM - Zc < 0.08 + 0.18 * P.fbm(U * 3, 0.5, 0, 71)) m = M.moss;
+              if (ZN - Zc < 0.08 + 0.18 * P.fbm(U * 3, 0.5, 0, 71)) m = M.moss;
             }
             vox[k * PLANE + col] = m;
           }
-          if (r > RI - 0.12) vox[(kD - 1) * PLANE + col] = P.fbm(X * 0.45, Y * 0.45, 0, 29) > 0.78 ? M.moss2 : M.moss;
-          top[col] = kD;
+          if (r > RI - 0.12) vox[(kN - 1) * PLANE + col] = P.fbm(X * 0.45, Y * 0.45, 0, 29) > 0.78 ? M.moss2 : M.moss;
+          top[col] = kN;
           if (r > RI) continue;
         }
         const cx = Math.floor(X), cy = Math.floor(Y), kd = kindAt(cx, cy);
@@ -5462,12 +5489,13 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const deco = G.props;
     for (let n = 0; n < deco.length; n++) {
       const [name, o, x, y, ex] = deco[n];
-      if (!name || !window.MODELS[name]) continue;
+      const role = propRole(name, ex, VOLUME_DECO, WALKER_DECO);
+      if (!role) continue;
       const place = { name, o, X: x + 0.5 + (ex.dx || 0), Y: y + 0.5 + (ex.dy || 0), Z: G.z[y * G.W + x] + (ex.dz || 0), flip: !!ex.flip };
       if (ex.rot & 3) place.rot = ex.rot & 3; // quarter turns (stamps, volumes, their splat and lights)
-      // at.as ("stamp" or "volume") overrides the content pack's walkers and volumeDeco for this prop
-      if (!ex.as && WALKER_DECO.has(name)) { walkers.push(place); continue; }
-      if (ex.as === "volume" || (!ex.as && VOLUME_DECO.has(name))) { volumes.push(place); continue; }
+      // walkers and volumes go to the model bake (ME.volumeDecoOf lists the same volumes from st)
+      if (role === "walker") { walkers.push(place); continue; }
+      if (role === "volume") { volumes.push(place); continue; }
       if ((n & 7) === 0) { ME.progress("stamping props " + n + "/" + deco.length, 0.22 + 0.1 * (n / deco.length)); await ME.tick(); }
       stamped += ME.stampModel(ME.modelOf(name, o), place, grid, pal);
       propCount++;
@@ -5560,6 +5588,23 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         const ex1 = dx ? ex0 : cx + u1, ey1 = dy ? ey0 : cy + u1;
         falls.push({ a: [ex0, ey0], b: [ex1, ey1], ztop, zbot, n: [dx, dy] });
       }
+      // the rim spill: a rim tile that notches the drum (rimTile, on its centre's radius) pours over it, one
+      // sheet just outside the drum's face, facing out, from its water down to the plinth; its width is the
+      // tile's wet run across that radius, scaled out from RS to the face; lip: [x, y, z, width], where its mist starts,
+      // on the rim tile 0.35 inside RS (the sheet's foot is on the plinth, outside the glass)
+      if (F.spill && kOf(G.z[cy * G.W + cx]) < kD) {
+        const r0 = Math.hypot(cx + 0.5 - C, cy + 0.5 - CY), nx = (cx + 0.5 - C) / r0, ny = (cy + 0.5 - CY) / r0, qx = C + nx * RS, qy = CY + ny * RS;
+        if (r0 > 0 && Math.floor(qx) === cx && Math.floor(qy) === cy) {
+          let t0 = 1, t1 = -1;
+          for (let s = 0; s < 32; s++) {
+            const t = (s + 0.5) / 32 - 0.5, X = qx - ny * t, Y = qy + nx * t;
+            if (Math.floor(X) === cx && Math.floor(Y) === cy && (full || wetV(X, Y) > 0)) { t0 = Math.min(t0, t - 0.5 / 32); t1 = Math.max(t1, t + 0.5 / 32); }
+          }
+          const rf = RG - 0.06 + 0.7 / VS, sc = rf / RS, fx0 = C + nx * rf, fy0 = CY + ny * rf;
+          if (t1 > t0) falls.push({ a: [fx0 - ny * t0 * sc, fy0 + nx * t0 * sc], b: [fx0 - ny * t1 * sc, fy0 + nx * t1 * sc], ztop: Zw, zbot: PL_ZT, n: [nx, ny], spill: true,
+            lip: [qx - nx * 0.35 - ny * (t0 + t1) / 2, qy - ny * 0.35 + nx * (t0 + t1) / 2, Zw, Math.min(0.6, t1 - t0)] });
+        }
+      }
     }
 
     // Density for normals/AO from half resolution up (mip0 = 2x2x2 box average of occupancy, mip1 = 4x4x4) and the coarse occupancy
@@ -5602,7 +5647,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   };
   // the code the bake runs besides bakeTerrain itself (the bake cache key holds its source)
   // the bake cache key's code: the bake's helpers and its tables (cache.js)
-  ME.bakeTerrain.parts = [ME.validateMap, ME.waterDist, gridOf, resolve, mottleCut, pave, heights, kindNames, rows, impure, ...Object.values(RECIPE),
+  ME.bakeTerrain.parts = [ME.validateMap, ME.waterDist, gridOf, propsOf, decoSets, propRole, resolve, mottleCut, pave, heights, kindNames, rows, impure, ...Object.values(RECIPE),
     JSON.stringify({ B36, STEPS, RECIPES, FLAGS, AT, FIXED_BOX })];
 
   // The coarse occupancy (docs/decisions/2026-10-20-sun-volume-density.md): one cell is f voxels on a side,
@@ -5828,7 +5873,10 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // bricks. Its materials come back by name, in the order it met them; det's nearest materials as indices into
   // emNames (0: none).
   function workerJob(q) {
-    if (q.probe) { postMessage({ probe: q.probe.map((p) => noise(p[0], p[1], p[2], p[3])) }); return; }
+    // idle: the time since this worker last answered (its probe or a job), first: its first job (idle is then the
+    // wait from its probe), ms: this job's, for stats.startMs, idleMs, busyMs
+    const t0 = performance.now(), idle = t0 - (workerJob.end || t0), first = !workerJob.n, done = (r, tr) => { workerJob.n = 1; r.idle = idle; r.first = first; r.ms = (workerJob.end = performance.now()) - t0; postMessage(r, tr); };
+    if (q.probe) { workerJob.end = performance.now(); postMessage({ probe: q.probe.map((p) => noise(p[0], p[1], p[2], p[3])) }); return; }
     try {
       ME.sdf.cull = q.cull; ME.content = { defaultMaterial: q.def }; CS.calls = CS.prims = CS.kept = 0;
       const pal = { names: [null], ids: {}, id(n) { if (n === undefined) n = q.def; let i = this.ids[n]; if (i === undefined) { i = this.names.length; this.names.push(n); this.ids[n] = i; } return i; } };
@@ -5842,8 +5890,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         r.idx = Int32Array.from(d.idx); r.n = Float64Array.from(d.n); r.emNames = emNames;
         tr.push(r.idx.buffer, r.em.buffer, r.n.buffer);
       }
-      postMessage(r, tr);
-    } catch (e) { postMessage({ id: q.id, error: e.message }); }
+      done(r, tr);
+    } catch (e) { done({ id: q.id, error: e.message }, []); }
   }
   // n workers from a Blob of sources (the engine runs from file://, so not from a script file), each trusted once
   // its noise matches P.noise to the bit. Resolves to those that answered within 3 s: none without Worker or
@@ -5866,37 +5914,53 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     });
     return Promise.all(Array.from({ length: n }, one)).then((ws) => { URL.revokeObjectURL(url); return ws.filter(Boolean); });
   }
-  // jobs ({ id, name, q }) handed to whichever worker is free: id -> a promise of its result, or of null where it
-  // failed (a prim that is not plain data, an error, a worker lost, a job past ME.bakeJobMs), and that variant
-  // bakes on the main thread. The watchdog terminates a worker whose job runs past ME.bakeJobMs (30 s by default):
-  // a hung job would otherwise hold the bake forever, as the main thread waits on each variant in order.
-  function runJobs(ws, jobs) {
-    const out = new Map(), queue = jobs.slice(), limit = ME.bakeJobMs || 30000;
+  // jobs ({ id, name, q }) on the workers, posted in their order, `depth` in hand on each worker: the next is
+  // posted from a worker's answer, which runs on the main thread, and during the terrain bake only at its yields
+  // (ME.bakeModels.start, ~40 ms or more apart; a mean job is ~15 ms), so a few jobs in hand keep a worker busy
+  // between them (ME.bakeJobDepth, 4 by default). out: id -> a promise of its
+  // result, or of null where it failed (a prim that is not plain data, an error, a worker lost), and that variant
+  // bakes on the main thread. The watchdog terminates a worker that holds jobs and has sent nothing for
+  // ME.bakeJobMs (30 s by default; restarted on each answer, so it bounds one job), and every job it held bakes
+  // here. startMs, idleMs, busyMs: the workers' summed time from the probe to their first job, between jobs
+  // (waiting for a post; not after the last) and in them. stop() ends it.
+  function runJobs(ws, jobs, depth = ME.bakeJobDepth || 4) {
+    const out = new Map(), queue = jobs.slice(), limit = ME.bakeJobMs || 30000, run = { out, startMs: 0, idleMs: 0, busyMs: 0 };
     let alive = ws.length;
     for (const j of jobs) out.set(j.id, new Promise((r) => { j.res = r; }));
     const failed = (j, why) => { ME.log("WARN BAKE worker: " + j.name + ": " + why + "; baked on the main thread"); j.res(null); };
+    const quit = (w) => { clearTimeout(w.dog); w.terminate(); w.onmessage = w.onerror = null; };
+    const arm = (w) => { clearTimeout(w.dog); w.dog = w.held.length ? setTimeout(() => lose(w, "no answer in " + limit + " ms"), limit) : 0; };
     const lose = (w, why) => {
-      const j = w.job; w.job = null; clearTimeout(w.dog); w.terminate(); w.onmessage = w.onerror = null;
-      if (j) failed(j, why);
+      quit(w);
+      for (const j of w.held.splice(0)) failed(j, why);
       if (--alive === 0) while (queue.length) queue.shift().res(null);
     };
-    const next = (w) => {
-      const j = queue.shift();
-      if (!j) return;
-      w.job = j;
-      w.dog = setTimeout(() => lose(w, "no answer in " + limit + " ms"), limit);
-      try { w.postMessage(j.q); } catch (e) { clearTimeout(w.dog); w.job = null; failed(j, e.message); next(w); }
-    };
+    const give = (w) => { const j = queue.shift(); try { w.postMessage(j.q); w.held.push(j); } catch (e) { failed(j, e.message); } };
+    const fill = (w) => { while (w.held.length < depth && queue.length) give(w); };
     for (const w of ws) {
-      w.onmessage = (e) => { clearTimeout(w.dog); const j = w.job; w.job = null; if (e.data.error) failed(j, e.data.error); else j.res(e.data); next(w); };
+      w.held = [];
+      w.onmessage = (e) => {
+        const d = e.data, k = w.held.findIndex((j) => j.id === d.id), j = k < 0 ? null : w.held.splice(k, 1)[0];
+        run[d.first ? "startMs" : "idleMs"] += d.idle || 0; run.busyMs += d.ms || 0;
+        if (j) { if (d.error) failed(j, d.error); else j.res(d); }
+        fill(w); arm(w);
+      };
       w.onerror = (e) => { if (e.preventDefault) e.preventDefault(); lose(w, e.message || "worker error"); };
-      next(w);
     }
-    return out;
+    // the first fill deals the jobs round the workers, one each per round, so a flipbook's frames (next to each
+    // other, the same cost) start on different workers
+    for (let k = 0; k < depth && queue.length; k++) for (const w of ws) if (queue.length) give(w);
+    for (const w of ws) arm(w);
+    // every job not yet answered resolves to null (bakes here), quietly: the bake is over or cancelled
+    run.stop = () => { for (const w of ws) { quit(w); for (const j of w.held.splice(0)) j.res(null); } while (queue.length) queue.shift().res(null); };
+    return run;
   }
-  ME.bakeModels = async function (T, st, pal, opts = {}) {
-    const CT = ME.content || {}, FRAMES = Object.assign({}, ME.FRAMES, CT.flipbookFrames), LIGHT_COL = Object.assign({}, ME.LIGHT_COL, CT.primLights);
-    const t0 = ME.now(), VS = ME.VS, variants = [], byKey = new Map();
+
+  // the variant list of a bake: the static volumes' flipbooks (vols: [{ name, o }], T.volumes or
+  // ME.volumeDecoOf(st)), the walkers', opts.models' and the critters', each variant once, in the order the bake
+  // numbers them; statics[i] are vols[i]'s frames
+  function listOf(vols, st, opts) {
+    const CT = ME.content || {}, FRAMES = Object.assign({}, ME.FRAMES, CT.flipbookFrames), variants = [], byKey = new Map();
     const add = (name, o) => {
       const key = name + JSON.stringify(o);
       if (byKey.has(key)) return byKey.get(key);
@@ -5907,7 +5971,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // flipbook frames for a model name, keeping the deco's own options
     const frames = (name, o) => { const n = FRAMES[name] || 1; if (n === 1) return [add(name, o)]; return Array.from({ length: n }, (_, i) => add(name, Object.assign({}, o, { t: i / n }))); };
 
-    const statics = T.volumes.map((v) => ({ place: v, frames: frames(v.name, v.o), phase: v.o && v.o.t !== undefined ? v.o.t : 0 }));
+    const statics = vols.map((v) => frames(v.name, v.o));
     // walkers on the route: the style's own list (st.walkers), else the content's; each is
     // { type, model?, o?, speed, rate, gait: hop | roll | fly, fly? (hover height) }
     const walkerTypes = opts.walkers === false ? [] : st.walkers || Object.entries(CT.walkers || {}).map(([type, w]) => Object.assign({ type }, w)), walkerFrames = {};
@@ -5923,6 +5987,69 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       const [name, o, n, fine] = CRITTERS[key];
       critterFrames[key] = Array.from({ length: n }, (_, i) => add(name, Object.assign({}, o, { t: i / n, fine })));
     }
+    return { variants, statics, walkerTypes, walkerFrames, extraFrames, critterFrames };
+  }
+  // every variant's model: critters (o.fine set) are drawn content.critterScale x life size so they read
+  // beside the chibi units; app models may set their own scale (o.scale) and recolour materials (o.remap:
+  // name -> name)
+  function modelsOf(variants) {
+    const CT = ME.content || {};
+    return variants.map((v) => {
+      const md = ME.modelOf(v.name, v.o), fine = (v.o && v.o.fine) || 1;
+      let vf = fine; // o.chunk: voxelise at 1/chunk density and draw scaled back up (the chunky "toy" look)
+      if (v.o && v.o.scale) md.k = v.o.scale * fine;
+      else if (fine !== 1) md.k = ((v.o && v.o.size) || md.k) * fine * (CT.critterScale ?? 1);
+      if (v.o && v.o.chunk) { md.k /= v.o.chunk; vf = 1 / v.o.chunk; }
+      if (v.o && v.o.remap) {
+        const map = v.o.remap, d0 = md.detail;
+        md.detail = (x, y, z, m, nx, ny, nz, tv) => { const r = d0 ? d0(x, y, z, m, nx, ny, nz, tv) || m : m; return map[r] || r; };
+      }
+      return { md, vf };
+    });
+  }
+  const workersOn = (opts) => opts.worker !== false && ME.bakeWorkers !== false;
+  // why a model stays here (stats.offWorker: name -> reason), or null for a data-only one (no function prim, no
+  // contour, no focus to bake); the game never waits for a focus: opts.focus bakes it here
+  const notData = (md, opts) => (md.contour ? "contour" : opts.focus && md.focus && md.focus.length ? "focus" : md.prims.some((p) => p.k === 5) ? "function prim"
+    : md.prims.some((p) => Object.values(p).some((x) => typeof x === "function")) ? "function field" : null);
+  const defOf = (pal) => (pal.defaultName ? pal.defaultName() : (ME.content || {}).defaultMaterial);
+  // all a bake's worker jobs depend on but the models' sources: the variants, in order, the density, the cull, the
+  // default material and which variants go to the workers
+  const sigOf = (L, def, opts) => JSON.stringify([L.variants.map((v) => v.key), ME.VS, ME.sdf.cull, def, !!opts.focus, workersOn(opts)]);
+
+  // A bake's models built and its data-only ones posted to the workers (opts.worker = false or ME.bakeWorkers =
+  // false keeps them here), largest first, so a long job doesn't start last: h.mds, h.offWorker, h.ready
+  // (resolved once the workers answer their probe, h.ws and h.res set), h.cancel() (safe twice: ends the workers,
+  // every job not yet answered resolves to null).
+  function launch(L, pal, opts) {
+    const def = defOf(pal), mds = modelsOf(L.variants), offWorker = {}, jobs = [], on = workersOn(opts);
+    mds.forEach(({ md }, i) => {
+      const name = L.variants[i].name, why = on ? notData(md, opts) : "off";
+      if (why) { offWorker[name] = why; return; }
+      jobs.push({ id: i, name, cost: md.prims.length * (md.r || 1) ** 2 * (md.h || 1) * md.k ** 3, q: { id: i, md: { prims: md.prims, k: md.k, r: md.r, h: md.h }, vs: ME.VS, cull: ME.sdf.cull, def, detail: !!md.detail } });
+    });
+    jobs.sort((a, b) => b.cost - a.cost);
+    const h = { sig: sigOf(L, def, opts), mds, offWorker, ws: [], res: new Map(), run: null, done: false };
+    h.cancel = () => { if (h.done) return; h.done = true; if (h.run) h.run.stop(); };
+    h.ready = (jobs.length ? startWorkers(Math.min(Math.max(1, Math.floor(ME.bakeWorkerMax || ME.qn("bakeworkers", 0) || 4)), Math.max(1, (navigator.hardwareConcurrency || 2) - 1), jobs.length)) : Promise.resolve([])).then((ws) => {
+      if (h.done) { for (const w of ws) w.terminate(); return; }
+      if (!ws.length) for (const j of jobs) offWorker[j.name] = "no workers";
+      else { h.ws = ws; h.run = runJobs(ws, jobs); h.res = h.run.out; }
+    });
+    return h;
+  }
+
+  ME.bakeModels = async function (T, st, pal, opts = {}, early = null) {
+    const CT = ME.content || {}, LIGHT_COL = Object.assign({}, ME.LIGHT_COL, CT.primLights);
+    const t0 = ME.now(), VS = ME.VS, L = listOf(T.volumes, st, opts), { variants, walkerTypes, walkerFrames, extraFrames, critterFrames } = L;
+    const statics = T.volumes.map((v, i) => ({ place: v, frames: L.statics[i], phase: v.o && v.o.t !== undefined ? v.o.t : 0 }));
+    // the workers ME.bakeModels.start started, if they were given this very bake; else started here
+    let h = null, how;
+    if (early) {
+      if (!early.done && early.sig === sigOf(L, defOf(pal), opts)) { h = early; how = "used"; }
+      else { const why = early.done ? "was already used or cancelled" : "doesn't match this bake (its st or opts changed)"; early.cancel(); how = "mismatch"; ME.log("WARN BAKE the early start " + why + ": baked without it"); }
+    }
+    if (!h) h = launch(L, pal, opts);
 
     // A voxelised volume is kept as its occupied 8^3 bricks only (8^3 rgba each, empty voxels 0) and its
     // dense rgba dropped at once, so the bake holds one dense volume at a time beside what it outputs (the
@@ -5944,54 +6071,30 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       return v;
     };
 
-    // every variant's model: critters (o.fine set) are drawn content.critterScale x life size so they read
-    // beside the chibi units; app models may set their own scale (o.scale) and recolour materials (o.remap:
-    // name -> name)
-    const mds = variants.map((v) => {
-      const md = ME.modelOf(v.name, v.o), fine = (v.o && v.o.fine) || 1;
-      let vf = fine; // o.chunk: voxelise at 1/chunk density and draw scaled back up (the chunky "toy" look)
-      if (v.o && v.o.scale) md.k = v.o.scale * fine;
-      else if (fine !== 1) md.k = ((v.o && v.o.size) || md.k) * fine * (CT.critterScale ?? 1);
-      if (v.o && v.o.chunk) { md.k /= v.o.chunk; vf = 1 / v.o.chunk; }
-      if (v.o && v.o.remap) {
-        const map = v.o.remap, d0 = md.detail;
-        md.detail = (x, y, z, m, nx, ny, nz, tv) => { const r = d0 ? d0(x, y, z, m, nx, ny, nz, tv) || m : m; return map[r] || r; };
-      }
-      return { md, vf };
-    });
-    // the data-only ones (no function prim, no contour, no focus to bake) go to the bake workers, all at once;
-    // opts.worker = false or ME.bakeWorkers = false keeps them here
-    const focusOn = (md) => opts.focus && md.focus && md.focus.length;
-    // why a model stays here (stats.offWorker: name -> reason), or null for a data-only one
-    const notData = (md) => (md.contour ? "contour" : focusOn(md) ? "focus" : md.prims.some((p) => p.k === 5) ? "function prim"
-      : md.prims.some((p) => Object.values(p).some((x) => typeof x === "function")) ? "function field" : null);
-    const def = pal.defaultName ? pal.defaultName() : CT.defaultMaterial, offWorker = {};
-    const jobs = opts.worker === false || ME.bakeWorkers === false ? [] : mds.flatMap(({ md }, i) => {
-      const why = notData(md);
-      if (why) { offWorker[variants[i].name] = why; return []; }
-      return [{ id: i, name: variants[i].name, q: { id: i, md: { prims: md.prims, k: md.k, r: md.r, h: md.h }, vs: VS, cull: ME.sdf.cull, def, detail: !!md.detail } }];
-    });
-    const ws = jobs.length ? await startWorkers(Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 2) - 1), jobs.length)) : [];
-    const res = ws.length ? runJobs(ws, jobs) : new Map();
-
     // each kept in variant order, wherever it was voxelised: the palette numbers materials in the order the
     // single-thread bake meets them, so the pool is byte-identical to it (tools/worker-check.js)
-    const vols = [];
-    // the main thread's time (stats): waiting on the workers, voxelising here, taking in worker volumes (md.detail)
-    let inWorkers = 0, waitMs = 0, hereMs = 0, takeMs = 0;
+    const vols = [], { mds, offWorker } = h;
+    // the main thread's time (stats): waiting for the workers to start (readyMs), then on their jobs (waitMs),
+    // voxelising here, taking in worker volumes (md.detail)
+    let inWorkers = 0, readyMs = 0, waitMs = 0, hereMs = 0, takeMs = 0, ws, run;
     try {
+      let t = ME.now();
+      await h.ready;
+      readyMs = ME.now() - t;
+      const res = h.res;
+      ws = h.ws; run = h.run;
       for (let i = 0; i < variants.length; i++) {
         const v = variants[i], { md, vf } = mds[i];
         if ((i & 1) === 0) { ME.progress("voxelising " + v.name + " (" + (i + 1) + "/" + variants.length + ")", 0.5 + 0.3 * (i / variants.length)); await ME.tick(); }
-        let t = ME.now();
+        t = ME.now();
         const r = res.has(i) ? await res.get(i) : null;
         if (res.has(i)) { waitMs += ME.now() - t; t = ME.now(); if (!r) offWorker[v.name] = "worker failed"; }
-        const vx = r ? fromWorker(r, md) : sparse(ME.voxelizeModel(md, VS, pal, { focus: !!opts.focus })); // the game never waits for a focus: opts.focus bakes it here
+        const vx = r ? fromWorker(r, md) : sparse(ME.voxelizeModel(md, VS, pal, { focus: !!opts.focus }));
         if (r) { inWorkers++; takeMs += ME.now() - t; } else hereMs += ME.now() - t;
         vx.md = md; vx.name = v.name; vx.fine = vf;
         vols.push(vx);
       }
-    } finally { for (const w of ws) { clearTimeout(w.dog); w.terminate(); } }
+    } finally { h.cancel(); }
 
     // shelf-pack brick-aligned volumes into the atlas; short volumes stack in z inside a column whose
     // footprint fits them (critters and ferns would otherwise each reserve the full atlas depth)
@@ -6073,14 +6176,20 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 
     // h and r in world units (a fine model is drawn at 1/fine scale)
     const models = vols.map((v) => ({ name: v.name, base: v.base, dims: v.dims, box: v.box, k: v.md.k, fine: v.fine, h: (v.md.h * v.md.k) / v.fine, r: (v.md.r * v.md.k) / v.fine }));
-    const stats = { variants: vols.length, layout: [AX, AY, AZ], bricks: nb, pool: [PX, PY, PZ], poolMB: +((pool.byteLength / 1048576).toFixed(1)), solid, surface: vols.reduce((a, v) => a + v.surf, 0), lights: lights.length, workers: ws.length, inWorkers, offWorker, waitMs: Math.round(waitMs), hereMs: Math.round(hereMs), takeMs: Math.round(takeMs), ms: Math.round(ME.now() - t0) };
+    const stats = { variants: vols.length, layout: [AX, AY, AZ], bricks: nb, pool: [PX, PY, PZ], poolMB: +((pool.byteLength / 1048576).toFixed(1)), solid, surface: vols.reduce((a, v) => a + v.surf, 0), lights: lights.length, workers: ws.length, inWorkers, offWorker, early: how, startMs: run ? Math.round(run.startMs) : 0, idleMs: run ? Math.round(run.idleMs) : 0, busyMs: run ? Math.round(run.busyMs) : 0, readyMs: Math.round(readyMs), waitMs: Math.round(waitMs), hereMs: Math.round(hereMs), takeMs: Math.round(takeMs), ms: Math.round(ME.now() - t0) };
     const MB = { atlas: pool, adims: [PX, PY, PZ], bricks, bdims: [BX, BY, BZ], models, statics, walkerTypes, walkerFrames, critterFrames, extraFrames, lights, stats };
     MB.voxel = ME.brickVoxel(MB);
     return MB;
   };
 
   // the private functions a model bake depends on, for the bake cache's key (src/cache.js)
-  ME.bakeModels.parts = [bricksOf, matOf, workerJob];
+  ME.bakeModels.parts = [bricksOf, matOf, workerJob, runJobs, listOf, modelsOf, launch, workersOn, notData, defOf, sigOf];
+
+  // Starts a bake's worker jobs before the terrain bake, so the workers run during it (#185): the variant list
+  // from st (ME.volumeDecoOf, the props bakeTerrain bakes as volumes), the models built, the jobs posted. Returns
+  // a handle for ME.bakeModels(T, st, pal, opts, early) at once, with the same st, pal and opts; a caller that
+  // never reaches it calls early.cancel(). It reads pal only for its default material and numbers no material.
+  ME.bakeModels.start = (st, pal, opts = {}) => launch(listOf(ME.volumeDecoOf(st), st, opts), pal, opts);
 
   // Material byte of voxel (x, y, z) of model mi (0 = empty), through the brick map into the pool
   // (16 x 16 bricks per pool layer). Rebuilt from the arrays on a cache hit.
@@ -9021,7 +9130,8 @@ fn boxOf(V: Vox) -> Box {
         if (emit.fireflies && emit.fireflies(p)) flySrc.push([p.X, p.Y, p.Z + 0.3, 1.6]);
       }
       for (const w of T.water) if (H(w.x, w.y, 0, 9) > 0.8) flySrc.push([w.x + 0.5, w.y + 0.5, w.z + 0.15, 1.4]);
-      for (const f of T.falls) mistSrc.push([(f.a[0] + f.b[0]) / 2 + f.n[0] * 0.15, (f.a[1] + f.b[1]) / 2 + f.n[1] * 0.15, f.zbot, Math.max(0.3, Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]))]);
+      // a rim spill's mist starts at its lip, inside the glass (its foot is on the plinth, outside)
+      for (const f of T.falls) mistSrc.push(f.lip ? f.lip.slice() : [(f.a[0] + f.b[0]) / 2 + f.n[0] * 0.15, (f.a[1] + f.b[1]) / 2 + f.n[1] * 0.15, f.zbot, Math.max(0.3, Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]))]);
       const N = (this.pcount = { leaf: leafSrc.length ? 180 : 0, fly: flySrc.length ? 90 : 0, mist: mistSrc.length ? 200 : 0 });
       const tot = N.leaf + N.fly + N.mist, data = new Float32Array(Math.max(1, tot) * 8);
       // spread initial state so the scene starts mid-flow
@@ -10339,7 +10449,7 @@ fn boxOf(V: Vox) -> Box {
   const B36 = "0123456789abcdefghijklmnopqrstuvwxyz";
 
   C.gardenWater = {
-    "mf-valley": [{ seg: [9.6, 8.2, 9.6, 17.8], r: 0.6 }, { ellipse: [10.4, 19.6, 3.2, 2.0] }],
+    "mf-valley": [{ seg: [9.6, 8.2, 9.6, 17.8], r: 0.6 }, { seg: [10.5, 21.2, 10.5, 24.0], r: 0.27 }, { ellipse: [10.4, 19.6, 3.2, 2.0] }],
     "mf-falls": [{ seg: [3.6, 2.6, 3.6, 7.0], r: 0.66 }, { seg: [3.8, 7.4, 6.4, 7.4], r: 0.5 }, { seg: [6.4, 7.4, 6.4, 10.4], r: 0.5 }, { ellipse: [3.9, 7.5, 1.3, 0.95] }, { ellipse: [7.6, 11.5, 2.2, 1.5] }],
   };
   // the older jars of vendor/gen/styles4.js (Koke-dera's pond is shared by three of them)
@@ -10418,7 +10528,7 @@ fn boxOf(V: Vox) -> Box {
       // the island: a circle clip round the centre, the drum, its strata and the glass; and today's
       // fixed bake box, written out so a later default can't move Momiji's bytes
       const { C: c, RI } = m.geo;
-      map.frame = { type: "jar", c: [c, c], r: RI, foot: (st.clip && st.clip.foot) ?? 0.92, glassTop: st.glassZt ?? 3.4, strata: st.strata || [] };
+      map.frame = { type: "jar", c: [c, c], r: RI, foot: (st.clip && st.clip.foot) ?? 0.92, glassTop: st.glassZt ?? 3.4, strata: st.strata || [], ...(st.spill ? { spill: true } : {}) };
       map.box = { o: [-1, -1, -2.5], size: [26, 26, 10] };
     } else map.frame = { type: "box" }; // a square block, cut square at the edges (M2)
     map.game = { route: m.path || [] };
@@ -13167,7 +13277,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "0790711" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "2f477fc" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -13307,9 +13417,11 @@ function MA_DSP() {
     mole: { name: "Root Mole", hp: 60, speed: 1.0, reward: 5, harm: 2, fly: 0, size: 1.0, blight: 0.8, burrow: [0.3, 0.6], from: 11, cost: 2.0, group: [2, 3], standIn: "grub", look: 1.05, color: [0.5, 0.4, 0.34], affinity: { light: 0.5, pierce: 1.5 }, lore: "Digs under a stretch of the road where nothing reaches it. Thorns find it when it surfaces." },
     lichen: { name: "Lichen Crab", hp: 80, speed: 0.8, reward: 6, harm: 2, fly: 0, size: 1.1, blight: 1.2, adapt: 0.015, from: 12, cost: 2.4, group: [2, 3], standIn: "golem", look: 0.8, color: [0.66, 0.74, 0.6], affinity: {}, lore: "Grows lichen against whatever hurts it. Hit it with everything." },
     mother: { name: "Mould Mother", hp: 1100, speed: 0.42, reward: 120, harm: 12, fly: 0, size: 2.0, blight: 3.0, boss: true, brood: [1, 5], halfShell: 0.15, standIn: "spirit", look: 1.15, color: [0.48, 0.62, 0.3], affinity: { spore: 0.6, light: 1.5, spirit: 1.25 }, lore: "The mould's queen. She births mites as she crawls and grows a shell when hurt. Sunlight withers her." },
+    // the blight creatures of the bestiary (tower rework), each with its own model; `standIn` only gives the rules-only sim a size
+    crow: { name: "Blight Crow", hp: 70, speed: 1.7, reward: 5, harm: 2, fly: 0.6, size: 1.0, blight: 0.9, from: 10, cost: 2.0, group: [2, 3], standIn: "moth", look: 1.0, color: [0.4, 0.38, 0.5], affinity: { spore: 0.55, spirit: 1.5 }, lore: "Follows the blight for carrion. Spores slide off its oily feathers; a wisp's light unsettles it." },
   };
   // (new kinds go at the end: the level fixture's creature sizes are indexed by this order)
-  D.ENEMY_ORDER = ["grub", "beetle", "moth", "golem", "spirit", "snail", "bloat", "mite", "mender", "midge", "mole", "lichen", "mother"];
+  D.ENEMY_ORDER = ["grub", "beetle", "moth", "golem", "spirit", "snail", "bloat", "mite", "mender", "midge", "mole", "lichen", "mother", "crow"];
   // the bosses by turn: every fifth wave, the Blight Spirit, then the Mould Mother, and so on
   D.BOSSES = ["spirit", "mother"];
 
@@ -15226,6 +15338,8 @@ function MA_DSP() {
     mole: svg(`<path d="M2 20.5C4 15 20 15 22 20.5Z" ${W}/><path d="M6.5 17C6.5 10.5 9 7 12 7C15 7 17.5 10.5 17.5 17" ${W}/><circle cx="12" cy="11" r="1.4" ${S}/><path d="M9.4 9.6h.01M14.6 9.6h.01" stroke-width="2.4"/><path d="M5 18.5L3.6 16.2M6.6 18L6 15.6M19 18.5L20.4 16.2M17.4 18L18 15.6"/>`),
     lichen: svg(`<ellipse cx="12" cy="14" rx="6.5" ry="4.6" ${W}/><circle cx="10" cy="12.6" r="1.1" ${S}/><circle cx="13.8" cy="14.6" r=".9" ${S}/><circle cx="12.4" cy="11.4" r=".7" ${S}/><path d="M6 12.5C3.5 11 3 7.5 4.5 5.5M4.5 5.5L2.6 6.6M4.5 5.5L5.2 3.4M18 12.5C20.5 11 21 7.5 19.5 5.5M19.5 5.5L21.4 6.6M19.5 5.5L18.8 3.4M7 17.6L4.6 20.4M9.6 18.4L8.6 21.4M17 17.6L19.4 20.4M14.4 18.4L15.4 21.4"/>`),
     mother: svg(`<path d="M3 20.5C3 12 7 8.5 12 8.5C17 8.5 21 12 21 20.5Z" ${W}/><path d="M7 8.8L7.6 3.5L10 6.6L12 2.5L14 6.6L16.4 3.5L17 8.8"/><path d="M9.4 13.4h.01M14.6 13.4h.01" stroke-width="2.6"/><path d="M9.5 17.2C11 18.2 13 18.2 14.5 17.2"/><circle cx="2.6" cy="11" r="1" ${S}/><circle cx="21.4" cy="11" r="1" ${S}/>`),
+    // the Blight Crow (#304): in profile, beak to the right, a wing folded over its back
+    crow: svg(`<path d="M2.5 16.5C5 12 9.5 9.6 14 10.4L16.8 8.6C18.4 7.6 20.2 8.2 20.6 9.6L23 10.6L20.4 11.4C20 14 18 16.2 14.6 17.2L7 20.4L8.6 17.4C6.2 17.8 4 17.4 2.5 16.5Z" ${W}/><path d="M7.4 15.2C9.6 12.4 13 12 15.8 13.8"/><circle cx="18.6" cy="9.9" r=".9" ${S}/><path d="M12 17.6L11.2 21.4M14.6 17L14.8 21"/>`),
   };
 
   // --- a wave's trait (Defs.TRAITS), for the forecast and the almanac: G.TRAIT_ART[id] = { color, icon }, the
@@ -16868,11 +16982,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // a dying creature bursts into [n] of its voxels (each a terrain voxel, chunkier than the creature's own),
   // thrown at [speed] for [life] seconds; the boss also blasts the ground under it
   const BURST = { grub: [10, 1.3, 2.5], beetle: [14, 1.4, 2.5], moth: [10, 1.1, 2.5], golem: [32, 1.6, 3.5], spirit: [220, 2.2, 7],
-    snail: [18, 1.3, 2.5], bloat: [20, 1.5, 2.5], mite: [5, 1.1, 1.8], mender: [12, 1.2, 2.5], midge: [3, 0.9, 1.5], mole: [14, 1.3, 2.5], lichen: [22, 1.4, 3], mother: [240, 2.2, 7] };
+    snail: [18, 1.3, 2.5], bloat: [20, 1.5, 2.5], mite: [5, 1.1, 1.8], mender: [12, 1.2, 2.5], midge: [3, 0.9, 1.5], mole: [14, 1.3, 2.5], lichen: [22, 1.4, 3], mother: [240, 2.2, 7], crow: [12, 1.3, 2.5] };
   // water and sand: how hard each creature lands in the water (phys.splash strength), and the crater
   // (in tiles) its fall kicks in a sand bank
-  const SPLASH = { grub: 0.5, beetle: 0.6, moth: 0.4, golem: 1.2, spirit: 2.4, snail: 0.7, bloat: 0.8, mite: 0.25, mender: 0.5, midge: 0.15, mole: 0.6, lichen: 0.8, mother: 2.4 };
-  const DIG = { grub: 0.1, beetle: 0.1, moth: 0.08, golem: 0.18, spirit: 0.45, snail: 0.12, bloat: 0.12, mite: 0.05, mender: 0.1, midge: 0.03, mole: 0.14, lichen: 0.14, mother: 0.45 };
+  const SPLASH = { grub: 0.5, beetle: 0.6, moth: 0.4, golem: 1.2, spirit: 2.4, snail: 0.7, bloat: 0.8, mite: 0.25, mender: 0.5, midge: 0.15, mole: 0.6, lichen: 0.8, mother: 2.4, crow: 0.3 };
+  const DIG = { grub: 0.1, beetle: 0.1, moth: 0.08, golem: 0.18, spirit: 0.45, snail: 0.12, bloat: 0.12, mite: 0.05, mender: 0.1, midge: 0.03, mole: 0.14, lichen: 0.14, mother: 0.45, crow: 0.06 };
   const LIGHT = {
     wisp: [[0.5, 0.95, 1.0], 1.9, 1.5], sun: [[1.0, 0.85, 0.45], 1.4, 0.9], puff: [[0.85, 0.6, 1.0], 1.2, 0.8], thorn: [[0.6, 1.0, 0.5], 0.9, 0.35],
     briar: [[0.95, 0.4, 0.35], 0.8, 0.3], toad: [[1.0, 0.6, 0.3], 1.1, 0.6], moon: [[0.72, 0.8, 1.0], 1.6, 1.0], lily: [[1.0, 0.7, 0.9], 1.7, 1.2],
@@ -19323,6 +19437,8 @@ function MG_SFX(L) {
     mat_snail: [0.18, 32000], mat_bloat: [0.25, 22050], mat_mite: [0.08, 32000], mat_mender: [0.22, 22050], mat_midge: [0.06, 32000], mat_mole: [0.2, 22050], mat_lichen: [0.22, 32000], mat_mother: [0.5, 22050],
     snail: [0.8, 22050], bloat: [0.7, 22050], mite: [0.25, 32000], mender: [0.9, 22050], midge: [0.8, 22050], mole: [0.6, 22050], lichen: [0.4, 32000], mother: [2.8, 22050],
     death_shell: [0.6, 32000], death_burst: [0.7, 22050],
+    // the Blight Crow (#304): feathers struck, and a caw as it falls
+    mat_crow: [0.16, 22050], death_caw: [0.6, 32000],
     uguisu: [1.45, 32000], chirp: [0.7, 32000], trill: [0.9, 32000], cricket: [1.4, 32000], frog: [0.8, 22050], leaves: [1.2, 22050],
     waterfall: [4.0, 22050, true], stream: [4.0, 22050, true], wind: [6.0, 22050, true],
   };
@@ -19622,6 +19738,18 @@ function MG_SFX(L) {
       let ph = 0, lp = 0;
       for (let i = 0; i < s.length; i++) { const t = i / sr; ph += (140 + 380 * exp(-t * 25)) / sr; lp += 0.3 * (n1() - lp); s[i] = sin(TAU * ph) * exp(-t * 18) * 0.8 + lp * exp(-t * 6) * 0.7 * smooth(0, 0.01, t); }
       return grains(s, sr, 24, 0.02, 0.5, 0.001, 0.004, 0.3);
+    },
+    // the Blight Crow: oily feathers struck, a soft whump with a rustle
+    mat_crow(s, sr) { let lp = 0; for (let i = 0; i < s.length; i++) { const t = i / sr; lp += 0.18 * (n1() - lp); s[i] = lp * exp(-t * 28) * 2 + n1() * exp(-t * 90) * 0.18; } return grains(s, sr, 8, 0, 0.1, 0.0005, 0.002, 0.2); },
+    // its caw as it falls: a rough reedy "kaaw" sliding down, then a few feathers
+    death_caw(s, sr) {
+      const dur = s.length / sr, v1 = svf(sr), v2 = svf(sr); let ph = 0;
+      for (let i = 0; i < s.length; i++) {
+        const t = i / sr; ph += ((520 - 160 * min(t / dur, 1) + 30 * exp(-t * 30)) * (1 + 0.04 * n1())) / sr;
+        const x = (2 * (ph % 1) - 1) * (0.7 + 0.3 * n1());
+        s[i] = (v1(x, 1300, 0.25) * 0.9 + v2(x, 2600, 0.3) * 0.4) * smooth(0, 0.02, t) * exp(-t * 4) * (1 - smooth(dur - 0.12, dur, t));
+      }
+      return grains(s, sr, 10, 0.25, dur - 0.05, 0.001, 0.004, 0.15);
     },
     // the bush warbler: a long held whistle, then "ho-ke-kyo"
     uguisu(s, sr) {
@@ -20362,6 +20490,7 @@ function MG_SFX(L) {
     mat_snail: [-20, 0.12, 45], mat_bloat: [-20, 0.12, 45], mat_mite: [-24, 0.15, 40], mat_mender: [-20, 0.12, 45], mat_midge: [-26, 0.2, 40], mat_mole: [-20, 0.12, 45], mat_lichen: [-20, 0.12, 45], mat_mother: [-14, 0.08, 120],
     snail: [-22, 0.12, 150], bloat: [-21, 0.12, 150], mite: [-24, 0.15, 150], mender: [-20, 0.1, 200], midge: [-25, 0.12, 300], mole: [-21, 0.12, 200], lichen: [-21, 0.12, 150], mother: [-9, 0.05, 1500],
     death_shell: [-14, 0.1, 60], death_burst: [-14, 0.12, 60],
+    mat_crow: [-21, 0.12, 45], death_caw: [-15, 0.1, 80],
     uguisu: [-17, 0.04, 2000], chirp: [-20, 0.08, 500], trill: [-20, 0.06, 800], cricket: [-24, 0.05, 300], frog: [-19, 0.1, 1500], leaves: [-22, 0.1, 1000],
   };
   // too long to cut off when the pool needs a voice
@@ -20369,7 +20498,7 @@ function MG_SFX(L) {
   const DEATH = {
     grub: ["death_pop", 0.7], beetle: ["death_pop", 1.0], moth: ["death_pop", 1.4], golem: ["death_crumble", 1.0], spirit: ["death_boss", 1.0],
     snail: ["death_shell", 1.0], bloat: ["death_burst", 1.0], mite: ["death_pop", 1.8], mender: ["death_burst", 1.25], midge: ["death_pop", 2.2], mole: ["death_pop", 0.6],
-    lichen: ["death_shell", 0.8], mother: ["death_boss", 0.8],
+    lichen: ["death_shell", 0.8], mother: ["death_boss", 0.8], crow: ["death_caw", 1.0],
   };
   // the bosses: a call as each comes, and again every few seconds
   const bossy = (kind) => !!(D.ENEMIES[kind] && D.ENEMIES[kind].boss);
@@ -20874,10 +21003,11 @@ function MG_SFX(L) {
       T.groundAt = ME.groundAt(T); MB.voxel = ME.brickVoxel(MB);
       ME.log("CACHE", { hit: true });
     } else {
+      const early = ME.bakeModels.start(st, pal, bakeOpts); // the model workers run during the terrain bake (#185)
       T = await ME.bakeTerrain(st, pal);
       ME.log("TERRAIN", T.stats);
       mesh = await ME.greedyMesh(T);
-      MB = await ME.bakeModels(T, st, pal, bakeOpts);
+      MB = await ME.bakeModels(T, st, pal, bakeOpts, early);
       ME.log("MODELS", MB.stats);
       grass = ME.bakeGrass(T, st, pal);
       ME.bakeCache.put(key, { palNames: pal.names, T: Object.assign({}, T, { groundAt: null }), mesh, MB: Object.assign({}, MB, { voxel: null }), grass });
