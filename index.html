@@ -37,7 +37,14 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 .hbar { width: 150px; height: 12px; background: #d9d1b8; border-radius: 7px; overflow: hidden; margin-top: 3px; }
 #heartfill { height: 100%; width: 100%; background: var(--blossom); border-radius: 7px; transition: width 0.25s; }
 /* the dew you hold sits on the seed bar, just above its first card, beside the prices (the user's ask, 2026-10-26) */
-#dew { position: absolute; left: 0; bottom: calc(100% + 12px); padding: 3px 14px; border-radius: 12px; white-space: nowrap; pointer-events: none; color: var(--dewc); font-size: calc(22px * var(--ts)); }
+/* (a droplet and the number, bigger since the user asked for it more prominent; hud.js counts it up, pulses it on a
+   gain and glows it while dew comes fast: data-hot 1 and 2) */
+#dew { position: absolute; left: 0; bottom: calc(100% + 12px); display: flex; align-items: center; gap: 0.3em; padding: 4px 16px 4px 12px; border-radius: 13px; white-space: nowrap; pointer-events: none; color: var(--dewc); font-size: calc(27px * var(--ts)); font-weight: 800; line-height: 1; transform-origin: 0 100%; transition: box-shadow 0.4s; }
+#dew svg { width: 0.72em; height: 0.96em; flex: none; fill: currentColor; transition: filter 0.4s; }
+#dew svg .glint { fill: none; stroke: #fff; stroke-opacity: 0.7; stroke-width: 1.2; stroke-linecap: round; }
+#dew[data-hot="1"] svg { filter: drop-shadow(0 0 3px #7fd0ff); }
+#dew[data-hot="2"] svg { filter: drop-shadow(0 0 5px #9fdcff) drop-shadow(0 0 2px #fff); }
+#dew[data-hot="2"] { box-shadow: var(--shadow), 0 0 16px 3px rgba(127, 208, 255, 0.55); }
 #wave { font-size: calc(22px * var(--ts)); }
 #topright { position: fixed; right: calc(12px + var(--sr)); top: calc(12px + var(--st)); display: flex; gap: 8px; align-items: center; pointer-events: none; }
 #topright > * { pointer-events: auto; }
@@ -254,6 +261,11 @@ body.calm .coach-spot { animation: none; }
 #floats { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
 .float { position: absolute; left: 0; top: 0; font: 800 calc(17px * var(--ts))/1 "Trebuchet MS", system-ui, sans-serif; white-space: nowrap; opacity: 0; will-change: transform, opacity;
   text-shadow: 0 0 2px #1a260d, 0 0 4px #1a260d, 0 1px 3px #1a260d; }
+/* the dew a creature drops (fx.js dewPop): a droplet and "+N" in the dew's blue, --k bigger for more; and the
+   droplets that fly to the counter */
+.float.dew { display: flex; align-items: center; gap: 0.12em; color: #a8e2ff; font-size: calc(20px * var(--ts) * var(--k, 1)); }
+.float.dew i, .fly { display: block; width: 0.6em; height: 0.8em; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 16'%3E%3Cpath fill='%23a8e2ff' stroke='%231a260d' stroke-width='.8' d='M6 .6C4.4 3.4 1 7.2 1 10.6a5 5 0 0 0 10 0C11 7.2 7.6 3.4 6 .6z'/%3E%3C/svg%3E") center / contain no-repeat; }
+.fly { position: absolute; left: 0; top: 0; width: calc(11px * var(--ts)); height: calc(15px * var(--ts)); opacity: 0; filter: drop-shadow(0 0 3px #7fd0ff); will-change: transform, opacity; }
 #flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 50%, rgba(214, 48, 92, 0.6) 100%); }
 .help { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(8px + var(--sb)); color: #fffb; font-size: calc(12px * var(--ts)); font-weight: 500; text-shadow: 0 0 4px #000; pointer-events: none; white-space: nowrap; }
 #version { position: fixed; right: calc(16px + var(--sr)); bottom: calc(1px + var(--sb)); z-index: 30; font: 500 calc(10px * var(--ts))/1 "Trebuchet MS", system-ui, sans-serif; color: #fff8; text-shadow: 0 0 3px #000; pointer-events: none; white-space: nowrap; }
@@ -280,7 +292,8 @@ body.calm .coach-spot { animation: none; }
   .hbar { width: 84px; }
   #hearttxt { font-size: calc(13px * var(--ts)); }
   #wave { font-size: calc(16px * var(--ts)); }
-  #dew { bottom: calc(100% + 10px); padding: 2px 10px; border-radius: 10px; font-size: calc(16px * var(--ts)); }
+  #dew { bottom: calc(100% + 10px); padding: 3px 11px 3px 9px; border-radius: 11px; font-size: calc(20px * var(--ts)); }
+  .float.dew { font-size: calc(16px * var(--ts) * var(--k, 1)); }
   #topright { right: calc(6px + var(--sr)); top: calc(6px + var(--st)); }
   .btn.small { width: 44px; height: 42px; font-size: calc(17px * var(--ts)); }
   #fps { position: fixed; right: calc(8px + var(--sr)); top: calc(52px + var(--st)); margin: 0; font-size: calc(11px * var(--ts)); }
@@ -427,7 +440,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   <div id="sky" class="panel"><div class="skyrow"><b>Mood</b><div class="seg" id="moodseg"></div></div><div class="skyrow"><b>Weather</b><div class="seg" id="wxseg"></div></div></div>
   <div id="hint">Tap a seed, then tap the meadow twice to plant it</div>
   <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspbody"></div><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div>
-  <div id="seeds"><div id="dew" class="panel">Dew 0</div></div>
+  <div id="seeds"><div id="dew" class="panel" role="status" aria-label="Dew 0"><svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 .6C4.4 3.4 1 7.2 1 10.6a5 5 0 0 0 10 0C11 7.2 7.6 3.4 6 .6z"/><path class="glint" d="M3.6 10.2a2.6 2.6 0 0 0 1.9 3.1"/></svg><b id="dewn">0</b></div></div>
   <button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button>
   <div id="boons" class="veil"><div class="col"><h2>The garden offers a gift</h2><div id="boonrow"></div></div></div>
   <div id="over" class="veil dark"><div class="panel card"><h2>The Heart Tree sleeps</h2><div class="cscroll"><p id="overtxt"></p><div id="oversum" class="oversum"></div></div><button id="again" class="btn pink">Plant anew</button></div></div>
@@ -13278,7 +13291,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "47e1ced" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "4bbf29e" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -13449,7 +13462,10 @@ function MA_DSP() {
   // mark_bonus (added to a Moonpetal's mark), moonshade (the slow on what it marks), rot (Stinkhorn poison: that
   // much stronger, 5 s, a puddle from every bomb), heat (a Ghost Lily heating faster) and lily_keep (the heat a beam keeps).
   const L = (desc, mods = {}, once = {}) => Object.assign({ desc, mods }, once);
-  D.RARITY = { common: { weight: 60, name: "Common" }, rare: { weight: 30, name: "Rare" }, epic: { weight: 10, name: "Epic" } };
+  // (rares and epics were 30 and 10 against 60 until the user asked for them rarer, 2026-10-26: about half as often now)
+  D.RARITY = { common: { weight: 78, name: "Common" }, rare: { weight: 17, name: "Rare" }, epic: { weight: 5, name: "Epic" } };
+  // the dew rate the sounds and the counter read (State.gained): dew per second of game time, decaying over DEW_TAU s
+  D.DEW_TAU = 2;
   D.EPIC_FROM = 4;
   D.BOON_LEVELS = 3;
   D.BOONS = [
@@ -13654,6 +13670,7 @@ function MA_DSP() {
     S.seed = seed >>> 0;
     S.rng = G.rng(S.seed ^ 0x5eed);
     S.dew = S.START_DEW; S.heartMax = S.START_HEART; S.heartHp = S.heartMax; S.wave = 0; S.intensity = 0;
+    S.time = 0; S.dewRate = 0; S.dewT = 0;
     S.field = {}; S.corruption = 0; S.combat = 0; S.danger = 0; S.boons = []; S.mods = {};
     G.emit("dew"); G.emit("heart"); G.emit("wave"); G.emit("mods");
     S.setPhase(G.Phase.BUILD);
@@ -13722,9 +13739,17 @@ function MA_DSP() {
   S.towerCost = (base, kind) => Math.round(base * S.mod("cost") * (kind ? S.mod("cost_" + kind) : 1));
   S.canAfford = (cost) => S.dew >= cost;
   S.spend = (cost) => { if (S.dew < cost) return false; S.dew -= cost; G.emit("dew"); return true; };
-  S.earn = (amount) => { S.dew += Math.round(amount * S.mod("dew_gain")); G.emit("dew"); };
+  // (src: "kill", "wave", "early" or "refund", for the dew_gain event; pos: where, for a kill or a refund)
+  S.earn = (amount, src = "kill", pos = null) => { const n = Math.round(amount * S.mod("dew_gain")); S.dew += n; S.gained(n, src, pos); G.emit("dew"); };
   // income that boons don't scale (wave bonuses, refunds)
-  S.earnRaw = (amount) => { S.dew += amount; G.emit("dew"); };
+  S.earnRaw = (amount, src = "wave", pos = null) => { S.dew += amount; S.gained(amount, src, pos); G.emit("dew"); };
+  // Dew earned: the rate (dew per second of game time, each gain decaying over D.DEW_TAU s) goes up, and
+  // dew_gain { amount, rate, pos, src } goes out before "dew", for the counter, the popups and the sounds.
+  S.gained = (n, src, pos) => {
+    if (n <= 0) return;
+    S.dewRate = S.dewRate * Math.exp(-Math.max(0, S.time - S.dewT) / D.DEW_TAU) + n / D.DEW_TAU; S.dewT = S.time;
+    G.emit("dew_gain", { amount: n, rate: S.dewRate, pos, src });
+  };
   S.healHeart = (n) => { S.heartHp = Math.min(S.heartMax, S.heartHp + n); G.emit("heart"); };
   S.damageHeart = (n) => {
     if (S.phase === G.Phase.GAME_OVER) return;
@@ -14009,7 +14034,7 @@ function MA_DSP() {
       const dist = this.dist[i], lat = this.lat[i], hpK = this.hpK[i];
       if (this.slowT[i] > 0 && G.state.mod("puffball") > 0) this.pops.push([p[0], p[1], this.maxHp[i]]);
       this.release(i);
-      G.state.earn(reward);
+      G.state.earn(reward, "kill", p);
       G.emit("kill", { kind, pos: p, reward, element, boss: !!def.boss });
       if (def.split) { for (let k = 0; k < def.split; k++) this.spawn(def.into, hpK, this.trait, { dist: Math.max(0, dist - 0.12 * k), lat }); G.emit("split", { kind, pos: p, count: def.split }); }
     }
@@ -14555,7 +14580,7 @@ function MA_DSP() {
       return true;
     }
     sell(t) {
-      S.earnRaw(t.sellValue());
+      S.earnRaw(t.sellValue(), "refund", [t.X, t.Y, t.Z]);
       this.world.occupied.delete(this.world.idx(t.cx, t.cy));
       this.towers = this.towers.filter((x) => x !== t); this.stats.uprooted++;
       this.relink();
@@ -14643,7 +14668,7 @@ function MA_DSP() {
     callEarly() {
       if (!this.canCallEarly()) return false;
       const bonus = this.earlyBonus();
-      S.earnRaw(bonus); this.stats.dew += bonus; this.stats.early = (this.stats.early || 0) + 1;
+      S.earnRaw(bonus, "early"); this.stats.dew += bonus; this.stats.early = (this.stats.early || 0) + 1;
       this.addWave();
       G.emit("early", { wave: S.wave, dew: bonus });
       this.announce();
@@ -14673,7 +14698,7 @@ function MA_DSP() {
       let bonus = 0;
       for (let w = S.wave - n + 1; w <= S.wave; w++) bonus += 18 + w;
       const interest = Math.min(S.mod("interest_cap"), Math.floor(S.dew * S.mod("interest"))) + Math.round(S.mod("dew_wave"));
-      S.earnRaw(bonus + interest); this.stats.dew += bonus + interest;
+      S.earnRaw(bonus + interest, "wave"); this.stats.dew += bonus + interest;
       G.emit("wave_clear", { wave: S.wave, dew: bonus + interest, interest, waves: n });
       // Wild Growth: plants not yet fully grown grow a level for free
       // (by the wave number, so half a plant a wave is one every other wave, with nothing to save)
@@ -14697,7 +14722,7 @@ function MA_DSP() {
     }
 
     update(dt) {
-      this.time += dt;
+      this.time += dt; S.time = this.time;
       if (S.phase === G.Phase.WAVE) {
         for (const st of this.streams) {
           st.timer -= dt;
@@ -16646,11 +16671,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 /* One-shot effects (port of Fx, fx.gd): particle bursts, sunbeams, rings and floating text, set off by
    the game's events (fire, hit, kill, leaked, wave_clear, tower_placed / upgraded / sold). Drawn as the
    engine's sprites (ME.SpriteBatch, kinds ME.SPRITE); floating text is DOM, placed with the camera
-   every frame. */
+   every frame. Dew earned (dew_gain) rises as a droplet and "+N" in the dew's blue, and a few droplets fly
+   to the counter (hud.js). */
 (function () {
   const G = window.MG, D = G.Defs, S = G.state, ME = window.ME;
   const K = ME.SPRITE;
   const MAXP = 2600;
+  // dew labels: a kill within DEW_MERGE.t of a label's life and DEW_MERGE.d tiles of it adds to it; droplets in flight at most
+  const DEW_MERGE = { t: 0.3, d: 1.6 }, DROPS = 8;
   // CSS colour of an [r, g, b] 0..1 triple
   G.css = (c, a = 1) => `rgba(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)}, ${a})`;
 
@@ -16685,6 +16713,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.layer = document.getElementById("floats");
       this.labels = Array.from({ length: 18 }, () => { const el = document.createElement("div"); el.className = "float"; this.layer.appendChild(el); return { el, t: 1, p: [0, 0, 0] }; });
       this.li = 0;
+      // the dew labels, a pool of their own so the hit labels never take one: kills close in time and place
+      // add to one label (DEW_MERGE), which keeps a pile-up readable; and up to DROPS droplets in flight
+      this.dews = Array.from({ length: 12 }, () => { const el = document.createElement("div"); el.className = "float dew"; el.innerHTML = "<i></i><span></span>"; this.layer.appendChild(el); return { el, t: 1, p: [0, 0, 0], n: 0, src: "" }; });
+      this.di = 0; this.lastDew = null; this.flights = []; this.flyAt = 0;
+      this.drops = Array.from({ length: DROPS }, () => { const el = document.createElement("i"); el.className = "fly"; this.layer.appendChild(el); return { el, busy: false }; });
       const on = (ev, fn) => G.on(ev, (e) => { if (this.world) fn(e); });
       on("fire", (e) => {
         if (e.kind === "sun" && e.target) { this.beam(e.pos, e.target); this.burst("hit_sun", e.target); }
@@ -16699,11 +16732,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       on("kill", (e) => {
         const p = [e.pos[0], e.pos[1], e.pos[2] + 0.25];
         this.burst(e.boss ? "boss_kill" : "kill", p);
-        this.floatText([p[0], p[1], p[2] + 0.35], "+" + Math.round(e.reward * S.mod("dew_gain")), [0.75, 0.95, 1.0]);
       });
       on("leaked", () => { const w = this.world; this.burst("heart", [w.heart[0], w.heart[1], w.heartZ + 1.1]); });
-      on("wave_clear", (e) => { const w = this.world; this.floatText([w.heart[0], w.heart[1], w.heartZ + 2.6], "+" + e.dew + " dew", [0.7, 0.95, 1.0]); });
-      on("early", (e) => { if (e.dew > 0) { const w = this.world; this.floatText([w.heart[0], w.heart[1], w.heartZ + 2.6], "+" + e.dew + " dew", [0.7, 0.95, 1.0]); } });
+      on("dew_gain", (e) => this.dewPop(e));
       on("tower_placed", (e) => this.burst("plant", [e.pos[0], e.pos[1], e.pos[2] + 0.15]));
       on("tower_upgraded", (e) => this.burst("plant", [e.pos[0], e.pos[1], e.pos[2] + 0.25]));
       on("tower_sold", (e) => this.burst("plant", [e.pos[0], e.pos[1], e.pos[2] + 0.15]));
@@ -16712,6 +16743,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     reset(world) {
       this.world = world; this.n = 0; this.beams = []; this.rings = [];
       for (const L of this.labels) L.t = 1;
+      for (const L of this.dews) L.t = 1;
+      this.lastDew = null; this.flights = [];
     }
     burst(kind, at) {
       const b = BURSTS[kind];
@@ -16748,7 +16781,23 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const L = this.labels[this.li]; this.li = (this.li + 1) % this.labels.length;
       L.el.textContent = text; L.el.style.color = G.css(col); L.p = at.slice(); L.t = 0;
     }
+    // "+N" with a droplet where the dew came from (the Heart Tree for a wave's and an early call's), bigger
+    // for more; a kill near the last kill's label, while it is fresh, adds to it instead
+    dewPop(e) {
+      const w = this.world, at = e.pos ? [e.pos[0], e.pos[1], e.pos[2] + 0.6] : [w.heart[0], w.heart[1], w.heartZ + 2.6];
+      let L = this.lastDew;
+      if (!(e.src === "kill" && L && L.src === "kill" && L.t < DEW_MERGE.t && Math.hypot(L.p[0] - at[0], L.p[1] - at[1]) < DEW_MERGE.d)) {
+        L = this.dews[this.di]; this.di = (this.di + 1) % this.dews.length;
+        L.n = 0; L.src = e.src; L.p = at;
+      }
+      L.n += e.amount; L.t = 0; this.lastDew = L;
+      L.el.lastChild.textContent = "+" + L.n + (e.pos ? "" : " dew");
+      L.el.style.setProperty("--k", (1 + Math.min(0.7, Math.sqrt(L.n) / 9)).toFixed(2));
+      // a droplet flies to the counter, a few a second at most (sent from place(), which has the camera)
+      if (e.src === "kill" && !document.body.classList.contains("calm") && this.flyAt <= 0) { this.flights.push(at); this.flyAt = 1 / 6; }
+    }
     update(dt) {
+      this.flyAt -= dt;
       // particles: drift, damping, gravity; swap-remove the dead
       for (let i = 0; i < this.n; i++) {
         this.life[i] -= dt;
@@ -16762,6 +16811,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       for (const r of this.rings) r.t += dt;
       this.rings = this.rings.filter((r) => r.t < r.life);
       for (const L of this.labels) if (L.t < 1) L.t += dt / 0.9;
+      for (const L of this.dews) if (L.t < 1) L.t += dt / 1.1;
     }
     kill(i) {
       const j = --this.n;
@@ -16788,12 +16838,27 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // floating labels follow their world point; rise one tile and fade after 0.3 s
     place(cam, canvas) {
       const dpr = canvas.width / Math.max(1, canvas.clientWidth);
-      for (const L of this.labels) {
+      if (this.flights.length) this.fly(cam, canvas, dpr);
+      for (const L of this.labels.concat(this.dews)) {
         if (L.t >= 1) { if (L.el.style.opacity !== "0") L.el.style.opacity = "0"; continue; }
         const e = 1 - Math.pow(1 - L.t, 3), [x, y] = cam.toScreen([L.p[0], L.p[1], L.p[2] + 0.5 * e], canvas.width, canvas.height);
         L.el.style.transform = `translate(${(x / dpr).toFixed(1)}px, ${(y / dpr).toFixed(1)}px) translate(-50%, -50%)`;
         L.el.style.opacity = String(L.t < 0.33 ? 1 : Math.max(0, 1 - (L.t - 0.33) / 0.67));
       }
+    }
+    // the waiting droplets leave their creature on the screen and arc to the counter's droplet
+    fly(cam, canvas, dpr) {
+      const to = document.querySelector("#dew svg"), r = to && to.getBoundingClientRect();
+      for (const at of this.flights) {
+        const d = this.drops.find((x) => !x.busy);
+        if (!d || !r || !r.width) break;
+        const [sx, sy] = cam.toScreen(at, canvas.width, canvas.height), x0 = sx / dpr, y0 = sy / dpr, x1 = r.left + r.width / 2, y1 = r.top + r.height / 2;
+        const mx = (x0 + x1) / 2, my = Math.min(y0, y1) - 60, tf = (x, y, s) => `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%) scale(${s})`;
+        d.busy = true;
+        const a = d.el.animate([{ transform: tf(x0, y0, 1), opacity: 1 }, { transform: tf(mx, my, 0.9), opacity: 1, offset: 0.45 }, { transform: tf(x1, y1, 0.5), opacity: 0.7 }], { duration: 620, easing: "ease-in" });
+        a.onfinish = a.oncancel = () => { d.busy = false; };
+      }
+      this.flights = [];
     }
   }
   G.Fx = Fx;
@@ -18217,6 +18282,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const NARROW = window.matchMedia("(max-width: 760px)");
   // the inspector's buttons wait GRACE_MS after it opens on a plant; Uproot's first tap asks for ARM_MS
   const GRACE_MS = 450, ARM_MS = 3000;
+  // the dew counter glows from these rates (dew a second, State.gained): a busy wave, then a pile-up
+  const DEW_HOT = [15, 40];
   // what each plant aims at (core/towers.js), for the seed info
   const TARGETS = {
     thorn: "the creature nearest the Heart Tree", sun: "the toughest creature in reach", puff: "everything in reach",
@@ -18274,10 +18341,37 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         this.arm(null); this.act.sell();
       });
       $("again").addEventListener("click", () => this.act.restart());
+      // the dew counter: a gain (State.gained, just before its "dew") pulses it, more for more, and the
+      // number counts up; it glows while dew comes fast (the rate: data-hot 1 from DEW_HOT[0], 2 from [1])
+      this.dewShown = S.dew; this.dewGain = false; this.dewRaf = 0; this.pulseAt = 0;
+      G.on("dew_gain", (e) => { this.dewGain = true; this.dewPulse(e.amount); });
       for (const ev of ["dew", "heart", "wave", "phase", "mods", "waves"]) G.on(ev, () => this.refresh());
       // links change as plants come and go around the one in the inspector
       G.on("links", () => { if (this.inspected && $("inspector").classList.contains("show") && this.inspected.links) this.inspect(this.inspected); });
       this.refresh();
+    }
+    // the counter climbs to dewTo, about a tenth of the gap a frame and at least 1, and keeps a frame
+    // running while the glow is on, so it cools when the dew stops
+    dewRun() {
+      if (this.dewRaf) return;
+      let last = performance.now();
+      const step = (now) => {
+        const dt = Math.min(0.1, (now - last) / 1000), gap = this.dewTo - this.dewShown; last = now;
+        this.dewShown = gap <= 0 ? this.dewTo : Math.min(this.dewTo, this.dewShown + Math.max(1, Math.ceil(gap * Math.min(1, dt * 9))));
+        $("dewn").textContent = this.dewShown;
+        const rate = S.dewRate * Math.exp(-Math.max(0, S.time - S.dewT) / D.DEW_TAU), hot = rate >= DEW_HOT[1] ? "2" : rate >= DEW_HOT[0] ? "1" : "";
+        if ($("dew").dataset.hot !== hot) $("dew").dataset.hot = hot;
+        this.dewRaf = this.dewShown !== this.dewTo || hot ? requestAnimationFrame(step) : 0;
+      };
+      this.dewRaf = requestAnimationFrame(step);
+    }
+    // a gain's pulse: up to a third bigger for a boss's dew, from the counter's corner on the seed bar
+    dewPulse(amount) {
+      const now = performance.now();
+      if (now - this.pulseAt < 80 || document.body.classList.contains("calm")) return;
+      this.pulseAt = now;
+      const k = 1 + Math.min(0.35, 0.06 + amount / 120);
+      $("dew").animate([{ transform: "scale(1)" }, { transform: `scale(${k.toFixed(3)})`, offset: 0.3 }, { transform: "scale(1)" }], { duration: 280, easing: "ease-out" });
     }
     // Uproot asks first: armed on plant t (null disarms) for ARM_MS, its button saying so
     arm(t) {
@@ -18537,7 +18631,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     refresh() {
       $("hearttxt").textContent = `Heart ${S.heartHp}/${S.heartMax}`;
       $("heartfill").style.width = (100 * S.heartRatio()).toFixed(1) + "%";
-      $("dew").textContent = `Dew ${S.dew}`;
+      // (after a gain the number counts up to it; a spend, a restore or a new run sets it at once)
+      $("dew").setAttribute("aria-label", `Dew ${S.dew}`);
+      this.dewTo = S.dew;
+      if (this.dewGain && S.dew > this.dewShown) this.dewRun(); else { this.dewShown = S.dew; $("dewn").textContent = S.dew; }
+      this.dewGain = false;
       $("wave").textContent = `Wave ${S.wave}`;
       for (const kind in this.cards) {
         const b = this.cards[kind], cost = S.towerCost(D.TOWERS[kind].cost, kind), m = this.matchup[kind] || 0;
@@ -19817,6 +19915,8 @@ function MG_SFX(L) {
     death_shell: [0.6, 32000], death_burst: [0.7, 22050],
     // the Blight Crow (#304): feathers struck, and a caw as it falls
     mat_crow: [0.16, 22050], death_caw: [0.6, 32000],
+    // dew gained: a drop in three brightnesses (take 0 the softest), a chime, a sparkle and a bonus's shower
+    dew_0: [0.32, 32000], dew_1: [0.4, 32000], dew_2: [0.5, 32000], dew_chime: [0.9, 32000], dew_sparkle: [0.6, 32000], dew_shower: [1.1, 32000],
     uguisu: [1.45, 32000], chirp: [0.7, 32000], trill: [0.9, 32000], cricket: [1.4, 32000], frog: [0.8, 22050], leaves: [1.2, 22050],
     waterfall: [4.0, 22050, true], stream: [4.0, 22050, true], wind: [6.0, 22050, true],
   };
@@ -20128,6 +20228,52 @@ function MG_SFX(L) {
         s[i] = (v1(x, 1300, 0.25) * 0.9 + v2(x, 2600, 0.3) * 0.4) * smooth(0, 0.02, t) * exp(-t * 4) * (1 - smooth(dur - 0.12, dur, t));
       }
       return grains(s, sr, 10, 0.25, dur - 0.05, 0.001, 0.004, 0.15);
+    },
+    // ---- dew gained: drops that climb the F pentatonic as the dew comes faster (rendered on F5 and played at
+    // the scale's rates), a glassy chime and a sparkle over them when it pours, a shower for a wave's bonus
+    // a dew drop: a sine "plip" gliding up onto F5; the brighter takes add a bell partial, then a beating twin
+    // and a breath of air
+    dew(s, sr, take) {
+      const air = svf(sr); let ph = 0;
+      for (let i = 0; i < s.length; i++) {
+        const t = i / sr; ph += (698.46 * (1 - 0.28 * exp(-t * 90))) / sr;
+        let v = sin(TAU * ph);
+        if (take > 0) v += 0.3 * sin(TAU * ph * 2.76) * exp(-t * 30) + 0.18 * sin(TAU * ph * 2) * exp(-t * 10);
+        if (take > 1) v += 0.5 * sin(TAU * ph * 1.004) + air(n1(), 5000, 0.6) * exp(-t * 120) * 0.4;
+        s[i] = v * min(t / 0.0015, 1) * exp(-t * (16 - 3 * take));
+      }
+      return s;
+    },
+    // a glassy chime on F6 (a twin beating 2.6 Hz above it), soft enough to ring over the drops
+    dew_chime(s, sr) {
+      const dur = s.length / sr;
+      for (let i = 0; i < s.length; i++) {
+        const t = i / sr;
+        s[i] = (sin(TAU * 1396.9 * t) + 0.7 * sin(TAU * 1399.5 * t) + 0.25 * sin(TAU * 4190.7 * t) * exp(-t * 8) + 0.12 * sin(TAU * 3855 * t) * exp(-t * 20)) * min(t / 0.003, 1) * min((dur - t) / 0.05, 1) * exp(-t * 4.5);
+      }
+      return s;
+    },
+    // a sparkle: high glints from the F pentatonic (F7 to F8) over a whisper of air
+    dew_sparkle(s, sr) {
+      const air = svf(sr), notes = [2793.8, 3136, 3520, 4186, 4698.6, 5587.7];
+      for (let i = 0; i < s.length; i++) { const t = i / sr; s[i] = air(n1(), 6500, 0.5) * sin((PI * t) / 0.6) * 0.06; }
+      for (let k = 0; k < 14; k++) {
+        const t0 = rr(0, 0.45), at = Math.floor(t0 * sr), f = notes[Math.floor(rnd() * notes.length)], a = rr(0.25, 0.5) * (1 - t0 * 1.2);
+        for (let j = 0; j < Math.floor(0.12 * sr) && at + j < s.length; j++) { const t = j / sr; s[at + j] += sin(TAU * f * t) * min(t / 0.001, 1) * exp(-t * 40) * a; }
+      }
+      return s;
+    },
+    // a wave's bonus (or the early call's): a shower of drops on the pentatonic's high notes over a low
+    // "bloop" settling; a texture, no tune, so it sits under the music's cleared-wave sting
+    dew_shower(s, sr) {
+      const notes = [1396.9, 1568, 1760, 2093, 2349.3, 2793.8, 3136]; let ph = 0;
+      for (let i = 0; i < s.length; i++) { const t = i / sr; ph += (175 + 90 * (1 - exp(-t * 14))) / sr; s[i] = sin(TAU * ph) * smooth(0, 0.02, t) * exp(-t * 7) * 0.5; }
+      for (let k = 0; k < 22; k++) {
+        const t0 = 0.02 + pow(rnd(), 1.6) * 0.8, at = Math.floor(t0 * sr), f = notes[Math.floor(rnd() * notes.length)], a = rr(0.25, 0.55) * (1 - t0 * 0.8);
+        let p = 0;
+        for (let j = 0; j < Math.floor(0.2 * sr) && at + j < s.length; j++) { const t = j / sr; p += (f * (1 - 0.25 * exp(-t * 90))) / sr; s[at + j] += sin(TAU * p) * min(t / 0.0015, 1) * exp(-t * 22) * a; }
+      }
+      return s;
     },
     // the bush warbler: a long held whistle, then "ho-ke-kyo"
     uguisu(s, sr) {
@@ -20892,6 +21038,16 @@ function MG_SFX(L) {
   const priOf = (base) => PRI[base] ?? (/^(hit|mat)_/.test(base) ? 0 : 1);
   const rr = (a, b) => a + (b - a) * Math.random(), pick = (a) => a[Math.floor(Math.random() * a.length)];
   const lerp = (a, b, u) => a + (b - a) * u, toDb = (x) => 20 * Math.log10(x);
+  // Dew gained (Game's "dew_gain": { amount after mods, rate, pos, src }). The kills' dew becomes drops (sfx.js
+  // dew) climbing the F pentatonic from F5 in runs: the faster it comes (u: 2 dew/s 0, 40 dew/s 1, from our own
+  // smoothed rate of the kills' dew in real seconds, so a bonus doesn't lift the next kills and 2x speed is
+  // heard faster) the higher the run starts and reaches, the brighter the take and the louder; a chime from
+  // about 12 dew/s, a sparkle from about 30. Not tiring: a drop at most every GAP ms (dew that comes in
+  // between merges into it, a little louder), at most VOICES at once (the oldest gives way), 3 dB down after
+  // a few seconds of pouring. A wave's bonus (or the early call's) is a shower; a refund (uprooting) is silent.
+  const DEW = { db: -21, gap: [150, 115], voices: 4, rest: 1200, late: 400, tau: 2000 };
+  const SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
+  const clamp01 = (x) => Math.min(1, Math.max(0, x)), semis = (n) => Math.pow(2, n / 12);
 
   class Soundscape {
     constructor(mixer, game, app) {
@@ -20900,7 +21056,11 @@ function MG_SFX(L) {
       this.t = { vocal: 1, bird: 2, cricket: 1, frog: 4, leaves: 5, boss: 6 };
       this.q = []; this.frame = 0; this.merged = 0; this.deferred = 0; this.dropped = 0;
       for (const ev of ["fire", "hit", "kill", "spawn", "heart_hit", "tower_placed", "tower_upgraded", "tower_sold"]) G.on(ev, (d) => this.onEvent(ev, d));
+      this.dew = { acc: 0, since: 0, pos: null, own: 0, at: 0, last: -1e5, step: 0, hot: 0, spark: -1e5, shower: -1e5, voices: [], drops: 0, merged: 0, stolen: 0 };
+      G.on("dew_gain", (d) => this.dewGain(d));
     }
+    // the dew sounds' metering: drops played, gains merged into a drop, voices cut for the cap, the rate (dew/s)
+    get dewStats() { const w = this.dew; return { drops: w.drops, merged: w.merged, stolen: w.stolen, rate: +this.dewRate(performance.now()).toFixed(2) }; }
     get played() { return this.sp.played; }
     // the queue's metering: plays merged into one in the same frame, put off to a later frame, dropped stale
     get queue() { return { merged: this.merged, deferred: this.deferred, dropped: this.dropped }; }
@@ -20984,6 +21144,7 @@ function MG_SFX(L) {
       this.sp.listen(L.vp, L.zoom, L.aspect);
       if (ctl) this.sp.update();
       this.flush();
+      this.dewTick(dt);
       const now = this.mixer.ctx.currentTime, i = S.intensity;
       if (this.wind && ctl) { this.wind.g.gain.setTargetAtTime(MA.dbToGain(lerp(-24, -13, i)), now, 0.3); this.wind.src.playbackRate.setTargetAtTime(lerp(0.9, 1.15, i), now, 0.3); }
       this.creatureCalls(dt);
@@ -21015,6 +21176,48 @@ function MG_SFX(L) {
         if (at && Math.random() < this.calm(at, 0.7)) this.play("frog", at, 0, rr(0.85, 1.15));
       }
       if ((T.leaves -= dt) <= 0 && this.trees.length) { T.leaves = rr(4, 9) * lerp(1, 0.5, i); this.play("leaves", pick(this.trees), lerp(0, 4, i)); }
+    }
+    // --- dew gained: kills' dew waits for the next drop (dewTick); a bonus showers at once
+    dewGain(d) {
+      if (!this.ready || !(d.amount > 0) || d.src === "refund") return;
+      const w = this.dew, now = performance.now();
+      if (d.src === "wave" || d.src === "early") {
+        if (now - w.shower < 600) return;
+        w.shower = now;
+        this.dewVoice("dew_shower", -19 + Math.min(4, 1.5 * Math.log2(1 + d.amount / 20)) - (d.src === "early" ? 3 : 0), 1, 0);
+        return;
+      }
+      w.own = this.dewRate(now) + d.amount / (DEW.tau / 1000); w.at = now;
+      if (!w.acc) w.since = now; else w.merged++;
+      w.acc += d.amount; if (d.pos) w.pos = d.pos;
+    }
+    dewRate(now) { const w = this.dew; return w.own * Math.exp(-(now - w.at) / DEW.tau); }
+    dewTick(dt) {
+      const w = this.dew, now = performance.now(), u = clamp01(Math.log(Math.max(this.dewRate(now), 1e-3) / 2) / Math.log(20));
+      // pouring for a few seconds: ease down 3 dB, and back up as it slows
+      w.hot = u > 0.7 ? w.hot + dt : Math.max(0, w.hot - 2 * dt);
+      if (!w.acc) return;
+      if (now - w.since > DEW.late) { w.acc = 0; return; } // held up (no frames, a hidden tab): too late to read as a reward
+      if (now - w.last < lerp(DEW.gap[0], DEW.gap[1], u)) return;
+      if (now - w.last > DEW.rest) w.step = 0;
+      // a run: from lo up to hi on the scale and round again; both climb with u
+      const lo = Math.round(lerp(0, 4, u)), hi = Math.round(lerp(3, 10, u)), n = lo + (w.step % (hi - lo + 1));
+      const take = Math.min(2, Math.floor(u * 2.99) + (w.acc >= 30 ? 1 : 0));
+      const db = DEW.db + 5 * u + Math.min(4, 2 * Math.log2(1 + w.acc / 5)) - 3 * clamp01((w.hot - 4) / 2) + rr(-0.7, 0.7);
+      const pan = w.pos ? this.sp.pan(w.pos) * 0.5 : 0;
+      this.dewVoice(`dew_${take}`, db, semis(SCALE[n]) * rr(0.997, 1.003), pan);
+      // the chime an octave over every other drop, folded into F6-D7
+      if (u >= 0.6 && w.step % 2 === 1) this.dewVoice("dew_chime", db - 8 + 3 * u, semis(SCALE[n] % 12), pan);
+      if (u >= 0.9 && now - w.spark > 600) { w.spark = now; this.dewVoice("dew_sparkle", db - 6, rr(0.98, 1.02), pan); }
+      w.step++; w.drops++; w.last = now; w.acc = 0; w.pos = null;
+    }
+    // at most DEW.voices dew sounds at once (the shower too): the oldest gives way
+    dewVoice(name, db, rate, pan) {
+      const vs = this.dew.voices;
+      for (let k = vs.length - 1; k >= 0; k--) if (vs[k].done) vs.splice(k, 1);
+      if (vs.length >= DEW.voices) { this.mixer.stop(vs.shift(), 0, 0.01); this.dew.stolen++; }
+      const v = this.mixer.voice(name, "Sfx", db, rate, 0, pan);
+      if (v) vs.push(v);
     }
     // how freely critters sing at a spot: hushed by the blight there and by the battle
     calm(at, hush) { return Math.min(1, Math.max(0, 1 - this.app.scene.wiltAt(at[0], at[1]) * 1.6)) * (1 - S.intensity * hush); }
