@@ -36,15 +36,30 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 #hearttxt { font-size: calc(16px * var(--ts)); }
 .hbar { width: 150px; height: 12px; background: #d9d1b8; border-radius: 7px; overflow: hidden; margin-top: 3px; }
 #heartfill { height: 100%; width: 100%; background: var(--blossom); border-radius: 7px; transition: width 0.25s; }
-/* the dew you hold sits on the seed bar, just above its first card, beside the prices (the user's ask, 2026-10-26) */
-/* (a droplet and the number, bigger since the user asked for it more prominent; hud.js counts it up, pulses it on a
-   gain and glows it while dew comes fast: data-hot 1 and 2) */
-#dew { position: absolute; left: 0; bottom: calc(100% + 12px); display: flex; align-items: center; gap: 0.3em; padding: 4px 16px 4px 12px; border-radius: 13px; white-space: nowrap; pointer-events: none; color: var(--dewc); font-size: calc(27px * var(--ts)); font-weight: 800; line-height: 1; transform-origin: 0 100%; transition: box-shadow 0.4s; }
-#dew svg { width: 0.72em; height: 0.96em; flex: none; fill: currentColor; transition: filter 0.4s; }
+/* the dew bank: a seed card's size, beside the wave button (the user's ask, 2026-10-26). A well, not a button: sunk
+   in, no bevel, no pointer. Its water rises with the bank (--fill) and its rim changes at the bank tiers (data-bank
+   1-3); it glows with the rate the dew comes in (data-hot 1-3). hud.js counts it up, pulses it and sprays droplets */
+#dew { position: fixed; right: calc(230px + var(--sr)); bottom: calc(12px + var(--sb)); width: 130px; height: calc(104px * var(--ts)); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; isolation: isolate;
+  pointer-events: none; color: var(--dewc); font-size: calc(34px * var(--ts)); font-weight: 800; line-height: 1; white-space: nowrap; transform-origin: 50% 100%;
+  transition: filter 0.4s, border-color 0.6s, outline-color 0.6s; }
+/* (the paper's well; a skin's board, src/art/skin.js, wins over it) */
+:where(#dew) { border-color: #8fbcd4; background: linear-gradient(#f2f6ec, #e6efe9); box-shadow: inset 0 3px 7px rgba(26, 60, 80, 0.2), var(--shadow); }
+#dew svg { width: 0.62em; height: 0.83em; flex: none; fill: currentColor; transition: filter 0.4s; }
 #dew svg .glint { fill: none; stroke: #fff; stroke-opacity: 0.7; stroke-width: 1.2; stroke-linecap: round; }
+#dew small { font-size: calc(12px * var(--ts)); font-weight: 600; color: var(--mute, #6b7560); letter-spacing: 0.06em; }
+#dew .fill { position: absolute; left: 0; right: 0; bottom: 0; z-index: -1; height: calc(var(--fill, 0) * 100%); border-radius: 0 0 13px 13px; background: linear-gradient(rgba(150, 210, 240, 0.45), rgba(90, 165, 210, 0.5)); border-top: 2px solid rgba(255, 255, 255, 0.7); transition: height 0.8s ease-out; }
+#dew .spray { position: absolute; left: 50%; top: 34%; width: 8px; height: 10px; margin: -5px 0 0 -4px; border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%; background: #8fd2f5; box-shadow: 0 0 4px #c8ecff; opacity: 0; }
 #dew[data-hot="1"] svg { filter: drop-shadow(0 0 3px #7fd0ff); }
 #dew[data-hot="2"] svg { filter: drop-shadow(0 0 5px #9fdcff) drop-shadow(0 0 2px #fff); }
-#dew[data-hot="2"] { box-shadow: var(--shadow), 0 0 16px 3px rgba(127, 208, 255, 0.55); }
+#dew[data-hot="2"] { filter: drop-shadow(0 0 8px rgba(127, 208, 255, 0.75)); }
+#dew[data-hot="3"] svg { filter: drop-shadow(0 0 7px #bfe8ff) drop-shadow(0 0 3px #fff); }
+#dew[data-hot="3"] { filter: drop-shadow(0 0 10px rgba(140, 215, 255, 0.95)) drop-shadow(0 0 22px rgba(140, 215, 255, 0.6)); }
+#dew[data-bank="1"] { border-color: #5f9fc4; }
+#dew[data-bank="2"] { border-color: #3f86b4; outline: 2px solid rgba(255, 255, 255, 0.75); outline-offset: -7px; }
+#dew[data-bank="3"] { border-color: #d2a648; outline: 2px solid rgba(255, 236, 170, 0.9); outline-offset: -7px; }
+#dew[data-bank="3"]::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 13px;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.55) 50%, transparent 65%) -130px 0 / 260px 100% no-repeat; animation: dewshine 3.2s ease-in-out infinite; }
+@keyframes dewshine { 0%, 40% { background-position: -130px 0; } 100% { background-position: 130px 0; } }
 #wave { font-size: calc(22px * var(--ts)); }
 #topright { position: fixed; right: calc(12px + var(--sr)); top: calc(12px + var(--st)); display: flex; gap: 8px; align-items: center; pointer-events: none; }
 #topright > * { pointer-events: auto; }
@@ -115,7 +130,7 @@ body.coaching #hint { display: none !important; }
 body.calm .coach-spot { animation: none; }
 
 /* eight seed cards: they shrink to stay clear of the wave button, and wrap to two rows on phones */
-#seeds { position: fixed; left: calc(12px + var(--sl)); right: calc(240px + var(--sr)); bottom: calc(12px + var(--sb)); display: flex; gap: 8px; pointer-events: none; }
+#seeds { position: fixed; left: calc(12px + var(--sl)); right: calc(378px + var(--sr)); /* (clear of the dew bank) */ bottom: calc(12px + var(--sb)); display: flex; gap: 8px; pointer-events: none; }
 .seed { position: relative; flex: 0 1 130px; min-width: 0; height: calc(104px * var(--ts)); padding: 8px 8px 6px; pointer-events: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
   font: inherit; color: var(--ink); background: var(--paper); border: 3px solid var(--acc); border-radius: 16px; box-shadow: var(--shadow); cursor: pointer; touch-action: manipulation; }
 .seed b { max-width: calc(100% - 12px); font-size: calc(14px * var(--ts)); line-height: 1.12; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -292,7 +307,6 @@ body.calm .coach-spot { animation: none; }
   .hbar { width: 84px; }
   #hearttxt { font-size: calc(13px * var(--ts)); }
   #wave { font-size: calc(16px * var(--ts)); }
-  #dew { bottom: calc(100% + 10px); padding: 3px 11px 3px 9px; border-radius: 11px; font-size: calc(20px * var(--ts)); }
   .float.dew { font-size: calc(16px * var(--ts) * var(--k, 1)); }
   #topright { right: calc(6px + var(--sr)); top: calc(6px + var(--st)); }
   .btn.small { width: 44px; height: 42px; font-size: calc(17px * var(--ts)); }
@@ -318,6 +332,12 @@ body.calm .coach-spot { animation: none; }
   .seed .picon { width: 14px; height: 14px; right: 5px; top: 5px; }
   #wavebtn { right: calc(6px + var(--sr)); bottom: calc(20px + 128px * var(--ts) + var(--sb)); width: calc(156px * var(--ts)); white-space: nowrap; height: calc(56px * var(--ts)); font-size: calc(18px * var(--ts)); border-radius: 13px; }
   #wavebtn.early { font-size: calc(16px * var(--ts)); line-height: 1.1; }
+  /* (the dew bank on the wave button's row, to its left, a seed card wide) */
+  #dew { right: calc(12px + 156px * var(--ts) + var(--sr)); bottom: calc(20px + 128px * var(--ts) + var(--sb)); width: calc((100vw - 24px - var(--sl) - var(--sr)) / 3); height: calc(56px * var(--ts));
+    flex-direction: row; gap: 0.22em; font-size: calc(24px * var(--ts)); }
+  #dew small { display: none; }
+  #dew .fill { border-radius: 0 0 10px 10px; }
+  #dew .spray { left: 30%; top: 50%; }
   #inspector { left: calc(6px + var(--sl)); top: auto; bottom: calc(28px + 184px * var(--ts) + var(--sb)); max-height: calc(100vh - 58px - 260px * var(--ts) - var(--st) - var(--sb)); transform: none; width: min(320px, calc(100vw - 12px)); padding: 10px 12px; gap: 6px; }
   #inspector .btn { flex: none; height: 44px; font-size: calc(16px * var(--ts)); }
   #insptitle { font-size: calc(18px * var(--ts)); }
@@ -332,8 +352,8 @@ body.calm .coach-spot { animation: none; }
   .help { display: none; }
   #version { right: calc(10px + var(--sr)); bottom: calc(25px + 128px * var(--ts) + var(--sb)); font-size: calc(9px * var(--ts)); }
 }
-@media (prefers-reduced-motion: reduce) { .veil, .seed, #heartfill, #bar, .boon, .boon .aura, .boon .shine::before, .boon .rays { animation: none !important; transition: none; } }
-body.calm .veil, body.calm .seed, body.calm #heartfill, body.calm #bar, body.calm .boon, body.calm .boon .aura, body.calm .boon .shine::before, body.calm .boon .rays { animation: none !important; transition: none; } /* (the Motion setting) */
+@media (prefers-reduced-motion: reduce) { #dew::after, .veil, .seed, #heartfill, #bar, .boon, .boon .aura, .boon .shine::before, .boon .rays { animation: none !important; transition: none; } }
+body.calm #dew::after, body.calm .veil, body.calm .seed, body.calm #heartfill, body.calm #bar, body.calm .boon, body.calm .boon .aura, body.calm .boon .shine::before, body.calm .boon .rays { animation: none !important; transition: none; } /* (the Motion setting) */
 
 /* menus (view/menu.js): title, terrariums, pause, settings, how to play; the boot failure screen */
 .menu { z-index: 10; overflow: auto; }
@@ -440,7 +460,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   <div id="sky" class="panel"><div class="skyrow"><b>Mood</b><div class="seg" id="moodseg"></div></div><div class="skyrow"><b>Weather</b><div class="seg" id="wxseg"></div></div></div>
   <div id="hint">Tap a seed, then tap the meadow twice to plant it</div>
   <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspbody"></div><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div>
-  <div id="seeds"><div id="dew" class="panel" role="status" aria-label="Dew 0"><svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 .6C4.4 3.4 1 7.2 1 10.6a5 5 0 0 0 10 0C11 7.2 7.6 3.4 6 .6z"/><path class="glint" d="M3.6 10.2a2.6 2.6 0 0 0 1.9 3.1"/></svg><b id="dewn">0</b></div></div>
+  <div id="seeds"></div>
+  <div id="dew" class="panel" role="status" aria-label="Dew 0"><i class="fill"></i><svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 .6C4.4 3.4 1 7.2 1 10.6a5 5 0 0 0 10 0C11 7.2 7.6 3.4 6 .6z"/><path class="glint" d="M3.6 10.2a2.6 2.6 0 0 0 1.9 3.1"/></svg><b id="dewn">0</b><small>dew</small></div>
   <button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button>
   <div id="boons" class="veil"><div class="col"><h2>The garden offers a gift</h2><div id="boonrow"></div></div></div>
   <div id="over" class="veil dark"><div class="panel card"><h2>The Heart Tree sleeps</h2><div class="cscroll"><p id="overtxt"></p><div id="oversum" class="oversum"></div></div><button id="again" class="btn pink">Plant anew</button></div></div>
@@ -13291,7 +13312,7 @@ function MA_DSP() {
    one-file build, and a page run from a checkout says "dev". G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "4bbf29e" };
+  G.VERSION = { v: "0.10.0", name: "Mossheart", commit: "2ed379c" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -13344,21 +13365,21 @@ function MA_DSP() {
   //          III two beams
   // Stuns, snares, sleep and lures are shorter on big creatures (Enemies.stun).
   D.TOWERS = {
-    thorn: { name: "Thornbloom", cost: 50, range: 2.5, rate: 1.6, damage: 8, speed: 8, color: [0.55, 1.0, 0.45], element: "pierce", desc: "Fast seed volleys at a single creature.",
+    thorn: { name: "Thornbloom", cost: 50, range: 2.5, rate: 1.6, damage: 8, speed: 8, color: [1.0, 0.38, 0.82], element: "pierce", desc: "Fast seed volleys at a single creature.",
       levels: ["Seeds at the creature nearest the Heart Tree", "Seeds pierce on to the creature behind (50%)", "Barbed seeds: each hit makes it take 4% more from thorns (up to 8)"] },
     sun: { name: "Sunpetal Lens", cost: 90, range: 3.75, rate: 0.6, damage: 38, speed: 21, color: [1.0, 0.85, 0.35], element: "light", desc: "Long-range focused sunlight. Targets the toughest creature.",
       levels: ["Beams the toughest creature in reach", "The beam burns every creature on its line (40%)", "Dazzle: the creature beamed is stunned for 0.5 s"] },
-    puff: { name: "Puffcap", cost: 75, range: 1.7, rate: 0.8, damage: 10, speed: 0, color: [0.85, 0.6, 1.0], slow: 0.3, slowTime: 1.5, element: "spore", desc: "Spore bursts hit everything nearby and slow it.",
+    puff: { name: "Puffcap", cost: 75, range: 1.7, rate: 0.8, damage: 10, speed: 0, color: [0.7, 0.45, 1.0], slow: 0.3, slowTime: 1.5, element: "spore", desc: "Spore bursts hit everything nearby and slow it.",
       levels: ["Bursts hurt and slow everything near", "Gust: bursts push creatures back down the road", "Every third burst sends them to sleep for 0.7 s"] },
     wisp: { name: "Willow Wisp", cost: 110, range: 2.75, rate: 1.0, damage: 14, speed: 6, color: [0.5, 0.95, 1.0], chain: 2, element: "spirit", desc: "Spirit light that leaps between creatures.",
       levels: ["Light leaps between creatures, fading", "Leaps once more, and no longer fades as it leaps", "Lure: the first creature struck wanders back toward the rift for 0.8 s"] },
-    briar: { name: "Briar Vine", cost: 60, range: 1.6, rate: 2, damage: 5, color: [0.85, 0.32, 0.3], slow: 0.25, element: "pierce", desc: "Grows a thorn patch onto the road: what crosses it is scratched and slowed. Plant it beside the road.",
+    briar: { name: "Briar Vine", cost: 60, range: 1.6, rate: 2, damage: 5, color: [1.0, 0.26, 0.22], slow: 0.25, element: "pierce", desc: "Grows a thorn patch onto the road: what crosses it is scratched and slowed. Plant it beside the road.",
       levels: ["A thorn patch on the road scratches and slows", "Snare: a creature entering the patch is held for 0.6 s", "A second patch, further along the road"] },
     toad: { name: "Stinkhorn", cost: 100, range: 4.25, minRange: 1.0, rate: 0.45, damage: 20, speed: 5, color: [0.95, 0.55, 0.25], element: "spore", desc: "Lobs spore bombs far down the road (never close): a splash that poisons.",
       levels: ["Spore bombs: a splash, and poison for 3 s", "The bomb leaves a poison puddle for 3 s", "Cluster: each bomb bursts into 3 more"] },
-    moon: { name: "Moonpetal", cost: 80, range: 3.0, rate: 0.5, damage: 12, color: [0.72, 0.8, 1.0], mark: 0.3, element: "light", desc: "Marks the toughest creature in reach: everything hurts it 30% more.",
+    moon: { name: "Moonpetal", cost: 80, range: 3.0, rate: 0.5, damage: 12, color: [0.42, 0.58, 1.0], mark: 0.3, element: "light", desc: "Marks the toughest creature in reach: everything hurts it 30% more.",
       levels: ["Marks the toughest creature for 4 s", "Marks the two toughest", "Full moon: marks every creature in reach"] },
-    lily: { name: "Ghost Lily", cost: 120, range: 2.4, rate: 4, damage: 2.6, color: [1.0, 0.7, 0.9], element: "spirit", desc: "A spirit beam that burns hotter, up to three times, the longer it holds one creature.",
+    lily: { name: "Ghost Lily", cost: 120, range: 2.4, rate: 4, damage: 2.6, color: [0.86, 1.0, 0.94], element: "spirit", desc: "A spirit beam that burns hotter, up to three times, the longer it holds one creature.",
       levels: ["A beam that heats up on the creature it holds", "The heat carries over to the next creature", "Twin lilies: two beams"] },
   };
   D.TOWER_ORDER = ["thorn", "puff", "sun", "wisp", "briar", "toad", "moon", "lily"];
@@ -15063,6 +15084,16 @@ function MA_DSP() {
       // the roots over the stones, a lighter bark than the stumps' so they show on the dark stone; bark grain
       twRoot: [["#6a5666", 5, 0.14, 0.6, 0.2]], twBarkLt: [["#4e4260", 4, 0.12, 0.5]],
       twMossLt: [["#a6c860", 5, 0.3, 0.82, 0.3], { cls: 2, wrap: 0.6 }],
+      // each plant its own hue (the user, 2026-10-26): the Thornbloom a magenta thistle on a cane with plum
+      // thorns, the Briar a brighter red, the Puffcap violet, the Stinkhorn an orange lattice and glow, the Moonpetal blue, the
+      // Ghost Lily white with a jade throat and stamens, the Sunpetal lemon yellow (the kit's
+      // petal and lattice ramps shift their shadows through red, hue shift 0.3); the Willow Wisp (cyan) keeps the kit's
+      twThistle: [["#e02aa8", 6, 0.26, 0.76, 0.12]], twThornDk: [["#8a2c5a", 4, 0.18, 0.56, 0.15]], twBract: [["#4c8a36", 5, 0.16, 0.6, 0.25]],
+      twBriar: [["#ac2e28", 5, 0.18, 0.62, 0.15]], twCap: [["#8448d8", 6, 0.22, 0.72, 0.2]],
+      twStinkGlow: [["#f08a20", "#f4a040", "#f8b860"], { em: 1, flat: 1 }],
+      twPetal: [["#f8d828", 6, 0.38, 0.9, 0.06]], twPetalDk: [["#eab820", 5, 0.3, 0.76, 0.06]], twStinkOr: [["#f08c1c", 6, 0.3, 0.8, 0.06]],
+      twMoonPetal: [["#5a86e8", 5, 0.3, 0.8, 0.15]], twMoonPetalLt: [["#9ab8f4", 4, 0.5, 0.88, 0.15]], twMoon: [["#4a78f0", "#6290f4", "#80a8f8", "#a0c0fc"], { em: 1, flat: 1 }],
+      twLily: [["#f2f4f0", 4, 0.68, 0.98], { bias: 0.2 }], twJade: [["#30a87e", 5, 0.28, 0.72, 0.15]], twJadeGlow: [["#40d8a0", "#60e4b4", "#88eecc"], { em: 1, flat: 1 }],
     };
     const RAMPS = {}, MATS = {};
     for (const k in MAT) { RAMPS[k] = MAT[k][0]; if (MAT[k][1]) MATS[k] = MAT[k][1]; }
@@ -15089,30 +15120,36 @@ function MA_DSP() {
     // ---- the plant tops: TOP[kind](L, p, z, D) grows the plant from the vessel's moss at height z and
     // returns the model's height
     const TOP = {
-      thorn(L, p, z) { // a twisting thorny cane, red rosebuds, a crown of pale thorns round a green seed
-        const H = [0.3, 0.4, 0.48][L - 1], n = 9 + L;
+      thorn(L, p, z) { // a twisting cane with plum thorns, thistle buds, crowned by a magenta thistle: a green bract bulb, a brush of florets round a glowing heart
+        const H = [0.24, 0.31, 0.38][L - 1], n = 9 + L, hb = [0.068, 0.078, 0.088][L - 1];
         let q0 = [0, 0, z - 0.02];
         for (let i = 1; i <= n; i++) {
           const t = i / n, a = t * 6.5 + 0.5, r = 0.045 * Math.sin(Math.PI * t) + 0.01, q = [Math.cos(a) * r, Math.sin(a) * r, z + t * H];
           p.push(C(q0, q, 0.042 - 0.014 * t, 0.04 - 0.014 * t, "kgStem", { k2: 0.008 }));
-          if (i < n - 1) p.push(C(q, add(q, mul(norm([Math.cos(a + 1.4), Math.sin(a + 1.4), 0.35]), 0.055)), 0.012, 0.002, "kgThorn"));
-          if (HI > 1 && i > 1 && i < n - 1) p.push(C(q, add(q, mul(norm([Math.cos(a - 1.8), Math.sin(a - 1.8), 0.2]), 0.04)), 0.009, 0.002, "kgThorn"));
+          if (i < n - 1) p.push(C(q, add(q, mul(norm([Math.cos(a + 1.4), Math.sin(a + 1.4), 0.35]), 0.055)), 0.012, 0.002, "twThornDk"));
+          if (HI > 1 && i > 1 && i < n - 1) p.push(C(q, add(q, mul(norm([Math.cos(a - 1.8), Math.sin(a - 1.8), 0.2]), 0.04)), 0.009, 0.002, "twThornDk"));
           q0 = q;
         }
-        ring(6 + L + (HI > 1 ? 4 : 0), (a, i) => p.push(C(q0, add(q0, mul(norm([Math.cos(a), Math.sin(a), 1.1]), 0.11 + 0.035 * (i % 2))), 0.02, 0.003, "kgThorn")), 0.3);
-        p.push(S(add(q0, [0, 0, 0.04]), 0.042, "scLitGreen"));
+        // the head: the bract bulb with spiny sepals curling out and down, the floret brush flaring up out of its top
+        const bc = add(q0, [0, 0, 0.03]), ct = add(bc, [0, 0, hb * 0.85]);
+        p.push(E(bc, [hb, hb, hb * 1.05], "twBract", { k2: 0.01 }));
+        ring(7 + (HI ? 3 : 0), (a, i) => { const q = add(bc, pol(a, hb * 0.8, -hb * 0.1 + 0.02 * (i % 2))); p.push(C(q, add(q, mul(norm([Math.cos(a), Math.sin(a), -0.35]), 0.06)), 0.016, 0.003, "twBract")); }, 0.2);
+        p.push(E(ct, [hb * 0.95, hb * 0.95, hb * 0.55], "twThistle", { k2: 0.01 }));
+        ring(8 + L + (HI > 1 ? 4 : 0), (a, i) => p.push(C(ct, add(ct, mul(norm([Math.cos(a) * 0.6, Math.sin(a) * 0.6, 1]), 0.1 + 0.026 * (i % 2))), 0.024, 0.005, "twThistle")), 0.3);
+        ring(4 + L, (a) => p.push(C(ct, add(ct, mul(norm([Math.cos(a) * 0.2, Math.sin(a) * 0.2, 1]), 0.13)), 0.021, 0.005, "twThistle")), 0.9);
+        p.push(S(add(ct, [0, 0, 0.045]), 0.034 + 0.004 * L, "hsGlowPink"));
         for (const [a, t, s] of [[2.2, 0.5, 1], [-0.4, 0.3, 0.85], [4.0, 0.68, 0.8]].slice(0, L)) {
           const c = pol(a, 0.1, z + t * H);
-          p.push(C(pol(a, 0.03, c[2] - 0.05), c, 0.011, 0.009, "kgStem"), E(c, [0.032 * s, 0.032 * s, 0.04 * s], "scRose", { k2: 0.01 }), E(add(c, [0, 0, -0.032 * s]), [0.034 * s, 0.034 * s, 0.012], "kgLeaf"));
+          p.push(C(pol(a, 0.03, c[2] - 0.05), c, 0.011, 0.009, "kgStem"), E(c, [0.028 * s, 0.028 * s, 0.032 * s], "twBract", { k2: 0.01 }), E(add(c, [0, 0, 0.03 * s]), [0.024 * s, 0.024 * s, 0.022 * s], "twThistle"), E(add(c, [0, 0, -0.03 * s]), [0.034 * s, 0.034 * s, 0.012], "kgLeaf"));
         }
         for (const [a, t] of [[1.0, 0.2], [3.4, 0.4], [5.2, 0.6]]) p.push(E(pol(a, 0.07, z + t * H), [0.06, 0.026, 0.009], "kgLeaf", { R: rz(a) }));
-        for (let k = 0; k < L - 1; k++) p.push(S(pol(0.9 + k * 2.6, 0.15, q0[2] - 0.02 + 0.08 * k), 0.016, "scLitGreen"));
-        return q0[2] + 0.12;
+        for (let k = 0; k < L - 1; k++) p.push(S(pol(0.9 + k * 2.6, 0.17, ct[2] - 0.02 + 0.08 * k), 0.016, "hsGlowPink"));
+        return ct[2] + 0.15;
       },
-      puff(L, p, z) { // a lilac spotted cap, spores rising
+      puff(L, p, z) { // a violet spotted cap, spores rising
         const cr = [0.15, 0.18, 0.21][L - 1], cz = z + [0.18, 0.22, 0.26][L - 1], sr = [0.05, 0.06, 0.07][L - 1];
-        p.push(C([0, 0, z - 0.02], [0, 0, cz], sr * 1.15, sr, "kgStalk", { k2: 0.02 }), E([0, 0, cz], [cr, cr, cr * 0.55], "kgCap", { k2: 0.04 }), E([0, 0, cz - cr * 0.25], [cr * 0.86, cr * 0.86, 0.04], "kgGill"));
-        if (L === 3) for (const [a, s] of [[3.0, 0.9], [4.9, 0.75]]) { const c = pol(a, cr * 0.95, z - 0.01); p.push(C(c, add(c, [0, 0, 0.07 * s]), 0.028 * s, 0.024 * s, "kgStalk"), E(add(c, [0, 0, 0.08 * s]), [0.07 * s, 0.07 * s, 0.04 * s], "kgCap", { k2: 0.01 })); }
+        p.push(C([0, 0, z - 0.02], [0, 0, cz], sr * 1.15, sr, "kgStalk", { k2: 0.02 }), E([0, 0, cz], [cr, cr, cr * 0.55], "twCap", { k2: 0.04 }), E([0, 0, cz - cr * 0.25], [cr * 0.86, cr * 0.86, 0.04], "kgGill"));
+        if (L === 3) for (const [a, s] of [[3.0, 0.9], [4.9, 0.75]]) { const c = pol(a, cr * 0.95, z - 0.01); p.push(C(c, add(c, [0, 0, 0.07 * s]), 0.028 * s, 0.024 * s, "kgStalk"), E(add(c, [0, 0, 0.08 * s]), [0.07 * s, 0.07 * s, 0.04 * s], "twCap", { k2: 0.01 })); }
         const top = cz + cr * 0.55;
         for (let k = 0; k < L; k++) p.push(S(pol(k * 2.4 + 0.5, 0.06 + 0.04 * k, top + 0.07 + 0.09 * k), 0.026 - 0.004 * k, "kgSpore"));
         return top + 0.1 + 0.09 * (L - 1);
@@ -15122,7 +15159,7 @@ function MA_DSP() {
         p.push(C([0, 0, z - 0.02], [0.01, 0.01, (z + hz) / 2], 0.03, 0.026, "kgStem", { k2: 0.02 }), C([0.01, 0.01, (z + hz) / 2], add(hc, mul(n, -0.05)), 0.026, 0.022, "kgStem", { k2: 0.02 }));
         for (const [a, f, lf] of [[2.4, 0.3, 0.11], [-0.8, 0.5, 0.1], [3.8, 0.65, 0.09]].slice(0, L)) { const d = [Math.cos(a), Math.sin(a), 0.3]; p.push(E(add([0, 0, z + f * (hz - z)], mul(norm(d), lf)), [lf, lf * 0.42, 0.011], "kgLeaf", { R: orient([0, 0, 1], d) })); }
         const np = [11, 13, 15][L - 1] + 2 * HI, sz = hr / 0.17;
-        for (let i = 0; i < np; i++) for (const [ph, dn, m] of [[0.5, -0.016, "kgPetalDk"], [0, 0, "kgPetal"]]) {
+        for (let i = 0; i < np; i++) for (const [ph, dn, m] of [[0.5, -0.016, "twPetalDk"], [0, 0, "twPetal"]]) {
           const a = ((i + ph) / np) * TAU, d = add(mul(u, Math.cos(a)), mul(v, Math.sin(a)));
           p.push(E(add(add(hc, mul(n, dn)), mul(d, hr * (dn ? 0.92 : 1))), [0.08 * sz, 0.036 * sz, 0.012], m, { R: orient(n, d) }));
         }
@@ -15144,13 +15181,13 @@ function MA_DSP() {
       briar(L, p, z) { // red thorny canes arching out and over the rim, rose hips, an ember at the knot; level 3 a crown rose
         const nv = L + 2, R0 = [0.24, 0.28, 0.32][L - 1], H0 = [0.22, 0.27, 0.3][L - 1];
         const thorn = (q, d, s = 1) => p.push(C(q, add(q, mul(norm(d), 0.045 * s)), 0.014 * s, 0.002, "kgThorn"));
-        p.push(E([0, 0, z], [0.07, 0.07, 0.05], "kgBriar", { k2: 0.02 }));
+        p.push(E([0, 0, z], [0.07, 0.07, 0.05], "twBriar", { k2: 0.02 }));
         for (let i = 0; i < nv; i++) {
           const a = (i / nv) * TAU + 1.2, R = R0 * (i % 2 ? 0.85 : 1), H = H0 * (i % 2 ? 0.8 : 1), ca = Math.cos(a), sa = Math.sin(a), n = HI > 1 ? 10 : 7;
           let q0 = [ca * 0.03, sa * 0.03, z];
           for (let j = 1; j <= n; j++) {
             const t = j / n, q = [ca * (0.03 + R * t), sa * (0.03 + R * t), z + H * Math.sin(Math.PI * t * 0.9) - 0.2 * t * t];
-            p.push(C(q0, q, 0.026 - 0.01 * t, 0.024 - 0.01 * t, "kgBriar", { k2: 0.006 }));
+            p.push(C(q0, q, 0.026 - 0.01 * t, 0.024 - 0.01 * t, "twBriar", { k2: 0.006 }));
             if (j < n) thorn(q, [-sa * (j % 2 ? 1 : -1) + ca * 0.3, ca * (j % 2 ? 1 : -1) + sa * 0.3, 0.7], (1 - 0.3 * t) * (HI > 1 ? 0.85 : 1));
             if (L > 1 && j === n - 3) p.push(S(add(q, [0, 0, -0.035]), 0.028, "kgHip"));
             q0 = q;
@@ -15161,10 +15198,10 @@ function MA_DSP() {
         let top = z + H0 + 0.1;
         if (L === 3) {
           const rc = [-0.02, -0.02, z + 0.5];
-          p.push(C([0, 0, z], [-0.01, -0.01, z + 0.25], 0.026, 0.022, "kgBriar"), C([-0.01, -0.01, z + 0.25], rc, 0.022, 0.018, "kgBriar"));
+          p.push(C([0, 0, z], [-0.01, -0.01, z + 0.25], 0.026, 0.022, "twBriar"), C([-0.01, -0.01, z + 0.25], rc, 0.022, 0.018, "twBriar"));
           thorn([0, 0, z + 0.18], [1, 0.2, 0.6]); thorn([-0.01, -0.01, z + 0.34], [-0.4, 1, 0.6]);
           ring(6, (b) => p.push(E(add(rc, [Math.cos(b) * 0.045, Math.sin(b) * 0.045, 0.01]), [0.05, 0.032, 0.022], "scRose", { R: rz(b), k2: 0.01 })));
-          p.push(S(add(rc, [0, 0, 0.03]), 0.032, "kgRoseLt", { k2: 0.01 }), E(add(rc, [0, 0, -0.045]), [0.045, 0.045, 0.016], "kgLeaf"));
+          p.push(S(add(rc, [0, 0, 0.03]), 0.032, "twEmber", { k2: 0.01 }), E(add(rc, [0, 0, -0.045]), [0.045, 0.045, 0.016], "kgLeaf"));
           top = rc[2] + 0.08;
         }
         for (let k = 0; k < L - 1; k++) p.push(S(pol(1.7 + k * 2.5, 0.16, z + H0 + 0.08 + 0.06 * k), 0.014, "twEmber"));
@@ -15173,19 +15210,19 @@ function MA_DSP() {
       toad(L, p, z) { // an orange lattice ball round glowing slime, a spore bomb swelling out of its top
         const R = [0.11, 0.13, 0.15][L - 1], bc = [0, 0, z + R * 0.85], nm = (L === 3 ? 8 : 6) + (HI > 1 ? 2 : 0), th = 0.012 + 0.03 * R;
         const q = (a, v) => [Math.cos(a) * Math.cos(v) * R, Math.sin(a) * Math.cos(v) * R, bc[2] + Math.sin(v) * R];
-        ring(nm, (a) => { for (let k = 1; k <= 6; k++) p.push(C(q(a, -1 + ((k - 1) / 6) * 2.2), q(a, -1 + (k / 6) * 2.2), th, th, "kgStinkOr", { k2: 0.006 })); });
-        for (const v of [-0.25, 0.5]) ring(2 * nm, (a) => p.push(C(q(a, v), q(a + Math.PI / nm, v), th * 0.9, th * 0.9, "kgStinkOr")));
-        p.push(S(bc, R * 0.55, "kgGleba", { k2: 0.02 }), S(add(bc, [0, 0, R * 0.95]), R * 0.32, "kgStinkGlow"));
-        for (let k = 0; k < L - 1; k++) p.push(S(pol(2 + k * 2.4, R + 0.06, bc[2] + R + 0.04 * k), 0.016, "kgStinkGlow"));
+        ring(nm, (a) => { for (let k = 1; k <= 6; k++) p.push(C(q(a, -1 + ((k - 1) / 6) * 2.2), q(a, -1 + (k / 6) * 2.2), th, th, "twStinkOr", { k2: 0.006 })); });
+        for (const v of [-0.25, 0.5]) ring(2 * nm, (a) => p.push(C(q(a, v), q(a + Math.PI / nm, v), th * 0.9, th * 0.9, "twStinkOr")));
+        p.push(S(bc, R * 0.55, "kgGleba", { k2: 0.02 }), S(add(bc, [0, 0, R * 0.95]), R * 0.32, "twStinkGlow"));
+        for (let k = 0; k < L - 1; k++) p.push(S(pol(2 + k * 2.4, R + 0.06, bc[2] + R + 0.04 * k), 0.016, "twStinkGlow"));
         return bc[2] + R * 1.4;
       },
-      moon(L, p, z) { // a moonpetal bloom on a slender stem, the crescent (level 3 the full moon) hung above
+      moon(L, p, z) { // a blue moonpetal bloom on a slender stem, the crescent (level 3 the full moon) hung above
         const hb = z + [0.2, 0.25, 0.28][L - 1], br = [0.11, 0.13, 0.15][L - 1];
         const bloom = (c, r, n) => {
           const R = orient(n), u = R.slice(0, 3), v = R.slice(3, 6);
-          ring(5, (a) => { const d = add(mul(u, Math.cos(a)), mul(v, Math.sin(a))); p.push(E(add(add(c, mul(d, r * 0.62)), mul(n, 0.02)), [r * 0.62, r * 0.42, 0.013], "kgMoonPetal", { R: orient(norm(add(n, mul(d, -0.35))), d) })); });
-          if (HI > 1) ring(5, (a) => { const d = add(mul(u, Math.cos(a)), mul(v, Math.sin(a))); p.push(E(add(add(c, mul(d, r * 0.34)), mul(n, 0.034)), [r * 0.34, r * 0.24, 0.011], "kgMoonPetal", { R: orient(norm(add(n, mul(d, -0.6))), d) })); }, TAU / 10);
-          p.push(S(add(c, mul(n, 0.02)), r * 0.2, "kgMoon"));
+          ring(5, (a) => { const d = add(mul(u, Math.cos(a)), mul(v, Math.sin(a))); p.push(E(add(add(c, mul(d, r * 0.62)), mul(n, 0.02)), [r * 0.62, r * 0.42, 0.013], "twMoonPetal", { R: orient(norm(add(n, mul(d, -0.35))), d) })); });
+          if (HI > 1) ring(5, (a) => { const d = add(mul(u, Math.cos(a)), mul(v, Math.sin(a))); p.push(E(add(add(c, mul(d, r * 0.34)), mul(n, 0.034)), [r * 0.34, r * 0.24, 0.011], "twMoonPetalLt", { R: orient(norm(add(n, mul(d, -0.6))), d) })); }, TAU / 10);
+          p.push(S(add(c, mul(n, 0.02)), r * 0.2, "twMoon"));
         };
         const bc = [0.03, 0.02, hb];
         p.push(C([0, 0, z - 0.02], bc, 0.022, 0.016, "kgStem"));
@@ -15193,11 +15230,11 @@ function MA_DSP() {
         for (const [a, s] of [[2.4, 1], [-0.9, 0.85]].slice(0, L)) { const d = [Math.cos(a), Math.sin(a), 0.15]; p.push(E(add([0, 0, z + 0.06], mul(norm(d), 0.09 * s)), [0.09 * s, 0.065 * s, 0.01], "kgLeaf", { R: orient([0, 0, 1], d) })); }
         if (L > 1) { const b2 = [-0.1, -0.06, z + 0.14]; p.push(C([0, 0, z - 0.02], b2, 0.016, 0.012, "kgStem")); bloom(b2, br * 0.7, norm([-0.3, 0.2, 1])); }
         const mc = [0.02, 0.02, hb + 0.24], mr = [0.08, 0.095, 0.095][L - 1], VR = [0.707, -0.707, 0];
-        if (L < 3) for (let k = 0; k <= 12; k++) { const b = Math.PI + (k / 12 - 0.5) * 3.6 - 0.3, r = mr * 0.42 * Math.sin(((k + 0.5) / 13) * Math.PI) + 0.01; p.push(S(add(mc, add(mul(VR, Math.cos(b) * mr), [0, 0, Math.sin(b) * mr])), r, "kgMoon")); }
-        else { p.push(S(mc, mr, "kgMoon")); ring(3, (a) => p.push(S(add(mc, pol(a, 0.19, 0.03 * Math.sin(a * 2))), 0.018, "kgMoon")), 0.4); }
+        if (L < 3) for (let k = 0; k <= 12; k++) { const b = Math.PI + (k / 12 - 0.5) * 3.6 - 0.3, r = mr * 0.42 * Math.sin(((k + 0.5) / 13) * Math.PI) + 0.01; p.push(S(add(mc, add(mul(VR, Math.cos(b) * mr), [0, 0, Math.sin(b) * mr])), r, "twMoon")); }
+        else { p.push(S(mc, mr, "twMoon")); ring(3, (a) => p.push(S(add(mc, pol(a, 0.19, 0.03 * Math.sin(a * 2))), 0.018, "twMoon")), 0.4); }
         return mc[2] + mr + 0.06;
       },
-      lily(L, p, z, D) { // pale trumpet lilies, pink throats and glowing stamens, strap leaves at the back
+      lily(L, p, z, D) { // white trumpet lilies, jade throats and glowing stamens, strap leaves at the back
         const hb = [0.26, 0.32, 0.36][L - 1], s = [0.85, 1, 1.05][L - 1], blooms = [], ns = HI > 1 ? 5 : 3;
         for (const [a, i] of [[3.0, 0], [3.9, 1], [4.8, 0], [5.5, 1], [2.3, 0]].slice(0, 2 + L)) {
           const d = [Math.cos(a), Math.sin(a)];
@@ -15208,20 +15245,20 @@ function MA_DSP() {
           p.push(C(base, add(base, [0, 0, h * 0.6]), 0.018, 0.015, "hsStem"), C(add(base, [0, 0, h * 0.6]), c, 0.015, 0.012, "hsStem"));
           for (let i = 0; i < 6; i++) {
             const a = (i / 6) * TAU, d = add(mul(u, Math.cos(a)), mul(v, Math.sin(a))), dp = norm(add(mul(n, 0.8), mul(d, 0.55))), tg = cross(n, d);
-            p.push(E(add(c, mul(dp, 0.08 * sc)), [0.085 * sc, 0.03 * sc, 0.009], "kgLily", { R: orient(norm(cross(dp, tg)), dp) }));
+            p.push(E(add(c, mul(dp, 0.08 * sc)), [0.085 * sc, 0.03 * sc, 0.009], "twLily", { R: orient(norm(cross(dp, tg)), dp) }));
             const d2 = norm(add(mul(n, 0.1), d)), tip = add(add(c, mul(dp, 0.15 * sc)), mul(d2, 0.025 * sc));
-            p.push(E(tip, [0.04 * sc, 0.024 * sc, 0.008], "kgLily", { R: orient(norm(cross(d2, tg)), d2) }));
+            p.push(E(tip, [0.04 * sc, 0.024 * sc, 0.008], "twLily", { R: orient(norm(cross(d2, tg)), d2) }));
           }
-          for (let k = 0; k < ns; k++) { const a = (k / ns) * TAU, e = add(add(c, mul(n, 0.12 * sc)), add(mul(u, Math.cos(a) * 0.022), mul(v, Math.sin(a) * 0.022))); p.push(C(c, e, 0.004, 0.003, "kgLilyPink"), S(e, 0.013, "kgLilyGlow")); }
-          p.push(S(add(c, mul(n, 0.02)), 0.02 * sc, "kgLilyGlow"));
+          for (let k = 0; k < ns; k++) { const a = (k / ns) * TAU, e = add(add(c, mul(n, 0.12 * sc)), add(mul(u, Math.cos(a) * 0.022), mul(v, Math.sin(a) * 0.022))); p.push(C(c, e, 0.004, 0.003, "twJade"), S(e, 0.013, "twJadeGlow")); }
+          p.push(S(add(c, mul(n, 0.02)), 0.02 * sc, "twJadeGlow"));
           blooms.push(c);
           return c;
         };
         const c1 = trumpet([0.02, 0, z - 0.02], hb, norm([0.55, 0.25, 0.8]), s);
-        if (L === 2) { const b = [-0.07, -0.05, z - 0.02], bt = [-0.09, -0.06, z + hb * 0.7]; p.push(C(b, bt, 0.014, 0.011, "hsStem"), E(add(bt, [0, 0, 0.04]), [0.024, 0.024, 0.055], "kgLily")); }
+        if (L === 2) { const b = [-0.07, -0.05, z - 0.02], bt = [-0.09, -0.06, z + hb * 0.7]; p.push(C(b, bt, 0.014, 0.011, "hsStem"), E(add(bt, [0, 0, 0.04]), [0.024, 0.024, 0.055], "twLily")); }
         if (L === 3) trumpet([-0.07, -0.06, z - 0.02], hb * 0.8, norm([-0.2, -0.55, 0.8]), s * 0.9);
-        for (let k = 0; k < L - 1; k++) p.push(S(add(c1, [0.03 * Math.sin(k * 2.3), 0.03 * Math.cos(k * 2.3), 0.18 + 0.1 * k]), 0.016, "kgLilyGlow"));
-        D.push((x, y, zz, m) => (m === "kgLily" && blooms.some((c) => near([x, y, zz], c, 0.06)) ? "kgLilyPink" : null));
+        for (let k = 0; k < L - 1; k++) p.push(S(add(c1, [0.03 * Math.sin(k * 2.3), 0.03 * Math.cos(k * 2.3), 0.18 + 0.1 * k]), 0.016, "twJadeGlow"));
+        D.push((x, y, zz, m) => (m === "twLily" && blooms.some((c) => near([x, y, zz], c, 0.06)) ? "twJade" : null));
         return z + hb + 0.2;
       },
     };
@@ -15287,7 +15324,7 @@ function MA_DSP() {
         if (m !== SN) return null;
         const dx = x - c[0], dy = y - c[1], d = dx * fx + dy * fy, u = dx * fy - dy * fx, v = zz - zc;
         if (d < 0.02 * g) return null;
-        return u * u + v * v < rc * rc && (u + 0.03 * g) ** 2 + (v - 0.012 * g) ** 2 > (rc * 0.82) ** 2 ? "kgMoon" : null;
+        return u * u + v * v < rc * rc && (u + 0.03 * g) ** 2 + (v - 0.012 * g) ** 2 > (rc * 0.82) ** 2 ? "twMoon" : null;
       });
       return add(c, [0, 0, hh + 0.02]);
     };
@@ -15364,8 +15401,8 @@ function MA_DSP() {
     // moss creeping over the vessels' tops and along the roots, the mushroom's spots, the slime's glow; from 24
     // lichen on the stone, grain in the bark, the puffcap's gills
     const DET = (x, y, z, m, nz, hi) => {
-      if (m === "kgCap" && nz > 0.1 && nz3(x, y, z, 9, 8) > 0.64) return "kgSpot";
-      if (m === "kgGleba" && nz3(x, y, z, 18, 2) > 0.7) return "kgStinkGlow";
+      if (m === "twCap" && nz > 0.1 && nz3(x, y, z, 9, 8) > 0.64) return "kgSpot";
+      if (m === "kgGleba" && nz3(x, y, z, 18, 2) > 0.7) return "twStinkGlow";
       if (m === BK && nz > 0.45 && nz3(x, y, z, 10, 3) > 0.52) return "moss";
       if (m === RT && nz > 0.35 && nz3(x, y, z, 12, 4) > 0.45) return "moss";
       if (m === SN && ((nz > 0.45 && nz3(x, y, z, 10, 3) > 0.5) || nz3(x, y, z, 7, 5) > 0.68)) return "moss";
@@ -15404,7 +15441,7 @@ function MA_DSP() {
         try {
           const md = build(k, { lv, hi });
           for (const q of md.prims) for (const f in q) if (typeof q[f] === "number" && !isFinite(q[f])) throw new Error("bad prim " + f);
-          for (let x = -0.4; x <= 0.4; x += 0.1) for (let y = -0.4; y <= 0.4; y += 0.1) for (let z = 0; z <= 1.2; z += 0.1) for (const m of [WS, BK, RT, SN, SL, "moss", "kgCap", "kgLily", "kgGleba", "kgGill"]) for (const nz of [0, 1]) if (typeof md.detail(x, y, z, m, 0, 0, nz) !== "string") throw new Error("detail");
+          for (let x = -0.4; x <= 0.4; x += 0.1) for (let y = -0.4; y <= 0.4; y += 0.1) for (let z = 0; z <= 1.2; z += 0.1) for (const m of [WS, BK, RT, SN, SL, "moss", "twCap", "twLily", "kgGleba", "kgGill"]) for (const nz of [0, 1]) if (typeof md.detail(x, y, z, m, 0, 0, nz) !== "string") throw new Error("detail");
           if (lv === 3) stats.push(k + hi + " " + md.prims.length + " h" + md.h.toFixed(2) + " r" + md.r.toFixed(2));
         } catch (e) { errs.push(k + lv + "/" + hi + ": " + e.message); }
       }
@@ -15413,7 +15450,7 @@ function MA_DSP() {
     return { RAMPS, MATS, KINDS, build, check };
   }
   const TOWERS = stumpsAndStones(), TOWERS_SRC = String(stumpsAndStones);
-  Object.assign(ME.LIGHT_COL, { twEmber: [1.0, 0.5, 0.35, 0.7] });
+  Object.assign(ME.LIGHT_COL, { twEmber: [1.0, 0.5, 0.35, 0.7], twStinkGlow: [1.0, 0.6, 0.25, 0.6], twMoon: [0.45, 0.62, 1.0, 0.8], twJadeGlow: [0.5, 1.0, 0.78, 0.8] });
   for (const k of TOWERS.KINDS) {
     const name = "ms_tw_" + k;
     ME.assetKit.model(name, 1.9, (o) => TOWERS.build(k, o), 1);
@@ -15765,25 +15802,25 @@ function MA_DSP() {
   const pair = (a, b) => svg(`<path d="M5.5 9C8 4 16 4 18.5 9" stroke-dasharray="0.1 2.2"/><g transform="translate(0 8.5) scale(.5)" stroke-width="2.8">${PLANT[a]}</g><g transform="translate(12 8.5) scale(.5)" stroke-width="2.8">${PLANT[b]}</g>`);
   const LINK = {
     //            plants             vine colour          mote colour          width motes mote
-    thicket: [["thorn", "thorn"], [0.5, 0.95, 0.35], [0.9, 1.0, 0.6], 1.2, 2, "streak"],
+    thicket: [["thorn", "thorn"], [0.95, 0.35, 0.78], [1.0, 0.72, 0.92], 1.2, 2, "streak"],
     sunseed: [["thorn", "sun"], [1.0, 0.62, 0.22], [1.0, 0.9, 0.5], 1, 2, "orb"],
-    seedpods: [["thorn", "puff"], [0.7, 0.8, 0.55], [0.85, 0.65, 1.0], 1, 2, "puff"],
-    willothorn: [["thorn", "wisp"], [0.5, 1.0, 0.75], [0.6, 0.95, 1.0], 1, 2, "streak"],
+    seedpods: [["thorn", "puff"], [0.85, 0.42, 0.92], [0.78, 0.6, 1.0], 1, 2, "puff"],
+    willothorn: [["thorn", "wisp"], [0.78, 0.62, 1.0], [0.6, 0.95, 1.0], 1, 2, "streak"],
     twinlens: [["sun", "sun"], [1.0, 0.9, 0.45], [1, 1, 0.92], 0.8, 3, "orb"],
     sporeglow: [["sun", "puff"], [1.0, 0.75, 0.72], [1.0, 0.88, 0.5], 1, 2, "puff"],
     spiritprism: [["sun", "wisp"], [0.75, 0.95, 1.0], [1.0, 0.8, 0.95], 0.9, 3, "orb"],
-    sporebank: [["puff", "puff"], [0.8, 0.55, 1.0], [0.92, 0.8, 1.0], 1.3, 2, "puff"],
+    sporebank: [["puff", "puff"], [0.68, 0.45, 1.0], [0.88, 0.78, 1.0], 1.3, 2, "puff"],
     kindred: [["wisp", "wisp"], [0.45, 0.95, 1.0], [1, 1, 1], 1, 3, "streak"],
-    hedge: [["briar", "briar"], [0.8, 0.28, 0.25], [0.95, 0.5, 0.4], 1.5, 1, "orb"],
+    hedge: [["briar", "briar"], [0.95, 0.24, 0.2], [0.95, 0.5, 0.4], 1.5, 1, "orb"],
     rotbed: [["toad", "toad"], [0.62, 0.6, 0.25], [0.7, 1.0, 0.35], 1.2, 2, "puff"],
-    fullmoon: [["moon", "moon"], [0.78, 0.85, 1.0], [1, 1, 1], 0.8, 1, "ring"],
-    lilypond: [["lily", "lily"], [1.0, 0.65, 0.85], [0.7, 0.95, 1.0], 1, 2, "orb"],
-    thornwall: [["briar", "thorn"], [0.6, 0.7, 0.3], [0.9, 0.35, 0.3], 1.4, 2, "streak"],
-    thornypods: [["briar", "toad"], [0.9, 0.45, 0.25], [0.85, 0.32, 0.3], 1.1, 2, "puff"],
+    fullmoon: [["moon", "moon"], [0.45, 0.62, 1.0], [1, 1, 1], 0.8, 1, "ring"],
+    lilypond: [["lily", "lily"], [0.6, 0.95, 0.8], [0.92, 1.0, 0.96], 1, 2, "orb"],
+    thornwall: [["briar", "thorn"], [0.95, 0.3, 0.5], [1.0, 0.3, 0.25], 1.4, 2, "streak"],
+    thornypods: [["briar", "toad"], [0.9, 0.45, 0.25], [1.0, 0.26, 0.22], 1.1, 2, "puff"],
     rotgarden: [["toad", "puff"], [0.75, 0.5, 0.7], [0.7, 1.0, 0.35], 1.1, 3, "puff"],
     eclipse: [["moon", "sun"], [0.55, 0.5, 0.95], [1.0, 0.85, 0.4], 1, 1, "ring"],
-    moonlit: [["moon", "lily"], [0.85, 0.78, 1.0], [1.0, 0.7, 0.9], 0.9, 2, "orb"],
-    ghostlight: [["lily", "wisp"], [0.85, 0.8, 1.0], [0.5, 0.95, 1.0], 1, 2, "streak"],
+    moonlit: [["moon", "lily"], [0.55, 0.75, 1.0], [0.7, 1.0, 0.85], 0.9, 2, "orb"],
+    ghostlight: [["lily", "wisp"], [0.75, 1.0, 0.92], [0.5, 0.95, 1.0], 1, 2, "streak"],
   };
   G.LINK_ART = {};
   for (const id in LINK) { const [[a, b], color, color2, width, motes, mote] = LINK[id]; G.LINK_ART[id] = { color, color2, width, motes, mote, icon: pair(a, b) }; }
@@ -17431,8 +17468,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const SPLASH = { grub: 0.5, beetle: 0.6, moth: 0.4, golem: 1.2, spirit: 2.4, snail: 0.7, bloat: 0.8, mite: 0.25, mender: 0.5, midge: 0.15, mole: 0.6, lichen: 0.8, mother: 2.4, crow: 0.3 };
   const DIG = { grub: 0.1, beetle: 0.1, moth: 0.08, golem: 0.18, spirit: 0.45, snail: 0.12, bloat: 0.12, mite: 0.05, mender: 0.1, midge: 0.03, mole: 0.14, lichen: 0.14, mother: 0.45, crow: 0.06 };
   const LIGHT = {
-    wisp: [[0.5, 0.95, 1.0], 1.9, 1.5], sun: [[1.0, 0.85, 0.45], 1.4, 0.9], puff: [[0.85, 0.6, 1.0], 1.2, 0.8], thorn: [[0.6, 1.0, 0.5], 0.9, 0.35],
-    briar: [[0.95, 0.4, 0.35], 0.8, 0.3], toad: [[1.0, 0.6, 0.3], 1.1, 0.6], moon: [[0.72, 0.8, 1.0], 1.6, 1.0], lily: [[1.0, 0.7, 0.9], 1.7, 1.2],
+    wisp: [[0.5, 0.95, 1.0], 1.9, 1.5], sun: [[1.0, 0.85, 0.45], 1.4, 0.9], puff: [[0.72, 0.5, 1.0], 1.2, 0.8], thorn: [[1.0, 0.45, 0.85], 0.9, 0.35],
+    briar: [[1.0, 0.32, 0.26], 0.8, 0.3], toad: [[1.0, 0.6, 0.3], 1.1, 0.6], moon: [[0.48, 0.64, 1.0], 1.6, 1.0], lily: [[0.8, 1.0, 0.9], 1.7, 1.2],
   };
   const elastic = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : Math.pow(2, -10 * u) * Math.sin((u * 10 - 0.75) * ((2 * Math.PI) / 3)) + 1);
   const backOut = (u) => { const c = 1.70158; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); };
@@ -18282,8 +18319,15 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const NARROW = window.matchMedia("(max-width: 760px)");
   // the inspector's buttons wait GRACE_MS after it opens on a plant; Uproot's first tap asks for ARM_MS
   const GRACE_MS = 450, ARM_MS = 3000;
-  // the dew counter glows from these rates (dew a second, State.gained): a busy wave, then a pile-up
-  const DEW_HOT = [15, 40];
+  // the dew bank's rate tiers (dew a second, State.gained; each gain adds amount / DEW_TAU): one kill's dew
+  // (about 6) makes tier 1, a few kills together or a wave's clearing bonus (about 11/s) tier 2, a pile-up or
+  // a boon's dew tier 3. Its pulse grows by DEW_PULSE per tier, and it sprays up to SPRAY droplets
+  const DEW_HOT = [3, 8, 18], DEW_PULSE = [0.04, 0.07, 0.12, 0.18], SPRAY = 8;
+  // the bank tiers (dew held, from START_DEW 160): its rim deepens at each, gold with a shine at the last; its
+  // water stands at dew / (dew + DEW_FILL) of its height
+  const DEW_BANK = [200, 400, 700], DEW_FILL = 300;
+  // how many of the ascending thresholds v reaches
+  const tier = (v, at) => at.reduce((n, x) => n + (v >= x ? 1 : 0), 0);
   // what each plant aims at (core/towers.js), for the seed info
   const TARGETS = {
     thorn: "the creature nearest the Heart Tree", sun: "the toughest creature in reach", puff: "everything in reach",
@@ -18341,10 +18385,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         this.arm(null); this.act.sell();
       });
       $("again").addEventListener("click", () => this.act.restart());
-      // the dew counter: a gain (State.gained, just before its "dew") pulses it, more for more, and the
-      // number counts up; it glows while dew comes fast (the rate: data-hot 1 from DEW_HOT[0], 2 from [1])
-      this.dewShown = S.dew; this.dewGain = false; this.dewRaf = 0; this.pulseAt = 0;
-      G.on("dew_gain", (e) => { this.dewGain = true; this.dewPulse(e.amount); });
+      // the dew bank: a gain (State.gained, just before its "dew") pulses it, more as it comes faster, and the
+      // number counts up; it glows while dew comes fast (data-hot: the rate's tier in DEW_HOT)
+      this.dewShown = S.dew; this.dewGain = false; this.dewRaf = 0; this.pulseAt = 0; this.sprayAt = 0;
+      G.on("dew_gain", (e) => { this.dewGain = true; this.dewPulse(e.amount, e.rate); });
       for (const ev of ["dew", "heart", "wave", "phase", "mods", "waves"]) G.on(ev, () => this.refresh());
       // links change as plants come and go around the one in the inspector
       G.on("links", () => { if (this.inspected && $("inspector").classList.contains("show") && this.inspected.links) this.inspect(this.inspected); });
@@ -18359,19 +18403,35 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         const dt = Math.min(0.1, (now - last) / 1000), gap = this.dewTo - this.dewShown; last = now;
         this.dewShown = gap <= 0 ? this.dewTo : Math.min(this.dewTo, this.dewShown + Math.max(1, Math.ceil(gap * Math.min(1, dt * 9))));
         $("dewn").textContent = this.dewShown;
-        const rate = S.dewRate * Math.exp(-Math.max(0, S.time - S.dewT) / D.DEW_TAU), hot = rate >= DEW_HOT[1] ? "2" : rate >= DEW_HOT[0] ? "1" : "";
+        const t = tier(S.dewRate * Math.exp(-Math.max(0, S.time - S.dewT) / D.DEW_TAU), DEW_HOT), hot = t ? String(t) : "";
         if ($("dew").dataset.hot !== hot) $("dew").dataset.hot = hot;
         this.dewRaf = this.dewShown !== this.dewTo || hot ? requestAnimationFrame(step) : 0;
       };
       this.dewRaf = requestAnimationFrame(step);
     }
-    // a gain's pulse: up to a third bigger for a boss's dew, from the counter's corner on the seed bar
-    dewPulse(amount) {
+    // a gain's pulse, by the rate's tier: a nudge for a trickle; a bigger bounce, the number jumping and a
+    // wobble from tier 2; droplets spraying out of the bank from tier 2, more at 3. A bigger gain and a bigger
+    // bank add a little. Calm (the Motion setting) keeps the glow and the water, without the movement
+    dewPulse(amount, rate) {
       const now = performance.now();
       if (now - this.pulseAt < 80 || document.body.classList.contains("calm")) return;
       this.pulseAt = now;
-      const k = 1 + Math.min(0.35, 0.06 + amount / 120);
-      $("dew").animate([{ transform: "scale(1)" }, { transform: `scale(${k.toFixed(3)})`, offset: 0.3 }, { transform: "scale(1)" }], { duration: 280, easing: "ease-out" });
+      const t = tier(rate, DEW_HOT), b = tier(S.dew, DEW_BANK), el = $("dew"), w = [0, 0, 2.5, 4][t];
+      const k = 1 + DEW_PULSE[t] + Math.min(0.06, amount / 400), kn = (1 + [0.08, 0.15, 0.28, 0.42][t]) * (1 + 0.04 * b);
+      el.animate([{ transform: "none" }, { transform: `scale(${k.toFixed(3)}) rotate(${-w}deg)`, offset: 0.25 }, { transform: `scale(${(1 + (k - 1) / 3).toFixed(3)}) rotate(${w}deg)`, offset: 0.6 }, { transform: "none" }],
+        { duration: [220, 280, 380, 480][t], easing: "ease-out" });
+      $("dewn").animate([{ transform: "none" }, { transform: `translateY(${-2 * t}px) scale(${kn.toFixed(3)})`, offset: 0.3 }, { transform: "none" }], { duration: [220, 280, 360, 440][t], easing: "ease-out" });
+      if (t >= 2 && now - this.sprayAt > 220) { this.sprayAt = now; this.dewSpray(t === 3 ? 6 : 3); }
+    }
+    // n droplets leap out of the bank's droplet and fall back, fading (a pool of SPRAY)
+    dewSpray(n) {
+      if (!this.sprays) this.sprays = Array.from({ length: SPRAY }, () => $("dew").appendChild(Object.assign(document.createElement("i"), { className: "spray" })));
+      for (let i = 0; i < n; i++) {
+        const el = this.sprays[this.si = ((this.si || 0) + 1) % SPRAY], a = -Math.PI / 2 + (i / Math.max(1, n - 1) - 0.5) * 2.2 + (Math.random() - 0.5) * 0.4;
+        const r = 30 + Math.random() * 22, x = Math.cos(a) * r, y = Math.sin(a) * r;
+        el.animate([{ transform: "translate(0, 0) scale(0.6)", opacity: 1 }, { transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(1)`, opacity: 1, offset: 0.55 },
+          { transform: `translate(${(x * 1.3).toFixed(1)}px, ${(y + 26).toFixed(1)}px) scale(0.7)`, opacity: 0 }], { duration: 560 + Math.random() * 160, easing: "ease-out" });
+      }
     }
     // Uproot asks first: armed on plant t (null disarms) for ARM_MS, its button saying so
     arm(t) {
@@ -18633,6 +18693,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("heartfill").style.width = (100 * S.heartRatio()).toFixed(1) + "%";
       // (after a gain the number counts up to it; a spend, a restore or a new run sets it at once)
       $("dew").setAttribute("aria-label", `Dew ${S.dew}`);
+      $("dew").dataset.bank = tier(S.dew, DEW_BANK) || "";
+      $("dew").style.setProperty("--fill", (S.dew / (S.dew + DEW_FILL)).toFixed(3));
       this.dewTo = S.dew;
       if (this.dewGain && S.dew > this.dewShown) this.dewRun(); else { this.dewShown = S.dew; $("dewn").textContent = S.dew; }
       this.dewGain = false;
