@@ -395,10 +395,12 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   #sky { right: calc(6px + var(--sr)); top: calc(102px + var(--st)); width: calc(100vw - 12px - var(--sl) - var(--sr)); padding: 8px 10px; }
   #sky .seg button { font-size: calc(12.5px * var(--ts)); padding: 5px 7px; }
   /* (as wide as the gap between the right-hand buttons, the music button and the turns, and their twin on the left) */
-  #hint { top: auto; bottom: calc(176px + 184px * var(--ts) + var(--sb)); font-size: calc(17px * var(--ts)); width: calc(100vw - 112px - 2 * max(var(--sl), var(--sr))); }
-  .coach { top: auto; bottom: calc(176px + 184px * var(--ts) + var(--sb)); font-size: calc(14.5px * var(--ts)); padding: 10px 12px 8px; }
-  #seeds { left: calc(6px + var(--sl)); right: calc(6px + var(--sr)); bottom: calc(6px + var(--sb)); gap: 6px; flex-wrap: wrap; }
-  .seed { flex: 1 1 calc(33.4% - 6px); height: calc(64px * var(--ts)); padding: 5px 6px 4px; border-radius: 13px; } /* (a garden's five seeds, three over two) */
+  #hint { top: auto; bottom: calc(168px + 128px * var(--ts) + var(--sb)); font-size: calc(17px * var(--ts)); width: calc(100vw - 112px - 2 * max(var(--sl), var(--sr))); }
+  .coach { top: auto; bottom: calc(168px + 128px * var(--ts) + var(--sb)); font-size: calc(14.5px * var(--ts)); padding: 10px 12px 8px; }
+  /* (the two bottom rows: the seeds in a grid, a garden's five three over two, eight five over three, and the
+     wave button in the slot after them, hud.js's --seedcols; nothing floats over the field above them) */
+  #seeds { left: calc(6px + var(--sl)); right: calc(6px + var(--sr)); bottom: calc(6px + var(--sb)); gap: 6px; display: grid; grid-template-columns: repeat(var(--seedcols, 3), minmax(0, 1fr)); }
+  .seed { height: calc(64px * var(--ts)); padding: 5px 6px 4px; border-radius: 13px; }
   .seed .el { display: none; }
   .seed b { font-size: calc(12.5px * var(--ts)); max-width: calc(100% - 18px); } /* (clear of the plant's icon) */
   .seed .cost, .seed .tag { font-size: calc(11.5px * var(--ts)); }
@@ -406,17 +408,20 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   .ghosttag { font-size: calc(12.5px * var(--ts)); }
   .seed .dot { width: 9px; height: 9px; right: 6px; top: 6px; }
   .seed .picon { width: 14px; height: 14px; right: 5px; top: 5px; }
-  #wavebtn { right: calc(6px + var(--sr)); bottom: calc(20px + 128px * var(--ts) + var(--sb)); width: calc(156px * var(--ts)); white-space: nowrap; height: calc(56px * var(--ts)); font-size: calc(18px * var(--ts)); border-radius: 13px; }
-  #wavebtn.early { font-size: calc(16px * var(--ts)); line-height: 1.1; }
-  /* (the dew gauge: under the turn buttons, their width, from under the almanac to above the wave button,
+  #wavebtn { right: calc(6px + var(--sr)); bottom: calc(6px + var(--sb)); width: calc((100vw - 12px - var(--sl) - var(--sr) - (var(--seedcols, 3) - 1) * 6px) / var(--seedcols, 3)); height: calc(64px * var(--ts)); padding: 2px 4px; font-size: calc(16px * var(--ts)); line-height: 1.1; border-radius: 13px; }
+  #wavebtn.early { font-size: calc(14.5px * var(--ts)); }
+  body[data-seedcols="4"] .seed b, body[data-seedcols="5"] .seed b { font-size: calc(11px * var(--ts)); max-width: calc(100% - 14px); }
+  body[data-seedcols="4"] #wavebtn, body[data-seedcols="5"] #wavebtn { font-size: calc(13px * var(--ts)); }
+  body[data-seedcols="4"] #wavebtn.early, body[data-seedcols="5"] #wavebtn.early { font-size: calc(12px * var(--ts)); }
+  /* (the dew gauge: under the turn buttons, their width, from under the almanac to above the seed rows,
      clear of the hint on its left; the open almanac reaches down over it, so it hides) */
-  #dewgauge { right: calc(6px + var(--sr)); width: 44px; top: calc(160px + var(--st)); bottom: calc(30px + 184px * var(--ts) + var(--sb)); }
+  #dewgauge { right: calc(6px + var(--sr)); width: 44px; top: calc(160px + var(--st)); bottom: calc(22px + 128px * var(--ts) + var(--sb)); }
   body.alm-open #dewgauge { visibility: hidden; }
   #dew { padding: 5px 1px 4px; border-radius: 10px; border-width: 2px; font-size: calc(15px * var(--ts)); gap: 1px; }
   #dew small { display: none; }
   #dewbar { width: 14px; margin-bottom: -5px; }
   #dewbar .luck { font-size: calc(11px * var(--ts)); padding: 1px 5px; }
-  #inspector { left: calc(6px + var(--sl)); top: auto; bottom: calc(28px + 184px * var(--ts) + var(--sb)); max-height: calc(100vh - 58px - 260px * var(--ts) - var(--st) - var(--sb)); transform: none; width: min(320px, calc(100vw - 12px)); padding: 10px 12px; gap: 6px; }
+  #inspector { left: calc(6px + var(--sl)); top: auto; bottom: calc(20px + 128px * var(--ts) + var(--sb)); max-height: calc(100vh - 50px - 204px * var(--ts) - var(--st) - var(--sb)); transform: none; width: min(320px, calc(100vw - 12px)); padding: 10px 12px; gap: 6px; }
   #inspector .btn { flex: none; height: 44px; font-size: calc(16px * var(--ts)); }
   #insptitle { font-size: calc(18px * var(--ts)); }
   #inspbody { font-size: calc(13px * var(--ts)); min-height: 0; overflow-y: auto; } /* (the text scrolls, Grow and Uproot stay in view) */
@@ -428,7 +433,7 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   #boonrow { gap: 16px; }
   .veil h2 { font-size: calc(24px * var(--ts)); }
   .help { display: none; }
-  #version { right: calc(10px + var(--sr)); bottom: calc(25px + 128px * var(--ts) + var(--sb)); font-size: calc(9px * var(--ts)); }
+  #version { right: calc(10px + var(--sr)); bottom: calc(13px + 128px * var(--ts) + var(--sb)); font-size: calc(9px * var(--ts)); }
 }
 @media (prefers-reduced-motion: reduce) { #dew::after, #dewbar .fill, #dewbar .luck, .veil, .seed, #heartfill, #bar, .boon, .boon .aura, .boon .shine::before, .boon .rays { animation: none !important; transition: none; } }
 body.calm #dew::after, body.calm #dewbar .fill, body.calm #dewbar .luck, body.calm .veil, body.calm .seed, body.calm #heartfill, body.calm #bar, body.calm .boon, body.calm .boon .aura, body.calm .boon .shine::before, body.calm .boon .rays { animation: none !important; transition: none; } /* (the Motion setting) */
@@ -13623,7 +13628,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.12.0", name: "Mossheart", commit: "5d076a2" };
+  G.VERSION = { v: "0.13.0", name: "Mossheart", commit: "1a62dce" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -18272,7 +18277,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // the dew it lacks, and after a touch's first tap (armed: main.js's pending) "tap again to plant"
     ghostTag(cam, canvas) {
       let el = this.tagEl;
-      if (!el) { el = this.tagEl = document.createElement("div"); el.className = "ghosttag"; document.getElementById("floats").appendChild(el); }
+      if (!el) { el = this.tagEl = document.createElement("div"); el.className = "ghosttag"; document.getElementById("floats").appendChild(el);
+        // (an invisible box inset by the safe area, a notch's or a home bar's, to clamp the tag inside it)
+        const sa = this.safeEl = document.createElement("div"); sa.style.cssText = "position: fixed; left: var(--sl); right: var(--sr); top: var(--st); bottom: var(--sb); visibility: hidden;";
+        document.getElementById("floats").appendChild(sa);
+      }
       const game = this.game, hv = this.hover, kind = this.seed, w = game.world, c = hv && hv.cell;
       let html = "";
       if (kind && c && w.inside(c[0], c[1]) && !game.towerAt(c[0], c[1])) {
@@ -18284,17 +18293,37 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
           return seen.size > 2 ? name : `${name} ${link.desc}`;
         });
         if (lines.length > 2) lines.splice(0, lines.length, `${lines.length} links: ${lines.join(", ")}`);
-        if (block === "dew") lines.push(`<i class="short">Need ${S.towerCost(D.TOWERS[kind].cost, kind)} dew</i>`);
+        if (block === "dew") lines.push(`<i class="short">Need ${G.fmtDew(S.towerCost(D.TOWERS[kind].cost, kind))} dew</i>`);
         const a = this.armed;
         if (!block && a && a.kind === kind && a.x === c[0] && a.y === c[1]) lines.push(`<i>tap again to plant</i>`);
         html = lines.map((s) => `<div>${s}</div>`).join("");
       }
-      if (html !== this.tagHtml) { this.tagHtml = html; el.innerHTML = html; el.style.display = html ? "" : "none"; this.tagW = el.offsetWidth; }
+      if (html !== this.tagHtml) { this.tagHtml = html; el.innerHTML = html; el.style.display = html ? "" : "none"; this.tagW = el.offsetWidth; this.tagH = el.offsetHeight; }
       if (!html) return;
       const dpr = canvas.width / Math.max(1, canvas.clientWidth), [X, Y, Z] = w.cellCentre(c[0], c[1]);
       const [sx, sy] = cam.toScreen([X, Y, Z + 1.7], canvas.width, canvas.height), h = this.tagW / 2 + 8; // (kept on the screen)
-      const x = Math.min(Math.max(sx / dpr, h), innerWidth - h);
-      el.style.transform = `translate(${x.toFixed(1)}px, ${(sy / dpr).toFixed(1)}px) translate(-50%, -100%)`;
+      // (and left of the dew gauge's bar, which runs down the right side: a phone's long tag ran under it)
+      const sa = this.safeEl.getBoundingClientRect();
+      const bar = document.getElementById("dewbar"), br = bar && bar.offsetWidth ? bar.getBoundingClientRect().left - 6 : sa.right - 8;
+      const x = Math.max(Math.min(sx / dpr, br - h + 8), sa.left + h);
+      // Over the ghost, unless the seed's card (the inspector panel) would cover it there, as on a phone where
+      // the card spans the screen: then under the ghost's foot, and below the card if it still reaches there.
+      let y = sy / dpr, under = false;
+      const box = document.getElementById("inspector");
+      if (box && box.classList.contains("show")) {
+        const r = box.getBoundingClientRect();
+        if (x + h - 8 > r.left && x - h + 8 < r.right && y - this.tagH < r.bottom && y > r.top) {
+          const foot = cam.toScreen([X, Y, Z], canvas.width, canvas.height)[1] / dpr + 12;
+          y = Math.max(foot, r.bottom + 6); under = true;
+        }
+      }
+      // (and between the safe top and the seed rows: over a top-row ghost it ran off the screen, and under a
+      // ghost near the rows it ran into the seeds and the wave button)
+      let low = sa.bottom - 6;
+      for (const e of [document.getElementById("seeds"), document.getElementById("wavebtn")]) if (e && e.offsetWidth) low = Math.min(low, e.getBoundingClientRect().top - 6);
+      const top = sa.top + 8 + (under ? 0 : this.tagH), bottom = low - (under ? this.tagH : 0);
+      y = Math.max(Math.min(y, bottom), top);
+      el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, ${under ? 0 : -100}%)`;
     }
 
     // --- overlays (shader hooks' user slots, see shaders.js) and the mood
@@ -18743,7 +18772,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const hex = (c) => "#" + c.map((v) => Math.round(Math.min(1, v) * 255).toString(16).padStart(2, "0")).join("");
   // the dew count, shortened above 9999 so it never spills out of the gauge (10k, 12.3k, 123k, 1.2M)
-  const fmtDew = (n) => n <= 9999 ? String(n) : n < 999500 ? (n / 1000).toFixed(n < 99950 ? 1 : 0).replace(/\.0$/, "") + "k" : (n / 1e6).toFixed(n < 9.995e6 ? 1 : 0).replace(/\.0$/, "") + "M";
+  const fmtDew = G.fmtDew = (n) => n <= 9999 ? String(n) : n < 999500 ? (n / 1000).toFixed(n < 99950 ? 1 : 0).replace(/\.0$/, "") + "k" : (n / 1e6).toFixed(n < 9.995e6 ? 1 : 0).replace(/\.0$/, "") + "M";
   // boon levels, and the glyph a boon card shows until Art's icon is in (by what the boon touches)
   const ROMAN = ["", "I", "II", "III"];
   const GLYPH = { thorn: "✦", sun: "☀", puff: "✿", wisp: "❋", all: "❦", heart: "♥", garden: "❀" };
@@ -18797,6 +18826,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         b.addEventListener("click", () => { this.selected = this.selected === kind ? "" : kind; this.act.seed(this.selected); this.refresh(); });
         seeds.appendChild(b); this.cards[kind] = b;
       }
+      // (a phone's two bottom rows: the seeds and, in the last slot, the wave button; game.css reads the columns)
+      const cols = Math.max(3, Math.ceil((S.plants.length + 1) / 2));
+      document.body.style.setProperty("--seedcols", cols); document.body.dataset.seedcols = cols;
       $("wavebtn").addEventListener("click", () => this.act.startWave());
       $("inspector").addEventListener("click", () => { if ($("inspector").classList.contains("seedinfo")) $("inspector").classList.toggle("open"); });
       $("speed").addEventListener("click", () => this.act.speed());
@@ -19502,6 +19534,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // under 8 GB that died above 24 drops straight to 24 (16 with 4 GB or less) instead of one level per crash,
   // as each dead load there costs minutes; one reporting 8 (the cap: a 12 GB phone says 8 and runs 32) steps a
   // level like a desktop, 40 to 32 to 24 (Orchestrator and the user, 2026-10-26, Ultimate (40) open to phones).
+  // (iOS has no deviceMemory, so it reads as 8 and steps one level per crash.)
   G.BAKE_KEY = "mossheart.bake";
   try {
     const m = JSON.parse(localStorage.getItem(G.BAKE_KEY) || "null");
@@ -22075,10 +22108,16 @@ function MG_SFX(L) {
     const t0 = ME.now();
     ME.progress("starting WebGPU", 0.01);
     // Android can drop the GPU device when the tab is backgrounded: offer a reload instead of a frozen frame
-    ME.onDeviceLost = () => { G.bootDied = true; const l = document.getElementById("lost"); if (l) l.style.display = "grid"; };
+    // (a crash for the crash guard only if the page stayed in view: a loss after the tab went to the background
+    // is Android reclaiming the GPU, not the bake running out of memory, the Architect's P2 on #343)
+    let wentHidden = document.hidden;
+    addEventListener("visibilitychange", () => { if (document.hidden) wentHidden = true; });
+    ME.onDeviceLost = () => { if (!wentHidden) G.bootDied = true; const l = document.getElementById("lost"); if (l) l.style.display = "grid"; };
     // the sound banks render (worker, or the IndexedDB cache) while the GPU starts and the bake runs; G.Audio takes the promise
     const banks = window.MA && G.SOUND_BANKS ? MA.renderBanks(G.SOUND_BANKS, { cache: !ME.qn("nocache", 0) }) : null;
     const gpu = await ME.initGPU(canvas);
+    // an out-of-memory GPU error kills the load as surely as a lost device: keep the crash guard's mark
+    gpu.device.addEventListener("uncapturederror", (e) => { if (window.GPUOutOfMemoryError && e.error instanceof GPUOutOfMemoryError) G.bootDied = true; });
     ME.log("ADAPTER", gpu.info, "features", [...gpu.features]);
     // the pipelines (with the game's shader hooks) compile in the GPU process while the CPU bakes
     const hooks = G.shaderHooks(), pipelines = ME.compilePipelines(gpu, hooks);
