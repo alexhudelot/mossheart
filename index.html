@@ -4876,9 +4876,10 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     return { mat, done, reports };
   }
 
-  // Stamp a placed model into a material grid (terrain bake). place: {X,Y,Z,flip}; grid: {vox,NX,NY,NZ,O,vs}.
+  // Stamp a placed model into a material grid (terrain bake). place: {X,Y,Z,flip}; grid: {vox,NX,NY,NZ,O,vs}, or
+  // {bricks,NX,NY,NZ,O,vs} with bricks a ME.BrickGrid (the terrain bake: T.grid).
   ME.stampModel = function (md, place, grid, pal) {
-    const { vs, O, NX, NY, NZ, vox } = grid, K = md.k, R = md.r * K * 1.6 + 0.2, H = md.h * K * 1.45 + 0.2;
+    const { vs, O, NX, NY, NZ, vox, bricks } = grid, K = md.k, R = md.r * K * 1.6 + 0.2, H = md.h * K * 1.45 + 0.2;
     const ix0 = Math.max(0, Math.floor((place.X - R - O[0]) * vs)), ix1 = Math.min(NX, Math.ceil((place.X + R - O[0]) * vs));
     const iy0 = Math.max(0, Math.floor((place.Y - R - O[1]) * vs)), iy1 = Math.min(NY, Math.ceil((place.Y + R - O[1]) * vs));
     const foot = Math.max(0, Math.floor((place.Z - 0.45 - O[2]) * vs)), iz1 = Math.min(NZ, Math.ceil((place.Z + H - O[2]) * vs));
@@ -4899,7 +4900,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     let lo = foot;
     for (let y = iy0; y < iy1; y++) for (let x = ix0; x < ix1; x++) {
       let k = foot;
-      while (k > 0 && !vox[((k - 1) * NY + y) * NX + x]) k--;
+      while (k > 0 && !(bricks ? bricks.get(x, y, k - 1) : vox[((k - 1) * NY + y) * NX + x])) k--;
       low[(y - iy0) * FX + x - ix0] = k; lo = Math.min(lo, k);
     }
     const iz0 = foot - B * Math.ceil((foot - lo) / B);
@@ -4924,7 +4925,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           const nn = normalAt(ev, lx, ly, lz, h); ev(lx, ly, lz);
           m = md.detail(lx / K, ly / K, lz / K, EV_M, nn[0], nn[1], nn[2], 1 / (vs * K)) || m;
         }
-        vox[(z * NY + y) * NX + x] = pal.id(m || (ME.content || {}).defaultMaterial);
+        const id = pal.id(m || (ME.content || {}).defaultMaterial);
+        if (bricks) bricks.put(x, y, z, id); else vox[(z * NY + y) * NX + x] = id;
         n++;
       }
     }
@@ -5506,13 +5508,185 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     },
   };
 
+  // ---- The terrain grid (T.grid): NX x NY x NZ material ids in bricks of 16^3 cells, of which only the
+  // mixed ones hold their cells (a dense grid was a byte a cell: 433 MB at vs40). table: per brick, 0 all
+  // air, 1..255 every cell that material, 256 + n mixed, its cells at slot n of pool (4096 bytes, x fastest,
+  // then y, then z). A cell id is the dense grid's, k * NX * NY + j * NX + i. The last bricks along an axis
+  // may stick out of the grid: their outside cells read as air, are never written and don't count when
+  // compact() asks whether a brick is uniform. Writes split a uniform brick into a slot (free list first,
+  // then the pool grows by an eighth); compact() folds uniform mixed bricks back (carve and resetTerrain
+  // call it over their box, never on idle). Hot loops read whole rows (row, plane) or bricks (bricks). The
+  // bake fills it a brick row at a time (band) and never holds the dense grid.
+  class BrickGrid {
+    constructor(NX, NY, NZ) {
+      this.NX = NX; this.NY = NY; this.NZ = NZ; this.PL = NX * NY;
+      this.BX = (NX + 15) >> 4; this.BY = (NY + 15) >> 4; this.BZ = (NZ + 15) >> 4; this.BXY = this.BX * this.BY;
+      this.table = new Uint32Array(this.BXY * this.BZ);
+      this.pool = new Uint8Array(0); this.used = 0; this.free = [];
+    }
+    // brick row J from band (the bake): 16 rows of j, NX x 16 x NZ cells, x fastest, then j - 16 J, then k.
+    // The bricks sorted, then the mixed ones copied to slots (the pool grown once for the row). When NX is a
+    // multiple of 4 (every density in use) a brick's rows are 4-byte aligned in band and in pool, so the
+    // uniform test and the copy go a word (4 cells) at a time
+    band(J, buf) {
+      const { NX, NY, NZ, table: T } = this, BPL = NX * 16, j1 = Math.min(16, NY - J * 16), mix = [];
+      const w = (NX & 3) === 0 && (buf.byteOffset & 3) === 0, B4 = w ? new Uint32Array(buf.buffer, buf.byteOffset, buf.length >> 2) : null;
+      for (let K = 0; K < this.BZ; K++) for (let I = 0; I < this.BX; I++) {
+        const k1 = Math.min(NZ, K * 16 + 16), i0 = I * 16, i1 = Math.min(NX, i0 + 16), v = buf[K * 16 * BPL + i0];
+        let uni = true;
+        if (w) {
+          const v4 = v * 0x01010101, q = (i1 - i0) >> 2;
+          for (let k = K * 16; k < k1 && uni; k++) for (let j = 0; j < j1; j++) {
+            const r = (k * BPL + j * NX + i0) >> 2;
+            let x = 0; while (x < q && B4[r + x] === v4) x++;
+            if (x < q) { uni = false; break; }
+          }
+        } else for (let k = K * 16; k < k1 && uni; k++) for (let j = 0; j < j1; j++) {
+          const r = k * BPL + j * NX;
+          let i = i0; while (i < i1 && buf[r + i] === v) i++;
+          if (i < i1) { uni = false; break; }
+        }
+        const b = (K * this.BY + J) * this.BX + I;
+        if (uni) T[b] = v; else mix.push(b);
+      }
+      if ((this.used + mix.length) * 4096 > this.pool.length) {
+        const p = new Uint8Array((this.used + Math.max(mix.length, 64, this.used >> 3)) * 4096);
+        p.set(this.pool.subarray(0, this.used * 4096)); this.pool = p;
+      }
+      const P = this.pool, P4 = w && (P.byteOffset & 3) === 0 ? new Uint32Array(P.buffer, P.byteOffset, P.length >> 2) : null;
+      for (const b of mix) {
+        const I = b % this.BX, K = Math.floor(b / this.BXY), s = this.used++, n = Math.min(16, NX - I * 16), k1 = Math.min(NZ, K * 16 + 16);
+        T[b] = 256 + s;
+        for (let k = K * 16; k < k1; k++) for (let j = 0; j < j1; j++) {
+          const r = k * BPL + j * NX + I * 16, d = s * 4096 + ((k & 15) << 8) + (j << 4);
+          if (P4) { const r4 = r >> 2, d4 = d >> 2; for (let x = 0; x < n >> 2; x++) P4[d4 + x] = B4[r4 + x]; }
+          else for (let x = 0; x < n; x++) P[d + x] = buf[r + x];
+        }
+      }
+    }
+    // the cache's form (cache.js packs it): the table, the pool's used slots and the free list
+    record() { return { brickGrid: 1, NX: this.NX, NY: this.NY, NZ: this.NZ, table: this.table, pool: this.pool.subarray(0, this.used * 4096), free: Int32Array.from(this.free) }; }
+    // r.used: the slots in use when r.pool is longer (the cache unpacks it into room(used), so the first dig
+    // after a load doesn't copy the whole pool to grow it)
+    static from(r) {
+      const g = new BrickGrid(r.NX, r.NY, r.NZ);
+      g.table = r.table; g.pool = r.pool; g.used = r.used ?? r.pool.length / 4096; g.free = Array.from(r.free);
+      return g;
+    }
+    // a pool for `used` slots with the headroom alloc() grows by
+    static room(used) { return new Uint8Array((used + Math.max(64, used >> 3)) * 4096); }
+    get(i, j, k) {
+      const e = this.table[((k >> 4) * this.BY + (j >> 4)) * this.BX + (i >> 4)];
+      return e < 256 ? e : this.pool[(e - 256) * 4096 + ((k & 15) << 8) + ((j & 15) << 4) + (i & 15)];
+    }
+    at(idx) { const i = idx % this.NX, r = (idx - i) / this.NX, j = r % this.NY; return this.get(i, j, (r - j) / this.NY); }
+    put(i, j, k, m) {
+      const b = ((k >> 4) * this.BY + (j >> 4)) * this.BX + (i >> 4), e = this.table[b];
+      if (e === m) return;
+      let s = e - 256;
+      if (e < 256) { s = this.alloc(); this.pool.fill(e, s * 4096, s * 4096 + 4096); this.table[b] = 256 + s; }
+      this.pool[s * 4096 + ((k & 15) << 8) + ((j & 15) << 4) + (i & 15)] = m;
+    }
+    set(idx, m) { const i = idx % this.NX, r = (idx - i) / this.NX, j = r % this.NY; this.put(i, j, (r - j) / this.NY, m); }
+    alloc() {
+      if (this.free.length) return this.free.pop();
+      if (this.used * 4096 >= this.pool.length) {
+        const p = BrickGrid.room(this.used);
+        p.set(this.pool.subarray(0, this.used * 4096)); this.pool = p;
+      }
+      return this.used++;
+    }
+    // the mixed bricks over cells lo..hi (inclusive) whose cells in the grid are all one material go back to
+    // uniform, their slots to the free list
+    compact(lo, hi) {
+      const P = this.pool;
+      for (let K = lo[2] >> 4; K <= hi[2] >> 4; K++) for (let J = lo[1] >> 4; J <= hi[1] >> 4; J++) for (let I = lo[0] >> 4; I <= hi[0] >> 4; I++) {
+        const b = (K * this.BY + J) * this.BX + I, e = this.table[b];
+        if (e < 256) continue;
+        const s = (e - 256) * 4096, n0 = Math.min(16, this.NX - I * 16), n1 = Math.min(16, this.NY - J * 16), n2 = Math.min(16, this.NZ - K * 16), v = P[s];
+        let uni = true;
+        for (let z = 0; z < n2 && uni; z++) for (let y = 0; y < n1; y++) {
+          const o = s + (z << 8) + (y << 4);
+          let x = 0; while (x < n0 && P[o + x] === v) x++;
+          if (x < n0) { uni = false; break; }
+        }
+        if (uni) { this.table[b] = v; this.free.push(e - 256); }
+      }
+    }
+    // the first solid cell's k in column (i, j) from kFrom down (air bricks skipped), -1 if none
+    down(i, j, kFrom) {
+      const c = (j >> 4) * this.BX + (i >> 4), o = ((j & 15) << 4) + (i & 15);
+      let k = Math.min(this.NZ - 1, kFrom);
+      while (k >= 0) {
+        const e = this.table[(k >> 4) * this.BXY + c];
+        if (e === 0) { k = (k & ~15) - 1; continue; }
+        if (e < 256) return k;
+        const s = (e - 256) * 4096 + o;
+        for (const k0 = k & ~15; k >= k0; k--) if (this.pool[s + ((k & 15) << 8)]) return k;
+      }
+      return -1;
+    }
+    // cells i0..i1-1 of row (j, k) into dst from off. A run of bricks with one uniform material is one write
+    // (a fill when long, a loop when short: fill's call costs more than 16 stores)
+    row(j, k, i0, i1, dst, off = 0) {
+      const b0 = ((k >> 4) * this.BY + (j >> 4)) * this.BX, ro = ((k & 15) << 8) + ((j & 15) << 4), T = this.table, P = this.pool;
+      for (let i = i0; i < i1; ) {
+        const e = T[b0 + (i >> 4)];
+        let e1 = (i | 15) + 1;
+        if (e < 256) {
+          while (e1 < i1 && T[b0 + (e1 >> 4)] === e) e1 += 16;
+          if (e1 > i1) e1 = i1;
+          const n = e1 - i;
+          if (n > 32) { dst.fill(e, off, off + n); off += n; } else for (let x = 0; x < n; x++) dst[off++] = e;
+          i = e1;
+        } else { if (e1 > i1) e1 = i1; const s = (e - 256) * 4096 + ro - (i & ~15); for (; i < e1; i++) dst[off++] = P[s + i]; }
+      }
+      return dst;
+    }
+    // plane k (NX * NY cells, as the dense grid's) into dst: a brick row (16 rows of j) that is one uniform
+    // material is one fill
+    plane(k, dst) {
+      const { NX, NY, BX, table: T } = this;
+      for (let J = 0; J < this.BY; J++) {
+        const b0 = ((k >> 4) * this.BY + J) * BX, e = T[b0], j0 = J * 16, j1 = Math.min(NY, j0 + 16);
+        let I = 1;
+        if (e < 256) while (I < BX && T[b0 + I] === e) I++;
+        if (I === BX && e < 256) dst.fill(e, j0 * NX, j1 * NX);
+        else for (let j = j0; j < j1; j++) this.row(j, k, 0, NX, dst, j * NX);
+      }
+      return dst;
+    }
+    // every brick: fn(I, J, K, v, s) with v its material when uniform (s -1), else v -1 and s its slot's offset in pool
+    bricks(fn) {
+      const T = this.table;
+      for (let K = 0, b = 0; K < this.BZ; K++) for (let J = 0; J < this.BY; J++) for (let I = 0; I < this.BX; I++, b++) {
+        const e = T[b];
+        if (e < 256) fn(I, J, K, e, -1); else fn(I, J, K, -1, (e - 256) * 4096);
+      }
+    }
+    // the dense grid (checks and tools only: a byte a cell)
+    dense() { const out = new Uint8Array(this.PL * this.NZ); for (let k = 0; k < this.NZ; k++) this.plane(k, out.subarray(k * this.PL, (k + 1) * this.PL)); return out; }
+    stats() {
+      let empty = 0, uniform = 0, mixed = 0;
+      for (const e of this.table) if (e === 0) empty++; else if (e < 256) uniform++; else mixed++;
+      return { bricks: this.table.length, empty, uniform, mixed, slots: this.used, free: this.free.length, MB: +((this.table.byteLength + this.pool.byteLength) / 1048576).toFixed(1) };
+    }
+  }
+  ME.BrickGrid = BrickGrid;
+  // T.vox is gone (T.grid): a reader left behind throws and says what to read instead. Not enumerable, so a
+  // copy of T (the bake cache's put) leaves it out
+  ME.voxGone = (T) => Object.defineProperty(T, "vox", { configurable: true, enumerable: false, get() { throw new Error("T.vox is gone: read T.grid (T.grid.at(idx), .get(i, j, k), .row, .plane, .down)"); } });
+
   ME.bakeTerrain = async function (st, pal) {
     const t0 = ME.now(), VS = ME.VS, CT = ME.content || {}, G = gridOf(st, CT), F = G.frame, jar = F.type === "jar";
     // the jar (Momiji's island): a circle of radius RI round (C, CY), over a strata drum and a wooden plinth
     const C = jar ? F.c[0] : 0, CY = jar ? F.c[1] : 0, RI = jar ? F.r : 0;
     const RG = RI + 0.35, DRUM = F.foot, PL_R = RG + 0.45, PL_ZB = -2.15, PL_ZT = -1.5, ZF = G.floorZ;
     const B = G.box, O = B.o.slice(), NX = B.size[0] * VS, NY = B.size[1] * VS, NZ = B.size[2] * VS, PLANE = NX * NY;
-    const vox = new Uint8Array(PLANE * NZ), top = new Int16Array(PLANE).fill(-1), lobe = new Uint8Array(PLANE); // lobe: the material a column hangs over lower neighbours
+    // the grid (T.grid) takes the columns a brick row (16 rows of j) at a time from band, so the bake never holds
+    // the dense grid (433 MB at vs40; the band is 16 / NY of it)
+    const g = new BrickGrid(NX, NY, NZ), BPL = NX * 16, band = new Uint8Array(BPL * NZ);
+    const top = new Int16Array(PLANE).fill(-1), lobe = new Uint8Array(PLANE); // lobe: the material a column hangs over lower neighbours
     const id = (n) => pal.id(n);
     // material ids of the roles (moss, moss2, gravel, stone, rock, earth, pebble, pebble2, wood, brass, litter), then of the kinds
     const M = {}, TR = CT.terrain || {};
@@ -5597,13 +5771,14 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     for (let j = 0; j < NY; j++) {
       if ((j & 31) === 0) { ME.progress("terrain columns " + Math.round((j / NY) * 100) + "%", 0.05 + 0.15 * (j / NY)); await ME.tick(); }
       const Y = O[1] + (j + 0.5) / VS;
+      if ((j & 15) === 0) band.fill(0);
       for (let i = 0; i < NX; i++) {
-        const X = O[0] + (i + 0.5) / VS, col = j * NX + i;
+        const X = O[0] + (i + 0.5) / VS, col = j * NX + i, bc = (j & 15) * NX + i;
         if (jar) {
           const r = Math.hypot(X - C, Y - CY);
           if (r > PL_R) continue;
           // wooden plinth with a brass trim on its upper outer edge
-          for (let k = kPB; k < kPT; k++) vox[k * PLANE + col] = k === kPT - 1 && r > PL_R - 0.09 ? M.brass : M.wood;
+          for (let k = kPB; k < kPT; k++) band[k * BPL + bc] = k === kPT - 1 && r > PL_R - 0.09 ? M.brass : M.wood;
           top[col] = kPT; lobe[col] = M.moss;
           if (r > RG - 0.06) continue;
           // drum: soil strata seen through the glass, a moss lip under the rim, a moss ring on top
@@ -5615,9 +5790,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
               if (sr) m = id(sr.ramp);
               if (ZN - Zc < 0.08 + 0.18 * P.fbm(U * 3, 0.5, 0, 71)) m = M.moss;
             }
-            vox[k * PLANE + col] = m;
+            band[k * BPL + bc] = m;
           }
-          if (r > RI - 0.12) vox[(kN - 1) * PLANE + col] = P.fbm(X * 0.45, Y * 0.45, 0, 29) > 0.78 ? M.moss2 : M.moss;
+          if (r > RI - 0.12) band[(kN - 1) * BPL + bc] = P.fbm(X * 0.45, Y * 0.45, 0, 29) > 0.78 ? M.moss2 : M.moss;
           top[col] = kN;
           if (r > RI) continue;
         }
@@ -5640,13 +5815,14 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         const kEnd = kT + extra - soften(kd, X, Y, cx, cy);
         for (let k = kF; k < kEnd; k++) {
           const dz = kEnd - 1 - k;
-          vox[k * PLANE + col] = layer ? (dz < layer + extra ? mTop : kd.under) : dz === 0 || (two && dz === 1) ? mTop : dr && dz <= dd && !bed ? (n1 > 0.7 ? dr[1] : dr[0]) : kd.under;
+          band[k * BPL + bc] = layer ? (dz < layer + extra ? mTop : kd.under) : dz === 0 || (two && dz === 1) ? mTop : dr && dz <= dd && !bed ? (n1 > 0.7 ? dr[1] : dr[0]) : kd.under;
         }
-        if (jar) for (let k = kEnd; k < kD; k++) vox[k * PLANE + col] = 0; // beds carved below the drum top
+        if (jar) for (let k = kEnd; k < kD; k++) band[k * BPL + bc] = 0; // beds carved below the drum top
         // a box's skirt: the outer faces of the map's edge tiles, under their top voxel, in one material
-        if (skirt && (X < e1 || Y < e1 || X > G.W - e1 || Y > G.H - e1)) for (let k = kF; k < kEnd - 1; k++) vox[k * PLANE + col] = skirt;
+        if (skirt && (X < e1 || Y < e1 || X > G.W - e1 || Y > G.H - e1)) for (let k = kF; k < kEnd - 1; k++) band[k * BPL + bc] = skirt;
         top[col] = kEnd;
       }
+      if ((j & 15) === 15 || j === NY - 1) g.band(j >> 4, band);
     }
 
     // Moss overhangs: where a column stands 4+ voxels above a neighbour, hang 0-3 voxels over the lip.
@@ -5661,12 +5837,12 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         const nc = col + dx + dy * NX, nk = top[nc];
         if (nk < 0 || tk - nk < 4) continue;
         const len = Math.floor(P.noise(X * 7 + dx * 3.1, Y * 7 + dy * 3.1, 0, 9) * 4.6) - 1;
-        for (let k = tk - len; k < tk; k++) if (!vox[k * PLANE + nc]) { vox[k * PLANE + nc] = lobe[col]; lobes++; }
+        for (let k = tk - len; k < tk; k++) if (!g.get(i + dx, j + dy, k)) { g.put(i + dx, j + dy, k, lobe[col]); lobes++; }
       }
     }
 
     // Static props stamped into the grid; volume props and walkers are returned for the model bake.
-    const grid = { vox, NX, NY, NZ, O, vs: VS };
+    const grid = { bricks: g, NX, NY, NZ, O, vs: VS };
     const volumes = [], walkers = [];
     let stamped = 0, propCount = 0;
     const deco = G.props;
@@ -5690,8 +5866,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     if (GL) {
       const surfZ = (X, Y, zFrom) => {
         const i = Math.floor((X - O[0]) * VS), j = Math.floor((Y - O[1]) * VS);
-        for (let k = Math.min(NZ - 1, kOf(zFrom)); k >= 0; k--) if (vox[k * PLANE + j * NX + i]) return O[2] + (k + 1) / VS;
-        return zFrom;
+        const k = g.down(i, j, Math.min(NZ - 1, kOf(zFrom)));
+        return k >= 0 ? O[2] + (k + 1) / VS : zFrom;
       };
       const taken = deco.filter((d) => window.MODELS[d[0]]).map((d) => [d[2] + 0.5 + (d[4].dx || 0), d[3] + 0.5 + (d[4].dy || 0)]);
       const cand = [];
@@ -5803,21 +5979,51 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // Density for normals/AO from half resolution up (mip0 = 2x2x2 box average of occupancy, mip1 = 4x4x4) and the coarse occupancy
     // (about 8 cells per tile at any VS, taller than the voxel grid so the tree canopies fit) that feeds the sun volume.
     ME.progress("density mips", 0.33); await ME.tick();
+    // the props and lobes split bricks: the ones they left one material fold back
+    g.compact([0, 0, 0], [NX - 1, NY - 1, NZ - 1]);
+    // one pass over the grid's bricks: the solid count, the top (the highest k with a solid cell among every
+    // 7th cell of its plane) and mip0, the occupancy (255 where solid) of each 2x2x2 averaged. A brick's 2x2x2
+    // never straddles bricks, so a uniform brick is its size, its top and an 8^3 block of mip0 at once
     let solid = 0, kMax = 0;
-    for (let i = 0; i < vox.length; i++) if (vox[i]) solid++;
-    for (let k = NZ - 1; k >= 0 && !kMax; k--) for (let c = 0; c < PLANE; c += 7) if (vox[k * PLANE + c]) { kMax = k; break; }
-    // occ: the source is T.vox, read as 255 where solid (mip0 without a full-size copy of the grid: the
-    // memory budget, #135)
-    const down = (src, nx, ny, nz, occ) => {
+    const MX = NX >> 1, MY = NY >> 1, MZ = NZ >> 1, d1 = new Uint8Array(MX * MY * MZ), GP = g.pool;
+    const s7 = (j, i0) => i0 + (7 - (j * NX + i0) % 7) % 7; // row j's first 7th cell from i0
+    g.bricks((I, J, K, v, s) => {
+      if (v === 0) return;
+      const i0 = I << 4, j0 = J << 4, k0 = K << 4, i1 = Math.min(NX, i0 + 16), j1 = Math.min(NY, j0 + 16), k1 = Math.min(NZ, k0 + 16);
+      const x0 = i0 >> 1, x1 = Math.min(MX, x0 + 8), y0 = j0 >> 1, y1 = Math.min(MY, y0 + 8), z0 = k0 >> 1, z1 = Math.min(MZ, z0 + 8);
+      if (v > 0) {
+        solid += (i1 - i0) * (j1 - j0) * (k1 - k0);
+        if (k1 - 1 > kMax) for (let j = j0; j < j1; j++) if (s7(j, i0) < i1) { kMax = k1 - 1; break; }
+        for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let c = (z * MY + y) * MX + x0, e = c + x1 - x0; c < e; c++) d1[c] = 255;
+        return;
+      }
+      let n = 0;
+      for (let k = k0; k < k1; k++) for (let j = j0; j < j1; j++) {
+        const o = s + ((k & 15) << 8) + ((j & 15) << 4) - i0;
+        for (let i = i0; i < i1; i++) if (GP[o + i]) n++;
+      }
+      solid += n;
+      if (n) for (let k = k1 - 1, hit = false; k > kMax && !hit; k--) for (let j = j0; j < j1 && !hit; j++) {
+        const o = s + ((k & 15) << 8) + ((j & 15) << 4) - i0;
+        for (let i = s7(j, i0); i < i1; i += 7) if (GP[o + i]) { kMax = k; hit = true; break; }
+      }
+      for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+        const o = s + (((2 * z) & 15) << 8) + (((2 * y) & 15) << 4) + ((2 * x) & 15);
+        d1[(z * MY + y) * MX + x] = ((GP[o] ? 255 : 0) + (GP[o + 1] ? 255 : 0) + (GP[o + 16] ? 255 : 0) + (GP[o + 17] ? 255 : 0) +
+          (GP[o + 256] ? 255 : 0) + (GP[o + 257] ? 255 : 0) + (GP[o + 272] ? 255 : 0) + (GP[o + 273] ? 255 : 0)) >> 3;
+      }
+    });
+    // mip1: mip0's 2x2x2 averaged
+    const down = (src, nx, ny, nz) => {
       const mx = nx >> 1, my = ny >> 1, mz = nz >> 1, out = new Uint8Array(mx * my * mz);
       for (let z = 0; z < mz; z++) for (let y = 0; y < my; y++) for (let x = 0; x < mx; x++) {
         let s = 0;
-        for (let c = 0; c < 8; c++) { const v = src[((2 * z + (c >> 2)) * ny + 2 * y + ((c >> 1) & 1)) * nx + 2 * x + (c & 1)]; s += occ ? (v ? 255 : 0) : v; }
+        for (let c = 0; c < 8; c++) s += src[((2 * z + (c >> 2)) * ny + 2 * y + ((c >> 1) & 1)) * nx + 2 * x + (c & 1)];
         out[(z * my + y) * mx + x] = s >> 3;
       }
       return out;
     };
-    const d1 = down(vox, NX, NY, NZ, true), d2 = down(d1, NX >> 1, NY >> 1, NZ >> 1, false);
+    const d2 = down(d1, MX, MY, MZ);
     // the coarse grid is 3 tiles taller than the box (13 tiles for a generator map), f voxels a cell
     const f = ME.coarseStep(VS), CPU = VS / f, QX = NX / f, QY = NY / f, QZ = (B.size[2] + 3) * CPU, coarse = new Uint8Array(QX * QY * QZ);
 
@@ -5832,7 +6038,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // tiles: per tile of the map, its top (tiles), its kind's name (null on a generator map) and recipe (null:
     // no ground), and whether it grows grass (what the sim and the grass read instead of the map's letters)
     const tiles = { W: G.W, H: G.H, z: G.z, name: G.names, recipe: G.kinds.map((k) => (k ? k.recipe : null)), grass: Uint8Array.from(G.kinds, (k) => (k && k.grass ? 1 : 0)), wet: wetT, depth: depthT };
-    const T = { O, NX, NY, NZ, VS, vox, top, mips: [d1, d2], coarse, cdims: [QX, QY, QZ], CPU, volumes, walkers, water, looks, falls, beams, lights, stats, bounds, frame: F, tiles,
+    const T = { O, NX, NY, NZ, VS, grid: g, top, mips: [d1, d2], coarse, cdims: [QX, QY, QZ], CPU, volumes, walkers, water, looks, falls, beams, lights, stats, bounds, frame: F, tiles,
       geo: jar ? { C, RI, RG, DRUM, PL_R, PL_ZB, PL_ZT, glassZt: F.glassTop } : null };
     ME.coarseFill(T, [0, 0, 0], [QX - 1, QY - 1, NZ / f - 1]); // the cells above the voxel grid stay empty
     T.groundAt = ME.groundAt(T);
@@ -5840,37 +6046,67 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   };
   // the code the bake runs besides bakeTerrain itself (the bake cache key holds its source)
   // the bake cache key's code: the bake's helpers and its tables (cache.js)
-  ME.bakeTerrain.parts = [ME.validateMap, ME.waterDist, gridOf, propsOf, decoSets, propRole, resolve, mottleCut, pave, heights, kindNames, rows, impure, ...Object.values(RECIPE),
+  ME.bakeTerrain.parts = [ME.validateMap, ME.waterDist, gridOf, propsOf, decoSets, propRole, resolve, mottleCut, pave, heights, kindNames, rows, impure, BrickGrid, ...Object.values(RECIPE),
     JSON.stringify({ B36, STEPS, RECIPES, FLAGS, AT, FIXED_BOX })];
 
   // The coarse occupancy (docs/decisions/2026-10-20-sun-volume-density.md): one cell is f voxels on a side,
   // f the largest divisor of VS that keeps VS / f >= 8 cells per tile, and at least 2 (f = 2 up to vs=20,
   // as before: the low densities phones pick keep their small volume; 3 at 24, 8 at 64).
   ME.coarseStep = (VS) => { let f = VS; while (VS % f || VS / f < 8) f--; return Math.max(2, f); };
-  // Refill the coarse cells lo..hi (inclusive, cell coordinates) from T.vox: the occupancy averaged over
+  // Refill the coarse cells lo..hi (inclusive, cell coordinates) from T.grid: the occupancy averaged over
   // the cell's f^3 voxels (the bake fills the whole grid, a carve the box around the change), plus the
-  // static volumes' splat (T.splat, from the model bake) so a carve keeps the trees' shade.
+  // static volumes' splat (T.splat, from the model bake) so a carve keeps the trees' shade. Counted a brick
+  // at a time over the box's voxels: a uniform solid brick adds its overlap with each cell it touches, a
+  // mixed one cell by cell.
   ME.coarseFill = (T, lo, hi) => {
-    const { vox, NX, NY, NZ, coarse, cdims, splat } = T, f = T.VS / T.CPU, n = f * f * f, PL = NX * NY;
-    for (let z = lo[2]; z <= hi[2]; z++) for (let y = lo[1]; y <= hi[1]; y++) for (let x = lo[0]; x <= hi[0]; x++) {
-      let s = 0;
-      for (let k = z * f; k < Math.min(NZ, z * f + f); k++) for (let j = y * f; j < y * f + f; j++) {
-        const row = k * PL + j * NX;
-        for (let i = x * f; i < x * f + f; i++) if (vox[row + i]) s += 255;
+    const { grid: g, NZ, coarse, cdims, splat } = T, f = T.VS / T.CPU, n = f * f * f, W = hi[0] - lo[0] + 1, H = hi[1] - lo[1] + 1, D = hi[2] - lo[2] + 1;
+    const a0 = lo[0] * f, a1 = lo[1] * f, a2 = lo[2] * f, b0 = (hi[0] + 1) * f, b1 = (hi[1] + 1) * f, b2 = Math.min(NZ, (hi[2] + 1) * f);
+    const cnt = new Uint32Array(W * H * D), P = g.pool, Tb = g.table;
+    // a voxel's cell along an axis, counted from the box's first voxel
+    const q = (m) => Uint32Array.from({ length: m * f }, (_, i) => Math.floor(i / f)), qx = q(W), qy = q(H), qz = q(D);
+    if (b2 > a2) for (let K = a2 >> 4; K <= (b2 - 1) >> 4; K++) for (let J = a1 >> 4; J <= (b1 - 1) >> 4; J++) for (let I = a0 >> 4; I <= (b0 - 1) >> 4; I++) {
+      const e = Tb[(K * g.BY + J) * g.BX + I];
+      if (e === 0) continue;
+      const i0 = Math.max(a0, I << 4), i1 = Math.min(b0, (I << 4) + 16), j0 = Math.max(a1, J << 4), j1 = Math.min(b1, (J << 4) + 16), k0 = Math.max(a2, K << 4), k1 = Math.min(b2, (K << 4) + 16);
+      if (e < 256) {
+        for (let k = k0; k < k1; ) {
+          const z = qz[k - a2], ke = Math.min(k1, a2 + (z + 1) * f);
+          for (let j = j0; j < j1; ) {
+            const y = qy[j - a1], je = Math.min(j1, a1 + (y + 1) * f), r = (z * H + y) * W, nk = (ke - k) * (je - j);
+            for (let i = i0; i < i1; ) { const x = qx[i - a0], ie = Math.min(i1, a0 + (x + 1) * f); cnt[r + x] += nk * (ie - i); i = ie; }
+            j = je;
+          }
+          k = ke;
+        }
+        continue;
       }
-      const c = (z * cdims[1] + y) * cdims[0] + x;
+      const s = (e - 256) * 4096 - (I << 4);
+      for (let k = k0; k < k1; k++) {
+        const z = qz[k - a2] * H;
+        for (let j = j0; j < j1; j++) {
+          const r = (z + qy[j - a1]) * W, o = s + ((k & 15) << 8) + ((j & 15) << 4);
+          for (let i = i0; i < i1; i++) if (P[o + i]) cnt[r + qx[i - a0]]++;
+        }
+      }
+    }
+    for (let z = 0, t = 0; z < D; z++) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++, t++) {
+      const c = ((lo[2] + z) * cdims[1] + lo[1] + y) * cdims[0] + lo[0] + x, s = cnt[t] * 255;
       coarse[c] = splat ? Math.min(255, Math.floor(s / n) + splat[c]) : Math.floor(s / n);
     }
   };
 
-  // Walkable ground: first solid voxel scanning down from zFrom (rebuilt from the arrays on a cache hit).
+  // Walkable ground: first solid voxel scanning down from zFrom (rebuilt from the arrays on a cache hit, which
+  // is also where T gets the T.vox guard back: ME.voxGone).
   ME.groundAt = (T) => {
-    const { O, NX, NY, NZ, VS, vox } = T, PLANE = NX * NY;
+    const { O, NX, NY, NZ, VS, grid } = T;
+    if (!Object.getOwnPropertyDescriptor(T, "vox")) ME.voxGone(T);
     return (X, Y, zFrom) => {
       const i = Math.floor((X - O[0]) * VS), j = Math.floor((Y - O[1]) * VS);
       if (i < 0 || j < 0 || i >= NX || j >= NY) return zFrom;
-      for (let k = Math.min(NZ - 1, Math.floor((zFrom - O[2]) * VS)); k >= 0; k--) if (vox[k * PLANE + j * NX + i]) return O[2] + (k + 1) / VS;
-      return O[2];
+      const k = Math.floor((zFrom - O[2]) * VS);
+      if (k < 0) return O[2];
+      const g = grid.down(i, j, Math.min(NZ - 1, k));
+      return g < 0 ? O[2] : O[2] + (g + 1) / VS;
     };
   };
 })();
@@ -5886,9 +6122,15 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   const ME = window.ME;
 
   ME.greedyMesh = async function (T) {
-    const t0 = ME.now(), { vox, NX, NY, NZ } = T, PLANE = NX * NY;
+    const t0 = ME.now(), { grid, NX, NY, NZ } = T, PLANE = NX * NY;
+    // the voxels are read a plane or a row at a time from T.grid (pa, pb: two planes; rb: a row)
+    const pa = new Uint8Array(PLANE), pb = new Uint8Array(PLANE), rb = new Uint8Array(NX);
+    // the layers with terrain (each plane sampled every third cell); a layer of air bricks is skipped whole
+    const air = (k) => { const t = grid.table, b = (k >> 4) * grid.BXY; for (let c = 0; c < grid.BXY; c++) if (t[b + c]) return false; return true; };
+    const hit = (k) => { if (air(k)) return false; grid.plane(k, pa); for (let c = 0; c < PLANE; c += 3) if (pa[c]) return true; return false; };
     let kLo = NZ, kHi = 0;
-    for (let k = 0; k < NZ; k++) { const a = k * PLANE; for (let c = 0; c < PLANE; c += 3) if (vox[a + c]) { kLo = Math.min(kLo, k); kHi = Math.max(kHi, k); break; } }
+    for (let k = 0; k < NZ; k++) if (hit(k)) { kLo = k; break; }
+    for (let k = NZ - 1; k >= kLo; k--) if (hit(k)) { kHi = k; break; }
     kLo = Math.max(0, kLo - 1); kHi = Math.min(NZ - 1, kHi + 1);
     const ZN = kHi - kLo + 1;
 
@@ -5924,12 +6166,14 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     };
 
     // +z faces: slice planes between z = s-1 and s
-    let mask = new Int16Array(PLANE);
+    let mask = new Int16Array(PLANE), below = pa, cur = pb;
+    if (kLo > 0) grid.plane(kLo - 1, below); else below.fill(0);
     for (let s = kLo; s <= kHi + 1; s++) {
       if ((s & 15) === 0) { ME.progress("meshing tops " + s, 0.36 + 0.04 * ((s - kLo) / ZN)); await ME.tick(); }
-      const a = (s - 1) * PLANE, b = s * PLANE;
+      if (s < NZ) grid.plane(s, cur); else cur.fill(0);
       let any = false;
-      for (let c = 0; c < PLANE; c++) { const va = s > 0 ? vox[a + c] : 0, vb = s < NZ ? vox[b + c] : 0; const m = va && !vb ? va : 0; mask[c] = m; any = any || m !== 0; }
+      for (let c = 0; c < PLANE; c++) { const va = below[c], vb = cur[c]; const m = va && !vb ? va : 0; mask[c] = m; any = any || m !== 0; }
+      [below, cur] = [cur, below];
       if (any) merge(mask, NX, NY, (i, j, w, h, c) => emit(4, c, [i, j, s], [i + w, j, s], [i + w, j + h, s], [i, j + h, s]));
     }
     // x faces: mask over (y, z) per slice s. A slab of XS slices is filled in one pass along the voxel rows
@@ -5939,15 +6183,15 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const XS = 32, SL = NY * ZN, xm = new Int16Array(XS * SL), xany = new Uint8Array(XS);
     for (let s0 = 0; s0 <= NX; s0 += XS) {
       ME.progress("meshing x sides " + s0, 0.4 + 0.04 * (s0 / NX)); await ME.tick();
-      const s1 = Math.min(NX, s0 + XS - 1);
+      const s1 = Math.min(NX, s0 + XS - 1), r0 = Math.max(0, s0 - 1), r1 = Math.min(NX, s1 + 1);
       xany.fill(0);
       for (let z = 0; z < ZN; z++) {
-        const zo = (z + kLo) * PLANE;
         for (let y = 0; y < NY; y++) {
-          const ro = zo + y * NX, mo = y + z * NY;
-          let va = s0 > 0 ? vox[ro + s0 - 1] : 0;
+          const mo = y + z * NY;
+          grid.row(y, z + kLo, r0, r1, rb);
+          let va = s0 > 0 ? rb[s0 - 1 - r0] : 0;
           for (let s = s0; s <= s1; s++) {
-            const vb = s < NX ? vox[ro + s] : 0;
+            const vb = s < NX ? rb[s - r0] : 0;
             if (va !== vb && !(va && vb)) { xm[(s - s0) * SL + mo] = va ? va : -vb; xany[s - s0] = 1; }
             va = vb;
           }
@@ -5962,20 +6206,19 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         });
       }
     }
-    // y faces: mask over (x, z)
+    // y faces: mask over (x, z). Rows s - 1 and s of every z are kept (ya, yb) and swapped, so each row is read once
     mask = new Int16Array(NX * ZN);
+    let ya = new Uint8Array(NX * ZN), yb = new Uint8Array(NX * ZN);
     for (let s = 0; s <= NY; s++) {
       if ((s & 31) === 0) { ME.progress("meshing y sides " + s, 0.44 + 0.04 * (s / NY)); await ME.tick(); }
       let any = false;
-      const ya = (s - 1) * NX, yb = s * NX;
-      for (let z = 0; z < ZN; z++) {
-        const zo = (z + kLo) * PLANE;
-        for (let x = 0; x < NX; x++) {
-          const va = s > 0 ? vox[zo + ya + x] : 0, vb = s < NY ? vox[zo + yb + x] : 0;
-          const m = va && !vb ? va : !va && vb ? -vb : 0;
-          mask[x + z * NX] = m; any = any || m !== 0;
-        }
+      if (s < NY) for (let z = 0; z < ZN; z++) grid.row(s, z + kLo, 0, NX, yb, z * NX); else yb.fill(0);
+      for (let c = 0; c < NX * ZN; c++) {
+        const va = ya[c], vb = yb[c];
+        const m = va && !vb ? va : !va && vb ? -vb : 0;
+        mask[c] = m; any = any || m !== 0;
       }
+      [ya, yb] = [yb, ya];
       if (any) merge(mask, NX, ZN, (i, j, w, h, c) => {
         const z0 = j + kLo, z1 = z0 + h;
         if (c > 0) emit(2, c, [i, s, z0], [i + w, s, z0], [i + w, s, z1], [i, s, z1]);
@@ -6065,6 +6308,78 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const { bmap, chunks } = v, px = Math.ceil(v.dims[0] / 8), py = Math.ceil(v.dims[1] / 8);
     return (x, y, z) => { const b = bmap[((z >> 3) * py + (y >> 3)) * px + (x >> 3)]; return b < 0 ? 0 : chunks[b][(((z & 7) * 8 + (y & 7)) * 8 + (x & 7)) * 4 + 3]; };
   };
+
+  // The voxel LOD: a volume's 2x-down copy, drawn in its place where its voxels come out under a pixel
+  // (R.set.vlod, the volume shader). A half voxel is solid if any of its 8 voxels is. It takes from its surface
+  // voxels (a face open) their averaged normal and AO, and a material of theirs (pick): the rarest on the volume's
+  // whole surface among those emissive (emi[id]) or on 2+ of them, so eyes and glow survive without a big
+  // many-material volume going speckled; else their most common (ties: the commoner on the surface). A half
+  // voxel with none (all inside) keeps the interior normal.
+  // Returns { dims, bmap, chunks, nsolid } (bricksOf's), built brick by brick: a half brick is 2^3 source bricks.
+  function halfOf(v, emi) {
+    const [nx, ny, nz] = v.dims, px = Math.ceil(nx / 8), py = Math.ceil(ny / 8), pz = Math.ceil(nz / 8), mat = v.mat, { bmap, chunks } = v;
+    const at = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < nx && y < ny && z < nz && mat(x, y, z) !== 0;
+    const open = (x, y, z) => !at(x - 1, y, z) || !at(x + 1, y, z) || !at(x, y - 1, z) || !at(x, y + 1, z) || !at(x, y, z - 1) || !at(x, y, z + 1);
+    // the surface's material counts
+    const freq = new Uint32Array(256);
+    for (let iz = 0; iz < pz; iz++) for (let iy = 0; iy < py; iy++) for (let ix = 0; ix < px; ix++) {
+      const bi = bmap[(iz * py + iy) * px + ix];
+      if (bi < 0) continue;
+      const c = chunks[bi];
+      for (let j = 0; j < 512; j++) if (c[j * 4 + 3] && open(ix * 8 + (j & 7), iy * 8 + ((j >> 3) & 7), iz * 8 + (j >> 6))) freq[c[j * 4 + 3]]++;
+    }
+    const pick = (C, o, n) => {
+      let best = 0, most = 0, mc = 0;
+      for (let i = 0; i < n; i++) {
+        const m = C[o + i];
+        let k = 0;
+        for (let j = 0; j < n; j++) if (C[o + j] === m) k++;
+        if ((emi[m] || k >= 2) && (!best || freq[m] < freq[best] || (freq[m] === freq[best] && m < best))) best = m;
+        if (k > mc || (k === mc && (freq[m] > freq[most] || (freq[m] === freq[most] && m < most)))) { most = m; mc = k; }
+      }
+      return best || most;
+    };
+    const dims = [Math.ceil(nx / 2), Math.ceil(ny / 2), Math.ceil(nz / 2)], hx = Math.ceil(dims[0] / 8), hy = Math.ceil(dims[1] / 8), hz = Math.ceil(dims[2] / 8);
+    const hmap = new Int32Array(hx * hy * hz).fill(-1), out = [], N = new Float32Array(512 * 3), A = new Float32Array(512), S = new Uint8Array(512), C = new Uint8Array(512 * 8), I = new Uint8Array(512);
+    let nsolid = 0;
+    for (let iz = 0; iz < hz; iz++) for (let iy = 0; iy < hy; iy++) for (let ix = 0; ix < hx; ix++) {
+      let any = false;
+      N.fill(0); A.fill(0); S.fill(0); I.fill(0);
+      for (let s = 0; s < 8; s++) {
+        const sx = ix * 2 + (s & 1), sy = iy * 2 + ((s >> 1) & 1), sz = iz * 2 + (s >> 2);
+        if (sx >= px || sy >= py || sz >= pz) continue;
+        const bi = bmap[(sz * py + sy) * px + sx];
+        if (bi < 0) continue;
+        const c = chunks[bi];
+        for (let j = 0; j < 512; j++) {
+          const m = c[j * 4 + 3];
+          if (!m) continue;
+          any = true;
+          const x = sx * 8 + (j & 7), y = sy * 8 + ((j >> 3) & 7), z = sz * 8 + (j >> 6), h = ((((z >> 1) & 7) * 8 + ((y >> 1) & 7)) * 8 + ((x >> 1) & 7));
+          if (!open(x, y, z)) { if (!I[h] || m < I[h]) I[h] = m; continue; }
+          // the oct normal back to a vector (src/sdf.js octEnc)
+          let ox = (c[j * 4] / 255) * 2 - 1, oy = (c[j * 4 + 1] / 255) * 2 - 1;
+          const oz = 1 - Math.abs(ox) - Math.abs(oy);
+          if (oz < 0) { const tx = ox; ox = (1 - Math.abs(oy)) * (tx >= 0 ? 1 : -1); oy = (1 - Math.abs(tx)) * (oy >= 0 ? 1 : -1); }
+          const l = Math.hypot(ox, oy, oz) || 1;
+          N[h * 3] += ox / l; N[h * 3 + 1] += oy / l; N[h * 3 + 2] += oz / l; A[h] += c[j * 4 + 2]; C[h * 8 + S[h]++] = m;
+        }
+      }
+      if (!any) continue;
+      const b = new Uint8Array(2048);
+      for (let h = 0; h < 512; h++) {
+        if (S[h]) {
+          const n = [N[h * 3], N[h * 3 + 1], N[h * 3 + 2]], l = Math.hypot(n[0], n[1], n[2]);
+          const o = l > 1e-6 ? ME.octEnc(n) : [128, 128];
+          b[h * 4] = o[0]; b[h * 4 + 1] = o[1]; b[h * 4 + 2] = Math.round(A[h] / S[h]); b[h * 4 + 3] = pick(C, h * 8, S[h]);
+        } else if (I[h]) { b[h * 4] = 128; b[h * 4 + 1] = 128; b[h * 4 + 2] = 255; b[h * 4 + 3] = I[h]; }
+        else continue;
+        nsolid++;
+      }
+      hmap[(iz * hy + iy) * hx + ix] = out.length; out.push(b);
+    }
+    return { dims, bmap: hmap, chunks: out, nsolid };
+  }
 
   // E2, the bake workers (docs/decisions/2026-10-20-bake-workers.md). This runs in a worker only (built from
   // ME.sdf.workerSrc(), bricksOf and this): a data-only model voxelised with a palette of its own and packed into
@@ -6294,11 +6609,20 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       }
     } finally { h.cancel(); }
 
+    // every volume's 2x-down copy (halfOf), packed after them; none when the pool could not hold them all
+    const tl = ME.now();
+    // emi: the palette's emissive materials (src/palette.js: an em, or the class EMISSIVE)
+    const emi = new Uint8Array(256), byName = (ME.content && ME.content.materialClass) || {};
+    if (pal.mat) pal.names.forEach((n, i) => { if (i) { const M = pal.mat(n); emi[i] = M.em || M.cls === ME.CLS.EMISSIVE || byName[n] === "EMISSIVE" ? 1 : 0; } });
+    let lods = opts.lod === false ? [] : vols.map((v) => halfOf(v, emi));
+    if (vols.reduce((a, v) => a + v.chunks.length, 0) + lods.reduce((a, l) => a + l.chunks.length, 0) > ME.poolMaxBricks()) lods = [];
+    const lodMs = ME.now() - tl, lodBricks = lods.reduce((a, l) => a + l.chunks.length, 0), all = vols.concat(lods);
+
     // shelf-pack brick-aligned volumes into the atlas; short volumes stack in z inside a column whose
     // footprint fits them (critters and ferns would otherwise each reserve the full atlas depth)
     const pad = (n) => Math.ceil(n / 8) * 8, W = 1024, AZ = Math.max(8, ...vols.map((v) => pad(v.dims[2]))), cols = [];
     let x = 0, y = 0, rowH = 0;
-    for (const v of vols) {
+    for (const v of all) {
       const [nx, ny, nz] = v.dims.map(pad);
       let c = cols.find((c) => c.w >= nx && c.h >= ny && c.w - nx <= 16 && c.h - ny <= 16 && c.z + nz <= AZ);
       if (!c) {
@@ -6308,11 +6632,12 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       }
       v.base = [c.x, c.y, c.z]; v.pdims = [nx, ny, nz]; c.z += nz;
     }
-    // brick map (one u32 per 8^3 brick of the layout above: 0 = empty, else 1 + pool slot) and a dense
+    // brick map (one u32 per 8^3 brick of the layout above: bits 0..23 are 0 for empty, else 1 + pool slot; bits 24..31
+    // the occupied 4^3 octants, filled below) and a dense
     // pool holding only the occupied bricks (the layout is ~1% solid, so the pool is a fraction of it)
     const AX = W, AY = pad(y + rowH), BX = AX / 8, BY = AY / 8, BZ = AZ / 8, bricks = new Uint32Array(BX * BY * BZ);
     let nb = 0, solid = 0;
-    for (const v of vols) {
+    for (const v of all) {
       const [px, py, pz] = v.pdims.map((n) => n / 8), [bx, by, bz] = v.base.map((n) => n / 8);
       for (let iz = 0; iz < pz; iz++) for (let iy = 0; iy < py; iy++) for (let ix = 0; ix < px; ix++)
         if (v.bmap[(iz * py + iy) * px + ix] >= 0) bricks[((bz + iz) * BY + by + iy) * BX + bx + ix] = ++nb;
@@ -6320,17 +6645,30 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const PB = ME.POOL_SLAB, PX = PB * 8, PY = PB * 8, PZ = Math.max(1, Math.ceil(nb / (PB * PB))) * 8;
     if (nb > ME.poolMaxBricks()) throw new Error(`the volume pool needs ${nb} bricks; the device allows ${ME.poolMaxBricks()} (a ${PX} x ${PY} x ${PZ} texture against maxTextureDimension3D ${ME.poolMaxDepth()}): fewer or smaller volumes, or fewer frames`);
     const pool = new Uint8Array(PX * PY * PZ * 4);
-    // each occupied brick into its pool slot, 8 x 8 rows of 8 voxels
-    for (const v of vols) {
-      const [px, py, pz] = v.pdims.map((n) => n / 8), [bx, by, bz] = v.base.map((n) => n / 8);
+    // each occupied brick into its pool slot, 8 x 8 rows of 8 voxels. Its 4^3 octants that hold a voxel go into
+    // the brick map's top byte (bit x + 2y + 4z), and each volume gets the bounds of its voxels, lo and hi (the
+    // volume shader skips the empty octants and draws its proxy box over lo..hi, not the whole dims)
+    for (const v of all) {
+      const [px, py, pz] = v.pdims.map((n) => n / 8), [bx, by, bz] = v.base.map((n) => n / 8), lo = [1e9, 1e9, 1e9], hi = [0, 0, 0];
       for (let iz = 0; iz < pz; iz++) for (let iy = 0; iy < py; iy++) for (let ix = 0; ix < px; ix++) {
         const bi = v.bmap[(iz * py + iy) * px + ix];
         if (bi < 0) continue;
-        const b = v.chunks[bi], k = bricks[((bz + iz) * BY + by + iy) * BX + bx + ix] - 1;
+        const b = v.chunks[bi], bk = ((bz + iz) * BY + by + iy) * BX + bx + ix, k = bricks[bk] - 1;
+        let om = 0;
+        for (let j = 0; j < 512; j++) {
+          if (!b[j * 4 + 3]) continue;
+          const x = j & 7, y = (j >> 3) & 7, z = j >> 6;
+          om |= 1 << ((x >> 2) | ((y >> 2) << 1) | ((z >> 2) << 2));
+          const p = [ix * 8 + x, iy * 8 + y, iz * 8 + z];
+          for (let a = 0; a < 3; a++) { if (p[a] < lo[a]) lo[a] = p[a]; if (p[a] + 1 > hi[a]) hi[a] = p[a] + 1; }
+        }
+        bricks[bk] = ((k + 1) | (om << 24)) >>> 0;
         const qx = (k % PB) * 8, qy = (Math.floor(k / PB) % PB) * 8, qz = Math.floor(k / (PB * PB)) * 8;
         for (let z = 0; z < 8; z++) for (let yy = 0; yy < 8; yy++) pool.set(b.subarray((z * 8 + yy) * 32, (z * 8 + yy) * 32 + 32), ((qz + z) * PY + qy + yy) * PX * 4 + qx * 4);
       }
-      solid += v.nsolid;
+      if (lo[0] > hi[0]) lo.fill(0); // no voxel: an empty box
+      v.lo = lo; v.hi = hi;
+      if (v.box) solid += v.nsolid;
     }
 
     // static volumes shade the sun volume: splat their voxels into the coarse occupancy (foliage half weight),
@@ -6354,7 +6692,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const splat = new Uint8Array(acc.length);
     for (let i = 0; i < acc.length; i++) if (acc[i]) { splat[i] = Math.min(255, Math.round(acc[i] * 255)); T.coarse[i] = Math.min(255, T.coarse[i] + splat[i]); }
     T.splat = splat;
-    for (const v of vols) v.bmap = v.chunks = v.mat = null;
+    for (const v of all) v.bmap = v.chunks = v.mat = null;
 
     // point lights from emissive primitives of static volumes, at their drawn offsets (md.k / fine)
     const lights = [];
@@ -6373,15 +6711,16 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     }
 
     // h and r in world units (a fine model is drawn at 1/fine scale)
-    const models = vols.map((v) => ({ name: v.name, base: v.base, dims: v.dims, box: v.box, k: v.md.k, fine: v.fine, h: (v.md.h * v.md.k) / v.fine, r: (v.md.r * v.md.k) / v.fine }));
-    const stats = { variants: vols.length, layout: [AX, AY, AZ], bricks: nb, pool: [PX, PY, PZ], poolMB: +((pool.byteLength / 1048576).toFixed(1)), solid, surface: vols.reduce((a, v) => a + v.surf, 0), lights: lights.length, workers: ws.length, inWorkers, offWorker, early: how, startMs: run ? Math.round(run.startMs) : 0, idleMs: run ? Math.round(run.idleMs) : 0, busyMs: run ? Math.round(run.busyMs) : 0, readyMs: Math.round(readyMs), waitMs: Math.round(waitMs), hereMs: Math.round(hereMs), takeMs: Math.round(takeMs), ms: Math.round(ME.now() - t0) };
-    const MB = { atlas: pool, adims: [PX, PY, PZ], bricks, bdims: [BX, BY, BZ], models, statics, walkerTypes, walkerFrames, critterFrames, extraFrames, lights, stats };
+    // lod: model i's 2x-down copy in MB.lods (its base and dims in the atlas, lo and hi its voxels' bounds), -1 for none
+    const models = vols.map((v, i) => ({ name: v.name, base: v.base, dims: v.dims, box: v.box, lo: v.lo, hi: v.hi, k: v.md.k, fine: v.fine, h: (v.md.h * v.md.k) / v.fine, r: (v.md.r * v.md.k) / v.fine, lod: lods.length ? i : -1 }));
+    const stats = { variants: vols.length, layout: [AX, AY, AZ], bricks: nb, pool: [PX, PY, PZ], poolMB: +((pool.byteLength / 1048576).toFixed(1)), solid, surface: vols.reduce((a, v) => a + v.surf, 0), lights: lights.length, lod: { models: lods.length, bricks: lodBricks }, lodMs: Math.round(lodMs), workers: ws.length, inWorkers, offWorker, early: how, startMs: run ? Math.round(run.startMs) : 0, idleMs: run ? Math.round(run.idleMs) : 0, busyMs: run ? Math.round(run.busyMs) : 0, readyMs: Math.round(readyMs), waitMs: Math.round(waitMs), hereMs: Math.round(hereMs), takeMs: Math.round(takeMs), ms: Math.round(ME.now() - t0) };
+    const MB = { atlas: pool, adims: [PX, PY, PZ], bricks, bdims: [BX, BY, BZ], models, lods: lods.map((l) => ({ base: l.base, dims: l.dims, lo: l.lo, hi: l.hi })), statics, walkerTypes, walkerFrames, critterFrames, extraFrames, lights, stats };
     MB.voxel = ME.brickVoxel(MB);
     return MB;
   };
 
   // the private functions a model bake depends on, for the bake cache's key (src/cache.js)
-  ME.bakeModels.parts = [bricksOf, matOf, workerJob, runJobs, listOf, modelsOf, launch, workersOn, notData, defOf, sigOf];
+  ME.bakeModels.parts = [bricksOf, matOf, halfOf, workerJob, runJobs, listOf, modelsOf, launch, workersOn, notData, defOf, sigOf];
 
   // Starts a bake's worker jobs before the terrain bake, so the workers run during it (#185): the variant list
   // from st (ME.volumeDecoOf, the props bakeTerrain bakes as volumes), the models built, the jobs posted. Returns
@@ -6394,7 +6733,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   ME.brickVoxel = (MB) => {
     const { atlas: pool, bricks, models } = MB, [PX, PY] = MB.adims, [BX, BY] = MB.bdims, PB = PX / 8;
     return (mi, x, y, z) => {
-      const [bx, by, bz] = models[mi].base, k = bricks[(((bz + z) >> 3) * BY + ((by + y) >> 3)) * BX + ((bx + x) >> 3)] - 1;
+      const [bx, by, bz] = models[mi].base, k = (bricks[(((bz + z) >> 3) * BY + ((by + y) >> 3)) * BX + ((bx + x) >> 3)] & 0xffffff) - 1;
       if (k < 0) return 0;
       const qx = (k % PB) * 8 + (x & 7), qy = (Math.floor(k / PB) % PB) * 8 + (y & 7), qz = Math.floor(k / (PB * PB)) * 8 + (z & 7);
       return pool[((qz * PY + qy) * PX + qx) * 4 + 3];
@@ -6414,7 +6753,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const m = models[mi], [bx, by, bz] = m.base, [nx, ny, nz] = m.dims, [ox, oy, oz] = m.box, out = [];
     const occ = []; // the occupied bricks: [cx, cy, cz, qx, qy, qz]
     for (let cz = 0; cz < nz; cz += 8) for (let cy = 0; cy < ny; cy += 8) for (let cx = 0; cx < nx; cx += 8) {
-      const k = bricks[(((bz + cz) >> 3) * BY + ((by + cy) >> 3)) * BX + ((bx + cx) >> 3)] - 1;
+      const k = (bricks[(((bz + cz) >> 3) * BY + ((by + cy) >> 3)) * BX + ((bx + cx) >> 3)] & 0xffffff) - 1;
       if (k >= 0) occ.push([cx, cy, cz, (k % PB) * 8, (Math.floor(k / PB) % PB) * 8, Math.floor(k / (PB * PB)) * 8]);
     }
     if (max * 8 <= occ.length * 512) {
@@ -6456,7 +6795,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   const ME = window.ME, P = window.PX;
 
   ME.bakeGrass = function (T, st, pal) {
-    const t0 = ME.now(), VS = T.VS, { NX, NY, O, vox, top } = T, PLANE = NX * NY, H = P.hash, TL = T.tiles;
+    const t0 = ME.now(), VS = T.VS, { NX, NY, O, grid, top } = T, PLANE = NX * NY, H = P.hash, TL = T.tiles;
     // grass grows on the tiles whose kind asks for it (grass: true), with the content's blades (ME.content.grass)
     const GR = (ME.content || {}).grass;
     if (!GR || !TL.grass.includes(1)) return { blades: new Float32Array([0, 0, -99, 0]), count: 0, ms: 0 };
@@ -6491,7 +6830,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           const i = i0 + Math.round((H(i0, j0, b, 74) - 0.5) * 4 * KV), j = j0 + Math.round((H(i0, j0, b, 75) - 0.5) * 4 * KV);
           if (i < 1 || j < 1 || i >= NX - 1 || j >= NY - 1) continue;
           const col = j * NX + i, kt = top[col];
-          if (kt < 1 || !ok.has(vox[(kt - 1) * PLANE + col]) || vox[kt * PLANE + col]) continue;
+          if (kt < 1 || !ok.has(grid.at((kt - 1) * PLANE + col)) || grid.at(kt * PLANE + col)) continue;
           const hv = Math.max(1, Math.round(KV * (reed ? 6 + Math.floor(H(i, j, b, 76) * 7) : 2 + Math.floor(H(i, j, b, 76) * 4) + (cliff ? 1 : 0))));
           const mat = reed ? M.reed : H(i, j, b, 77) > 0.82 ? M.dry : H(i, j, b, 78) > 0.5 ? M.grass : M.grass2;
           out.push(O[0] + (i + 0.5) / VS, O[1] + (j + 0.5) / VS, O[2] + kt / VS, (mat << 8) | (Math.min(15, hv) << 4) | Math.floor(H(i, j, b, 79) * 16));
@@ -6525,7 +6864,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // Packed arrays. put() packs every typed array of 1 MB or more (the voxel grid, the mips, the coarse grid,
   // the brick pool) into run-length chunks of CHUNK bytes before the write: the packing is the record's copy
   // (the caller writes T and MB in place once put returns), and IndexedDB then clones only the chunks, where
-  // it cloned the whole grid (413 MB at vs40). A chunk is a list of tokens, each a varint v and then: when v
+  // it cloned the whole grid (433 MB at vs40). A chunk is a list of tokens, each a varint v and then: when v
   // is odd, one byte repeated v >> 1 times; when even, v >> 1 bytes as they are. A chunk that packs no
   // smaller is kept as it is (raw). get() unpacks the arrays in place; a record from before packing has none.
   const CHUNK = 1 << 22, BIG = 1 << 20, RUN = 4;
@@ -6570,10 +6909,13 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     }
   };
   // the record with its big typed arrays packed (plain objects and arrays walked; anything else kept as is,
-  // and a part with nothing to pack kept as the same object). st: the sizes, for checks
+  // and a part with nothing to pack kept as the same object). A small view into a bigger buffer is copied
+  // (IndexedDB would clone the whole buffer); a ME.BrickGrid goes as its record(). st: the sizes, for checks
   const pack = (x, st) => {
+    if (ME.BrickGrid && x instanceof ME.BrickGrid) return pack(x.record(), st);
     if (ArrayBuffer.isView(x)) {
-      if (x.byteLength < BIG || x instanceof DataView) return x;
+      if (x instanceof DataView) return x;
+      if (x.byteLength < BIG) return x.byteLength < x.buffer.byteLength ? x.slice() : x;
       const t0 = performance.now(), chunks = packBytes(new Uint8Array(x.buffer, x.byteOffset, x.byteLength));
       st.raw += x.byteLength; st.packed += chunks.reduce((s, c) => s + (c.d || c.raw).byteLength, 0); st.ms += performance.now() - t0;
       return { packed: 1, type: x.constructor.name, length: x.length, chunks };
@@ -6590,7 +6932,15 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   const unpack = (x) => {
     if (isPacked(x)) { const a = new window[x.type](x.length); unpackBytes(x.chunks, new Uint8Array(a.buffer)); return a; }
     if (Array.isArray(x)) { for (let i = 0; i < x.length; i++) x[i] = unpack(x[i]); return x; }
-    if (x && typeof x === "object" && Object.getPrototypeOf(x) === Object.prototype) { for (const k in x) x[k] = unpack(x[k]); return x; }
+    if (x && typeof x === "object" && Object.getPrototypeOf(x) === Object.prototype) {
+      // a brick grid's packed pool goes into one with room to grow (BrickGrid.room), the slots past it unused
+      if (x.brickGrid === 1 && isPacked(x.pool) && x.pool.type === "Uint8Array" && ME.BrickGrid.room) {
+        const used = x.pool.length / 4096, a = ME.BrickGrid.room(used);
+        unpackBytes(x.pool.chunks, a); x.pool = a; x.used = used;
+      }
+      for (const k in x) x[k] = unpack(x[k]);
+      return x.brickGrid === 1 ? ME.BrickGrid.from(x) : x;
+    }
     return x;
   };
 
@@ -7005,7 +7355,7 @@ struct U {
   canopy: vec4f,  // leaf layer opacity 1, 2, leaf scale 1, 2
   canopy2: vec4f, // random gap threshold, -, random gap brightness, gap rim softness
   shadow: vec4f,  // canopy texture: plane origin xy, 1/size, -
-  shadow2: vec4f, // -, beam count, sideK, shadowK
+  shadow2: vec4f, // vlod (R.set.vlod), beam count, sideK, shadowK
   beams: array<vec4f, 8>,   // x y z r: foot points of the style's sun pools
   beamK: array<vec4f, 2>,
   ids: vec4f,     // material ids: sky, water, fall, maple
@@ -7263,14 +7613,16 @@ fn faceN(d: u32) -> vec3f {
   // flips, yaw, squash and wind shear cost nothing extra.
   W.volume = W.common + /* wgsl */ `
 struct Inst { a0: vec4f, a1: vec4f, a2: vec4f, b0: vec4f, b1: vec4f, b2: vec4f, info: vec4u };
+// base.xyz the atlas corner, base.w the voxels' low bound lo (10 bits an axis), dims.xyz their high bound hi,
+// dims.w the 2x-down copy's entry (0 none): the proxy box spans lo..hi, not the model's whole box
 struct Model { base: vec4u, dims: vec4u };
 @group(1) @binding(0) var pool: texture_3d<f32>;   // occupied 8^3 bricks, 16 x 16 per layer
-@group(1) @binding(1) var bricks: texture_3d<u32>; // per brick of the layout: 0 empty, else 1 + pool slot
+@group(1) @binding(1) var bricks: texture_3d<u32>; // per brick of the layout: bits 0..23 0 empty, else 1 + pool slot; 24..31 its occupied 4^3 octants
 @group(1) @binding(2) var<storage, read> insts: array<Inst>;
 @group(1) @binding(3) var<storage, read> models: array<Model>;
 @group(1) @binding(4) var<storage, read> mats: array<vec4f>;
 
-struct VO { @builtin(position) pos: vec4f, @location(0) l: vec3f, @location(1) @interpolate(flat) ii: u32 };
+struct VO { @builtin(position) pos: vec4f, @location(0) l: vec3f, @location(1) @interpolate(flat) ii: u32, @location(2) @interpolate(flat) mk: vec2u };
 struct GO { @location(0) a: vec4f, @location(1) n: vec4f, @location(2) e: vec4f, @builtin(frag_depth) depth: f32 };
 // a marked instance's look (the app's hookMark): albedo tint (a = mix) and emitted light
 struct Mark { tint: vec4f, emit: vec3f };
@@ -7286,9 +7638,23 @@ const CUBE = array<vec3f, 36>(
 
 fn xf(I: Inst, l: vec3f) -> vec3f { let h = vec4f(l, 1.0); return vec3f(dot(I.a0, h), dot(I.a1, h), dot(I.a2, h)); }
 fn nrmW(I: Inst, n: vec3f) -> vec3f { return normalize(I.b0.xyz * n.x + I.b1.xyz * n.y + I.b2.xyz * n.z); }
+// the model drawn: the instance's (k 1), or its 2x-down copy (M.dims.w, k 2) while the copy's voxels come out at most
+// u.shadow2.x canvas pixels (R.set.vlod). The view is orthographic: one size for the whole instance.
+fn lodOf(I: Inst) -> vec2u {
+  let mi = I.info.x; let lo = models[mi].dims.w;
+  if (lo == 0u || u.shadow2.x <= 0.0) { return vec2u(mi, 1u); }
+  let hp = 0.5 * u.outres.xy; // (canvas px: dynres moves u.res, and keying on it would loop with it)
+  let ax = (u.vp * vec4f(I.a0.x, I.a1.x, I.a2.x, 0.0)).xy * hp;
+  let ay = (u.vp * vec4f(I.a0.y, I.a1.y, I.a2.y, 0.0)).xy * hp;
+  let az = (u.vp * vec4f(I.a0.z, I.a1.z, I.a2.z, 0.0)).xy * hp;
+  let px = sqrt(max(max(dot(ax, ax), dot(ay, ay)), dot(az, az))); // one model voxel, in canvas px
+  return select(vec2u(mi, 1u), vec2u(lo, 2u), 2.0 * px <= u.shadow2.x);
+}
+
+fn loOf(M: Model) -> vec3f { return vec3f(f32(M.base.w & 1023u), f32((M.base.w >> 10u) & 1023u), f32(M.base.w >> 20u)); }
 
 @vertex fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VO {
-  let I = insts[ii]; let M = models[I.info.x];
+  let I = insts[ii];
   var o: VO;
   // faces turned away from the (orthographic) view collapse: with frag_depth there is no early-z, so
   // their fragments would otherwise all run up to the back-face discard. Faces: -x +x -y +y -z +z.
@@ -7296,13 +7662,15 @@ fn nrmW(I: Inst, n: vec3f) -> vec3f { return normalize(I.b0.xyz * n.x + I.b1.xyz
   let rl = vec3f(dot(I.b0.xyz, vd), dot(I.b1.xyz, vd), dot(I.b2.xyz, vd));
   if (select(-1.0, 1.0, (f & 1u) == 1u) * rl[f >> 1u] > 0.0) { o.pos = vec4f(2.0, 2.0, 0.0, 1.0); return o; }
   var cube = CUBE;
-  let l = cube[vi] * vec3f(M.dims.xyz);
-  o.pos = u.vp * vec4f(xf(I, l), 1.0); o.l = l; o.ii = ii;
+  let mk = lodOf(I); let M = models[mk.x];
+  let lo = loOf(M);
+  let l = lo + cube[vi] * (vec3f(M.dims.xyz) - lo);
+  o.pos = u.vp * vec4f(xf(I, l * f32(mk.y)), 1.0); o.l = l; o.ii = ii; o.mk = mk;
   return o;
 }
 
 @fragment fn fs(i: VO) -> GO {
-  let I = insts[i.ii]; let M = models[I.info.x];
+  let I = insts[i.ii]; let M = models[i.mk.x]; let kf = f32(i.mk.y); // (kf: one voxel in the instance's model voxels)
   let dims = vec3f(M.dims.xyz); let idims = vec3i(M.dims.xyz);
   let vd = u.vdir.xyz;
   let rd = normalize(vec3f(dot(I.b0.xyz, vd), dot(I.b1.xyz, vd), dot(I.b2.xyz, vd)));
@@ -7311,7 +7679,7 @@ fn nrmW(I: Inst, n: vec3f) -> vec3f { return normalize(I.b0.xyz * n.x + I.b1.xyz
   let zax = abs(rd) < vec3f(1e-6);
   let inv = 1.0 / select(rd, select(vec3f(-1e-6), vec3f(1e-6), rd > vec3f(0.0)), zax);
   let ro = i.l;
-  let ta = -ro * inv; let tb = (dims - ro) * inv;
+  let ta = (loOf(M) - ro) * inv; let tb = (dims - ro) * inv;
   let tmin = min(ta, tb); let tmax = max(ta, tb);
   let tEnter = max(max(tmin.x, tmin.y), tmin.z);
   let tExit = min(min(tmax.x, tmax.y), tmax.z);
@@ -7338,13 +7706,29 @@ fn nrmW(I: Inst, n: vec3f) -> vec3f { return normalize(I.b0.xyz * n.x + I.b1.xyz
       steps += 1u;
       continue;
     }
-    let k = slot - 1u;
+    let k = (slot & 0xFFFFFFu) - 1u; let om = slot >> 24u;
     pb = vec3i(vec3u(k & 15u, (k >> 4u) & 15u, k >> 8u) * 8u);
     cell = vec3i(floor(p));
     var tMax = select((vec3f(cell) + select(vec3f(0.0), vec3f(1.0), pos) - ro) * inv, vec3f(1e30), zax);
+    var oc = vec3i(-1);
     loop {
       if (any(cell < vec3i(0)) || any(cell >= idims)) { t = tExit; break; }
       steps += 1u;
+      // an empty 4^3 octant of the brick (om): jump to where the ray leaves it, as for an empty brick
+      let co = cell >> vec3u(2u);
+      if (any(co != oc)) {
+        oc = co; let ob = co & vec3i(1);
+        if (((om >> u32(ob.x + ob.y * 2 + ob.z * 4)) & 1u) == 0u) {
+          let te = select((vec3f(co) * 4.0 + select(vec3f(0.0), vec3f(4.0), pos) - ro) * inv, vec3f(1e30), zax);
+          if (te.x <= te.y && te.x <= te.z) { axis = 0; } else if (te.y <= te.z) { axis = 1; } else { axis = 2; }
+          t = min(min(te.x, te.y), te.z) + 1e-3;
+          if (t >= tExit || steps > 200u) { break; }
+          cell = vec3i(floor(ro + rd * t));
+          if (any((cell >> vec3u(3u)) != br)) { break; }
+          tMax = select((vec3f(cell) + select(vec3f(0.0), vec3f(1.0), pos) - ro) * inv, vec3f(1e30), zax);
+          continue;
+        }
+      }
       if (textureLoad(pool, pb + (cell & vec3i(7)), 0).a > 0.0) { hit = true; break; }
       if (tMax.x < tMax.y && tMax.x < tMax.z) { t = tMax.x; cell.x += isg.x; tMax.x += tDelta.x; axis = 0; }
       else if (tMax.y < tMax.z) { t = tMax.y; cell.y += isg.y; tMax.y += tDelta.y; axis = 1; }
@@ -7355,13 +7739,13 @@ fn nrmW(I: Inst, n: vec3f) -> vec3f { return normalize(I.b0.xyz * n.x + I.b1.xyz
   }
   if (!hit) { discard; }
   let v = textureLoad(pool, pb + (cell & vec3i(7)), 0);
-  let hw = xf(I, ro + rd * t);
+  let hw = xf(I, (ro + rd * t) * kf);
   var fl = vec3f(0.0);
   fl[axis] = -sgn[axis];
   let n = normalize(mix(nrmW(I, fl), nrmW(I, octDec(v.xy * 2.0 - 1.0)), 0.8));
   let mat = u32(v.a * 255.0 + 0.5);
   let m0 = mats[mat * 2u]; let m1 = mats[mat * 2u + 1u];
-  let hc = hash13(vec3f(cell) + f32(I.info.x) * 7.0);
+  let hc = hash13(vec3f(cell) * kf + f32(I.info.x) * 7.0);
   let jit = (hc - 0.5) * m1.y;
   var nn = n;
   // foliage: every leaf voxel tilts on its own in the wind, so crowns shimmer as they sway
@@ -7375,7 +7759,7 @@ fn nrmW(I: Inst, n: vec3f) -> vec3f { return normalize(I.b0.xyz * n.x + I.b1.xyz
   o.e = vec4f(0.0);
   let mb = I.info.z; let mv = bitcast<f32>(I.info.w);
   if (mb != 0u || mv > 0.0) {
-    let g = hookMark(mb, mv, n, vec3f(cell) / u.grid.w, hc, f32(i.ii));
+    let g = hookMark(mb, mv, n, (vec3f(cell) * kf + 0.5 * (kf - 1.0)) / u.grid.w, hc, f32(i.ii));
     o.a = vec4f(mix(o.a.rgb, g.tint.rgb, g.tint.a), o.a.a);
     o.e = vec4f(g.emit, 1.0);
   }
@@ -8346,7 +8730,7 @@ fn heat(x: f32) -> vec3f { let t = clamp(x, 0.0, 1.0); return clamp(vec3f(1.5 * 
    Dug sand stays: a grain carved out of the terrain carries the life KEEP (it never expires). Once it has
    slept SETTLE_S seconds on the terrain itself (ter: the terrain cells alone, so never on loose voxels
    that will go) it goes back into the terrain: it lists its cell and material (args.settled) and is
-   marked SETTLED, still drawn and still holding its cell; the CPU writes it into T.vox and, from step
+   marked SETTLED, still drawn and still holding its cell; the CPU writes it into T.grid and, from step
    pp.e.y on, the slot is free and the cell stays solid as terrain. A clear leaves dug sand be. */
 (function () {
   const ME = window.ME, W = ME.wgsl;
@@ -8584,7 +8968,7 @@ fn update(i: u32) -> u32 {
   let reset = (pp.c.w & 2u) != 0u;
   let clearing = (pp.c.w & 1u) != 0u && (reset || !keeps(V));
   if (V.p.w > SETTLED_MIN) {
-    // back in the terrain: drawn until the CPU has it in T.vox, then the slot goes (the cell stays solid)
+    // back in the terrain: drawn until the CPU has it in T.grid, then the slot goes (the cell stays solid)
     if (reset || u32(V.v.z) <= pp.e.y) { V.k = withState(V.k, 0u); vx[i] = V; return 0u; }
     if (LIST) { return drawFaces(V); } return 0u;
   }
@@ -8875,7 +9259,7 @@ fn boxOf(V: Vox) -> Box {
                      dt) before encoding, L.compute(pass) in the "layers" compute pass, L.gbuffer(pass)
                      after the volumes (pipelines target R.gTargets with R.gDepth); L.ripples are rings
                      on the water ({x, y, t, amp}), as a sim layer's
-     carve(cells)    terrain voxels the app removed from T.vox (ME.VoxelPhysics dig, collapse): hidden in
+     carve(cells)    terrain voxels the app removed from T.grid (ME.VoxelPhysics dig, collapse): hidden in
                      the mesh, the faces they bared drawn, the density mips and sun volume updated
      pick(px, py, cam, o)  the terrain voxel or instance under a canvas pixel, on the CPU (o: terrain,
                         instances: false to skip one; accept(layer, index) to skip some instances)
@@ -9037,7 +9421,7 @@ fn boxOf(V: Vox) -> Box {
       this.rampTex = d.createTexture({ label: "ramps", size: [16, 256], format: "rgba8unorm-srgb", usage: GU.TEXTURE_BINDING | GU.COPY_DST });
       d.queue.writeTexture({ texture: this.rampTex }, S.tables.ramps, { bytesPerRow: 64 }, [16, 256]);
       this.densTex = ME.tex3d(d, "density", "r8unorm", [T.NX >> 1, T.NY >> 1, T.NZ >> 1], T.mips, 1); // half-res base: terrain shading never needed full res
-      T.mips = null; // on the GPU now; carve recomputes the region it changes from vox (58 MB at vs40)
+      T.mips = null; // on the GPU now; carve recomputes the region it changes from T.grid (58 MB at vs40)
       this.occTex = ME.tex3d(d, "coarse", "r8unorm", T.cdims, [T.coarse], 1);
       this.sunTex = d.createTexture({ label: "sunvol", size: T.cdims, dimension: "3d", format: "rgba8unorm", usage: GU.STORAGE_BINDING | GU.TEXTURE_BINDING | GU.COPY_SRC });
       this.sunBoxBuf = d.createBuffer({ label: "sunvol box", size: 32, usage: BU.UNIFORM | BU.COPY_DST }); this.sunQ = []; this.sunCells = 0; this.sunSlabs = 0; this.sunWhole = 0;
@@ -9047,8 +9431,17 @@ fn boxOf(V: Vox) -> Box {
       this.canV = this.canTex.createView();
       this.atlasTex = ME.tex3d(d, "brick pool", "rgba8unorm", MB.adims, [MB.atlas], 4);
       this.brickTex = ME.tex3d(d, "bricks", "r32uint", MB.bdims, [MB.bricks], 4);
-      const mdl = new Uint32Array(MB.models.length * 8);
-      MB.models.forEach((m, i) => mdl.set([m.base[0], m.base[1], m.base[2], 0, m.dims[0], m.dims[1], m.dims[2], 0], i * 8));
+      // the models, then their 2x-down copies (MB.lods): base.xyz the atlas corner, base.w its voxels' low bound lo
+      // (10 bits an axis), dims.xyz their high bound hi (the proxy box spans lo..hi), dims.w the copy's entry, 0 for
+      // none (a bake from before the LOD has no MB.lods)
+      const lods = MB.lods || [], nm = MB.models.length, mdl = new Uint32Array((nm + lods.length) * 8);
+      const ent = (m, w) => {
+        const lo = m.lo || [0, 0, 0], hi = m.hi || m.dims;
+        if (m.dims.some((n) => n >= 1024)) throw new Error(`a volume of ${m.dims} voxels: the model buffer packs its bounds in 10 bits an axis`);
+        return [m.base[0], m.base[1], m.base[2], lo[0] | (lo[1] << 10) | (lo[2] << 20), hi[0], hi[1], hi[2], w];
+      };
+      MB.models.forEach((m, i) => mdl.set(ent(m, m.lod >= 0 && lods[m.lod] ? nm + m.lod : 0), i * 8));
+      lods.forEach((m, j) => mdl.set(ent(m, 0), (nm + j) * 8));
       this.modelBuf = ME.buffer(d, mdl, BU.STORAGE, "models");
       this.instBuf = d.createBuffer({ label: "instances", size: S.sim.inst.byteLength, usage: BU.STORAGE | BU.COPY_DST });
       this.tVB = ME.buffer(d, S.mesh.verts, BU.VERTEX, "terrain vb");
@@ -9313,7 +9706,7 @@ fn boxOf(V: Vox) -> Box {
     carveGrass(cells) {
       const G = this.S.grass;
       if (!G || !G.count) return;
-      const T = this.S.T, NX = T.NX, PL = NX * T.NY, vox = T.vox, B = G.blades;
+      const T = this.S.T, NX = T.NX, PL = NX * T.NY, vg = T.grid, B = G.blades;
       if (!this.grassOf) {
         // per blade, its ground voxel and its own cell (bakeGrass: x, y at voxel centres, z on the ground's top);
         // per such cell, the blades on it
@@ -9329,13 +9722,13 @@ fn boxOf(V: Vox) -> Box {
       for (const n of cells) {
         const l = this.grassCells.get(n);
         if (l) for (const b of l) {
-          const z = !vox[this.grassOf[b * 2]] || vox[this.grassOf[b * 2 + 1]] ? -99 : this.grassZ[b * 4 + 2];
+          const z = !vg.at(this.grassOf[b * 2]) || vg.at(this.grassOf[b * 2 + 1]) ? -99 : this.grassZ[b * 4 + 2];
           if (B[b * 4 + 2] !== z) { B[b * 4 + 2] = z; lo = Math.min(lo, b); hi = Math.max(hi, b); }
         }
       }
       if (hi >= 0) this.dev.queue.writeBuffer(this.grassBuf, lo * 16, B, lo * 4, (hi - lo + 1) * 4);
     }
-    // Terrain voxels the app has removed or added (T.vox already changed there; cells = voxel indices, each
+    // Terrain voxels the app has removed or added (T.grid already changed there; cells = voxel indices, each
     // one emptied or filled since the last call). The greedy mesh stays: from the first carve the terrain
     // draws with a shader variant that discards the faces of carved cells (a bitset), and a small patch
     // mesh adds the faces their solid neighbours now bare and the open faces of added cells (no down
@@ -9345,7 +9738,7 @@ fn boxOf(V: Vox) -> Box {
     carve(cells) {
       if (!cells.length) return;
       this.carveGrass(cells);
-      const d = this.dev, T = this.S.T, NX = T.NX, NY = T.NY, NZ = T.NZ, PL = NX * NY, vox = T.vox;
+      const d = this.dev, T = this.S.T, NX = T.NX, NY = T.NY, NZ = T.NZ, PL = NX * NY, vg = T.grid;
       if (!this.carved) {
         this.carved = new Uint32Array(Math.ceil((PL * NZ) / 32)); this.carvedCells = new Set(); this.addedCells = new Set();
         this.carvedBuf = d.createBuffer({ label: "carved cells", size: this.carved.byteLength, usage: BU.STORAGE | BU.COPY_DST });
@@ -9362,7 +9755,7 @@ fn boxOf(V: Vox) -> Box {
       const dirty = (b) => { if (!DB[b]) { DB[b] = 1; DL.push(b); } };
       let w0 = Infinity, w1 = -1;
       for (const i of cells) {
-        const now = !!vox[i], x = i % NX, y = Math.floor(i / NX) % NY, z = Math.floor(i / PL), b = (z >> 4) * BXY + (y >> 4) * BX + (x >> 4);
+        const now = !!vg.at(i), x = i % NX, y = Math.floor(i / NX) % NY, z = Math.floor(i / PL), b = (z >> 4) * BXY + (y >> 4) * BX + (x >> 4);
         // carved: emptied and not added before; it leaves either set when it is back to how it was baked
         const inC = CC.has(i), inA = !inC && AC.has(i), carved = inC || inA ? inC && !now : !now;
         if (inC) { if (now) CC.delete(i); } else if (inA) { if (!now) AC.delete(i); } else (now ? AC : CC).add(i);
@@ -9381,13 +9774,14 @@ fn boxOf(V: Vox) -> Box {
         box[3] = Math.max(box[3], x); box[4] = Math.max(box[4], y); box[5] = Math.max(box[5], z);
       }
       d.queue.writeBuffer(this.carvedBuf, w0 * 4, C, w0, w1 - w0 + 1);
+      vg.compact(box.slice(0, 3), box.slice(3)); // bricks the change left all one material give their slots back
       // the patch is rebuilt once a frame, before the G-buffer (carvePatch): a boss's slam carved four times in
       // a frame, and each call rebuilt it from every cell carved so far (32-97 ms; Engine's probe, 2026-10-24)
       this.patchDirty = true;
       // density mips over the box (mip 0 = 2x2x2 average of occupancy, mip 1 = 2x2x2 average of mip 0, as the
       // bake's) and the coarse occupancy over its cells there (ME.coarseFill, as the bake builds it). The mips
       // live only on the GPU (init drops T.mips after the upload: 58 MB at vs40), so mip 0 is recomputed from
-      // vox into a local array over every cell mip 1 reads (each is what the bake or an earlier carve gave it)
+      // T.grid into a local array over every cell mip 1 reads (each is what the bake or an earlier carve gave it)
       // up: src covers dims from its corner o, the region lo..hi goes to the texture at lo
       const up = (tex, mip, src, dims, lo, hi, o = [0, 0, 0]) => {
         const w = hi[0] - lo[0] + 1, h = hi[1] - lo[1] + 1, z = hi[2] - lo[2] + 1, out = new Uint8Array(w * h * z);
@@ -9402,7 +9796,7 @@ fn boxOf(V: Vox) -> Box {
       const LD = [0, 1, 2].map((a) => L1[a] - L0[a] + 1), d1 = new Uint8Array(LD[0] * LD[1] * LD[2]);
       for (let z = L0[2]; z <= L1[2]; z++) for (let y = L0[1]; y <= L1[1]; y++) for (let x = L0[0]; x <= L1[0]; x++) {
         let s = 0;
-        for (let c = 0; c < 8; c++) s += vox[((2 * z + (c >> 2)) * NY + 2 * y + ((c >> 1) & 1)) * NX + 2 * x + (c & 1)] ? 255 : 0;
+        for (let c = 0; c < 8; c++) s += vg.get(2 * x + (c & 1), 2 * y + ((c >> 1) & 1), 2 * z + (c >> 2)) ? 255 : 0;
         d1[((z - L0[2]) * LD[1] + y - L0[1]) * LD[0] + x - L0[0]] = s >> 3;
       }
       up(this.densTex, 0, d1, LD, lo1, hi1, L0);
@@ -9431,7 +9825,7 @@ fn boxOf(V: Vox) -> Box {
     // as a run's carves add up (Game's profile and Engine's probe, 2026-10-24).
     carvePatch() {
       this.patchDirty = false;
-      const d = this.dev, T = this.S.T, NX = T.NX, NY = T.NY, NZ = T.NZ, PL = NX * NY, vox = T.vox, AC = this.addedCells, PB = this.patchBlocks;
+      const d = this.dev, T = this.S.T, NX = T.NX, NY = T.NY, NZ = T.NZ, PL = NX * NY, vg = T.grid, AC = this.addedCells, PB = this.patchBlocks;
       let v = this.patchScratch, n = 0;
       // the quad of face dir (0 +x, 1 -x, 2 +y, 3 -y, 4 +z) of the solid cell (a, b, c): 4 vertices of x, y, z, w
       const vtx = (x, y, z, w) => { v[n] = x; v[n + 1] = y; v[n + 2] = z; v[n + 3] = w; n += 4; };
@@ -9448,20 +9842,20 @@ fn boxOf(V: Vox) -> Box {
         if (cells) for (const c of cells) {
           const i = c % NX, j = Math.floor(c / NX) % NY, k = Math.floor(c / PL);
           if (AC.has(c)) {
-            const m = vox[c];
-            if (i + 1 >= NX || !vox[c + 1]) face(0, i, j, k, m);
-            if (i < 1 || !vox[c - 1]) face(1, i, j, k, m);
-            if (j + 1 >= NY || !vox[c + NX]) face(2, i, j, k, m);
-            if (j < 1 || !vox[c - NX]) face(3, i, j, k, m);
-            if (k + 1 >= NZ || !vox[c + PL]) face(4, i, j, k, m);
+            const m = vg.at(c);
+            if (i + 1 >= NX || !vg.at(c + 1)) face(0, i, j, k, m);
+            if (i < 1 || !vg.at(c - 1)) face(1, i, j, k, m);
+            if (j + 1 >= NY || !vg.at(c + NX)) face(2, i, j, k, m);
+            if (j < 1 || !vg.at(c - NX)) face(3, i, j, k, m);
+            if (k + 1 >= NZ || !vg.at(c + PL)) face(4, i, j, k, m);
           } else {
             // a carved cell: the faces of its solid neighbours that are as baked (an added one has its own)
             let s;
-            if (i > 0 && vox[(s = c - 1)] && !AC.has(s)) face(0, i - 1, j, k, vox[s]);
-            if (i + 1 < NX && vox[(s = c + 1)] && !AC.has(s)) face(1, i + 1, j, k, vox[s]);
-            if (j > 0 && vox[(s = c - NX)] && !AC.has(s)) face(2, i, j - 1, k, vox[s]);
-            if (j + 1 < NY && vox[(s = c + NX)] && !AC.has(s)) face(3, i, j + 1, k, vox[s]);
-            if (k > 0 && vox[(s = c - PL)] && !AC.has(s)) face(4, i, j, k - 1, vox[s]);
+            if (i > 0 && vg.at((s = c - 1)) && !AC.has(s)) face(0, i - 1, j, k, vg.at(s));
+            if (i + 1 < NX && vg.at((s = c + 1)) && !AC.has(s)) face(1, i + 1, j, k, vg.at(s));
+            if (j > 0 && vg.at((s = c - NX)) && !AC.has(s)) face(2, i, j - 1, k, vg.at(s));
+            if (j + 1 < NY && vg.at((s = c + NX)) && !AC.has(s)) face(3, i, j + 1, k, vg.at(s));
+            if (k > 0 && vg.at((s = c - PL)) && !AC.has(s)) face(4, i, j, k - 1, vg.at(s));
           }
         }
         if (n) PB.set(blk, v.slice(0, n)); else PB.delete(blk);
@@ -9664,7 +10058,7 @@ fn boxOf(V: Vox) -> Box {
       const cH = E.R + 1.2 + T.beams.reduce((m, b) => Math.max(m, b.drift ?? 0), s.beamDrift) + 4.2 * lxy, cx = E.c[0] + (15 - 1.5) * L[0] * kL, cy = E.c[1] + (15 - 1.5) * L[1] * kL;
       u.set([cx - cH, cy - cH, 1 / (2 * cH), 0], O.shadow);
       const beams = T.beams.slice(0, 8);
-      u.set([0, beams.length, g.sideK ?? 1.3, st.shadowK ?? 0.3], O.shadow2);
+      u.set([s.vlod, beams.length, g.sideK ?? 1.3, st.shadowK ?? 0.3], O.shadow2);
       // the pools (and their shafts) wander slowly through the leaves, each on its own loop of about a minute
       // and a half (beamAt); at night every other one fades out
       beams.forEach((b, i) => {
@@ -9855,7 +10249,7 @@ fn boxOf(V: Vox) -> Box {
    lost (dug grains that left the grid or had no cell to go back to).
    Dug sand stays: a grain that dig or collapse carved out of the terrain lives until it has slept a
    moment on the terrain itself (never on loose voxels that will go), then the GPU lists it and the CPU
-   writes it back into T.vox (Renderer.carve shows it), so a dig leaves a crater and a heap, not a hole.
+   writes it back into T.grid (Renderer.carve shows it), so a dig leaves a crater and a heap, not a hole.
    Loose dug sand is never recycled by the ring, nor taken by a clear.
    opts.sliceMs (0): dig and collapse spread their terrain work over frames, about that many ms a frame
    (a big collapse slides in over a few frames instead of costing one long one).
@@ -9887,7 +10281,7 @@ fn boxOf(V: Vox) -> Box {
       this.ripples = []; this.stats = { impacts: 0, rings: 0, droplets: 0, settled: 0, lost: 0 }; this.pours = []; this.digs = []; this.time = 0;
       this.carveQ = []; this.carvedTotal = 0; this.nCarve = 0; // terrain cells carved on the CPU, given back on the GPU
       // dug sand: grains queued and loose on the GPU; steps (stepNo) and the last step whose settled grains
-      // are in T.vox (freeUpTo); orig = each changed terrain cell's baked value (resetTerrain); gen = resets
+      // are in T.grid (freeUpTo); orig = each changed terrain cell's baked value (resetTerrain); gen = resets
       this.keepQueued = 0; this.keepLive = 0; this.keepUntil = -1; this.keeps = false;
       this.stepNo = 0; this.freeUpTo = 0; this.orig = new Map(); this.gen = 0; this.occReset = 0;
       this.enabled = true; this.noDraw = false; this.timeScale = 1; // 0 freezes the simulation (it still draws)
@@ -9997,14 +10391,14 @@ fn boxOf(V: Vox) -> Box {
     // A burst at p (world): n voxels taken from the ground surface within r (their materials and spots)
     // thrown up and away from p. o.speed (units/s), o.life (s). The terrain itself is not carved.
     explode(p, r = 0.55, n = 800, o = {}) {
-      const T = this.T, VS = T.VS, NX = T.NX, NY = T.NY, PL = NX * NY, vox = T.vox, rnd = () => this.rng();
+      const T = this.T, VS = T.VS, NX = T.NX, NY = T.NY, PL = NX * NY, vg = T.grid, rnd = () => this.rng();
       const ci = Math.floor((p[0] - T.O[0]) * VS), cj = Math.floor((p[1] - T.O[1]) * VS), ck = Math.floor((p[2] - T.O[2]) * VS), R = Math.ceil(r * VS);
       const cells = [];
       for (let j = cj - R; j <= cj + R; j++) for (let i = ci - R; i <= ci + R; i++) {
         if (i < 0 || j < 0 || i >= NX || j >= NY || (i - ci) ** 2 + (j - cj) ** 2 > R * R) continue;
         for (let k = Math.min(T.NZ - 2, ck + R); k >= Math.max(0, ck - R); k--) {
-          const m = vox[k * PL + j * NX + i];
-          if (m && !vox[(k + 1) * PL + j * NX + i]) { cells.push(i, j, k + 1, m); break; }
+          const m = vg.at(k * PL + j * NX + i);
+          if (m && !vg.at((k + 1) * PL + j * NX + i)) { cells.push(i, j, k + 1, m); break; }
         }
       }
       if (!cells.length) return 0;
@@ -10092,7 +10486,7 @@ fn boxOf(V: Vox) -> Box {
       for (const m of mats) { const id = typeof m === "number" ? m : names.indexOf(m); if (id > 0 && id < 256) this.sand[id] = 1; }
       return (this.nSand = this.sand.reduce((a, b) => a + b, 0));
     }
-    // Terrain sand within r of p comes loose: each cell is carved out of T.vox (the renderer hides it,
+    // Terrain sand within r of p comes loose: each cell is carved out of T.grid (the renderer hides it,
     // R.carve), given back to the solid bitset on the GPU next step (physCarve: release, which wakes the
     // voxels it held up) and becomes a loose grain in its place, thrown up and out at `speed` (0: it
     // slumps). Then the sand around that lost its footing (nothing below, or a free cell beside and below
@@ -10118,18 +10512,18 @@ fn boxOf(V: Vox) -> Box {
       while (this.jobs.length && performance.now() < this.sliceEnd) if (this.jobs[0].it.next().done) this.jobs.shift();
     }
     *loosenJob(p, r, speed, life, job) {
-      const T = this.T, VS = T.VS, NX = T.NX, NY = T.NY, NZ = T.NZ, PL = NX * NY, vox = T.vox, sand = this.sand, rnd = () => this.rng();
+      const T = this.T, VS = T.VS, NX = T.NX, NY = T.NY, NZ = T.NZ, PL = NX * NY, vg = T.grid, sand = this.sand, rnd = () => this.rng();
       const keep = life >= KEEP, half = Math.floor(this.capacity / 2), room = () => !keep || this.keepLive + this.keepQueued < half;
       if (!room()) return;
       if (keep) this.keeps = true;
       const pc = [(p[0] - T.O[0]) * VS, (p[1] - T.O[1]) * VS, (p[2] - T.O[2]) * VS], R0 = r * VS, RC = Math.ceil(R0 * 2.5) + 1;
       const [ci, cj, ck] = pc.map(Math.floor), i0 = Math.max(0, ci - RC), i1 = Math.min(NX - 1, ci + RC), j0 = Math.max(0, cj - RC), j1 = Math.min(NY - 1, cj + RC);
       const k0 = Math.max(0, ck - RC), k1 = Math.min(NZ - 1, ck + RC);
-      const at = (i, j, k) => (k < 0 ? 1 : i < 0 || j < 0 || i >= NX || j >= NY || k >= NZ ? 0 : vox[k * PL + j * NX + i]);
+      const at = (i, j, k) => (k < 0 ? 1 : i < 0 || j < 0 || i >= NX || j >= NY || k >= NZ ? 0 : vg.at(k * PL + j * NX + i));
       let out = [];
       const take = (i, j, k, vx, vy, vz) => {
-        const idx = k * PL + j * NX + i, m = vox[idx];
-        vox[idx] = 0; out.push(idx); this.changed(idx, m);
+        const idx = k * PL + j * NX + i, m = vg.at(idx);
+        vg.set(idx, 0); out.push(idx); this.changed(idx, m);
         this.emit(T.O[0] + (i + 0.5) / VS, T.O[1] + (j + 0.5) / VS, T.O[2] + (k + 0.5) / VS, vx, vy, vz, m, keep ? KEEP : life * (0.9 + 0.2 * rnd()), true, 0.25);
         if (keep) this.keepQueued++;
         job.n++;
@@ -10146,7 +10540,7 @@ fn boxOf(V: Vox) -> Box {
       const sphere = (k) => {
         for (let j = Math.max(j0, cj - RS); j <= Math.min(j1, cj + RS) && room(); j++) for (let i = Math.max(i0, ci - RS); i <= Math.min(i1, ci + RS) && room(); i++) {
           const dx = i + 0.5 - pc[0], dy = j + 0.5 - pc[1], dz = k + 0.5 - pc[2];
-          if (dx * dx + dy * dy + dz * dz > R0 * R0 || !sand[vox[k * PL + j * NX + i]]) continue;
+          if (dx * dx + dy * dy + dz * dz > R0 * R0 || !sand[vg.at(k * PL + j * NX + i)]) continue;
           const L = Math.hypot(dx, dy) || 1, s = speed * (0.3 + 0.5 * rnd());
           take(i, j, k, (dx / L) * s, (dy / L) * s, speed * (0.7 + 0.4 * rnd()));
         }
@@ -10187,7 +10581,7 @@ fn boxOf(V: Vox) -> Box {
       };
       const slide = (key, i, j, k) => {
         cur = key;
-        if (!sand[vox[key]]) return;
+        if (!sand[vg.at(key)]) return;
         if (!at(i, j, k - 1)) { take(i, j, k, 0, 0, 0); wake(i, j, k); return; }
         const r0 = hash32(key ^ salt ^ Math.imul(round + 1, 0x9e3779b9)) & 3;
         for (let q = 0; q < 4; q++) {
@@ -10200,7 +10594,7 @@ fn boxOf(V: Vox) -> Box {
       const slab0 = (k) => {
         for (let j = j0; j <= j1 && room(); j++) {
           const row = k * PL + j * NX;
-          for (let i = i0; i <= i1 && room(); i++) if (sand[vox[row + i]]) slide(row + i, i, j, k);
+          for (let i = i0; i <= i1 && room(); i++) if (sand[vg.at(row + i)]) slide(row + i, i, j, k);
         }
       };
       if (job.n) for (let k = k0; k <= k1 && room(); k++) {
@@ -10227,14 +10621,20 @@ fn boxOf(V: Vox) -> Box {
     changed(idx, was) {
       const o = this.orig.get(idx);
       if (o === undefined) this.orig.set(idx, was);
-      else if (o === this.T.vox[idx]) this.orig.delete(idx);
+      else if (o === this.T.grid.at(idx)) this.orig.delete(idx);
     }
     // The terrain as it was baked: every carved cell and settled grain undone, every loose voxel gone (for
-    // a new run). The solid bitset is rebuilt from T.vox once the clear has run. Returns the cells restored.
+    // a new run). The solid bitset is rebuilt from T.grid once the clear has run. Returns the cells restored.
     resetTerrain() {
       if (!this.R) return 0;
-      const vox = this.T.vox, flips = [], n = this.orig.size;
-      for (const [i, o] of this.orig) { if (!vox[i] !== !o) flips.push(i); vox[i] = o; }
+      const vg = this.T.grid, NX = vg.NX, NY = vg.NY, flips = [], n = this.orig.size, lo = [Infinity, Infinity, Infinity], hi = [-1, -1, -1];
+      for (const [i, o] of this.orig) {
+        if (!vg.at(i) !== !o) flips.push(i);
+        vg.set(i, o);
+        const c = [i % NX, Math.floor(i / NX) % NY, Math.floor(i / (NX * NY))];
+        for (let a = 0; a < 3; a++) { lo[a] = Math.min(lo[a], c[a]); hi[a] = Math.max(hi[a], c[a]); }
+      }
+      if (hi[0] >= 0) vg.compact(lo, hi);
       this.orig.clear();
       this.clear(); this.qh = this.qt = 0; this.carveQ.length = 0;
       this.keepLive = this.keepQueued = 0; this.gen++; this.occReset = 1; this.jobs.length = 0;
@@ -10244,13 +10644,30 @@ fn boxOf(V: Vox) -> Box {
       this.staticBits = this.staticBits0;
       return n;
     }
-    // The baked terrain's cells into the solid and terrain bitsets, at full voxel resolution (T.vox, not a
-    // density mip). Built once at init (T.vox as baked); a terrain reset uploads the same words again.
+    // The baked terrain's cells into the solid and terrain bitsets, at full voxel resolution (T.grid, not a
+    // density mip). Built once at init (T.grid as baked); a terrain reset uploads the same words again.
     writeOcc() {
       let n = 0;
       if (!this.occ0) {
-        const vox = this.T.vox, occ = (this.occ0 = new Uint32Array(this.occBuf.size / 4));
-        for (let i = 0; i < vox.length; i++) if (vox[i]) { occ[i >>> 5] |= 1 << (i & 31); n++; }
+        // a brick at a time: a uniform solid brick's rows set as bit runs, a mixed brick's cells one by one
+        const g = this.T.grid, { NX, NY, NZ, PL } = g, P = g.pool, occ = (this.occ0 = new Uint32Array(this.occBuf.size / 4));
+        g.bricks((I, J, K, v, s) => {
+          if (v === 0) return;
+          const i0 = I << 4, j0 = J << 4, k0 = K << 4, i1 = Math.min(NX, i0 + 16), j1 = Math.min(NY, j0 + 16), k1 = Math.min(NZ, k0 + 16);
+          for (let k = k0; k < k1; k++) for (let j = j0; j < j1; j++) {
+            let a = k * PL + j * NX + i0;
+            if (v > 0) {
+              const b = a + i1 - i0;
+              n += b - a;
+              while (a < b && (a & 31)) { occ[a >>> 5] |= 1 << (a & 31); a++; }
+              while (a + 32 <= b) { occ[a >>> 5] = 0xffffffff; a += 32; }
+              while (a < b) { occ[a >>> 5] |= 1 << (a & 31); a++; }
+            } else {
+              const o = s + ((k & 15) << 8) + ((j & 15) << 4) - i0;
+              for (let i = i0; i < i1; i++, a++) if (P[o + i]) { occ[a >>> 5] |= 1 << (a & 31); n++; }
+            }
+          }
+        });
       }
       this.dev.queue.writeBuffer(this.occBuf, 0, this.occ0);
       this.dev.queue.writeBuffer(this.terBuf, 0, this.occ0);
@@ -10265,7 +10682,7 @@ fn boxOf(V: Vox) -> Box {
       this.g.carve1 = this.R.bg(this.plCarve, 1, [{ buffer: this.ppBuf }, { buffer: this.occBuf }, { buffer: this.wakeBuf }, { buffer: this.carveBuf }, { buffer: this.terBuf }]);
     }
     // What the steps since the last copy logged: water impacts become rings and droplets (merged within
-    // 0.2 units, a budget per frame), settled dug grains go into T.vox. The counts are zeroed right after
+    // 0.2 units, a budget per frame), settled dug grains go into T.grid. The counts are zeroed right after
     // the copy; when every staging buffer is still being read back, everything waits in args.
     readBack() {
       const st = this.evFree.pop();
@@ -10300,11 +10717,11 @@ fn boxOf(V: Vox) -> Box {
     }
     // dug grains the GPU settled (cell, material pairs) into the terrain; their slots go from step upTo on
     settle(set, upTo) {
-      const vox = this.T.vox, cells = [];
+      const vg = this.T.grid, cells = [];
       for (let e = 0; e < set.length; e += 2) {
         const i = set[e], m = set[e + 1];
-        if (vox[i]) continue;
-        vox[i] = m; this.changed(i, 0); cells.push(i);
+        if (vg.at(i)) continue;
+        vg.set(i, m); this.changed(i, 0); cells.push(i);
       }
       this.staticBits += cells.length; this.stats.settled += cells.length;
       this.keepLive = Math.max(0, this.keepLive - set.length / 2);
@@ -10379,7 +10796,7 @@ fn boxOf(V: Vox) -> Box {
         this.dev.queue.writeBuffer(this.carveBuf, 0, a);
         this.nCarve = n; this.staticBits -= n; this.carvedTotal += n;
       }
-      // a terrain reset: the bitset from T.vox, in the step after the clear (no voxel holds a cell then)
+      // a terrain reset: the bitset from T.grid, in the step after the clear (no voxel holds a cell then)
       if (this.occReset === 2) { this.writeOcc(); this.occReset = 0; }
       if (this.clearReq) { this.clearReq = false; this.activeUntil = this.clock; if (this.occReset === 1) this.occReset = 2; }
       pu[24] = ++this.stepNo; pu[25] = this.freeUpTo;
@@ -10418,7 +10835,7 @@ fn boxOf(V: Vox) -> Box {
     // resting voxels with nothing under them this instant (they fall next step). Draw mode "list": faces =
     // faces listed in the last step, staleFaces = sleeping voxels whose cached open faces disagree with the
     // cells around them (a neighbour that changed this very step is picked up next step). Dug sand: loose =
-    // grains not yet settled, settling = settled but not yet in T.vox. restCells (not in
+    // grains not yet settled, settling = settled but not yet in T.grid. restCells (not in
     // JSON): the cells of the resting voxels.
     async census() {
       const { vox, voxU, occ, faces } = await this.readback(), T = this.T, VS = T.VS, PL = T.NX * T.NY, list = this.mode.draw === "list";
@@ -10434,10 +10851,10 @@ fn boxOf(V: Vox) -> Box {
         if (![x, y, z, vox[o + 4], vox[o + 5], vox[o + 6]].every(Number.isFinite)) { c.nonFinite++; continue; }
         const ci = Math.floor((x - T.O[0]) * VS), cj = Math.floor((y - T.O[1]) * VS), ck = Math.floor((z - T.O[2]) * VS);
         const inG = ci >= 0 && cj >= 0 && ck >= 0 && ci < T.NX && cj < T.NY && ck < T.NZ, idx = ck * PL + cj * T.NX + ci;
-        // settled dug sand: terrain once T.vox has it, else it still holds its cell
-        if (vox[o + 3] > 3e9) { if (inG && T.vox[idx]) continue; c.settling++; if (!bit(idx)) c.wrongCell++; if (seen.has(idx)) c.dupCells++; else seen.add(idx); continue; }
+        // settled dug sand: terrain once T.grid has it, else it still holds its cell
+        if (vox[o + 3] > 3e9) { if (inG && T.grid.at(idx)) continue; c.settling++; if (!bit(idx)) c.wrongCell++; if (seen.has(idx)) c.dupCells++; else seen.add(idx); continue; }
         if (vox[o + 3] >= KEEP) c.loose++;
-        if (inG && T.vox[idx]) c.inSolid++;
+        if (inG && T.grid.at(idx)) c.inSolid++;
         const wz = this.waterLevel(x, y);
         if (st === 1) {
           const sp = Math.hypot(vox[o + 4], vox[o + 5], vox[o + 6]);
@@ -10451,7 +10868,7 @@ fn boxOf(V: Vox) -> Box {
         if (vox[o + 3] <= 0.5) continue; // shrinking away: holds no cell
         if (!bit(idx)) c.wrongCell++;
         if (seen.has(idx)) c.dupCells++; else seen.add(idx);
-        if (ck > 0 && !T.vox[idx - PL] && !bit(idx - PL)) c.unsupported++;
+        if (ck > 0 && !T.grid.at(idx - PL) && !bit(idx - PL)) c.unsupported++;
         if (list && st === 3) {
           let m = 0;
           for (let f = 0; f < 6; f++) { const s = f & 1 ? 1 : -1, a = f >> 1; if (!solidAt(ci + (a === 0 ? s : 0), cj + (a === 1 ? s : 0), ck + (a === 2 ? s : 0))) m |= 1 << f; }
@@ -10488,14 +10905,14 @@ fn boxOf(V: Vox) -> Box {
     for (let t = 0; t < L; t += h) {
       const p = [a[0] + dir[0] * t, a[1] + dir[1] * t, a[2] + dir[2] * t];
       const i = Math.floor((p[0] - T.O[0]) * T.VS), j = Math.floor((p[1] - T.O[1]) * T.VS), k = Math.floor((p[2] - T.O[2]) * T.VS);
-      if (i < 0 || j < 0 || k < 0 || i >= T.NX || j >= T.NY || k >= T.NZ || !T.vox[k * PL + j * T.NX + i]) continue;
+      if (i < 0 || j < 0 || k < 0 || i >= T.NX || j >= T.NY || k >= T.NZ || !T.grid.at(k * PL + j * T.NX + i)) continue;
       const tb = t - h;
       return { a, dir, t, p: [a[0] + dir[0] * tb, a[1] + dir[1] * tb, a[2] + dir[2] * tb], cell: [i, j, k] };
     }
     return { a, dir, t: Infinity, p: null, cell: null };
   };
 
-  // The terrain half of picking (R.pick): the first solid voxel of T.vox along a view ray ({ a, dir, L }:
+  // The terrain half of picking (R.pick): the first solid voxel of T.grid along a view ray ({ a, dir, L }:
   // cam.ray), exact, cell by cell (stamped props and dug or settled cells included). Returns { t, p, n,
   // cell }: t in world units along the ray, p where it enters the voxel, n that face's outward normal.
   ME.pickGround = (T, ray) => {
@@ -10513,7 +10930,7 @@ fn boxOf(V: Vox) -> Box {
     const st = dir.map(Math.sign), c = [0, 1, 2].map((k) => Math.min(N[k] - 1, Math.max(0, Math.floor(o[k] + dir[k] * t0))));
     const tD = dir.map((d) => (d ? Math.abs(1 / d) : Infinity)), tM = [0, 1, 2].map((k) => (dir[k] ? (c[k] + (st[k] > 0) - o[k]) / dir[k] : Infinity));
     for (let t = t0; t <= t1;) {
-      if (T.vox[c[2] * PL + c[1] * T.NX + c[0]]) {
+      if (T.grid.at(c[2] * PL + c[1] * T.NX + c[0])) {
         const n = [0, 0, 0], tw = t / VS;
         if (ax >= 0) n[ax] = -st[ax]; else n[2] = 1; // (a ray that starts inside the ground)
         return { t: tw, p: [a[0] + dir[0] * tw, a[1] + dir[1] * tw, a[2] + dir[2] * tw], n, cell: c };
@@ -13764,7 +14181,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.21.0", name: "Mossheart", commit: "499459e" };
+  G.VERSION = { v: "0.22.0", name: "Mossheart", commit: "2a7bb8f" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -14571,6 +14988,20 @@ function MA_DSP() {
       }
       return best;
     }
+    // the best n targets in range, best first: what n pickTarget calls, each excluding the ones before,
+    // would give (ties to the lower index), in one pass (Thousand Needles asks for 99)
+    pickTargets(x, y, radius, mode, n, exclude = null, minR = 0) {
+      const r2 = radius * radius, m2 = minR * minR, out = [], sc = [];
+      for (let i = 0; i < CAPACITY; i++) {
+        if (!this.alive[i] || this.hidden(i)) continue;
+        const dx = this.px[i] - x, dy = this.py[i] - y, d2 = dx * dx + dy * dy;
+        if (d2 > r2 || d2 < m2 || (exclude && exclude.includes(i))) continue;
+        out.push(i); sc[i] = mode === "first" ? this.dist[i] : (this.hp[i] + this.shell[i]) * 1000 + this.dist[i];
+      }
+      out.sort((a, b) => sc[b] - sc[a] || a - b);
+      if (out.length > n) out.length = n;
+      return out;
+    }
     inRadius(x, y, radius) {
       const out = [], r2 = radius * radius;
       for (let i = 0; i < CAPACITY; i++) {
@@ -14768,14 +15199,10 @@ function MA_DSP() {
         if (first >= 0) {
           target = E.centre(first);
           shots.fire(o, first, this.damage(), this.def.speed, this.def.color, this.kind, B.pierceChain ? 1 : 0, [], lv, B);
-          const exclude = [first];
-          // (Thousand Needles: at every creature in reach)
-          for (let s = 0, n = S.mod("needles") > 0 ? 99 : Math.round(S.mod("split")); s < n; s++) {
-            const extra = E.pickTarget(this.X, this.Y, R, "first", exclude);
-            if (extra < 0) break;
-            exclude.push(extra);
+          // (Thousand Needles: at every creature in reach; firing changes no creature, so all are picked at once)
+          const n = S.mod("needles") > 0 ? 99 : Math.round(S.mod("split"));
+          if (n > 0) for (const extra of E.pickTargets(this.X, this.Y, R, "first", n, [first]))
             shots.fire(o, extra, this.damage(), this.def.speed, this.def.color, this.kind, B.pierceChain ? 1 : 0, [], lv, B);
-          }
         }
       } else if (this.kind === "sun") {
         const strong = E.pickTarget(this.X, this.Y, R, "strong");
@@ -14817,7 +15244,7 @@ function MA_DSP() {
             if (sleep) E.stun(v, 0.7);
           }
           // (Seed Pods: the burst throws thorn seeds at the creatures nearest the Heart Tree)
-          for (let k = 0, hit = []; k < (B.seeds || 0); k++) { const v = E.pickTarget(this.X, this.Y, R, "first", hit); if (v < 0) break; hit.push(v); shots.fire(o, v, this.damage(), D.TOWERS.thorn.speed, D.TOWERS.thorn.color, "thorn"); }
+          if (B.seeds) for (const v of E.pickTargets(this.X, this.Y, R, "first", B.seeds)) shots.fire(o, v, this.damage(), D.TOWERS.thorn.speed, D.TOWERS.thorn.color, "thorn");
           if (S.mod("sporestorm") > 0) this.cloudT = 3;
         }
       } else if (this.kind === "wisp") {
@@ -14845,7 +15272,7 @@ function MA_DSP() {
         // marks the toughest (II: the two toughest, III: everything in reach) and stings it a little
         const marked = [];
         if (lv >= 3) marked.push(...E.inRadius(this.X, this.Y, R));
-        else for (let k = 0; k < lv; k++) { const v = E.pickTarget(this.X, this.Y, R, "strong", marked); if (v < 0) break; marked.push(v); }
+        else marked.push(...E.pickTargets(this.X, this.Y, R, "strong", lv));
         if (marked.length) {
           target = E.centre(marked[0]);
           for (const v of marked) { G.emit("mark", { from: o, to: E.centre(v), tower: this }); E.mark(v, this.def.mark + (B.mark || 0) + S.mod("mark_bonus"), 4); if (S.mod("moonshade") > 0) E.applySlow(v, S.mod("moonshade"), 4); shots.strike(v, this.damage(), el, this.kind); }
@@ -15013,7 +15440,7 @@ function MA_DSP() {
       // than one when the next wave is called early), how many waves run since the last clear, and the gifts
       // still owed for them (one draft per wave, chained)
       this.streams = []; this.running = 0; this.owed = 0;
-      this.heartShock = 0; this.plans = new Map(); this.hitsSeen = 0; this.lastCount = -1;
+      this.heartShock = 0; this.plans = new Map(); this.hitsSeen = 0; this.lastCount = -1; this.wavesT = 0;
       this.time = 0;
       // boon timers: the brambles' next scratch, the fireflies' next zap, the Heart Tree's next pulse, the
       // spore clouds' next sting and the wildfire's next leap
@@ -15304,7 +15731,11 @@ function MA_DSP() {
       this.hitsSeen = hits;
       S.combat += (rate - S.combat) * (1 - Math.exp(-dt * 1.5));
       S.danger = this.enemies.maxProgress();
-      if (this.enemies.count !== this.lastCount) { this.lastCount = this.enemies.count; G.emit("waves"); }
+      // (the almanac's "N left" at most four times a second, and at once when the field empties: in a late
+      // wave the count changes most frames, and each "waves" rebuilds the almanac and refreshes the HUD)
+      this.wavesT += dt;
+      const n = this.enemies.count;
+      if (n !== this.lastCount && (this.wavesT >= 0.25 || n === 0)) { this.lastCount = n; this.wavesT = 0; G.emit("waves"); }
     }
     updateIntensity(dt) {
       this.heartShock = Math.max(0, this.heartShock - dt * 0.35);
@@ -16052,10 +16483,11 @@ function MA_DSP() {
   G.checkTowers = () => JSON.stringify(TOWERS.check());
 
   // frames: the idle loop's flipbook (FRAMES when unset). The plants hold still for now (one frame each,
-  // 24 volumes for the eight at three levels); their idle loop is a follow-up.
+  // 24 volumes for the eight at three levels); their idle loop is a follow-up. fine: the voxel density, as
+  // the creatures' (1.6: 64 over the vs40 terrain; G.HERO_MAX caps it, 32 on phones), drawn at 1/fine.
   G.TOWER_MODELS = {
-    thorn: { name: "ms_tw_thorn", size: 0.72, frames: 1 }, sun: { name: "ms_tw_sun", size: 0.72, frames: 1 }, puff: { name: "ms_tw_puff", size: 0.72, frames: 1 }, wisp: { name: "ms_tw_wisp", size: 0.72, frames: 1 },
-    briar: { name: "ms_tw_briar", size: 0.72, frames: 1 }, toad: { name: "ms_tw_toad", size: 0.72, frames: 1 }, moon: { name: "ms_tw_moon", size: 0.72, frames: 1 }, lily: { name: "ms_tw_lily", size: 0.72, frames: 1 },
+    thorn: { name: "ms_tw_thorn", size: 0.72, fine: 1.6, frames: 1 }, sun: { name: "ms_tw_sun", size: 0.72, fine: 1.6, frames: 1 }, puff: { name: "ms_tw_puff", size: 0.72, fine: 1.6, frames: 1 }, wisp: { name: "ms_tw_wisp", size: 0.72, fine: 1.6, frames: 1 },
+    briar: { name: "ms_tw_briar", size: 0.72, fine: 1.6, frames: 1 }, toad: { name: "ms_tw_toad", size: 0.72, fine: 1.6, frames: 1 }, moon: { name: "ms_tw_moon", size: 0.72, fine: 1.6, frames: 1 }, lily: { name: "ms_tw_lily", size: 0.72, fine: 1.6, frames: 1 },
   };
   G.HEART_MODEL = { name: "ms_heart", size: 1.25 };
   // the asset models grow by level themselves; the instance adds only a touch
@@ -16148,7 +16580,7 @@ function MA_DSP() {
     const out = {};
     for (const k in G.CREATURE_MODELS) { if (!G.Defs.ENEMIES[k]) continue; const c = G.CREATURE_MODELS[k]; out["e_" + k] = [c.name, { scale: k0(c.name) * c.size, fine: c.fine }, FRAMES]; }
     // (only the plants the rules have: a model may land before its plant)
-    for (const k in G.TOWER_MODELS) { if (!G.Defs.TOWERS[k]) continue; const c = G.TOWER_MODELS[k]; for (let lv = 1; lv <= 3; lv++) out["t_" + k + lv] = [c.name, { lv, scale: k0(c.name) * c.size }, c.frames || FRAMES]; }
+    for (const k in G.TOWER_MODELS) { if (!G.Defs.TOWERS[k]) continue; const c = G.TOWER_MODELS[k]; for (let lv = 1; lv <= 3; lv++) out["t_" + k + lv] = [c.name, { lv, scale: k0(c.name) * c.size, fine: c.fine }, c.frames || FRAMES]; }
     for (const h of [1, 2]) out["heart" + h] = [G.HEART_MODEL.name, heartO(h), FRAMES]; // its crown's sway, as stage 0's
     return out;
   };
@@ -17350,7 +17782,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.p = new Float32Array(MAXP * 3); this.v = new Float32Array(MAXP * 3); this.c = new Float32Array(MAXP * 3);
       this.life = new Float32Array(MAXP); this.max = new Float32Array(MAXP); this.size = new Float32Array(MAXP);
       this.grav = new Float32Array(MAXP); this.damp = new Float32Array(MAXP); this.glow = new Uint8Array(MAXP);
-      this.beams = []; this.rings = []; this.lastMark = [0, 0];
+      this.beams = []; this.rings = []; this.lastMark = [0, 0]; this.lastCrit = 0;
       this.quality = 1;
       // floating text: a pool of DOM labels
       this.layer = document.getElementById("floats");
@@ -17368,7 +17800,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       });
       on("hit", (e) => {
         const at = e.pos;
-        if (e.crit) this.floatText([at[0], at[1], at[2] + 0.6], "crit!", [1, 0.9, 0.5]);
+        // (a "crit!" at most every 0.15 s: with the crit boons a late wave crits many times a frame)
+        if (e.crit && performance.now() - this.lastCrit >= 150) { this.lastCrit = performance.now(); this.floatText([at[0], at[1], at[2] + 0.6], "crit!", [1, 0.9, 0.5]); }
         if (e.result !== G.Hit.PLAIN) this.hitMark(at, e.element, e.result === G.Hit.WEAK);
         if (e.shot) this.burst("hit_" + e.source, at);
       });
@@ -18449,15 +18882,15 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         this.plantsDrawn.push(t);
         const a = this.anim.get(t), sc = this.plantScale(t, a);
         const fr = MD.towerFrames(t.kind, t.level), f = fr[Math.floor((((time * 1.1 + a.phase) % 1) + 1) % 1 * fr.length) % fr.length];
-        const sway = Math.sin(time * 0.9 + a.phase) * 0.025;
-        sim.put(i++, f, t.X, t.Y, t.Z, 0, false, sc, [a.lean[0] + sway, a.lean[1] - sway * 0.5], 1, 0, (t === sel ? MARK.SELECTED : 0) | G.plantMark(t.kind), 0);
+        const sway = Math.sin(time * 0.9 + a.phase) * 0.025, k = 1 / this.MB.models[f].fine; // (a fine plant is drawn at 1/fine)
+        sim.put(i++, f, t.X, t.Y, t.Z, 0, false, [sc[0] * k, sc[1] * k, sc[2] * k], [a.lean[0] + sway, a.lean[1] - sway * 0.5], 1, 0, (t === sel ? MARK.SELECTED : 0) | G.plantMark(t.kind), 0);
       }
       const hv = this.hover, w = game.world;
       if (this.seed && hv && hv.cell && !game.towerAt(hv.cell[0], hv.cell[1]) && w.inside(hv.cell[0], hv.cell[1])) {
         // (a little smaller than the plant it would be, and breathing, so it reads as a preview; tinted green,
         // red where it can't go, dew blue where it could but the seed is too dear: both ghost marks)
         const block = game.placeBlock(this.seed, hv.cell[0], hv.cell[1]), [X, Y, Z] = w.cellCentre(hv.cell[0], hv.cell[1]);
-        const fr = MD.towerFrames(this.seed, 1), f = fr[Math.floor(((time * 1.1) % 1) * fr.length) % fr.length], bob = 0.86 + Math.sin(time * 4) * 0.05;
+        const fr = MD.towerFrames(this.seed, 1), f = fr[Math.floor(((time * 1.1) % 1) * fr.length) % fr.length], bob = (0.86 + Math.sin(time * 4) * 0.05) / this.MB.models[f].fine;
         const gm = block === "dew" ? MARK.GHOST_OK | MARK.GHOST_BAD : block ? MARK.GHOST_BAD : MARK.GHOST_OK;
         sim.put(i++, f, X, Y, Z, 0, false, [bob, bob, bob], [0, 0], 1, 0, gm | G.plantMark(this.seed), 0);
       }
@@ -19350,8 +19783,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const running = Object.keys(left).length > 0;
       let tag = "coming";
       if (running) tag = `now · ${Object.values(left).reduce((a, b) => a + b, 0)} left`;
-      $("almbody").innerHTML = this.waveHtml(first, tag, running ? left : null) + this.waveHtml(second, running ? "next" : "after", null) +
+      const html = this.waveHtml(first, tag, running ? left : null) + this.waveHtml(second, running ? "next" : "after", null) +
         this.giftsHtml() + `<div class="legend">halo = resists · pulsing veins = weak spot</div>`;
+      if (html !== this.almHtml) { this.almHtml = html; $("almbody").innerHTML = html; }
       this.matchup = this.matchups(first, running ? left : null);
       // the folded tab's line: the wave on the field (or coming) and how many creatures it still holds
       const n = running ? Object.values(left).reduce((a, b) => a + b, 0) : first.groups.reduce((a, g) => a + g.count, 0);
