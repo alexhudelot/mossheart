@@ -365,8 +365,27 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 .lblist li { display: grid; grid-template-columns: 2.2em 1fr auto; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 10px; background: rgba(205, 191, 152, 0.18); }
 .lblist li.gap { display: block; text-align: center; background: none; padding: 0; opacity: 0.6; }
 .lblist .rk { text-align: center; font-variant-numeric: tabular-nums; }
-.lblist .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lblist .nm small { color: #f6b3c6; font-weight: 700; margin-left: 4px; }
+.lblist .nm { min-width: 0; display: flex; flex-direction: column; }
+.lblist .nn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lblist .nn small { color: #f6b3c6; font-weight: 700; margin-left: 4px; }
+/* a row's recap (its garden on the All board, most dew, boons, plants, what it fell to) and the card a tap
+   opens under it */
+.lblist li[data-i] { cursor: pointer; }
+.lblist li[data-i]:focus-visible { outline: 2px solid var(--moss); outline-offset: 1px; }
+.lbrc { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: 0.78em; opacity: 0.85; line-height: 1.3; }
+.lbrc small { font-size: 0.9em; margin: 0 3px 0 1px; font-variant-numeric: tabular-nums; }
+.lbset { display: inline-flex; align-items: center; white-space: nowrap; }
+.lbic { display: inline-flex; width: 1.15em; height: 1.15em; font-style: normal; align-items: center; justify-content: center; }
+.lbic svg { width: 100%; height: 100%; }
+.lbg { font-style: normal; font-weight: 700; padding: 0 6px; border-radius: 999px; background: rgba(120, 150, 90, 0.2); color: var(--moss); }
+.lbg.g-fernglass { background: rgba(90, 170, 160, 0.22); color: #9ad8cb; }
+.lbg.g-cornmoon { background: rgba(220, 170, 70, 0.22); color: #ecc872; }
+.lbdew { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lbmore { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 3px; margin: 2px 0 2px; padding: 6px 8px; border-radius: 8px; background: rgba(20, 12, 6, 0.42); font-size: 0.86em; }
+.lbml { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: center; }
+.lbml > b { min-width: 4.4em; color: var(--moss); }
+.lbk { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.lbfoot { opacity: 0.7; font-size: 0.92em; }
 .lblist .wv { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .lblist li.r1 .rk, .lblist li.r2 .rk, .lblist li.r3 .rk { border-radius: 999px; color: #fff; line-height: 1.6em; }
 .lblist li.r1 .rk { background: #d9a531; }
@@ -9296,17 +9315,30 @@ fn boxOf(V: Vox) -> Box {
   const BLEND_ALPHA = { color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" }, alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" } };
   const BLEND_ADD = { color: { srcFactor: "one", dstFactor: "one", operation: "add" }, alpha: { srcFactor: "one", dstFactor: "one", operation: "add" } };
   const SPRITE_MAX = 6144, LIGHT_MAX = 255, BUBBLE_MAX = 64; // bubbles: at most 64 sprites, their own buffer
+  const SPRITE_CAP = 1 << 17; // the sprite batch doubles from SPRITE_MAX up to this (6 MB)
+  const RING_MAX = 48; // water rings drawn (ringBuf)
+  const byBirth = (a, b) => b[2] - a[2]; // newest ring first
+  const BEAM_COL = [255, 212, 146], MOON_COL = [168, 196, 244]; // the shafts' colour by day and by moonlight
+  const set4 = (u, o, a, b, c, d) => { u[o] = a; u[o + 1] = b; u[o + 2] = c; u[o + 3] = d; }; // (writeUniforms: no array per vec4)
   const SPRAY_MAX = 4096; // the rim spills' spray voxels, all spills together
 
   // Sprite kinds of the sprite pass (W.sprites): additive and depth tested, except BAR (alpha, on top).
   ME.SPRITE = { ORB: 0, RING: 1, BEAM: 2, STREAK: 3, PUFF: 4, GROUND: 5, BAR: 10 };
   // CPU side of the sprite pass, refilled every frame: put() the additive sprites, then overlay(), then
   // the bars. 12 floats per sprite: a = point + size, b = second point (bars: w, h px + fill) + kind, c = rgba.
+  // The array is kept from frame to frame and doubles when a frame fills it (up to SPRITE_CAP sprites; past
+  // that put() drops them); the renderer's GPU buffer doubles with it (Renderer.growSprites).
   class SpriteBatch {
     constructor(max = SPRITE_MAX) { this.max = max; this.data = new Float32Array(max * 12); this.n = 0; this.nAdd = 0; this.nAlpha = 0; this.split = -1; }
     begin() { this.n = 0; this.split = -1; }
+    grow() {
+      if (this.max >= SPRITE_CAP) return false;
+      const d = new Float32Array(this.data.length * 2);
+      d.set(this.data); this.data = d; this.max *= 2;
+      return true;
+    }
     put(ax, ay, az, size, bx, by, bz, kind, r, g, b, a) {
-      if (this.n >= this.max) return;
+      if (this.n >= this.max && !this.grow()) return;
       const o = this.n++ * 12, d = this.data;
       d[o] = ax; d[o + 1] = ay; d[o + 2] = az; d[o + 3] = size; d[o + 4] = bx; d[o + 5] = by; d[o + 6] = bz; d[o + 7] = kind;
       d[o + 8] = r; d[o + 9] = g; d[o + 10] = b; d[o + 11] = a;
@@ -9432,10 +9464,12 @@ fn boxOf(V: Vox) -> Box {
     }
 
     // (the elevation clamp bounds sunRegion's sweep along the sun ray: L.z >= sin 0.2)
-    sunDir() {
-      const [x, y, z] = this.L0, az = (this.set.sunAz * Math.PI) / 180, el0 = Math.asin(z), el = Math.max(0.2, Math.min(1.45, el0 + (this.set.sunEl * Math.PI) / 180));
+    // (into o if given: no allocation)
+    sunDir(o = [0, 0, 0]) {
+      const x = this.L0[0], y = this.L0[1], z = this.L0[2], az = (this.set.sunAz * Math.PI) / 180, el0 = Math.asin(z), el = Math.max(0.2, Math.min(1.45, el0 + (this.set.sunEl * Math.PI) / 180));
       const a0 = Math.atan2(y, x) + az;
-      return [Math.cos(el) * Math.cos(a0), Math.cos(el) * Math.sin(a0), Math.sin(el)];
+      o[0] = Math.cos(el) * Math.cos(a0); o[1] = Math.cos(el) * Math.sin(a0); o[2] = Math.sin(el);
+      return o;
     }
 
     async init() {
@@ -9574,8 +9608,8 @@ fn boxOf(V: Vox) -> Box {
         this.wcellBuf = ME.buffer(d, wc, BU.STORAGE, "water cells");
       }
       this.buildBubbles();
-      this.ringBuf = d.createBuffer({ label: "rings", size: 48 * 16, usage: BU.STORAGE | BU.COPY_DST });
-      this.ringData = new Float32Array(48 * 4);
+      this.ringBuf = d.createBuffer({ label: "rings", size: RING_MAX * 16, usage: BU.STORAGE | BU.COPY_DST });
+      this.ringData = new Float32Array(RING_MAX * 4); this.ringQ = { pool: [], n: 0, live: [] }; // this frame's ring candidates, pooled [x, y, t0, amp]
       this.ripples = { n: 0 };
       this.pondTiles = T.water.filter((w) => !w.stream);
       const fv = [], fi = [];
@@ -9591,9 +9625,11 @@ fn boxOf(V: Vox) -> Box {
     fallsLook(f) { return f.fk || (this.lookNone ??= ME.waterLook({})); }
     // where beam i's pool sits at time: its foot point wandering on two slow sines, about a minute and a half a
     // loop, by its own drift (b.drift, units) or R.set.beamDrift. The shaft pass and the critters both read it.
-    beamAt(i, time) {
+    // (into o if given: no allocation)
+    beamAt(i, time, o = [0, 0]) {
       const b = this.S.T.beams[i], dr = b.drift ?? this.set.beamDrift, ph = i * 2.39;
-      return [b.x + dr * Math.sin(time * 0.071 + ph), b.y + dr * 0.8 * Math.sin(time * 0.053 + ph * 1.7 + 1)];
+      o[0] = b.x + dr * Math.sin(time * 0.071 + ph); o[1] = b.y + dr * 0.8 * Math.sin(time * 0.053 + ph * 1.7 + 1);
+      return o;
     }
 
     // Bubbles, for water whose look has them (water kinds' bubbles): emitters at the props the content picks
@@ -9626,14 +9662,19 @@ fn boxOf(V: Vox) -> Box {
     }
     // the bubbles alive at time (deterministic: each emitter's j-th bubble is born at a hashed time), at most
     // BUBBLE_MAX sprites; their pops go into the water rings
-    updateBubbles(time, rings) {
+    updateBubbles(time) {
       const H = window.PX.hash, VS = this.S.T.VS, d = this.bubbleData, POP = 0.4;
       let n = 0;
-      const put = (x, y, z, size, c, k, kind) => { if (n >= BUBBLE_MAX) return; d.set([x, y, z, size, x, y, z, kind, c[0] * k, c[1] * k, c[2] * k, 1], n++ * 12); };
+      const put = (x, y, z, size, c, k, kind) => {
+        if (n >= BUBBLE_MAX) return;
+        const o = n++ * 12;
+        d[o] = x; d[o + 1] = y; d[o + 2] = z; d[o + 3] = size; d[o + 4] = x; d[o + 5] = y; d[o + 6] = z; d[o + 7] = kind;
+        d[o + 8] = c[0] * k; d[o + 9] = c[1] * k; d[o + 10] = c[2] * k; d[o + 11] = 1;
+      };
       const one = (x0, y0, z0, zs, b, L, t0, key) => {
         const life = (zs - z0) / b.rise, age = time - t0;
         if (age < 0) return;
-        if (age > life) { if (age - life < 2.6) rings.push([x0, y0, t0 + life, 0.05]); }
+        if (age > life) { if (age - life < 2.6) this.ring(x0, y0, t0 + life, 0.05); }
         if (age > life + POP) return;
         const sz = ((b.size[0] + (b.size[1] - b.size[0]) * H(key, 1, 0, 53)) / VS) * 0.5, ph = H(key, 2, 0, 53) * 6.283, wob = 0.025 * Math.min(1, age * 2);
         const x = x0 + Math.sin(age * 7 + ph) * wob, y = y0 + Math.cos(age * 6 + ph * 1.3) * wob;
@@ -9644,35 +9685,54 @@ fn boxOf(V: Vox) -> Box {
         const b = E.L.bubbles, life = (E.zs - E.z0) / b.rise, j1 = Math.floor(time * E.rate), back = Math.ceil((life + 2.6) * E.rate) + 1;
         for (let j = j1; j >= j1 - back; j--) one(E.x + (H(e, j, 3, 53) - 0.5) * 0.16, E.y + (H(e, j, 4, 53) - 0.5) * 0.16, E.z0, E.zs, b, E.L, (j + 0.8 * H(e, j, 0, 53)) / E.rate, e * 7919 + j);
       });
-      this.bubbleExtra = this.bubbleExtra.filter((B) => time - B.t0 < (B.zs - B.z0) / B.b.rise + 2.6);
-      this.bubbleExtra.forEach((B, k) => one(B.x, B.y, B.z0, B.zs, B.b, B.L, B.t0, 9e6 + k));
+      const X = this.bubbleExtra;
+      let m = 0;
+      for (let k = 0; k < X.length; k++) if (time - X[k].t0 < (X[k].zs - X[k].z0) / X[k].b.rise + 2.6) X[m++] = X[k];
+      X.length = m;
+      for (let k = 0; k < m; k++) { const B = X[k]; one(B.x, B.y, B.z0, B.zs, B.b, B.L, B.t0, 9e6 + k); }
       this.bubbleN = n;
+    }
+    // one water ring for this frame (updateRings), into the pool: [x, y, birth time, amplitude]
+    ring(x, y, t0, amp) {
+      const Q = this.ringQ, r = Q.pool[Q.n] || (Q.pool[Q.n] = [0, 0, 0, 0]);
+      r[0] = x; r[1] = y; r[2] = t0; r[3] = amp; Q.n++;
     }
 
     // Water rings for this frame: steady ones where the falls plunge and the odd insect touching the
     // still water (derived from time, so frozen-time shots get them too), plus critter splashes.
+    // (The candidates go into a pool, ring(), so a frame allocates nothing once the pool has grown.)
     updateRings(time) {
-      const H = window.PX.hash, T = this.S.T, out = [];
-      T.falls.forEach((f, i) => {
+      const H = window.PX.hash, T = this.S.T, Q = this.ringQ;
+      Q.n = 0;
+      for (let i = 0; i < T.falls.length; i++) {
+        const f = T.falls[i];
         // a look's foam gain above 1 lands them more often
         const fm = Math.max(1, this.fallsLook(f).falls.foam), P = 0.55 / fm, j0 = Math.floor(time / P + i * 0.37);
         for (let j = j0 - Math.ceil(2 * fm - 1e-6); j <= j0; j++) {
           const t0 = (j - i * 0.37) * P, u = H(i, j, 1, 41), off = 0.08 + 0.12 * H(i, j, 2, 41);
-          out.push([lerpN(f.a[0], f.b[0], u) + f.n[0] * off, lerpN(f.a[1], f.b[1], u) + f.n[1] * off, t0, 0.55]);
+          this.ring(lerpN(f.a[0], f.b[0], u) + f.n[0] * off, lerpN(f.a[1], f.b[1], u) + f.n[1] * off, t0, 0.55);
         }
-      });
+      }
       const pt = this.pondTiles;
       if (pt.length) for (let j = Math.floor(time / 0.9) - 3; j <= Math.floor(time / 0.9); j++) {
         const w = pt[Math.floor(H(j, 3, 0, 43) * pt.length)];
-        out.push([w.x + 0.15 + 0.7 * H(j, 4, 0, 43), w.y + 0.15 + 0.7 * H(j, 5, 0, 43), j * 0.9 + H(j, 6, 0, 43) * 0.5, 0.22]);
+        this.ring(w.x + 0.15 + 0.7 * H(j, 4, 0, 43), w.y + 0.15 + 0.7 * H(j, 5, 0, 43), j * 0.9 + H(j, 6, 0, 43) * 0.5, 0.22);
       }
       // ripples queued by the sim's instance layers (critter splashes) and the GPU layers (voxel physics)
-      for (const L of [...this.S.sim.layers, ...this.layers]) if (L.ripples) for (const e of L.ripples) if (time - e.t < 3 && time >= e.t) out.push([e.x, e.y, e.t, e.amp]);
-      if (this.bubbleEm && (this.bubbleEm.length || this.bubbleExtra.length)) this.updateBubbles(time, out);
-      const live = out.filter((r) => time >= r[2] && time - r[2] < 2.6).sort((a, b) => b[2] - a[2]).slice(0, 48);
-      live.forEach((r, k) => this.ringData.set(r, k * 4));
-      this.ripples.n = live.length;
-      if (live.length) this.dev.queue.writeBuffer(this.ringBuf, 0, this.ringData, 0, live.length * 4);
+      for (let g = 0; g < 2; g++) {
+        const LL = g ? this.layers : this.S.sim.layers;
+        for (let l = 0; l < LL.length; l++) { const R = LL[l].ripples; if (R) for (let k = 0; k < R.length; k++) { const e = R[k]; if (time - e.t < 3 && time >= e.t) this.ring(e.x, e.y, e.t, e.amp); } }
+      }
+      if (this.bubbleEm && (this.bubbleEm.length || this.bubbleExtra.length)) this.updateBubbles(time);
+      // the live ones, newest first (a stable sort: ties keep the order above), at most RING_MAX
+      const live = Q.live;
+      live.length = 0;
+      for (let k = 0; k < Q.n; k++) { const r = Q.pool[k]; if (time >= r[2] && time - r[2] < 2.6) live.push(r); }
+      live.sort(byBirth);
+      const n = Math.min(RING_MAX, live.length), D = this.ringData;
+      for (let k = 0; k < n; k++) { const r = live[k], o = k * 4; D[o] = r[0]; D[o + 1] = r[1]; D[o + 2] = r[2]; D[o + 3] = r[3]; }
+      this.ripples.n = n;
+      if (n) this.dev.queue.writeBuffer(this.ringBuf, 0, D, 0, n * 4);
     }
 
     // Point lights (glowing prims of the volumes + ground lanterns) in a storage buffer, binned into a
@@ -10048,58 +10108,60 @@ fn boxOf(V: Vox) -> Box {
       const u = this.u, O = ME.UOFF, S = this.S, T = S.T, st = S.st, s = this.set, [w, h] = this.size;
       const M = cam.matrices(this.out[0], this.out[1]);
       u.set(M.vp, O.vp); u.set(M.ivp, O.ivp);
-      u.set([...M.vdir, time], O.vdir);
-      const L = this.sunDir();
-      if (!this.lastL || L.some((v, i) => Math.abs(v - this.lastL[i]) > 1e-4)) { this.sunDirty = true; this.lastL = L; }
-      u.set([...L, 0], O.sun);
-      u.set([w, h, 1 / w, 1 / h], O.res);
-      u.set([...T.O, T.VS], O.grid);
+      u.set(M.vdir, O.vdir); u[O.vdir + M.vdir.length] = time;
+      const L = this.sunDir(this.sunL || (this.sunL = [0, 0, 0])), LL = this.lastL;
+      if (!LL || Math.abs(L[0] - LL[0]) > 1e-4 || Math.abs(L[1] - LL[1]) > 1e-4 || Math.abs(L[2] - LL[2]) > 1e-4) { this.sunDirty = true; this.lastL = [L[0], L[1], L[2]]; }
+      set4(u, O.sun, L[0], L[1], L[2], 0);
+      set4(u, O.res, w, h, 1 / w, 1 / h);
+      u.set(T.O, O.grid); u[O.grid + T.O.length] = T.VS;
       const fno = this.pinFrame ?? this.frameNo; // the frame number the shaders see (R.pinFrame holds it for frozen shots)
-      u.set([T.NX, T.NY, T.NZ, fno], O.dims);
-      u.set([...T.O, T.CPU], O.cgrid);
-      u.set([...T.cdims, 0], O.cdims);
-      u.set([s.shade, s.pool, s.amb, s.aoK], O.look);
-      u.set([BEVEL, s.ramp ? 1 : 0, this.ext.jar ? this.ext.dome : -this.ext.half[1], s.canopy ? 1 : 0], O.look2);
+      set4(u, O.dims, T.NX, T.NY, T.NZ, fno);
+      u.set(T.O, O.cgrid); u[O.cgrid + T.O.length] = T.CPU;
+      u.set(T.cdims, O.cdims); u[O.cdims + T.cdims.length] = 0;
+      set4(u, O.look, s.shade, s.pool, s.amb, s.aoK);
+      set4(u, O.look2, BEVEL, s.ramp ? 1 : 0, this.ext.jar ? this.ext.dome : -this.ext.half[1], s.canopy ? 1 : 0);
       // the moon, 0 by day to 1 at night (the dusk blend, as in daycycle.js): the shafts turn pale blue-silver,
       // fewer (every other pool fades), less streaky, and gain moonK so they still read once the dusk has
       // dimmed shaftK (the gain comes in late, so dusk itself stays soft)
       const dk = s.cycle > 0 ? 0.5 - 0.5 * Math.cos((time / s.cycle) * Math.PI * 2) : Math.max(0, Math.min(1, s.dusk));
       const mt = Math.max(0, Math.min(1, (dk - 0.55) / 0.45)), moon = mt * mt * (3 - 2 * mt);
-      u.set([s.debug, s.shafts ? s.shaftK * (1 + s.moonK * moon * moon * moon) : 0, s.bloomK, s.exposure], O.look3);
+      set4(u, O.look3, s.debug, s.shafts ? s.shaftK * (1 + s.moonK * moon * moon * moon) : 0, s.bloomK, s.exposure);
       const fog = (st.hd && st.hd.fog) || [40, 32, 18];
-      u.set([ME.lin(fog[0]), ME.lin(fog[1]), ME.lin(fog[2]), s.haze], O.fog);
-      const bc = (st.hd && st.hd.beamCol) || [255, 212, 146], MOON = [168, 196, 244];
-      u.set([0, 1, 2].map((k) => lerpN(bc[k], MOON[k], moon) / 255).concat(s.vignette), O.beamCol);
+      set4(u, O.fog, ME.lin(fog[0]), ME.lin(fog[1]), ME.lin(fog[2]), s.haze);
+      const bc = (st.hd && st.hd.beamCol) || BEAM_COL;
+      set4(u, O.beamCol, lerpN(bc[0], MOON_COL[0], moon) / 255, lerpN(bc[1], MOON_COL[1], moon) / 255, lerpN(bc[2], MOON_COL[2], moon) / 255, s.vignette);
       const g = st.light;
-      u.set([0.62, 0.38, 1.7, 3.1], O.canopy);
-      u.set([0.68, 0, 0.4, Math.min(0.6, (g.soft ?? 0.16) * 2.2)], O.canopy2);
-      u.set([...ME.WIND_DIR, s.wind ? s.windK : 0, 0], O.wind);
-      u.set([15, 4.5, 1.0, moon], O.canopy3);
-      u.set([this.ripples ? this.ripples.n : 0, s.water ? 1 : 0, this.wl ? this.wl.W : 0, this.wl ? this.wl.H : 0], O.water2);
+      set4(u, O.canopy, 0.62, 0.38, 1.7, 3.1);
+      set4(u, O.canopy2, 0.68, 0, 0.4, Math.min(0.6, (g.soft ?? 0.16) * 2.2));
+      u.set(ME.WIND_DIR, O.wind); u[O.wind + ME.WIND_DIR.length] = s.wind ? s.windK : 0; u[O.wind + ME.WIND_DIR.length + 1] = 0;
+      set4(u, O.canopy3, 15, 4.5, 1.0, moon);
+      set4(u, O.water2, this.ripples ? this.ripples.n : 0, s.water ? 1 : 0, this.wl ? this.wl.W : 0, this.wl ? this.wl.H : 0);
       u.set(this.lgrid, O.lgrid);
       // canopy texture domain: the island projected along the sun onto the canopy plane (z = 15), with
       // room for the island's height range and the wind sway
       const E = this.ext, kL = 1 / Math.max(L[2], 0.2), lxy = Math.hypot(L[0], L[1]) * kL;
-      const cH = E.R + 1.2 + T.beams.reduce((m, b) => Math.max(m, b.drift ?? 0), s.beamDrift) + 4.2 * lxy, cx = E.c[0] + (15 - 1.5) * L[0] * kL, cy = E.c[1] + (15 - 1.5) * L[1] * kL;
-      u.set([cx - cH, cy - cH, 1 / (2 * cH), 0], O.shadow);
-      const beams = T.beams.slice(0, 8);
-      u.set([s.vlod, beams.length, g.sideK ?? 1.3, st.shadowK ?? 0.3], O.shadow2);
+      let dMax = s.beamDrift;
+      for (let i = 0; i < T.beams.length; i++) dMax = Math.max(dMax, T.beams[i].drift ?? 0);
+      const cH = E.R + 1.2 + dMax + 4.2 * lxy, cx = E.c[0] + (15 - 1.5) * L[0] * kL, cy = E.c[1] + (15 - 1.5) * L[1] * kL;
+      set4(u, O.shadow, cx - cH, cy - cH, 1 / (2 * cH), 0);
+      const nB = Math.min(8, T.beams.length), bp = this.beamP || (this.beamP = [0, 0]);
+      set4(u, O.shadow2, s.vlod, nB, g.sideK ?? 1.3, st.shadowK ?? 0.3);
       // the pools (and their shafts) wander slowly through the leaves, each on its own loop of about a minute
       // and a half (beamAt); at night every other one fades out
-      beams.forEach((b, i) => {
-        const p = this.beamAt(i, time);
-        u.set([p[0], p[1], b.z, b.r], O.beams + i * 4);
+      for (let i = 0; i < nB; i++) {
+        const b = T.beams[i], p = this.beamAt(i, time, bp);
+        set4(u, O.beams + i * 4, p[0], p[1], b.z, b.r);
         u[O.beamK + i] = (b.k ?? 1) * (i % 2 ? 1 - 0.9 * moon : 1);
-      });
-      u.set([S.ids.sky, S.ids.water, S.ids.fall, S.ids.maple], O.ids);
-      u.set([s.glass ? s.glassK : 0, s.water ? 1 : 0, s.particles ? 1 : 0, s.shafts ? 1 : 0], O.misc);
-      u.set([this.out[0], this.out[1], 1 / this.out[0], 1 / this.out[1]], O.outres);
-      u.set([this.pcount.leaf, this.pcount.fly, this.pcount.mist, Math.min(0.05, dt)], O.part);
-      u.set([...this.psrc, cam.D1 - cam.D0], O.psrc);
-      u.set([E.c[0], E.c[1], E.jar ? E.R : E.half[0], E.top], O.geo); // (a box: its half x here, minus its half y in look2.z)
-      u.set([fno % 64, 18, E.base, BLOOM_THRESHOLD], O.misc2);
-      u.set([st.light.spriteK ?? 1, s.mottle, this.pcount.spray, this.sprayAt], O.look4);
-      u.set([st.map.W, st.map.H, this.fieldRes, 0], O.field);
+      }
+      set4(u, O.ids, S.ids.sky, S.ids.water, S.ids.fall, S.ids.maple);
+      set4(u, O.misc, s.glass ? s.glassK : 0, s.water ? 1 : 0, s.particles ? 1 : 0, s.shafts ? 1 : 0);
+      set4(u, O.outres, this.out[0], this.out[1], 1 / this.out[0], 1 / this.out[1]);
+      set4(u, O.part, this.pcount.leaf, this.pcount.fly, this.pcount.mist, Math.min(0.05, dt));
+      u.set(this.psrc, O.psrc); u[O.psrc + this.psrc.length] = cam.D1 - cam.D0;
+      set4(u, O.geo, E.c[0], E.c[1], E.jar ? E.R : E.half[0], E.top); // (a box: its half x here, minus its half y in look2.z)
+      set4(u, O.misc2, fno % 64, 18, E.base, BLOOM_THRESHOLD);
+      set4(u, O.look4, st.light.spriteK ?? 1, s.mottle, this.pcount.spray, this.sprayAt);
+      set4(u, O.field, st.map.W, st.map.H, this.fieldRes, 0);
       u.set(this.user, O.user);
       this.dev.queue.writeBuffer(this.ubuf, 0, u);
     }
@@ -10111,6 +10173,18 @@ fn boxOf(V: Vox) -> Box {
       if (begin) t.beginningOfPassWriteIndex = i * 2;
       if (end) t.endOfPassWriteIndex = i * 2 + 1;
       return t;
+    }
+
+    // The sprite buffer stays from frame to frame; it doubles when the batch did (SpriteBatch.grow), and the
+    // two sprite bind groups are rebuilt on it. A late wave (towers, effects, a bar per creature) passed the
+    // old fixed 6144 and lost the sprites put last, the health bars.
+    growSprites() {
+      const old = this.spriteBuf, P = this.pl;
+      this.spriteBuf = this.dev.createBuffer({ label: "sprites", size: this.sprites.max * 48, usage: BU.STORAGE | BU.COPY_DST });
+      this.g1.spriteAdd = this.bg(P.spriteAdd, 1, [{ buffer: this.spriteBuf }]);
+      this.g1.spriteAlpha = this.bg(P.spriteAlpha, 1, [{ buffer: this.spriteBuf }]);
+      old.destroy();
+      this.spriteGrows = (this.spriteGrows || 0) + 1;
     }
 
     frame(cam, time, dt) {
@@ -10127,6 +10201,7 @@ fn boxOf(V: Vox) -> Box {
       if (nInst > sim.staticCount) d.queue.writeBuffer(this.instBuf, sim.staticCount * IF * 4, sim.inst, sim.staticCount * IF, (nInst - sim.staticCount) * IF);
       this.instUp = true;
       const sp = this.sprites, nSp = sp.nAdd + sp.nAlpha;
+      if (sp.max * 48 > this.spriteBuf.size) this.growSprites();
       if (nSp) d.queue.writeBuffer(this.spriteBuf, 0, sp.data, 0, nSp * 12);
       for (const L of this.layers) L.prepare(time, dt);
       const enc = d.createCommandEncoder();
@@ -10143,7 +10218,9 @@ fn boxOf(V: Vox) -> Box {
         if (sb[5] >= q[5]) this.sunQ.shift(); else q[2] = sb[5] + 1;
       }
       if (sb) {
-        d.queue.writeBuffer(this.sunBoxBuf, 0, new Uint32Array([sb[0], sb[1], sb[2], 0, sb[3], sb[4], sb[5], 0]));
+        const B = this.sunBoxU || (this.sunBoxU = new Uint32Array(8));
+        B[0] = sb[0]; B[1] = sb[1]; B[2] = sb[2]; B[3] = 0; B[4] = sb[3]; B[5] = sb[4]; B[6] = sb[5]; B[7] = 0;
+        d.queue.writeBuffer(this.sunBoxBuf, 0, B);
         const c = enc.beginComputePass();
         c.setPipeline(P.sunvol); c.setBindGroup(0, g0.sunvol); c.setBindGroup(1, g1.sunvol);
         c.dispatchWorkgroups(Math.ceil((sb[3] - sb[0] + 1) / 4), Math.ceil((sb[4] - sb[1] + 1) / 4), Math.ceil((sb[5] - sb[2] + 1) / 4));
@@ -10169,8 +10246,9 @@ fn boxOf(V: Vox) -> Box {
       const CD = this.carveDraw; // terrain voxels carved by the app: the variant that skips them, and their patch
       if (CD) { r.setPipeline(CD.pl); r.setBindGroup(0, CD.g0); r.setBindGroup(1, CD.g1); } else { r.setPipeline(P.terrain); r.setBindGroup(0, g0.terrain); r.setBindGroup(1, g1.terrain); }
       r.setVertexBuffer(0, this.tVB); r.setIndexBuffer(this.tIB, "uint32");
-      const snaps = cam.turning ? [...new Set([cam.snapIndex(cam.from), cam.snapIndex(cam.to)])] : [cam.snapIndex()];
-      for (const k of snaps) { const sr = S.mesh.snaps[k]; r.drawIndexed(sr.count, 1, sr.first, 0, 0); }
+      const k0 = cam.turning ? cam.snapIndex(cam.from) : cam.snapIndex(), k1 = cam.turning ? cam.snapIndex(cam.to) : k0;
+      let sr = S.mesh.snaps[k0]; r.drawIndexed(sr.count, 1, sr.first, 0, 0);
+      if (k1 !== k0) { sr = S.mesh.snaps[k1]; r.drawIndexed(sr.count, 1, sr.first, 0, 0); }
       if (CD && CD.n) { r.setVertexBuffer(0, CD.vb); r.setIndexBuffer(CD.ib, "uint32"); r.drawIndexed(CD.n); }
       if (s.grass && S.grass.count) { r.setPipeline(P.grass); r.setBindGroup(0, g0.grass); r.setBindGroup(1, g1.grass); r.draw(42, S.grass.count); }
       r.setPipeline(P.volume); r.setBindGroup(0, g0.volume); r.setBindGroup(1, g1.volume); r.draw(36, nInst);
@@ -14206,7 +14284,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.24.0", name: "Mossheart", commit: "edf6cbb" };
+  G.VERSION = { v: "0.25.0", name: "Mossheart", commit: "6019b0c" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -15489,12 +15567,18 @@ function MA_DSP() {
       this.offer = null;
       // the run so far, for the end-of-run summary: kills per creature and per element of the killing
       // blow (Defs.ELEMENTS order), creatures that reached the Heart Tree, plants sown per kind, growths,
-      // uprootings and dew gathered (kills and wave bonuses)
-      this.stats = { kills: {}, byElement: [0, 0, 0, 0], leaked: 0, planted: {}, grown: 0, uprooted: 0, dew: 0 };
-      const st = this.stats;
+      // uprootings and dew gathered (kills and wave bonuses); and for the run log (view/leaderboard.js) the
+      // creatures that got through per kind (the last one is what the garden fell to), growths and uprootings
+      // per plant, dew spent on plants, the most dew held, and the frames drawn in play (main.js, the mean fps)
+      this.stats = { kills: {}, byElement: [0, 0, 0, 0], leaked: 0, planted: {}, grown: 0, uprooted: 0, dew: 0,
+        leakedBy: {}, lastLeak: "", grownBy: {}, soldBy: {}, spent: 0, peakDew: 0, frames: 0, frameT: 0 };
+      const st = this.stats, add = (o, k) => { o[k] = (o[k] || 0) + 1; };
       this.unsub = [
-        G.on("leaked", () => { this.heartShock = Math.min(0.5, this.heartShock + 0.25); st.leaked++; }),
+        G.on("leaked", (e) => { this.heartShock = Math.min(0.5, this.heartShock + 0.25); st.leaked++; add(st.leakedBy, e.kind); st.lastLeak = e.kind; }),
         G.on("kill", (e) => { st.kills[e.kind] = (st.kills[e.kind] || 0) + 1; if (e.element >= 0) st.byElement[e.element]++; st.dew += Math.round(e.reward * S.mod("dew_gain")); }),
+        G.on("tower_upgraded", (e) => add(st.grownBy, e.kind)),
+        G.on("tower_sold", (e) => add(st.soldBy, e.tower.kind)),
+        G.on("dew", () => { if (S.dew > st.peakDew) st.peakDew = S.dew; }),
       ];
     }
     // a new run replaces this game: drop its event handlers
@@ -15513,7 +15597,7 @@ function MA_DSP() {
     place(kind, cx, cy) {
       if (!this.canPlace(kind, cx, cy)) return null;
       const cost = S.towerCost(D.TOWERS[kind].cost, kind);
-      S.spend(cost);
+      S.spend(cost); this.stats.spent += cost;
       const t = new G.Tower(kind, cx, cy, this.world, this.body);
       t.invested = cost;
       this.towers.push(t);
@@ -15526,7 +15610,7 @@ function MA_DSP() {
     upgrade(t) {
       const cost = t.upgradeCost();
       if (t.level >= D.MAX_LEVEL || !S.spend(cost)) return false;
-      t.invested += cost; t.upgrade(); this.stats.grown++;
+      t.invested += cost; t.upgrade(); this.stats.grown++; this.stats.spent += cost;
       G.emit("tower_upgraded", { kind: t.kind, level: t.level, pos: [t.X, t.Y, t.Z], tower: t });
       return true;
     }
@@ -19741,7 +19825,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     showGameOver(wave, best) {
       $("overtxt").innerHTML = `You tended the meadow for ${wave} waves.<br>Longest bloom: ${best}`;
       $("oversum").innerHTML = this.summaryHtml();
-      if (G.Leaderboard) G.Leaderboard.atGameOver($("overboard"), wave); // (the online board, when the build has one)
+      if (G.Leaderboard) G.Leaderboard.atGameOver($("overboard"), wave, this.game); // (the online board, when the build has one)
       $("over").classList.add("show");
     }
     // the run in a few lines (the game's stats, kept in the save): the plants, the gifts, and the creatures
@@ -19954,20 +20038,32 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
 </script>
 <script>/* src/view/leaderboard.js */
-/* Mossheart's online leaderboard (Game): each device's best wave per garden, on one of two backends the user
-   set up (README.md, "Leaderboard"), through fetch, no client library: a Supabase project's REST API (the
-   schema is server/leaderboard.sql), or else the small proxy in server/vercel, which keeps the board in a
-   file of the Pages repo. The backend is G.LEADERBOARD (src/leaderboard.config.js), Supabase first if its
-   url and key are set, else the proxy if set; with neither, or ?board=0, the board is off: no button shows
-   it, the game over card has no form, and nothing is fetched. Offline, every call resolves to
-   { ok: false, why: "offline" } after at most 8 s: nothing here throws.
+/* Mossheart's online leaderboard (Game): each device's best wave per garden, every garden in one ranking (or
+   one garden's, a tab each), on one of two backends the user set up (README.md, "Leaderboard"), through
+   fetch, no client library: a Supabase project's REST API (the schema is server/leaderboard.sql, behind: no
+   recap and no run log there), or else the small proxy in server/vercel, which keeps the board in a file of
+   the Pages repo. The backend is G.LEADERBOARD (src/leaderboard.config.js), Supabase first if its url and key
+   are set, else the proxy if set; with neither, or ?board=0, the board is off: no button shows it, the game
+   over card has no form, and nothing is fetched. Offline, every call resolves to { ok: false, why:
+   "offline" } after at most 8 s: nothing here throws.
      G.Leaderboard.on()                    whether a backend is set
-     .submit(run) -> { ok, why, rank }     run: { garden, wave, nickname, seed, boons, density, version } (rank
-                                           and kept: from the proxy only)
-     .top(garden, n) -> { ok, rows, why }  the board's first n rows: { nickname, wave, tag, created_at }
-     .mine(garden) -> { ok, row, rank }    this device's best row there and its rank (1 + the rows above it)
-     .atGameOver(el, wave)                 the game over card's part (hud.js): a nickname and Submit, then the board
-     .board(el, garden)                    the Leaderboard screen's body (menu.js), a tab per garden
+     .submit(run) -> { ok, why, rank }     run: { garden, wave, nickname, seed, boons, density, version, maxDew,
+                                           towers, diedTo } (rank and kept, and the last three: the proxy only)
+     .top(key, n) -> { ok, rows, why }     the first n rows of a garden's board, or of every garden's (key
+                                           "all"): { garden, nickname, wave, tag, created_at, version, maxDew,
+                                           boons ({ id: level }), towers ({ plant: count }), diedTo }
+     .mine(key) -> { ok, row, rank }       this device's best row there and its rank (1 + the rows above it)
+     .atGameOver(el, wave, game)           the game over card's part (hud.js): a nickname and Submit, then the board
+     .board(el, key)                       the Leaderboard screen's body (menu.js): tabs All and a garden each
+     .logRun(game, end, { beacon })        the run's line in the run log (the proxy only, below)
+   A row shows its garden, wave, the most dew held, a few of its boons and plants and what it fell to; a tap
+   opens the rest (the build, every boon at its level, the plants, the date).
+   The run log: every run that ends (end: death, a quit for a new run, or alive when the page is left) sends
+   one anonymous line to the proxy's /api/run (kills, time and fps in play, dew earned and spent, plants
+   placed, grown and sold, the boons in order, the seed, density, mobile, the GPU's vendor): the device id
+   goes with it only to be hashed to the tag there, no nickname. Not from a page driven by a script
+   (navigator.webdriver) or headless (the checks: their Edge has no webdriver flag) unless ?runlog=1, nor
+   with ?runlog=0; main.js leaves out the bot, self-test and bench.
    The device id (mossheart.device) is a random secret kept on the device; the board shows its tag, a short
    hash of it, so the player's own row is found without the id being readable. The nickname is remembered
    (mossheart.nickname), and so is the best this device has on the board per garden (mossheart.board). */
@@ -19975,7 +20071,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const G = (window.MG = window.MG || {});
   const DEV_KEY = "mossheart.device", NICK_KEY = "mossheart.nickname", BEST_KEY = "mossheart.board";
   const TIMEOUT = 8000, TOP = 10, BOARD_TOP = 20;
-  const GARDEN = /^(momiji|fernglass|cornmoon)$/; // (the gardens the schema knows)
+  const GARDEN = /^(momiji|fernglass|cornmoon)$/, KEY = /^(all|momiji|fernglass|cornmoon)$/; // (the gardens the schema knows)
+  // the plants and creatures the proxy takes (server/vercel/lib/board.js: one not listed there fails the post)
+  const TOWERS = ["thorn", "puff", "sun", "wisp", "briar", "toad", "moon", "lily"];
+  const ENEMIES = ["grub", "beetle", "moth", "golem", "spirit", "snail", "bloat", "mite", "mender", "midge", "mole", "lichen", "mother", "crow"];
+  const BOON = /^[a-z0-9_]{1,24}$/;
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const get = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
   const put = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* storage blocked: kept for this page only */ } };
@@ -20052,7 +20152,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     const ac = typeof AbortController === "function" ? new AbortController() : null;
     const t = ac ? setTimeout(() => ac.abort(), TIMEOUT) : 0;
     try {
-      const r = await fetch(url, { method: opt.method || "GET", headers: opt.headers || {}, body: opt.body, signal: ac ? ac.signal : undefined, cache: opt.cache || "no-store" });
+      const r = await fetch(url, { method: opt.method || "GET", headers: opt.headers || {}, body: opt.body, signal: ac ? ac.signal : undefined, cache: opt.cache || "no-store", keepalive: !!opt.keepalive });
       let data = null;
       try { const s = await r.text(); data = s ? JSON.parse(s) : null; } catch (e) { /* no body, or not JSON */ }
       const range = (r.headers && r.headers.get && r.headers.get("content-range")) || "";
@@ -20069,51 +20169,76 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     if (/^eyJ/.test(c.key)) h.Authorization = "Bearer " + c.key; // (a legacy anon key is a JWT; a publishable key goes in apikey only)
     return req(`${c.url}/rest/v1/${path}`, Object.assign({}, opt, { headers: h }));
   };
-  // the proxy: a garden's rows (its first 100, the GET cached 30 s at the edge), kept here 5 s so that one
-  // fill asks once, and after a submit the rows its answer carries (fresher than the edge's) for 35 s
+  // a row as both backends give it, the fields that came later checked again (null when off): boons as
+  // { id: level } (Supabase keeps the ids in order, the proxy the levels)
+  const counts = (o, ids, hi) => {
+    if (!o || typeof o !== "object" || Array.isArray(o)) return null;
+    const out = {};
+    for (const k of ids) { const v = Math.floor(+o[k]); if (v > 0) out[k] = Math.min(hi, v); }
+    return out;
+  };
+  const levels = (b) => {
+    if (Array.isArray(b)) { const o = {}; for (const id of b) if (BOON.test(id) && (o[id] || 0) < 3) o[id] = (o[id] || 0) + 1; return o; }
+    if (!b || typeof b !== "object") return null;
+    const o = {};
+    for (const id in b) if (BOON.test(id) && b[id] >= 1) o[id] = Math.min(3, b[id] | 0);
+    return o;
+  };
+  const norm = (r) => ({
+    garden: GARDEN.test(r.garden || "") ? r.garden : "", nickname: String(r.nickname || ""), wave: r.wave | 0, tag: String(r.tag || ""),
+    created_at: String(r.created_at || r.at || ""), version: r.version ? String(r.version).slice(0, 32) : "",
+    maxDew: typeof r.maxDew === "number" && r.maxDew >= 0 ? Math.floor(r.maxDew) : null, boons: levels(r.boons), towers: counts(r.towers, TOWERS, 999),
+    diedTo: ENEMIES.includes(r.diedTo) ? r.diedTo : null,
+  });
+  // the proxy: a garden's rows, or every garden's (key "all"; the first 100 each, the GET cached 30 s at the
+  // edge), kept here 5 s so that one fill asks once, and after a submit the rows its answer carries (fresher
+  // than the edge's) for 35 s
   const proxyMem = {};
-  const prow = (r) => ({ nickname: String(r.nickname || ""), wave: r.wave | 0, tag: String(r.tag || ""), created_at: String(r.at || "") });
-  const prows = (garden) => {
-    const m = proxyMem[garden], c = cfg();
+  const prows = (key) => {
+    const m = proxyMem[key], c = cfg();
     if (m && m.base === c.proxy && Date.now() < m.until) return m.p;
-    const p = req(`${c.proxy}/api/scores?garden=${garden}`, { headers: { Accept: "application/json" }, cache: "default" }).then((r) => {
-      if (r.ok && r.data && Array.isArray(r.data.rows)) return { ok: true, rows: r.data.rows.map(prow) };
-      if (proxyMem[garden] && proxyMem[garden].p === p) delete proxyMem[garden]; // (a failure is not kept)
+    const p = req(`${c.proxy}/api/scores?garden=${key}`, { headers: { Accept: "application/json" }, cache: "default" }).then((r) => {
+      if (r.ok && r.data && Array.isArray(r.data.rows)) return { ok: true, rows: r.data.rows.map(norm) };
+      if (proxyMem[key] && proxyMem[key].p === p) delete proxyMem[key]; // (a failure is not kept)
       return { ok: false, why: r.ok ? "error" : r.why };
     });
-    proxyMem[garden] = { base: c.proxy, until: Date.now() + 5000, p };
+    proxyMem[key] = { base: c.proxy, until: Date.now() + 5000, p };
     return p;
   };
   const viaProxy = () => { const c = cfg(); return !!(c && c.proxy); };
 
-  const ROW = "select=nickname,wave,tag,created_at";
-  const top = async (garden, n = TOP) => {
-    if (!GARDEN.test(garden)) return { ok: false, rows: [], why: "error" };
+  const ROW = "select=garden,nickname,wave,tag,created_at,boons,version";
+  const where = (key) => (key === "all" ? "" : `garden=eq.${key}&`);
+  const top = async (key, n = TOP) => {
+    if (!KEY.test(key)) return { ok: false, rows: [], why: "error" };
     n = Math.max(1, Math.min(100, n | 0));
-    if (viaProxy()) { const r = await prows(garden); return { ok: r.ok, rows: r.ok ? r.rows.slice(0, n) : [], why: r.ok ? "" : r.why }; }
-    const r = await call(`board?garden=eq.${garden}&${ROW}&order=wave.desc,created_at.asc&limit=${n}`);
-    return { ok: r.ok && Array.isArray(r.data), rows: r.ok && Array.isArray(r.data) ? r.data : [], why: r.ok ? "" : r.why };
+    if (viaProxy()) { const r = await prows(key); return { ok: r.ok, rows: r.ok ? r.rows.slice(0, n) : [], why: r.ok ? "" : r.why }; }
+    const r = await call(`board?${where(key)}${ROW}&order=wave.desc,created_at.asc&limit=${n}`);
+    const ok = r.ok && Array.isArray(r.data);
+    return { ok, rows: ok ? r.data.map(norm) : [], why: r.ok ? "" : r.why };
   };
-  const mine = async (garden) => {
+  const mine = async (key) => {
     const t = await tag();
-    if (!t || !GARDEN.test(garden)) return { ok: false, row: null, rank: 0, why: "notag" };
+    if (!t || !KEY.test(key)) return { ok: false, row: null, rank: 0, why: "notag" };
     if (viaProxy()) {
-      const r = await prows(garden);
+      const r = await prows(key);
       if (!r.ok) return { ok: false, row: null, rank: 0, why: r.why };
-      const row = r.rows.find((x) => x.tag === t) || null;
+      const row = r.rows.find((x) => x.tag === t) || null; // (the rows come ranked: the first is its best)
       if (!row) return { ok: true, row: null, rank: 0 };
-      keepBest(garden, row.wave);
+      if (row.garden) keepBest(row.garden, row.wave);
       return { ok: true, row, rank: 1 + r.rows.filter((x) => x.wave > row.wave).length };
     }
-    const r = await call(`board?garden=eq.${garden}&tag=eq.${t}&${ROW}&limit=1`);
+    const r = await call(`board?${where(key)}tag=eq.${t}&${ROW}&order=wave.desc&limit=1`);
     if (!r.ok || !Array.isArray(r.data)) return { ok: false, row: null, rank: 0, why: r.why || "error" };
-    const row = r.data[0] || null;
+    const row = r.data[0] ? norm(r.data[0]) : null;
     if (!row) return { ok: true, row: null, rank: 0 };
-    keepBest(garden, row.wave);
-    const c = await call(`board?garden=eq.${garden}&wave=gt.${row.wave | 0}&select=tag&limit=1`, { headers: { Prefer: "count=exact" } });
+    if (row.garden) keepBest(row.garden, row.wave);
+    const c = await call(`board?${where(key)}wave=gt.${row.wave | 0}&select=tag&limit=1`, { headers: { Prefer: "count=exact" } });
     const m = /\/(\d+)\s*$/.exec(c.range);
     return { ok: true, row, rank: c.ok && m ? +m[1] + 1 : 0 };
   };
+  // the boons taken, in order, as the proxy takes them: known-looking ids, none past level 3, at most max
+  const boonsOf = (a, max) => { const n = {}; return (Array.isArray(a) ? a : []).filter((b) => BOON.test(b) && (n[b] = (n[b] || 0) + 1) <= 3).slice(0, max); };
   const submit = async (run) => {
     const nickname = clean(run.nickname);
     if (!nickname || bad(nickname)) return { ok: false, why: "nick" };
@@ -20127,18 +20252,60 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     };
     if (viaProxy()) {
       // (as text/plain, a "simple" request: no preflight before it; the proxy reads the JSON either way)
-      const p = { garden: body.garden, wave: body.wave, nickname, version: body.version, seed: body.seed, density: body.density, deviceId: body.device };
+      const p = {
+        garden: body.garden, wave: body.wave, nickname, version: body.version, seed: body.seed, density: body.density, deviceId: body.device,
+        maxDew: run.maxDew >= 0 ? Math.min(1e7, Math.floor(run.maxDew)) : null, boons: boonsOf(run.boons, 64),
+        towers: counts(run.towers, TOWERS, 999), diedTo: ENEMIES.includes(run.diedTo) ? run.diedTo : null,
+      };
       const r = await req(`${cfg().proxy}/api/score`, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: JSON.stringify(p) });
       const d = r.data || {};
       if (!r.ok || !d.ok) return { ok: false, why: r.ok ? "error" : r.why };
-      const kept = d.kept !== false;
+      const kept = d.kept !== false, base = cfg().proxy, until = Date.now() + 35000;
       if (kept) keepBest(run.garden, body.wave);
-      if (Array.isArray(d.rows)) proxyMem[run.garden] = { base: cfg().proxy, until: Date.now() + 35000, p: Promise.resolve({ ok: true, rows: d.rows.map(prow) }) };
+      if (Array.isArray(d.rows)) proxyMem[run.garden] = { base, until, p: Promise.resolve({ ok: true, rows: d.rows.map(norm) }) };
+      if (Array.isArray(d.all)) proxyMem.all = { base, until, p: Promise.resolve({ ok: true, rows: d.all.map(norm) }) };
       return { ok: true, why: "", rank: d.rank | 0, kept };
     }
     const r = await call("scores", { method: "POST", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(body) });
     if (r.ok) keepBest(run.garden, body.wave);
     return { ok: r.ok, why: r.ok ? "" : r.why };
+  };
+
+  // ------------------------------------------------------------------ the run log (the proxy only)
+  const MOBILE = /Android|iPhone|iPad|Mobile/.test(navigator.userAgent || "");
+  const version = () => (G.VERSION ? `${G.VERSION.v} ${G.VERSION.commit}`.slice(0, 32) : null);
+  const logOff = () => {
+    const q = new URLSearchParams(location.search).get("runlog");
+    return q === "0" || ((!!navigator.webdriver || /Headless/.test(navigator.userAgent || "")) && q !== "1");
+  };
+  // one line per run: what it sent last is kept on the game, so a death or a quit goes once and closes the
+  // run, and "alive" goes again only when the run went on (a later wave)
+  const logRun = (game, end, opt = {}) => {
+    const c = cfg(), S = G.state || {}, garden = G.levelId, st = game && game.stats;
+    if (!c || !c.proxy || !st || logOff() || !GARDEN.test(garden || "") || !(S.wave >= 1) || !/^(death|quit|alive)$/.test(end)) return false;
+    const last = game.runLog, wave = Math.min(500, S.wave | 0);
+    if (last && (last.end !== "alive" || (end === "alive" && last.wave === wave))) return false;
+    const int = (x, hi) => Math.max(0, Math.min(hi, Math.floor(+x) || 0)), T = +st.frameT || 0;
+    const max = Math.max(1, Math.min(9999, Math.round(S.heartMax) || 1));
+    const gpu = String((G.gpuInfo && G.gpuInfo.vendor) || "").toLowerCase().replace(/[^a-z0-9 ._-]/g, "").slice(0, 24);
+    const body = {
+      deviceId: device(), garden, end, wave,
+      seed: Number.isFinite(S.seed) ? S.seed >>> 0 : null,
+      density: window.ME && ME.VS >= 8 && ME.VS <= 64 ? ME.VS | 0 : null,
+      version: version(), mobile: MOBILE, gpu: gpu || null,
+      fps: T >= 1 && st.frames > 0 ? Math.min(240, Math.round((st.frames / T) * 10) / 10) : null, time: int(T, 604800),
+      kills: counts(st.kills, ENEMIES, 1e6), leakedBy: counts(st.leakedBy, ENEMIES, 1e4),
+      heart: [Math.min(max, int(Math.round(S.heartHp), 9999)), max],
+      dew: { earned: int(st.dew, 1e8), spent: int(st.spent, 1e8), peak: int(st.peakDew, 1e8) },
+      towers: { placed: counts(st.planted, TOWERS, 9999), upgraded: counts(st.grownBy, TOWERS, 9999), sold: counts(st.soldBy, TOWERS, 9999) },
+      boons: boonsOf(S.boons, 96), diedTo: end === "death" && ENEMIES.includes(st.lastLeak) ? st.lastLeak : null,
+    };
+    game.runLog = { end, wave };
+    const url = `${c.proxy}/api/run`, s = JSON.stringify(body);
+    // (leaving the page: a beacon, which outlives it; as text/plain, no preflight)
+    if (opt.beacon && navigator.sendBeacon) { try { if (navigator.sendBeacon(url, new Blob([s], { type: "text/plain;charset=UTF-8" }))) return true; } catch (e) { /* fall back to fetch */ } }
+    req(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: s, keepalive: !!opt.beacon });
+    return true;
   };
 
   // ------------------------------------------------------------------ the UI
@@ -20154,48 +20321,106 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     error: "The board could not be reached just now.",
   };
   const say = (w) => SAY[w] || SAY.error;
+  // the icons of the HUD (plants, foes, boons), tinted as it tints them; a glyph when one is missing
+  const D = () => G.Defs || {};
+  const hex = (c) => "#" + c.map((v) => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, "0")).join("");
+  const ink = (c) => { const l = 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2], k = Math.min(1, 0.6 / Math.max(l, 1e-3)); return hex(c.map((v) => Math.min(1, v) * k)); };
+  const svg = (table, k) => (G[table] && G[table][k]) || "";
+  const plant = (k) => { const d = (D().TOWERS || {})[k]; return { name: d ? d.name : k, ic: `<i class="lbic" style="color:${d && d.color ? ink(d.color) : "inherit"}">${svg("PLANT_ICONS", k) || "✿"}</i>` }; };
+  const foe = (k) => { const d = (D().ENEMIES || {})[k]; return { name: d ? d.name : k, ic: `<i class="lbic" style="color:${d && d.color ? ink(d.color) : "inherit"}">${svg("ENEMY_ICONS", k) || "●"}</i>` }; };
+  const gift = (id, lv) => {
+    let d = null, c = null, ic = "";
+    try { d = D().boon ? D().boon(id) : null; } catch (e) { /* an id this build lacks */ }
+    try { c = G.boonLook ? G.boonLook(id, lv).color : null; } catch (e) { /* no look */ }
+    try { ic = G.boonIcon ? G.boonIcon(id) : ""; } catch (e) { /* no icon */ }
+    return { name: d && d.name ? d.name : id, ic: `<i class="lbic" style="color:${Array.isArray(c) ? ink(c) : "inherit"}">${ic || "❀"}</i>` };
+  };
+  const ROMAN = ["", "I", "II", "III"];
+  const byCount = (o) => Object.keys(o || {}).sort((a, b) => o[b] - o[a]);
+  const fmt = (n) => (G.fmtDew ? G.fmtDew(n) : String(n));
+  // a row's recap under its name: the garden (on the All board), the most dew held, its strongest boons, its
+  // most planted plants, what it fell to: a few of each, the rest in the card a tap opens
+  const recap = (r, all) => {
+    const b = byCount(r.boons), t = byCount(r.towers);
+    let h = all && r.garden ? `<em class="lbg g-${r.garden}">${esc(gardenName(r.garden))}</em>` : "";
+    if (r.maxDew != null) h += `<span class="lbdew" title="Most dew held">💧${fmt(r.maxDew)}</span>`;
+    if (b.length) h += `<span class="lbset" title="Boons">${b.slice(0, 3).map((id) => gift(id, r.boons[id]).ic).join("")}${b.length > 3 ? `<small>+${b.length - 3}</small>` : ""}</span>`;
+    if (t.length) h += `<span class="lbset" title="Plants">${t.slice(0, 3).map((k) => plant(k).ic + `<small>${r.towers[k]}</small>`).join("")}</span>`;
+    if (r.diedTo) h += `<span class="lbset lbfell" title="Fell to ${esc(foe(r.diedTo).name)}">↓${foe(r.diedTo).ic}</span>`;
+    return h ? `<span class="lbrc">${h}</span>` : "";
+  };
+  // the card a tap opens: the rest of the row
+  const card = (r) => {
+    const b = byCount(r.boons), t = byCount(r.towers), when = /^\d{4}-\d\d-\d\d/.test(r.created_at) ? new Date(r.created_at) : null;
+    const line = (head, body) => `<span class="lbml"><b>${head}</b>${body}</span>`;
+    let h = line("Garden", `${esc(gardenName(r.garden) || "?")}, wave ${r.wave | 0}${r.maxDew != null ? `, ${fmt(r.maxDew)} dew at most` : ""}`);
+    if (b.length) h += line("Boons", b.map((id) => { const g = gift(id, r.boons[id]); return `<span class="lbk">${g.ic}${esc(g.name)}${r.boons[id] > 1 ? ` ${ROMAN[r.boons[id]]}` : ""}</span>`; }).join(""));
+    if (t.length) h += line("Plants", t.map((k) => { const p = plant(k); return `<span class="lbk">${p.ic}${esc(p.name)} ×${r.towers[k]}</span>`; }).join(""));
+    if (r.diedTo) { const f = foe(r.diedTo); h += line("Fell to", `<span class="lbk">${f.ic}${esc(f.name)}</span>`); }
+    const foot = [r.version ? `build ${esc(r.version)}` : "", when && !isNaN(when) ? when.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : ""].filter(Boolean).join(" · ");
+    if (foot) h += `<span class="lbml lbfoot">${foot}</span>`;
+    return `<span class="lbmore">${h}</span>`;
+  };
   // a list of rows, ranked as in sport (equal waves share a rank), the device's own row marked; with its
-  // best below the list, that row after a gap
-  const listHtml = (rows, my, me) => {
+  // best below the list, that row after a gap. Each li carries its row's index (for its card)
+  const li = (r, rank, own, all, i) => `<li class="${own ? "me" : ""}${rank >= 1 && rank <= 3 ? " r" + rank : ""}" data-i="${i}" tabindex="0" aria-expanded="false"><b class="rk">${rank || "–"}</b><span class="nm"><span class="nn">${esc(r.nickname)}${own ? ` <small>you</small>` : ""}</span>${recap(r, all)}</span><span class="wv">wave <b>${r.wave | 0}</b></span></li>`;
+  const listHtml = (rows, my, me, all) => {
     let html = "", rank = 0;
     rows.forEach((r, i) => {
       if (i === 0 || r.wave !== rows[i - 1].wave) rank = i + 1;
-      html += li(r, rank, my(r));
+      html += li(r, rank, my(r), all, i);
     });
-    if (me && me.row && !rows.some(my)) html += `<li class="gap" aria-hidden="true">⋯</li>` + li(me.row, me.rank, true);
+    if (me && me.row && !rows.some(my)) html += `<li class="gap" aria-hidden="true">⋯</li>` + li(me.row, me.rank, true, all, rows.length);
     return html;
   };
-  const li = (r, rank, own) => `<li class="${own ? "me" : ""}${rank >= 1 && rank <= 3 ? " r" + rank : ""}"><b class="rk">${rank || "–"}</b><span class="nm">${esc(r.nickname)}${own ? ` <small>you</small>` : ""}</span><span class="wv">wave <b>${r.wave | 0}</b></span></li>`;
-  // fills el's .lblist and .lbnote with the board of a garden; a newer fill of the same el wins
-  const fill = async (el, garden, n) => {
+  // a tap (or Enter) on a row opens its card, again closes it; one open at a time
+  const toggle = (list, l) => {
+    const open = !l.classList.contains("open");
+    for (const o of list.querySelectorAll("li.open")) { o.classList.remove("open"); o.setAttribute("aria-expanded", "false"); const m = o.querySelector(".lbmore"); if (m) m.remove(); }
+    const r = list._rows && list._rows[+l.dataset.i];
+    if (!open || !r) return;
+    l.classList.add("open"); l.setAttribute("aria-expanded", "true");
+    l.insertAdjacentHTML("beforeend", card(r));
+  };
+  // fills el's .lblist and .lbstat with the board of a garden, or every garden's (key "all"); a newer fill
+  // of the same el wins
+  const fill = async (el, key, n) => {
     const tok = (el._lb = {}), list = el.querySelector(".lblist"), note = el.querySelector(".lbstat");
     if (note) note.textContent = "Reaching the board…";
-    const [t, me, my] = await Promise.all([top(garden, n), mine(garden), tag()]);
+    const [t, me, my] = await Promise.all([top(key, n), mine(key), tag()]);
     if (el._lb !== tok) return;
-    const nk = nick(), best = bestOf(garden);
-    const own = (r) => (my ? r.tag === my : !!nk && r.nickname === nk && r.wave === best);
+    const nk = nick();
+    const own = (r) => (my ? r.tag === my : !!nk && r.nickname === nk && r.wave === bestOf(r.garden || key));
     if (!t.ok) { if (list) list.innerHTML = ""; if (note) note.textContent = say(t.why); return; }
-    if (list) list.innerHTML = listHtml(t.rows, own, me);
-    if (note) note.textContent = t.rows.length ? "" : "No one is on this board yet: be the first to bloom here.";
+    if (list) {
+      list.innerHTML = listHtml(t.rows, own, me, key === "all");
+      list._rows = t.rows.concat(me && me.row ? [me.row] : []);
+      list.onclick = (e) => { const l = e.target.closest("li[data-i]"); if (l) toggle(list, l); };
+      list.onkeydown = (e) => { const l = e.target.closest("li[data-i]"); if (l && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.stopPropagation(); toggle(list, l); } };
+    }
+    if (note) note.textContent = t.rows.length ? "" : key === "all" ? "No one is on the board yet: be the first to bloom." : "No one is on this board yet: be the first to bloom here.";
   };
 
-  // the game over card's part: the run's garden and wave, a nickname field and Submit (only for a new best
-  // of this device there), and the garden's board under it
-  const atGameOver = (el, wave) => {
+  // the game over card's part: a nickname field and Submit (only for a new best of this device in the run's
+  // garden), and the board of every garden under it
+  const atGameOver = (el, wave, game) => {
     if (!el) return;
     el._lb = null;
     const garden = G.levelId;
     if (!cfg() || !GARDEN.test(garden || "") || !(wave >= 1)) { el.innerHTML = ""; el.style.display = "none"; return; }
-    const S = G.state || {};
-    const run = { garden, wave, seed: S.seed, boons: (S.boons || []).slice(), density: window.ME ? ME.VS : null, version: G.VERSION ? `${G.VERSION.v} ${G.VERSION.commit}` : null };
+    const S = G.state || {}, st = (game && game.stats) || {};
+    const run = {
+      garden, wave, seed: S.seed, boons: (S.boons || []).slice(), density: window.ME ? ME.VS : null, version: version(),
+      maxDew: st.peakDew, towers: st.planted, diedTo: st.lastLeak || null,
+    };
     const best = bestOf(garden);
     el.style.display = "";
-    el.innerHTML = `<h3 class="lbh">Leaderboard · ${esc(gardenName(garden))}</h3>
+    el.innerHTML = `<h3 class="lbh">Leaderboard · every garden</h3>
       ${best >= wave ? "" : `<form class="lbform" autocomplete="off"><input class="lbnick" name="nickname" maxlength="16" placeholder="Your nickname" aria-label="Nickname" spellcheck="false" autocapitalize="off" enterkeyhint="send" value="${esc(nick())}"><button class="btn lbsend" type="submit">Submit</button></form>`}
-      <p class="lbnote lbsay" role="status">${best >= wave ? `Your best on the board here: wave ${best}.` : `Submit wave ${wave | 0} to the board?`}</p>
+      <p class="lbnote lbsay" role="status">${best >= wave ? `Your best on the board in ${esc(gardenName(garden))}: wave ${best}.` : `Submit wave ${wave | 0} in ${esc(gardenName(garden))} to the board?`}</p>
       <ol class="lblist"></ol><p class="lbnote lbstat"></p>`;
     const form = el.querySelector(".lbform"), sayEl = el.querySelector(".lbsay");
-    fill(el, garden, TOP);
+    fill(el, "all", TOP);
     if (!form) return;
     const inp = form.querySelector("input"), btn = form.querySelector("button");
     // the game's keys (seeds, Q/E turn, Space) stay out of the field
@@ -20211,8 +20436,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (r.ok || r.why === "notbest") {
         if (r.why === "notbest") keepBest(garden, wave);
         form.remove();
-        sayEl.textContent = !r.ok ? say("notbest") : r.kept === false ? `Wave ${wave | 0} ranks ${r.rank}: the board keeps its first 100.` : `Wave ${wave | 0} is on the board, ${nk}${r.rank ? ` (rank ${r.rank})` : ""}.`;
-        fill(el, garden, TOP);
+        sayEl.textContent = !r.ok ? say("notbest") : r.kept === false ? `Wave ${wave | 0} ranks ${r.rank} in ${gardenName(garden)}: the board keeps its first 100.` : `Wave ${wave | 0} is on the board, ${nk}${r.rank ? ` (rank ${r.rank} in ${gardenName(garden)})` : ""}.`;
+        fill(el, "all", TOP);
       } else {
         btn.disabled = inp.disabled = false;
         sayEl.textContent = say(r.why);
@@ -20220,20 +20445,22 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     });
   };
 
-  // the Leaderboard screen's body: a tab per garden, its board, the device's own best marked
-  const board = (el, garden) => {
+  // the Leaderboard screen's body: tabs All and a garden each (All at first, then the tab last picked on
+  // this page), the board, the device's own rows marked
+  let lastKey = "all";
+  const board = (el, key) => {
     if (!el) return;
-    const ids = Object.keys(G.LEVELS || { momiji: 1 });
-    if (!ids.includes(garden)) garden = ids[0];
-    el.dataset.garden = garden;
-    el.innerHTML = `<div class="seg lbtabs" role="tablist">${ids.map((id) => `<button type="button" role="tab" data-g="${esc(id)}" aria-selected="${id === garden}" class="${id === garden ? "on" : ""}">${esc(gardenName(id))}</button>`).join("")}</div>
+    const ids = ["all"].concat(Object.keys(G.LEVELS || { momiji: 1 }).filter((id) => GARDEN.test(id)));
+    key = ids.includes(key) ? key : ids.includes(lastKey) ? lastKey : "all";
+    lastKey = el.dataset.garden = key;
+    el.innerHTML = `<div class="seg lbtabs" role="tablist">${ids.map((id) => `<button type="button" role="tab" data-g="${esc(id)}" aria-selected="${id === key}" class="${id === key ? "on" : ""}">${id === "all" ? "All" : esc(gardenName(id))}</button>`).join("")}</div>
       <ol class="lblist"></ol><p class="lbnote lbstat" role="status"></p>`;
     el.onclick = (e) => { const b = e.target.closest("[data-g]"); if (b && b.dataset.g !== el.dataset.garden) board(el, b.dataset.g); };
     if (!cfg()) { el.querySelector(".lbstat").textContent = say("off"); return; }
-    fill(el, garden, BOARD_TOP);
+    fill(el, key, BOARD_TOP);
   };
 
-  G.Leaderboard = { on: () => !!cfg(), submit, top, mine, atGameOver, board, nick, setNick, clean, bad, device, tag };
+  G.Leaderboard = { on: () => !!cfg(), submit, top, mine, atGameOver, board, logRun, nick, setNick, clean, bad, device, tag };
 })();
 
 </script>
@@ -20880,7 +21107,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       // the Leaderboard buttons only in a build with a board (src/leaderboard.config.js)
       const lb = !!(G.Leaderboard && G.Leaderboard.on());
       for (const b of document.querySelectorAll("#menus [data-a=\"board\"]")) b.style.display = lb ? "" : "none";
-      if (name === "board") G.Leaderboard.board($("lbbody"), this.boardGarden);
+      if (name === "board") G.Leaderboard.board($("lbbody")); // (All first, then the tab last picked)
       if (name === "settings") this.renderSettings();
       if (name === "jars") this.terr.open(); else this.terr.close();
       if (name === "title") {
@@ -20910,7 +21137,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       else if (a === "start" || a === "resume") this.show("");
       else if (a === "restart") { this.act.restart(); this.show(""); }
       else if (a === "jars") this.show("jars", this.open);
-      else if (a === "board") { const l = this.terr.latest(); this.boardGarden = this.open === "jars" ? this.terr.front() : l ? l.id : G.levelId; this.show("board", this.open); }
+      else if (a === "board") this.show("board", this.open);
       else if (a === "settings" || a === "howto") this.show(a, this.open);
       else if (a === "title") this.show(this.hasTitle() ? "title" : "jars");
       else if (a === "back") this.show(this.back || "pause");
@@ -23341,6 +23568,7 @@ function MG_SFX(L) {
     // an out-of-memory GPU error kills the load as surely as a lost device: keep the crash guard's mark
     gpu.device.addEventListener("uncapturederror", (e) => { if (window.GPUOutOfMemoryError && e.error instanceof GPUOutOfMemoryError) G.bootDied = true; });
     ME.log("ADAPTER", gpu.info, "features", [...gpu.features]);
+    G.gpuInfo = gpu.info; // (its vendor goes in the run log, view/leaderboard.js)
     // the pipelines (with the game's shader hooks) compile in the GPU process while the CPU bakes
     const hooks = G.shaderHooks(), pipelines = ME.compilePipelines(gpu, hooks);
     pipelines.then(() => ME.log("PIPELINES", { ms: Math.round(ME.now() - t0) }), () => {}); // errors: reported by ME.err, rethrown in R.init
@@ -23527,7 +23755,7 @@ function MG_SFX(L) {
     };
     G.on("waves", refreshWaves); G.on("phase", refreshWaves);
     G.on("boons_offered", (e) => hud.showBoons(e.boons, (b) => game.chooseBoon(b)));
-    G.on("game_over", (e) => { setSpeed(1); hud.showGameOver(e.wave, e.best); });
+    G.on("game_over", (e) => { setSpeed(1); logRun("death"); hud.showGameOver(e.wave, e.best); });
     G.on("dew", () => { if (selected) hud.inspect(selected); });
     refreshWaves(); hud.showSpeed(speed);
 
@@ -23538,6 +23766,7 @@ function MG_SFX(L) {
     const newGame = (d) => {
       const next = new G.Game(level, G.body);
       if (d && !G.Save.fits(next, d)) { next.dispose(); return false; }
+      if (!d) logRun("quit"); // (the run given up, on the run log below)
       game.dispose();
       deselect(); hud.clearSeed(); hud.hideGameOver(); document.getElementById("boons").classList.remove("show");
       pending = null; game = next; hud.game = game; if (audio) audio.setGame(game); if (bot) bot.game = game;
@@ -23552,6 +23781,11 @@ function MG_SFX(L) {
     if (keepRuns) G.Save.watch(() => game);
     const saved = () => (keepRuns ? G.Save.read() : null);
     const continueRun = () => { const d = saved(); if (d && newGame(d)) return true; G.Save.clear(); return false; };
+    // the run log (the online board's, view/leaderboard.js): a run's end, death or quit, and how far it got
+    // when the page is left or hidden (a beacon); not for the bot, the self-test or the benchmark
+    const logRun = (end, o) => { if (keepRuns && G.Leaderboard) G.Leaderboard.logRun(game, end, o); };
+    addEventListener("pagehide", () => logRun("alive", { beacon: true }));
+    addEventListener("visibilitychange", () => { if (document.hidden) logRun("alive", { beacon: true }); });
 
     // ------------------------------------------------------------------ input: taps plant / inspect
     const toCanvas = (e) => { const r = canvas.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * canvas.width, ((e.clientY - r.top) / r.height) * canvas.height]; };
@@ -23695,6 +23929,8 @@ function MG_SFX(L) {
       scene.armed = pending; scene.ghostTag(cam, canvas);
       if (audio) audio.update(rdt, listener());
       fpsMeter(rdt);
+      // the frames of play, for the run's mean fps in the run log (not paused, hidden or over)
+      if (!app.paused && !document.hidden && S.phase !== G.Phase.GAME_OVER && rdt < 1) { game.stats.frames++; game.stats.frameT += rdt; }
       hud.setFps(perf.fps, R.set.scale);
       return cpu;
     };
