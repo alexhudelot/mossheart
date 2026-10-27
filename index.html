@@ -6312,12 +6312,22 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // opts.walkers = false skips the content's walkers; opts.models = { key: [name, o, frames] } adds
   // flipbooks for an app's own instance layer (returned as extraFrames[key]). Model options o.scale
   // and o.remap (material name -> name) let an app reuse and recolour the content's models.
-  // The brick pool: occupied 8^3 bricks in slabs of POOL_SLAB x POOL_SLAB bricks, stacked in z. A 3D texture's
-  // depth caps it: 2048 (WebGPU's default) gives 256 slabs, 65,536 bricks (128 MB) for every model and frame of
-  // a scene. ME.limits is the device's (gpu.js); before a device exists the default stands.
+  // The brick pool: occupied 8^3 bricks in slabs of S x S bricks, stacked in z, S = POOL_SLAB (16) while the
+  // bricks fit, else POOL_SLAB_MAX (32); the shader reads S from the pool's width (MB.adims[0] / 8). A 3D
+  // texture's depth caps it: 2048 (WebGPU's default) gives 256 slabs, 262,144 bricks (512 MB) at 32 for every
+  // model and frame of a scene (65,536 at 16, the ceiling before E6). ME.limits is the device's (gpu.js); before
+  // a device exists the default stands. ME.poolSlab (or ?poolslab=16|32) forces S, for checks.
   ME.POOL_SLAB = 16;
+  ME.POOL_SLAB_MAX = 32;
   ME.poolMaxDepth = (limits = ME.limits) => (limits && limits.maxTextureDimension3D) || 2048;
-  ME.poolMaxBricks = (limits) => Math.floor(ME.poolMaxDepth(limits) / 8) * ME.POOL_SLAB * ME.POOL_SLAB;
+  ME.poolMaxBricks = (limits, S = ME.POOL_SLAB_MAX) => Math.floor(ME.poolMaxDepth(limits) / 8) * S * S;
+  // A model baked finer than POOL_HOLLOW voxels per tile edge (VS x fine) keeps only its surface bricks in the pool:
+  // a brick whose 512 voxels are solid and whose 6 neighbours' facing layers are solid is never reached by a ray
+  // from outside (each step of the walk crosses a face, and the voxel before it is solid), so the brick map marks
+  // it empty and MB.inner keeps its materials for the CPU readers (MB.voxel, ME.sampleVoxels: shatter and bursts
+  // see the whole model). Its 2x-down copy (halfOf) drops its own interior the same way. ME.poolHollow = false
+  // (or ?hollow=0) keeps every brick.
+  ME.POOL_HOLLOW = 32;
   // occupied 8^3 bricks of a volume { dims, rgba } (alpha = material id), counted from its origin as the bake
   // places it: its share of the pool
   ME.volumeBricks = (v) => {
@@ -6360,6 +6370,38 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // many-material volume going speckled; else their most common (ties: the commoner on the surface). A half
   // voxel with none (all inside) keeps the interior normal.
   // Returns { dims, bmap, chunks, nsolid } (bricksOf's), built brick by brick: a half brick is 2^3 source bricks.
+  // The interior bricks of a volume { dims, bmap, chunks } (ME.POOL_HOLLOW): is[chunk] 1 for a brick whose 512 voxels
+  // are solid and whose 6 neighbours (inside the volume, occupied) are solid on the layer that faces it; n of them
+  function innerOf(v) {
+    const [nx, ny, nz] = v.dims, px = Math.ceil(nx / 8), py = Math.ceil(ny / 8), pz = Math.ceil(nz / 8), { bmap, chunks } = v;
+    const is = new Uint8Array(chunks.length), full = new Int8Array(chunks.length).fill(-1);
+    const isFull = (bi) => { if (full[bi] < 0) { const c = chunks[bi]; let f = 1; for (let j = 3; j < 2048; j += 4) if (!c[j]) { f = 0; break; } full[bi] = f; } return full[bi]; };
+    // brick bi's layer at a = s (axis a: 0 x, 1 y, 2 z; s 0 or 7) all solid
+    const layer = (bi, a, s) => {
+      const c = chunks[bi];
+      for (let u = 0; u < 8; u++) for (let w = 0; w < 8; w++) {
+        const j = a === 0 ? (w * 8 + u) * 8 + s : a === 1 ? (w * 8 + s) * 8 + u : (s * 8 + w) * 8 + u;
+        if (!c[j * 4 + 3]) return false;
+      }
+      return true;
+    };
+    let n = 0;
+    for (let iz = 0; iz < pz; iz++) for (let iy = 0; iy < py; iy++) for (let ix = 0; ix < px; ix++) {
+      const bi = bmap[(iz * py + iy) * px + ix];
+      if (bi < 0 || !isFull(bi)) continue;
+      const p = [ix, iy, iz], P = [px, py, pz];
+      let ok = true;
+      for (let a = 0; a < 3 && ok; a++) for (const d of [-1, 1]) {
+        const q = p.slice(); q[a] += d;
+        if (q[a] < 0 || q[a] >= P[a]) { ok = false; break; }
+        const nb = bmap[(q[2] * py + q[1]) * px + q[0]];
+        if (nb < 0 || !(full[nb] === 1 || layer(nb, a, d > 0 ? 0 : 7))) { ok = false; break; }
+      }
+      if (ok) { is[bi] = 1; n++; }
+    }
+    return { is, n };
+  }
+
   function halfOf(v, emi) {
     const [nx, ny, nz] = v.dims, px = Math.ceil(nx / 8), py = Math.ceil(ny / 8), pz = Math.ceil(nz / 8), mat = v.mat, { bmap, chunks } = v;
     const at = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < nx && y < ny && z < nz && mat(x, y, z) !== 0;
@@ -6659,8 +6701,13 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const emi = new Uint8Array(256), byName = (ME.content && ME.content.materialClass) || {};
     if (pal.mat) pal.names.forEach((n, i) => { if (i) { const M = pal.mat(n); emi[i] = M.em || M.cls === ME.CLS.EMISSIVE || byName[n] === "EMISSIVE" ? 1 : 0; } });
     let lods = opts.lod === false ? [] : vols.map((v) => halfOf(v, emi));
-    if (vols.reduce((a, v) => a + v.chunks.length, 0) + lods.reduce((a, l) => a + l.chunks.length, 0) > ME.poolMaxBricks()) lods = [];
-    const lodMs = ME.now() - tl, lodBricks = lods.reduce((a, l) => a + l.chunks.length, 0), all = vols.concat(lods);
+    // the interior bricks of the fine models (ME.POOL_HOLLOW) and of their copies stay out of the pool
+    const th = ME.now(), hollow = ME.poolHollow !== false && ME.qn("hollow", 1) !== 0;
+    vols.forEach((v, i) => { v.inner = hollow && VS * v.fine > ME.POOL_HOLLOW ? innerOf(v) : null; if (lods[i]) lods[i].inner = v.inner ? innerOf(lods[i]) : null; });
+    const kept = (l) => l.chunks.length - (l.inner ? l.inner.n : 0), hollowMs = ME.now() - th;
+    if (vols.reduce((a, v) => a + kept(v), 0) + lods.reduce((a, l) => a + kept(l), 0) > ME.poolMaxBricks()) lods = [];
+    const lodMs = ME.now() - tl, lodBricks = lods.reduce((a, l) => a + kept(l), 0), all = vols.concat(lods), hollowN = all.reduce((a, l) => a + (l.inner ? l.inner.n : 0), 0);
+    for (const l of lods) l.copy = true;
 
     // shelf-pack brick-aligned volumes into the atlas; short volumes stack in z inside a column whose
     // footprint fits them (critters and ferns would otherwise each reserve the full atlas depth)
@@ -6680,15 +6727,24 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // the occupied 4^3 octants, filled below) and a dense
     // pool holding only the occupied bricks (the layout is ~1% solid, so the pool is a fraction of it)
     const AX = W, AY = pad(y + rowH), BX = AX / 8, BY = AY / 8, BZ = AZ / 8, bricks = new Uint32Array(BX * BY * BZ);
-    let nb = 0, solid = 0;
+    let nb = 0, ni = 0, solid = 0;
     for (const v of all) {
       const [px, py, pz] = v.pdims.map((n) => n / 8), [bx, by, bz] = v.base.map((n) => n / 8);
-      for (let iz = 0; iz < pz; iz++) for (let iy = 0; iy < py; iy++) for (let ix = 0; ix < px; ix++)
-        if (v.bmap[(iz * py + iy) * px + ix] >= 0) bricks[((bz + iz) * BY + by + iy) * BX + bx + ix] = ++nb;
+      for (let iz = 0; iz < pz; iz++) for (let iy = 0; iy < py; iy++) for (let ix = 0; ix < px; ix++) {
+        const bi = v.bmap[(iz * py + iy) * px + ix];
+        if (bi < 0) continue;
+        if (v.inner && v.inner.is[bi]) { if (!v.copy) ni++; } // (a copy's interior is dropped: no CPU reader)
+        else bricks[((bz + iz) * BY + by + iy) * BX + bx + ix] = ++nb;
+      }
     }
-    const PB = ME.POOL_SLAB, PX = PB * 8, PY = PB * 8, PZ = Math.max(1, Math.ceil(nb / (PB * PB))) * 8;
-    if (nb > ME.poolMaxBricks()) throw new Error(`the volume pool needs ${nb} bricks; the device allows ${ME.poolMaxBricks()} (a ${PX} x ${PY} x ${PZ} texture against maxTextureDimension3D ${ME.poolMaxDepth()}): fewer or smaller volumes, or fewer frames`);
+    // the slab: 16 x 16 while the bricks fit (the pool and its rounding as before E6), else 32 x 32
+    const fs = ME.poolSlab || ME.qn("poolslab", 0), PB = fs === ME.POOL_SLAB || fs === ME.POOL_SLAB_MAX ? fs : nb <= ME.poolMaxBricks(undefined, ME.POOL_SLAB) ? ME.POOL_SLAB : ME.POOL_SLAB_MAX;
+    const PX = PB * 8, PY = PB * 8, PZ = Math.max(1, Math.ceil(nb / (PB * PB))) * 8;
+    if (nb > ME.poolMaxBricks(undefined, PB)) throw new Error(`the volume pool needs ${nb} bricks; the device allows ${ME.poolMaxBricks(undefined, PB)} (a ${PX} x ${PY} x ${PZ} texture against maxTextureDimension3D ${ME.poolMaxDepth()}): fewer or smaller volumes, or fewer frames`);
     const pool = new Uint8Array(PX * PY * PZ * 4);
+    // the models' interior bricks (not their copies'): brick-map index and 512 material bytes each
+    const inner = ni ? { at: new Uint32Array(ni), mats: new Uint8Array(ni * 512) } : null;
+    ni = 0;
     // each occupied brick into its pool slot, 8 x 8 rows of 8 voxels. Its 4^3 octants that hold a voxel go into
     // the brick map's top byte (bit x + 2y + 4z), and each volume gets the bounds of its voxels, lo and hi (the
     // volume shader skips the empty octants and draws its proxy box over lo..hi, not the whole dims)
@@ -6698,6 +6754,11 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         const bi = v.bmap[(iz * py + iy) * px + ix];
         if (bi < 0) continue;
         const b = v.chunks[bi], bk = ((bz + iz) * BY + by + iy) * BX + bx + ix, k = bricks[bk] - 1;
+        // an interior brick: never extremal (solid neighbours on every side), so lo and hi don't need it
+        if (v.inner && v.inner.is[bi]) {
+          if (!v.copy) { inner.at[ni] = bk; for (let j = 0; j < 512; j++) inner.mats[ni * 512 + j] = b[j * 4 + 3]; ni++; }
+          continue;
+        }
         let om = 0;
         for (let j = 0; j < 512; j++) {
           if (!b[j * 4 + 3]) continue;
@@ -6736,7 +6797,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const splat = new Uint8Array(acc.length);
     for (let i = 0; i < acc.length; i++) if (acc[i]) { splat[i] = Math.min(255, Math.round(acc[i] * 255)); T.coarse[i] = Math.min(255, T.coarse[i] + splat[i]); }
     T.splat = splat;
-    for (const v of all) v.bmap = v.chunks = v.mat = null;
+    for (const v of all) v.bmap = v.chunks = v.mat = v.inner = null;
 
     // point lights from emissive primitives of static volumes, at their drawn offsets (md.k / fine)
     const lights = [];
@@ -6757,14 +6818,16 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // h and r in world units (a fine model is drawn at 1/fine scale)
     // lod: model i's 2x-down copy in MB.lods (its base and dims in the atlas, lo and hi its voxels' bounds), -1 for none
     const models = vols.map((v, i) => ({ name: v.name, base: v.base, dims: v.dims, box: v.box, lo: v.lo, hi: v.hi, k: v.md.k, fine: v.fine, h: (v.md.h * v.md.k) / v.fine, r: (v.md.r * v.md.k) / v.fine, lod: lods.length ? i : -1 }));
-    const stats = { variants: vols.length, layout: [AX, AY, AZ], bricks: nb, pool: [PX, PY, PZ], poolMB: +((pool.byteLength / 1048576).toFixed(1)), solid, surface: vols.reduce((a, v) => a + v.surf, 0), lights: lights.length, lod: { models: lods.length, bricks: lodBricks }, lodMs: Math.round(lodMs), workers: ws.length, inWorkers, offWorker, early: how, startMs: run ? Math.round(run.startMs) : 0, idleMs: run ? Math.round(run.idleMs) : 0, busyMs: run ? Math.round(run.busyMs) : 0, readyMs: Math.round(readyMs), waitMs: Math.round(waitMs), hereMs: Math.round(hereMs), takeMs: Math.round(takeMs), ms: Math.round(ME.now() - t0) };
-    const MB = { atlas: pool, adims: [PX, PY, PZ], bricks, bdims: [BX, BY, BZ], models, lods: lods.map((l) => ({ base: l.base, dims: l.dims, lo: l.lo, hi: l.hi })), statics, walkerTypes, walkerFrames, critterFrames, extraFrames, lights, stats };
+    // bricks: the pool's; fill: their share of the ceiling (%); hollow: the interior bricks kept out of it (models
+    // and copies), the models' ones in MB.inner, the ms to find them; slab: S; mapMB: the brick map's texture
+    const stats = { variants: vols.length, layout: [AX, AY, AZ], bricks: nb, fill: +((nb / ME.poolMaxBricks()) * 100).toFixed(1), hollow: { bricks: hollowN, inner: inner ? inner.at.length : 0, ms: Math.round(hollowMs) }, slab: PB, pool: [PX, PY, PZ], poolMB: +((pool.byteLength / 1048576).toFixed(1)), mapMB: +((bricks.byteLength / 1048576).toFixed(1)), solid, surface: vols.reduce((a, v) => a + v.surf, 0), lights: lights.length, lod: { models: lods.length, bricks: lodBricks }, lodMs: Math.round(lodMs), workers: ws.length, inWorkers, offWorker, early: how, startMs: run ? Math.round(run.startMs) : 0, idleMs: run ? Math.round(run.idleMs) : 0, busyMs: run ? Math.round(run.busyMs) : 0, readyMs: Math.round(readyMs), waitMs: Math.round(waitMs), hereMs: Math.round(hereMs), takeMs: Math.round(takeMs), ms: Math.round(ME.now() - t0) };
+    const MB = { atlas: pool, adims: [PX, PY, PZ], bricks, bdims: [BX, BY, BZ], inner, models, lods: lods.map((l) => ({ base: l.base, dims: l.dims, lo: l.lo, hi: l.hi })), statics, walkerTypes, walkerFrames, critterFrames, extraFrames, lights, stats };
     MB.voxel = ME.brickVoxel(MB);
     return MB;
   };
 
   // the private functions a model bake depends on, for the bake cache's key (src/cache.js)
-  ME.bakeModels.parts = [bricksOf, matOf, halfOf, workerJob, runJobs, listOf, modelsOf, launch, workersOn, notData, defOf, sigOf];
+  ME.bakeModels.parts = [bricksOf, matOf, innerOf, halfOf, workerJob, runJobs, listOf, modelsOf, launch, workersOn, notData, defOf, sigOf];
 
   // Starts a bake's worker jobs before the terrain bake, so the workers run during it (#185): the variant list
   // from st (ME.volumeDecoOf, the props bakeTerrain bakes as volumes), the models built, the jobs posted. Returns
@@ -6772,13 +6835,26 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // never reaches it calls early.cancel(). It reads pal only for its default material and numbers no material.
   ME.bakeModels.start = (st, pal, opts = {}) => launch(listOf(ME.volumeDecoOf(st), st, opts), pal, opts);
 
-  // Material byte of voxel (x, y, z) of model mi (0 = empty), through the brick map into the pool
-  // (16 x 16 bricks per pool layer). Rebuilt from the arrays on a cache hit.
+  // The interior bricks of MB (ME.POOL_HOLLOW) by brick-map index: index into MB.inner.mats / 512 (none: null)
+  const innerMaps = new WeakMap();
+  const innerMap = (MB) => {
+    if (!MB.inner) return null;
+    let m = innerMaps.get(MB.inner);
+    if (!m) { m = new Map(); MB.inner.at.forEach((bk, i) => m.set(bk, i)); innerMaps.set(MB.inner, m); }
+    return m;
+  };
+
+  // Material byte of voxel (x, y, z) of model mi (0 = empty), through the brick map into the pool (PB x PB
+  // bricks per pool layer, PB = MB.adims[0] / 8), or into MB.inner for an interior brick. Rebuilt from the
+  // arrays on a cache hit.
   ME.brickVoxel = (MB) => {
-    const { atlas: pool, bricks, models } = MB, [PX, PY] = MB.adims, [BX, BY] = MB.bdims, PB = PX / 8;
+    const { atlas: pool, bricks, models } = MB, [PX, PY] = MB.adims, [BX, BY] = MB.bdims, PB = PX / 8, im = innerMap(MB);
     return (mi, x, y, z) => {
-      const [bx, by, bz] = models[mi].base, k = (bricks[(((bz + z) >> 3) * BY + ((by + y) >> 3)) * BX + ((bx + x) >> 3)] & 0xffffff) - 1;
-      if (k < 0) return 0;
+      const [bx, by, bz] = models[mi].base, bk = (((bz + z) >> 3) * BY + ((by + y) >> 3)) * BX + ((bx + x) >> 3), k = (bricks[bk] & 0xffffff) - 1;
+      if (k < 0) {
+        const ii = im ? im.get(bk) : undefined;
+        return ii === undefined ? 0 : MB.inner.mats[ii * 512 + ((z & 7) << 6) + ((y & 7) << 3) + (x & 7)];
+      }
       const qx = (k % PB) * 8 + (x & 7), qy = (Math.floor(k / PB) % PB) * 8 + (y & 7), qz = Math.floor(k / (PB * PB)) * 8 + (z & 7);
       return pool[((qz * PY + qy) * PX + qx) * 4 + 3];
     };
@@ -6793,20 +6869,24 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // warm-up probe 2026-10-26). A model too sparse for that, or a cap near its size, is scanned as before.
   // (A seeded rnd draws differently since #335: the same seed picks other voxels than the old scan did.)
   ME.sampleVoxels = (MB, mi, max, s = 1, rnd = Math.random) => {
-    const { atlas: pool, bricks, models } = MB, [PX, PY] = MB.adims, [BX, BY] = MB.bdims, PB = PX / 8;
+    const { atlas: pool, bricks, models } = MB, [PX, PY] = MB.adims, [BX, BY] = MB.bdims, PB = PX / 8, im = innerMap(MB);
     const m = models[mi], [bx, by, bz] = m.base, [nx, ny, nz] = m.dims, [ox, oy, oz] = m.box, out = [];
-    const occ = []; // the occupied bricks: [cx, cy, cz, qx, qy, qz]
+    // the occupied bricks: [cx, cy, cz, qx, qy, qz, ii], ii >= 0 an interior brick in MB.inner (then q is unused)
+    const occ = [], mats = MB.inner && MB.inner.mats;
     for (let cz = 0; cz < nz; cz += 8) for (let cy = 0; cy < ny; cy += 8) for (let cx = 0; cx < nx; cx += 8) {
-      const k = (bricks[(((bz + cz) >> 3) * BY + ((by + cy) >> 3)) * BX + ((bx + cx) >> 3)] & 0xffffff) - 1;
-      if (k >= 0) occ.push([cx, cy, cz, (k % PB) * 8, (Math.floor(k / PB) % PB) * 8, Math.floor(k / (PB * PB)) * 8]);
+      const bk = (((bz + cz) >> 3) * BY + ((by + cy) >> 3)) * BX + ((bx + cx) >> 3), k = (bricks[bk] & 0xffffff) - 1;
+      if (k >= 0) occ.push([cx, cy, cz, (k % PB) * 8, (Math.floor(k / PB) % PB) * 8, Math.floor(k / (PB * PB)) * 8, -1]);
+      else if (im && im.has(bk)) occ.push([cx, cy, cz, 0, 0, 0, im.get(bk)]);
     }
+    // the material at (x, y, z) & 7 of brick e
+    const matOf = (e, lx, ly, lz) => e[6] >= 0 ? mats[e[6] * 512 + (lz << 6) + (ly << 3) + lx] : pool[(((e[5] + lz) * PY + e[4] + ly) * PX + e[3] + lx) * 4 + 3];
     if (max * 8 <= occ.length * 512) {
       const got = new Set();
       for (let tries = max * 64; out.length < max && tries > 0; tries--) {
-        const b = Math.floor(rnd() * occ.length), i = Math.floor(rnd() * 512), [cx, cy, cz, qx, qy, qz] = occ[b];
+        const b = Math.floor(rnd() * occ.length), i = Math.floor(rnd() * 512), e = occ[b], [cx, cy, cz] = e;
         const x = cx + (i & 7), y = cy + ((i >> 3) & 7), z = cz + (i >> 6);
         if (x >= nx || y >= ny || z >= nz || got.has(b * 512 + i)) continue;
-        const mat = pool[(((qz + (i >> 6)) * PY + qy + ((i >> 3) & 7)) * PX + qx + (i & 7)) * 4 + 3];
+        const mat = matOf(e, i & 7, (i >> 3) & 7, i >> 6);
         if (!mat) continue;
         got.add(b * 512 + i);
         out.push([(ox + x + 0.5) * s, (oy + y + 0.5) * s, (oz + z + 0.5) * s, mat]);
@@ -6815,9 +6895,10 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       out.length = 0;
     }
     let seen = 0;
-    for (const [cx, cy, cz, qx, qy, qz] of occ) {
+    for (const e of occ) {
+      const [cx, cy, cz] = e;
       for (let z = cz; z < Math.min(nz, cz + 8); z++) for (let y = cy; y < Math.min(ny, cy + 8); y++) for (let x = cx; x < Math.min(nx, cx + 8); x++) {
-        const mat = pool[(((qz + (z & 7)) * PY + qy + (y & 7)) * PX + qx + (x & 7)) * 4 + 3];
+        const mat = matOf(e, x & 7, y & 7, z & 7);
         if (!mat) continue;
         // reservoir sampling: the i-th solid voxel takes a kept one's place with probability max / (i + 1)
         const j = seen < max ? seen : Math.floor(rnd() * (seen + 1));
@@ -7029,7 +7110,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       const s = v1 ? Object.assign({}, st, { map: Object.assign({}, st.map, { game: undefined }) }) : st, id = v1 ? st.map.id : st.id;
       const slot = encodeURIComponent(o.app ?? pageApp()) + "/" + encodeURIComponent(id) + "/";
       const own = content + JSON.stringify(s) + extra;
-      return `${slot}${ME.VERSION}:${id}:vs${ME.VS}:${fnv(code + assetSrc(own) + own + lists + (o.focus ? "|focus" : ""))}`;
+      // the pool's check knobs (bake-models.js: ME.poolSlab / ?poolslab, ME.poolHollow / ?hollow), when set
+      const slab = ME.poolSlab || ME.qn("poolslab", 0), knobs = (slab ? "|slab" + slab : "") + (ME.poolHollow === false || ME.qn("hollow", 1) === 0 ? "|solid" : "");
+      return `${slot}${ME.VERSION}:${id}:vs${ME.VS}:${fnv(code + assetSrc(own) + own + lists + (o.focus ? "|focus" : "") + knobs)}`;
     },
     async get(key) {
       if (ME.qn("nocache", 0) || !window.indexedDB) return null;
@@ -7660,7 +7743,7 @@ struct Inst { a0: vec4f, a1: vec4f, a2: vec4f, b0: vec4f, b1: vec4f, b2: vec4f, 
 // base.xyz the atlas corner, base.w the voxels' low bound lo (10 bits an axis), dims.xyz their high bound hi,
 // dims.w the 2x-down copy's entry (0 none): the proxy box spans lo..hi, not the model's whole box
 struct Model { base: vec4u, dims: vec4u };
-@group(1) @binding(0) var pool: texture_3d<f32>;   // occupied 8^3 bricks, 16 x 16 per layer
+@group(1) @binding(0) var pool: texture_3d<f32>;   // occupied 8^3 bricks, S x S per layer (S 16 or 32: its width / 8)
 @group(1) @binding(1) var bricks: texture_3d<u32>; // per brick of the layout: bits 0..23 0 empty, else 1 + pool slot; 24..31 its occupied 4^3 octants
 @group(1) @binding(2) var<storage, read> insts: array<Inst>;
 @group(1) @binding(3) var<storage, read> models: array<Model>;
@@ -7736,6 +7819,8 @@ fn loOf(M: Model) -> vec3f { return vec3f(f32(M.base.w & 1023u), f32((M.base.w >
   let tDelta = abs(inv);
   let bbase = vec3i(M.base.xyz / 8u);
   var t = max(tEnter, 0.0) + 1e-3;
+  // the pool slab S = 2^psh bricks a side (bake-models.js POOL_SLAB, POOL_SLAB_MAX)
+  let psh = countTrailingZeros(textureDimensions(pool, 0).x) - 3u; let pmsk = (1u << psh) - 1u;
   var steps = 0u; var hit = false; var cell = vec3i(0); var pb = vec3i(0);
   loop {
     if (t >= tExit || steps > 200u) { break; }
@@ -7751,7 +7836,7 @@ fn loOf(M: Model) -> vec3f { return vec3f(f32(M.base.w & 1023u), f32((M.base.w >
       continue;
     }
     let k = (slot & 0xFFFFFFu) - 1u; let om = slot >> 24u;
-    pb = vec3i(vec3u(k & 15u, (k >> 4u) & 15u, k >> 8u) * 8u);
+    pb = vec3i(vec3u(k & pmsk, (k >> psh) & pmsk, k >> (2u * psh)) * 8u);
     cell = vec3i(floor(p));
     var tMax = select((vec3f(cell) + select(vec3f(0.0), vec3f(1.0), pos) - ro) * inv, vec3f(1e30), zax);
     var oc = vec3i(-1);
@@ -14284,7 +14369,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.25.0", name: "Mossheart", commit: "6019b0c" };
+  G.VERSION = { v: "0.26.0", name: "Mossheart", commit: "437cca0" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -23345,12 +23430,19 @@ function MG_SFX(L) {
       this.music = new G.Music(m, buildBuses(m, G.AUDIO_LOW));
       // A hidden page suspends the context (nothing plays, so nothing underruns while the browser starves
       // the tab) and a shown one resumes it; a browser that wants a gesture for that (iOS, or a context
-      // interrupted by a call) gets it from the next touch, key or click anywhere on the page.
+      // interrupted by a call) gets it from the next touch, key or click anywhere on the page. The suspend
+      // runs whatever the state (a resume still pending reads "suspended" and would land after it), and
+      // unlock() does nothing while hidden (the pause menu a hidden page opens calls it), so a phone screen
+      // going off or the tab going to the background leaves no ambience playing.
       this.resumes = 0;
+      const hide = () => { if (m.ctx.state !== "closed") m.ctx.suspend().catch(() => {}); };
       document.addEventListener("visibilitychange", () => {
-        if (document.hidden) { if (m.ctx.state === "running") m.ctx.suspend().catch(() => {}); }
+        if (document.hidden) hide();
         else { this.resumes++; this.unlock(); }
       });
+      window.addEventListener("pagehide", hide);
+      document.addEventListener("freeze", hide);
+      this.hide = hide;
       for (const ev of ["pointerup", "touchend", "keydown"]) document.addEventListener(ev, () => { if (m.ctx.state !== "running" && !document.hidden) this.unlock(); }, { passive: true });
       this.sound = new G.Soundscape(m, game, app);
       m.load(banks || G.SOUND_BANKS).then(() => { this.readyAt = Math.round(performance.now()); this.music.start(m.banks[0].items); this.sound.start(); }).catch((e) => MA.err("AUDIO", e.stack || e.message));
@@ -23359,7 +23451,12 @@ function MG_SFX(L) {
     // dev (?record=1): the recording of the final mix
     stopRecording() { return this.mixer ? this.mixer.stopRecording() : Promise.resolve(null); }
     setGame(game) { this.game = game; if (this.sound) this.sound.game = game; }
-    unlock() { if (this.mixer) this.mixer.resume(); }
+    // (a resume that lands after the page was hidden is suspended again)
+    unlock() {
+      const m = this.mixer;
+      if (!m || document.hidden || m.ctx.state === "running" || m.ctx.state === "closed") return;
+      m.ctx.resume().then(() => { if (document.hidden) this.hide(); }, () => {});
+    }
     setEnabled(on, remember = false) {
       this.enabled = on;
       if (this.mixer) this.mixer.setMuted(!on);
