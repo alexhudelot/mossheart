@@ -350,6 +350,31 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 .oversum .sd { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px 8px; }
 .oversum .sk { white-space: nowrap; }
 .oversum svg { width: 1.1em; height: 1.1em; vertical-align: -0.2em; margin-right: 3px; }
+/* the online leaderboard (view/leaderboard.js): on the game over card (#overboard) and its own screen (#board,
+   over the void with the wisplings). Rows ranked by wave, the player's own best in blossom */
+.lboard { text-align: left; font-size: calc(15px * var(--ts)); }
+.lbh { margin: 4px 0 8px; font-size: calc(17px * var(--ts)); color: var(--moss); }
+.lbform { display: flex; gap: 8px; align-items: center; margin: 0 0 6px; }
+.lbnick { flex: 1; min-width: 0; font: inherit; font-size: calc(17px * var(--ts)); color: #38452e; background: #fffaf0; border: 2px solid #cdbf98; border-radius: 10px; padding: 8px 11px; user-select: text; -webkit-user-select: text; }
+.lbnick:focus { outline: none; border-color: var(--moss); }
+.lbnick::placeholder { color: #9c927a; opacity: 1; }
+.card .lbform .btn { width: auto; height: 46px; padding: 0 18px; font-size: calc(18px * var(--ts)); flex: none; }
+.lbnote { margin: 4px 0; font-size: calc(14px * var(--ts)); opacity: 0.8; }
+.lbnote:empty { display: none; }
+.lblist { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.lblist li { display: grid; grid-template-columns: 2.2em 1fr auto; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 10px; background: rgba(205, 191, 152, 0.18); }
+.lblist li.gap { display: block; text-align: center; background: none; padding: 0; opacity: 0.6; }
+.lblist .rk { text-align: center; font-variant-numeric: tabular-nums; }
+.lblist .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lblist .nm small { color: #f6b3c6; font-weight: 700; margin-left: 4px; }
+.lblist .wv { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lblist li.r1 .rk, .lblist li.r2 .rk, .lblist li.r3 .rk { border-radius: 999px; color: #fff; line-height: 1.6em; }
+.lblist li.r1 .rk { background: #d9a531; }
+.lblist li.r2 .rk { background: #9aa6a8; }
+.lblist li.r3 .rk { background: #b87a4b; }
+.lblist li.me { background: rgba(237, 140, 168, 0.3); box-shadow: inset 0 0 0 2px var(--blossom); }
+.lbtabs { flex: none; margin: 0 0 6px; }
+.lbcard { position: relative; z-index: 1; max-height: calc(100vh - 32px - 90px); }
 .oversum .sbar { display: grid; grid-template-columns: 7.5em 1fr 3em; align-items: center; gap: 8px; width: 100%; }
 .oversum .sl { font-weight: 700; white-space: nowrap; }
 .oversum .st { height: 10px; border-radius: 5px; background: #0001; overflow: hidden; }
@@ -591,7 +616,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   <div id="dewgauge"><div id="dewbar" role="meter" aria-label="Dew bank" aria-valuemin="0" aria-valuenow="0"><i class="tick" style="--at: 0.3"></i><i class="tick" style="--at: 0.55"></i><i class="tick" style="--at: 0.8"></i><i class="fill"><i class="bub"></i><i class="bub"></i><i class="bub"></i></i><b class="luck"></b></div><div id="dew" role="status" aria-label="Dew 0"><svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 .6C4.4 3.4 1 7.2 1 10.6a5 5 0 0 0 10 0C11 7.2 7.6 3.4 6 .6z"/><path class="glint" d="M3.6 10.2a2.6 2.6 0 0 0 1.9 3.1"/></svg><b id="dewn">0</b></div></div>
   <button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button>
   <div id="boons" class="veil"><div class="col"><h2>The garden offers a gift</h2><div id="boonrow"></div></div></div>
-  <div id="over" class="veil dark"><div class="panel card"><h2>The Heart Tree sleeps</h2><div class="cscroll"><p id="overtxt"></p><div id="oversum" class="oversum"></div></div><button id="again" class="btn pink">Plant anew</button></div></div>
+  <div id="over" class="veil dark"><div class="panel card"><h2>The Heart Tree sleeps</h2><div class="cscroll"><p id="overtxt"></p><div id="oversum" class="oversum"></div><div id="overboard" class="lboard" style="display:none"></div></div><button id="again" class="btn pink">Plant anew</button></div></div>
   <div class="help">drag pan · wheel zoom · Q/E turn · 1–5 seeds · space wave</div>
 </div>
 <div id="loading"><div class="box"><h1>Mossheart</h1><p>a cozy roguelike tower defence in a voxel bell jar</p><div id="track"><div id="bar"></div></div><div id="bartxt">loading</div></div></div>
@@ -14181,7 +14206,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.23.0", name: "Mossheart", commit: "46ebe55" };
+  G.VERSION = { v: "0.24.0", name: "Mossheart", commit: "edf6cbb" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -14191,6 +14216,21 @@ function MA_DSP() {
     document.body.appendChild(el);
   };
   if (document.body) show(); else document.addEventListener("DOMContentLoaded", show);
+})();
+
+</script>
+<script>/* src/leaderboard.config.js */
+/* The online leaderboard (README.md, "Leaderboard"). One of two backends, the first one filled is used:
+   url + key: a Supabase project (the schema is server/leaderboard.sql). url is the project URL
+     (https://<project>.supabase.co); key its public key (the anon key, or the newer publishable key,
+     sb_publishable_...). Both are public by design: row-level security, not the key, is what keeps the board
+     add-and-read only. Never put the service_role or secret key here.
+   proxy: the base URL of the small proxy in server/vercel (https://<name>.vercel.app), which keeps the board
+     in a file of the Pages repo. Its GitHub token stays in the Vercel project: never put a token here.
+   All left empty, the game has no leaderboard and plays as it always has. */
+(function () {
+  const G = (window.MG = window.MG || {});
+  G.LEADERBOARD = { url: "", key: "", proxy: "https://lab-vercel-brown.vercel.app" };
 })();
 
 </script>
@@ -19701,6 +19741,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     showGameOver(wave, best) {
       $("overtxt").innerHTML = `You tended the meadow for ${wave} waves.<br>Longest bloom: ${best}`;
       $("oversum").innerHTML = this.summaryHtml();
+      if (G.Leaderboard) G.Leaderboard.atGameOver($("overboard"), wave); // (the online board, when the build has one)
       $("over").classList.add("show");
     }
     // the run in a few lines (the game's stats, kept in the save): the plants, the gifts, and the creatures
@@ -19912,6 +19953,290 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 })();
 
 </script>
+<script>/* src/view/leaderboard.js */
+/* Mossheart's online leaderboard (Game): each device's best wave per garden, on one of two backends the user
+   set up (README.md, "Leaderboard"), through fetch, no client library: a Supabase project's REST API (the
+   schema is server/leaderboard.sql), or else the small proxy in server/vercel, which keeps the board in a
+   file of the Pages repo. The backend is G.LEADERBOARD (src/leaderboard.config.js), Supabase first if its
+   url and key are set, else the proxy if set; with neither, or ?board=0, the board is off: no button shows
+   it, the game over card has no form, and nothing is fetched. Offline, every call resolves to
+   { ok: false, why: "offline" } after at most 8 s: nothing here throws.
+     G.Leaderboard.on()                    whether a backend is set
+     .submit(run) -> { ok, why, rank }     run: { garden, wave, nickname, seed, boons, density, version } (rank
+                                           and kept: from the proxy only)
+     .top(garden, n) -> { ok, rows, why }  the board's first n rows: { nickname, wave, tag, created_at }
+     .mine(garden) -> { ok, row, rank }    this device's best row there and its rank (1 + the rows above it)
+     .atGameOver(el, wave)                 the game over card's part (hud.js): a nickname and Submit, then the board
+     .board(el, garden)                    the Leaderboard screen's body (menu.js), a tab per garden
+   The device id (mossheart.device) is a random secret kept on the device; the board shows its tag, a short
+   hash of it, so the player's own row is found without the id being readable. The nickname is remembered
+   (mossheart.nickname), and so is the best this device has on the board per garden (mossheart.board). */
+(function () {
+  const G = (window.MG = window.MG || {});
+  const DEV_KEY = "mossheart.device", NICK_KEY = "mossheart.nickname", BEST_KEY = "mossheart.board";
+  const TIMEOUT = 8000, TOP = 10, BOARD_TOP = 20;
+  const GARDEN = /^(momiji|fernglass|cornmoon)$/; // (the gardens the schema knows)
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const get = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const put = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* storage blocked: kept for this page only */ } };
+  const gardenName = (id) => (G.LEVELS && G.LEVELS[id] ? G.LEVELS[id].name : (G.LEVELS_SOON && G.LEVELS_SOON[id] ? G.LEVELS_SOON[id].name : id));
+
+  // the backend, or null (not ?board=0): { url, key } for Supabase (both set), else { proxy } (set)
+  const cfg = () => {
+    const c = G.LEADERBOARD || {}, base = (s) => String(s || "").trim().replace(/\/+$/, "");
+    const url = base(c.url), key = String(c.key || "").trim(), proxy = base(c.proxy);
+    if (new URLSearchParams(location.search).get("board") === "0") return null;
+    if (url && key && /^https?:\/\//.test(url)) return { url, key };
+    if (proxy && /^https?:\/\//.test(proxy)) return { proxy };
+    return null;
+  };
+
+  // ------------------------------------------------------------------ the device, its tag, the nickname
+  let devMem = "";
+  const device = () => {
+    let d = get(DEV_KEY);
+    if (d && /^[a-f0-9]{32}$/.test(d)) return d;
+    if (devMem) return devMem;
+    const b = new Uint8Array(16);
+    if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(b);
+    else for (let i = 0; i < 16; i++) b[i] = (Math.random() * 256) | 0;
+    d = devMem = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+    put(DEV_KEY, d);
+    return d;
+  };
+  // the board's tag for this device: sha256 of the id, its first 12 hex digits (as the schema's trigger);
+  // null where the browser has no crypto.subtle (then the player's row is found by nickname and wave)
+  let tagP = null;
+  const tag = () => tagP || (tagP = (async () => {
+    try {
+      if (!window.crypto || !crypto.subtle) return null;
+      const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(device())));
+      return Array.from(h.slice(0, 6), (x) => x.toString(16).padStart(2, "0")).join("");
+    } catch (e) { return null; }
+  })());
+
+  // a nickname as the schema takes it: letters, digits, space, _ . -, 1 to 16 long, no edge spaces
+  const clean = (s) => String(s || "").replace(/[^A-Za-z0-9 _.-]/g, "").replace(/\s+/g, " ").trim().slice(0, 16).trim();
+  // a small word filter: words that never belong on a cozy board, read through simple letter swaps
+  const LEET = { 0: "o", 1: "i", 3: "e", 4: "a", 5: "s", 7: "t", 8: "b" };
+  const ANY = ["fuck", "shit", "cunt", "nigg", "fagg", "bitch", "whore", "slut", "rapist", "nazi", "hitler", "retard", "kike", "twat", "wank", "penis", "porn", "pussy", "dildo"];
+  const WORD = ["fag", "cock", "dick", "rape", "ass", "tits", "cum", "sex", "spic", "chink", "anal", "kkk"];
+  const bad = (s) => {
+    const l = String(s).toLowerCase().replace(/[0134578]/g, (c) => LEET[c] || c);
+    const flat = l.replace(/[^a-z]/g, "");
+    if (ANY.some((w) => flat.includes(w))) return true;
+    return l.split(/[^a-z]+/).some((w) => WORD.includes(w));
+  };
+  const nick = () => clean(get(NICK_KEY));
+  const setNick = (s) => put(NICK_KEY, clean(s));
+
+  // the best this device has on the board, per garden (kept after a submit, refreshed by mine())
+  const bests = () => { try { return JSON.parse(get(BEST_KEY) || "{}") || {}; } catch (e) { return {}; } };
+  const bestOf = (garden) => +bests()[garden] || 0;
+  const keepBest = (garden, wave) => { const b = bests(); if (!(b[garden] >= wave)) { b[garden] = wave; put(BEST_KEY, JSON.stringify(b)); } };
+
+  // ------------------------------------------------------------------ the two backends
+  const why = (status, data) => {
+    if (data && typeof data.why === "string" && SAY[data.why]) return data.why; // (the proxy names it)
+    const m = data ? `${data.hint || ""} ${data.message || ""}` : "";
+    if (/notbest|not a new best/.test(m) || status === 409) return "notbest";
+    if (/soon/.test(m) || status === 429) return "soon";
+    if (data && data.code === "23514") return "invalid";
+    if (status === 401 || status === 403) return "denied";
+    if (status === 404 || status === 503 || (data && data.code === "42P01")) return "setup";
+    return "error";
+  };
+  // a fetch that never throws: { ok, status, data, range, why }, "offline" past TIMEOUT or with no network
+  const req = async (url, opt = {}) => {
+    if (typeof fetch !== "function") return { ok: false, status: 0, why: "offline" };
+    const ac = typeof AbortController === "function" ? new AbortController() : null;
+    const t = ac ? setTimeout(() => ac.abort(), TIMEOUT) : 0;
+    try {
+      const r = await fetch(url, { method: opt.method || "GET", headers: opt.headers || {}, body: opt.body, signal: ac ? ac.signal : undefined, cache: opt.cache || "no-store" });
+      let data = null;
+      try { const s = await r.text(); data = s ? JSON.parse(s) : null; } catch (e) { /* no body, or not JSON */ }
+      const range = (r.headers && r.headers.get && r.headers.get("content-range")) || "";
+      return { ok: r.ok, status: r.status, data, range, why: r.ok ? "" : why(r.status, data) };
+    } catch (e) {
+      return { ok: false, status: 0, why: "offline" };
+    } finally { if (t) clearTimeout(t); }
+  };
+  // Supabase: its REST API with the public key
+  const call = (path, opt = {}) => {
+    const c = cfg();
+    if (!c || !c.url) return Promise.resolve({ ok: false, why: "off" });
+    const h = Object.assign({ apikey: c.key, Accept: "application/json" }, opt.headers || {});
+    if (/^eyJ/.test(c.key)) h.Authorization = "Bearer " + c.key; // (a legacy anon key is a JWT; a publishable key goes in apikey only)
+    return req(`${c.url}/rest/v1/${path}`, Object.assign({}, opt, { headers: h }));
+  };
+  // the proxy: a garden's rows (its first 100, the GET cached 30 s at the edge), kept here 5 s so that one
+  // fill asks once, and after a submit the rows its answer carries (fresher than the edge's) for 35 s
+  const proxyMem = {};
+  const prow = (r) => ({ nickname: String(r.nickname || ""), wave: r.wave | 0, tag: String(r.tag || ""), created_at: String(r.at || "") });
+  const prows = (garden) => {
+    const m = proxyMem[garden], c = cfg();
+    if (m && m.base === c.proxy && Date.now() < m.until) return m.p;
+    const p = req(`${c.proxy}/api/scores?garden=${garden}`, { headers: { Accept: "application/json" }, cache: "default" }).then((r) => {
+      if (r.ok && r.data && Array.isArray(r.data.rows)) return { ok: true, rows: r.data.rows.map(prow) };
+      if (proxyMem[garden] && proxyMem[garden].p === p) delete proxyMem[garden]; // (a failure is not kept)
+      return { ok: false, why: r.ok ? "error" : r.why };
+    });
+    proxyMem[garden] = { base: c.proxy, until: Date.now() + 5000, p };
+    return p;
+  };
+  const viaProxy = () => { const c = cfg(); return !!(c && c.proxy); };
+
+  const ROW = "select=nickname,wave,tag,created_at";
+  const top = async (garden, n = TOP) => {
+    if (!GARDEN.test(garden)) return { ok: false, rows: [], why: "error" };
+    n = Math.max(1, Math.min(100, n | 0));
+    if (viaProxy()) { const r = await prows(garden); return { ok: r.ok, rows: r.ok ? r.rows.slice(0, n) : [], why: r.ok ? "" : r.why }; }
+    const r = await call(`board?garden=eq.${garden}&${ROW}&order=wave.desc,created_at.asc&limit=${n}`);
+    return { ok: r.ok && Array.isArray(r.data), rows: r.ok && Array.isArray(r.data) ? r.data : [], why: r.ok ? "" : r.why };
+  };
+  const mine = async (garden) => {
+    const t = await tag();
+    if (!t || !GARDEN.test(garden)) return { ok: false, row: null, rank: 0, why: "notag" };
+    if (viaProxy()) {
+      const r = await prows(garden);
+      if (!r.ok) return { ok: false, row: null, rank: 0, why: r.why };
+      const row = r.rows.find((x) => x.tag === t) || null;
+      if (!row) return { ok: true, row: null, rank: 0 };
+      keepBest(garden, row.wave);
+      return { ok: true, row, rank: 1 + r.rows.filter((x) => x.wave > row.wave).length };
+    }
+    const r = await call(`board?garden=eq.${garden}&tag=eq.${t}&${ROW}&limit=1`);
+    if (!r.ok || !Array.isArray(r.data)) return { ok: false, row: null, rank: 0, why: r.why || "error" };
+    const row = r.data[0] || null;
+    if (!row) return { ok: true, row: null, rank: 0 };
+    keepBest(garden, row.wave);
+    const c = await call(`board?garden=eq.${garden}&wave=gt.${row.wave | 0}&select=tag&limit=1`, { headers: { Prefer: "count=exact" } });
+    const m = /\/(\d+)\s*$/.exec(c.range);
+    return { ok: true, row, rank: c.ok && m ? +m[1] + 1 : 0 };
+  };
+  const submit = async (run) => {
+    const nickname = clean(run.nickname);
+    if (!nickname || bad(nickname)) return { ok: false, why: "nick" };
+    if (!GARDEN.test(run.garden) || !(run.wave >= 1)) return { ok: false, why: "invalid" };
+    const body = {
+      garden: run.garden, wave: Math.min(500, run.wave | 0), nickname, device: device(),
+      seed: Number.isFinite(run.seed) ? run.seed >>> 0 : null,
+      boons: (run.boons || []).filter((b) => /^[A-Za-z0-9_]+$/.test(b)).slice(0, 64),
+      density: run.density >= 8 && run.density <= 64 ? run.density | 0 : null,
+      version: run.version ? String(run.version).slice(0, 32) : null,
+    };
+    if (viaProxy()) {
+      // (as text/plain, a "simple" request: no preflight before it; the proxy reads the JSON either way)
+      const p = { garden: body.garden, wave: body.wave, nickname, version: body.version, seed: body.seed, density: body.density, deviceId: body.device };
+      const r = await req(`${cfg().proxy}/api/score`, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: JSON.stringify(p) });
+      const d = r.data || {};
+      if (!r.ok || !d.ok) return { ok: false, why: r.ok ? "error" : r.why };
+      const kept = d.kept !== false;
+      if (kept) keepBest(run.garden, body.wave);
+      if (Array.isArray(d.rows)) proxyMem[run.garden] = { base: cfg().proxy, until: Date.now() + 35000, p: Promise.resolve({ ok: true, rows: d.rows.map(prow) }) };
+      return { ok: true, why: "", rank: d.rank | 0, kept };
+    }
+    const r = await call("scores", { method: "POST", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(body) });
+    if (r.ok) keepBest(run.garden, body.wave);
+    return { ok: r.ok, why: r.ok ? "" : r.why };
+  };
+
+  // ------------------------------------------------------------------ the UI
+  const SAY = {
+    off: "There is no leaderboard in this build.",
+    offline: "The board is out of reach (offline?). Your best is still kept here.",
+    notbest: "Your best on the board here is already as high.",
+    soon: "One moment: try again in a few seconds.",
+    nick: "Pick another nickname: letters, digits, spaces and _ . - (up to 16).",
+    invalid: "The board did not take this run.",
+    denied: "The board turned the request away (check its setup in the README).",
+    setup: "The board is not set up yet (README, Leaderboard).",
+    error: "The board could not be reached just now.",
+  };
+  const say = (w) => SAY[w] || SAY.error;
+  // a list of rows, ranked as in sport (equal waves share a rank), the device's own row marked; with its
+  // best below the list, that row after a gap
+  const listHtml = (rows, my, me) => {
+    let html = "", rank = 0;
+    rows.forEach((r, i) => {
+      if (i === 0 || r.wave !== rows[i - 1].wave) rank = i + 1;
+      html += li(r, rank, my(r));
+    });
+    if (me && me.row && !rows.some(my)) html += `<li class="gap" aria-hidden="true">⋯</li>` + li(me.row, me.rank, true);
+    return html;
+  };
+  const li = (r, rank, own) => `<li class="${own ? "me" : ""}${rank >= 1 && rank <= 3 ? " r" + rank : ""}"><b class="rk">${rank || "–"}</b><span class="nm">${esc(r.nickname)}${own ? ` <small>you</small>` : ""}</span><span class="wv">wave <b>${r.wave | 0}</b></span></li>`;
+  // fills el's .lblist and .lbnote with the board of a garden; a newer fill of the same el wins
+  const fill = async (el, garden, n) => {
+    const tok = (el._lb = {}), list = el.querySelector(".lblist"), note = el.querySelector(".lbstat");
+    if (note) note.textContent = "Reaching the board…";
+    const [t, me, my] = await Promise.all([top(garden, n), mine(garden), tag()]);
+    if (el._lb !== tok) return;
+    const nk = nick(), best = bestOf(garden);
+    const own = (r) => (my ? r.tag === my : !!nk && r.nickname === nk && r.wave === best);
+    if (!t.ok) { if (list) list.innerHTML = ""; if (note) note.textContent = say(t.why); return; }
+    if (list) list.innerHTML = listHtml(t.rows, own, me);
+    if (note) note.textContent = t.rows.length ? "" : "No one is on this board yet: be the first to bloom here.";
+  };
+
+  // the game over card's part: the run's garden and wave, a nickname field and Submit (only for a new best
+  // of this device there), and the garden's board under it
+  const atGameOver = (el, wave) => {
+    if (!el) return;
+    el._lb = null;
+    const garden = G.levelId;
+    if (!cfg() || !GARDEN.test(garden || "") || !(wave >= 1)) { el.innerHTML = ""; el.style.display = "none"; return; }
+    const S = G.state || {};
+    const run = { garden, wave, seed: S.seed, boons: (S.boons || []).slice(), density: window.ME ? ME.VS : null, version: G.VERSION ? `${G.VERSION.v} ${G.VERSION.commit}` : null };
+    const best = bestOf(garden);
+    el.style.display = "";
+    el.innerHTML = `<h3 class="lbh">Leaderboard · ${esc(gardenName(garden))}</h3>
+      ${best >= wave ? "" : `<form class="lbform" autocomplete="off"><input class="lbnick" name="nickname" maxlength="16" placeholder="Your nickname" aria-label="Nickname" spellcheck="false" autocapitalize="off" enterkeyhint="send" value="${esc(nick())}"><button class="btn lbsend" type="submit">Submit</button></form>`}
+      <p class="lbnote lbsay" role="status">${best >= wave ? `Your best on the board here: wave ${best}.` : `Submit wave ${wave | 0} to the board?`}</p>
+      <ol class="lblist"></ol><p class="lbnote lbstat"></p>`;
+    const form = el.querySelector(".lbform"), sayEl = el.querySelector(".lbsay");
+    fill(el, garden, TOP);
+    if (!form) return;
+    const inp = form.querySelector("input"), btn = form.querySelector("button");
+    // the game's keys (seeds, Q/E turn, Space) stay out of the field
+    inp.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Escape") inp.blur(); });
+    inp.addEventListener("input", () => { const c = inp.value.replace(/[^A-Za-z0-9 _.-]/g, ""); if (c !== inp.value) inp.value = c; });
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const nk = clean(inp.value);
+      if (!nk || bad(nk)) { sayEl.textContent = say("nick"); inp.focus(); return; }
+      inp.value = nk; setNick(nk);
+      btn.disabled = inp.disabled = true; sayEl.textContent = "Sending…";
+      const r = await submit(Object.assign({ nickname: nk }, run));
+      if (r.ok || r.why === "notbest") {
+        if (r.why === "notbest") keepBest(garden, wave);
+        form.remove();
+        sayEl.textContent = !r.ok ? say("notbest") : r.kept === false ? `Wave ${wave | 0} ranks ${r.rank}: the board keeps its first 100.` : `Wave ${wave | 0} is on the board, ${nk}${r.rank ? ` (rank ${r.rank})` : ""}.`;
+        fill(el, garden, TOP);
+      } else {
+        btn.disabled = inp.disabled = false;
+        sayEl.textContent = say(r.why);
+      }
+    });
+  };
+
+  // the Leaderboard screen's body: a tab per garden, its board, the device's own best marked
+  const board = (el, garden) => {
+    if (!el) return;
+    const ids = Object.keys(G.LEVELS || { momiji: 1 });
+    if (!ids.includes(garden)) garden = ids[0];
+    el.dataset.garden = garden;
+    el.innerHTML = `<div class="seg lbtabs" role="tablist">${ids.map((id) => `<button type="button" role="tab" data-g="${esc(id)}" aria-selected="${id === garden}" class="${id === garden ? "on" : ""}">${esc(gardenName(id))}</button>`).join("")}</div>
+      <ol class="lblist"></ol><p class="lbnote lbstat" role="status"></p>`;
+    el.onclick = (e) => { const b = e.target.closest("[data-g]"); if (b && b.dataset.g !== el.dataset.garden) board(el, b.dataset.g); };
+    if (!cfg()) { el.querySelector(".lbstat").textContent = say("off"); return; }
+    fill(el, garden, BOARD_TOP);
+  };
+
+  G.Leaderboard = { on: () => !!cfg(), submit, top, mine, atGameOver, board, nick, setNick, clean, bad, device, tag };
+})();
+
+</script>
 <script>/* src/view/terrariums.js */
 /* The terrarium screen (#237, as the user picked it): the gardens float in a dark void as jars, each turning
    on its turntable sheet (MG.TURNTABLE, art/turntable/<id>.js), on a slow ring with one jar in front (Orbit).
@@ -20000,7 +20325,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.menu = menu; this.el = el; this.confirm = null; this.rot = 0; this.rotTo = 0; this.last = 0; this.said = 0;
       el.innerHTML = `<canvas class="stars"></canvas>
         <div class="jtop"><button class="btn jback" data-j="back">‹ Title</button><h2>Choose a terrarium</h2>
-          <span class="jgap"></span><button class="btn jlink" data-a="settings">Settings</button><button class="btn jlink" data-a="howto">How to play</button></div>
+          <span class="jgap"></span><button class="btn jlink" data-a="board">Leaderboard</button><button class="btn jlink" data-a="settings">Settings</button><button class="btn jlink" data-a="howto">How to play</button></div>
         <button class="btn jarrow l" data-j="left" aria-label="Turn the ring left">‹</button><button class="btn jarrow r" data-j="right" aria-label="Turn the ring right">›</button>
         <div class="jfoot"><div class="jnew"></div><div class="jhint" role="status"></div></div>`;
       this.bar = el.querySelector(".jnew"); this.hint = el.querySelector(".jhint");
@@ -20497,6 +20822,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
           <h1>Moss<em>heart</em></h1><p class="sub">a cozy roguelike tower defence in a voxel bell jar</p>
           <button class="btn pink big" data-a="cont">Continue</button>
           <button class="btn big" data-a="jars">Terrariums</button>
+          <button class="btn big" data-a="board">Leaderboard</button>
           <button class="btn big" data-a="settings">Settings</button>
           <button class="btn big" data-a="howto">How to play</button>
         </div></div>
@@ -20512,6 +20838,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         <div id="settings" class="veil menu"><div class="panel card wide"><h2>Settings</h2><div id="setbody" class="cscroll"></div>
           <button class="btn pink big" data-a="back">Done</button></div></div>
         <div id="howto" class="veil menu"><div class="panel card wide"><h2>How to play</h2><div class="howto cscroll">${HOWTO()}</div>
+          <button class="btn pink big" data-a="back">Back</button></div></div>
+        <div id="board" class="veil menu void"><canvas class="stars"></canvas><div class="panel card wide lbcard"><h2>Leaderboard</h2><div id="lbbody" class="cscroll lboard"></div>
           <button class="btn pink big" data-a="back">Back</button></div></div>`;
       document.body.appendChild(root);
       this.terr = new G.Terrariums(this, $("jars"));
@@ -20547,8 +20875,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // whether there is a title screen: only with a run somewhere (the one in play, or a garden's save)
     hasTitle() { return this.inRun() || !!this.terr.latest(); }
     show(name, from) {
-      for (const id of ["title", "jars", "pause", "settings", "howto"]) $(id).classList.toggle("show", id === name);
-      if (name === "settings" || name === "howto" || name === "jars") this.back = from || this.open || "pause";
+      for (const id of ["title", "jars", "pause", "settings", "howto", "board"]) $(id).classList.toggle("show", id === name);
+      if (name === "settings" || name === "howto" || name === "jars" || name === "board") this.back = from || this.open || "pause";
+      // the Leaderboard buttons only in a build with a board (src/leaderboard.config.js)
+      const lb = !!(G.Leaderboard && G.Leaderboard.on());
+      for (const b of document.querySelectorAll("#menus [data-a=\"board\"]")) b.style.display = lb ? "" : "none";
+      if (name === "board") G.Leaderboard.board($("lbbody"), this.boardGarden);
       if (name === "settings") this.renderSettings();
       if (name === "jars") this.terr.open(); else this.terr.close();
       if (name === "title") {
@@ -20562,8 +20894,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         const tj = T.querySelector(".tjar");
         if (!tj.firstChild || tj.firstChild.dataset.id !== id) { tj.innerHTML = ""; const b = G.Terrariums.jarEl(id, 0.15); b.tabIndex = -1; b.setAttribute("aria-hidden", "true"); tj.appendChild(b); }
       }
-      G.Terrariums.loop(name === "title" || name === "jars");
-      if (this.wisps) this.wisps.show(name === "title" || name === "jars" ? $(name) : null);
+      G.Terrariums.loop(name === "title" || name === "jars" || name === "board");
+      if (this.wisps) this.wisps.show(name === "title" || name === "jars" || name === "board" ? $(name) : null);
       this.open = name || "";
       this.app.paused = !!name;
       document.body.dataset.menu = name || "";
@@ -20578,6 +20910,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       else if (a === "start" || a === "resume") this.show("");
       else if (a === "restart") { this.act.restart(); this.show(""); }
       else if (a === "jars") this.show("jars", this.open);
+      else if (a === "board") { const l = this.terr.latest(); this.boardGarden = this.open === "jars" ? this.terr.front() : l ? l.id : G.levelId; this.show("board", this.open); }
       else if (a === "settings" || a === "howto") this.show(a, this.open);
       else if (a === "title") this.show(this.hasTitle() ? "title" : "jars");
       else if (a === "back") this.show(this.back || "pause");
