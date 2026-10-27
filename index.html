@@ -14181,7 +14181,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.22.0", name: "Mossheart", commit: "2a7bb8f" };
+  G.VERSION = { v: "0.23.0", name: "Mossheart", commit: "46ebe55" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -20374,14 +20374,15 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const calmOS = !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
   const DEFAULTS = {
     master: 0.7, music: 0.5, sfx: 0.7, ambience: 0.45, musicStyle: "ambient",
-    quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, camera: true, vs: 32, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, weather: "subtle", glass: "auto", res: "full",
+    quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, camera: true, vs: 40, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, weather: "subtle", glass: "auto", res: "full",
   };
   const MUSIC_STYLES = [["ambient", "Ambient"], ["drift", "Drift"], ["mix", "Mix"]];
   const OLD_VOLUMES ={ master: 0.9, music: 0.8, sfx: 0.9, ambience: 0.8 };
-  // vs: the voxel density, Extreme (32) unless the player picked one (vsPicked; the device's cap still applies).
+  // vs: the voxel density, Ultimate (40) unless the player picked one (vsPicked; the device's cap still applies).
   // Before 24 became the default every save held vs 16 unless picked, so only another value was a choice.
   // (Extreme at full resolution is the default since 2026-10-24, the user: "default to extreme density and
-  // full resolution ... assume modern flagship phones and devices".)
+  // full resolution ... assume modern flagship phones and devices"; Ultimate since 2026-10-27, the user: "set
+  // default density to 40 for desktop and mobile". A save that never picked one moves to 40 by itself.)
   const load = () => {
     let raw = {};
     try { raw = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { /* storage blocked */ }
@@ -20447,7 +20448,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     low: { vs: 16, res: "1", quality: "low", glass: false, weather: "subtle" },
     medium: { vs: 24, res: "1.5", quality: "medium", glass: "auto", weather: "subtle" },
     high: { vs: 32, res: "2", quality: "high", glass: "auto", weather: "subtle" },
-    ultra: { vs: 32, res: "full", quality: "high", glass: "auto", weather: "subtle" },
+    ultra: { vs: 40, res: "full", quality: "high", glass: "auto", weather: "subtle" },
   };
   const PRESET_KEYS = ["vs", "res", "quality", "glass", "weather"];
   const PRESET_NAMES = { low: "Low", medium: "Medium", high: "High", ultra: "Ultra" };
