@@ -9,7 +9,36 @@
     "at": "2026-10-27T16:09:54.034Z",
     "seed": null,
     "density": null,
-    "version": "manual"
+    "version": "manual",
+    "maxDew": null,
+    "boons": null,
+    "towers": null,
+    "diedTo": null
+   },
+   {
+    "nickname": "alexh",
+    "wave": 13,
+    "tag": "3f46b1074900",
+    "at": "2026-10-27T19:57:15.355Z",
+    "seed": 1649839697,
+    "density": 40,
+    "version": "0.25.0 6019b0c",
+    "maxDew": 697,
+    "boons": {
+     "dew_collector": 3,
+     "bramble_hedge": 3,
+     "prism": 1,
+     "overgrowth": 1,
+     "sticky_spores": 2
+    },
+    "towers": {
+     "thorn": 3,
+     "puff": 5,
+     "sun": 5,
+     "wisp": 3,
+     "briar": 4
+    },
+    "diedTo": "lichen"
    }
   ]
  }
