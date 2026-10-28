@@ -17,32 +17,34 @@
    },
    {
     "nickname": "alexh",
-    "wave": 15,
+    "wave": 18,
     "tag": "3f46b1074900",
-    "at": "2026-10-28T01:53:01.654Z",
-    "seed": 2093762212,
+    "at": "2026-10-28T23:34:09.064Z",
+    "seed": 2865646653,
     "density": 40,
-    "version": "0.26.0 437cca0",
-    "maxDew": 600,
+    "version": "0.31.0 c45b13c",
+    "maxDew": 970,
     "boons": {
-     "twin_seeds": 1,
-     "solar_focus": 1,
-     "overgrowth": 1,
-     "seed_bank": 1,
-     "quick_sap": 3,
-     "haunting": 2,
-     "spore_cloud": 3,
-     "puffball": 1,
-     "deep_roots": 1
+     "sticky_spores": 2,
+     "firefly_lanterns": 1,
+     "dew_collector": 3,
+     "quick_sap": 1,
+     "solar_flare": 1,
+     "heartwood": 1,
+     "prism": 1,
+     "deep_roots": 2,
+     "haunting": 1,
+     "spore_cloud": 1,
+     "photosynthesis": 1
     },
     "towers": {
-     "thorn": 3,
-     "puff": 4,
+     "thorn": 1,
+     "puff": 3,
      "sun": 4,
-     "wisp": 2,
-     "briar": 4
+     "wisp": 7,
+     "briar": 6
     },
-    "diedTo": "mole"
+    "diedTo": "snail"
    }
   ],
   "fernglass": [
