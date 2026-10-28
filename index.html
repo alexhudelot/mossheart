@@ -14369,7 +14369,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.27.0", name: "Mossheart", commit: "559648d" };
+  G.VERSION = { v: "0.28.0", name: "Mossheart", commit: "fec1916" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -21279,7 +21279,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         const bus = a.mixer.bus, set = (n, v) => { if (bus[n] && bus[n].gain) bus[n].gain.value = v * s.master; };
         set("Music", s.music); set("Sfx", s.sfx); set("Ambience", s.ambience);
         // (?music=ambient|drift|liquid|mix pins it, for a check; a style music.js does not know yet plays as ambient)
-        if (a.music) { const st = ME.params.get("music") || s.musicStyle; a.music.setStyle(!G.Score || !G.Score.STYLES || G.Score.STYLES[st] ? st : "ambient"); }
+        if (a.music) { const st = ME.params.get("music") || s.musicStyle; a.music.setStyle(!G.Score || !G.Score.STYLES || G.Score.STYLES[st] || (st === "mix" && G.Score.MIX) ? st : "ambient"); }
       }
       this.showMusic();
     }
@@ -21302,7 +21302,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       body.innerHTML =
         `<h3>Sound</h3>` + slider("master", "Volume") + slider("music", "Music") + slider("sfx", "Effects") + slider("ambience", "Ambience") +
         choice("musicStyle", "Music style", MUSIC_STYLES) +
-        `<div class="note dim">Ambient: single notes far apart over a warm pad. Drift: chill, psychedelic synth electronica in D minor, a squelchy rolling bass answered by short modal synth phrases through delays and glitch edits, a soft four-on-the-floor and slow filter sweeps. Mix: the two together. A change comes in on the next bar; the ♫ button beside the sound button cycles them too.${ME.params.has("music") ? ` Pinned to ${(MUSIC_STYLES.find(([v]) => v === ME.params.get("music")) || ["", "another style"])[1]} by the page address (?music=).` : ""}</div>` +
+        `<div class="note dim">Ambient: single notes far apart over a warm pad. Drift: chill, psychedelic synth electronica in D minor, a squelchy rolling bass answered by short modal synth phrases through delays and glitch edits, a soft four-on-the-floor and slow filter sweeps. Liquid: chill, atmospheric liquid drum and bass at 170–174 bpm in F minor, a soft two-step break under a warm sub and a pad, sparse Rhodes notes and the odd chord stab thrown into a delay. Mix: rotates between them. A change comes in on the next bar; the ♫ button beside the sound button cycles them too.${ME.params.has("music") ? ` Pinned to ${(MUSIC_STYLES.find(([v]) => v === ME.params.get("music")) || ["", "another style"])[1]} by the page address (?music=).` : ""}</div>` +
         `<h3>Graphics</h3>` +
         choice("preset", "Preset", presets().map((k) => [k, PRESET_NAMES[k]]).concat(s.preset === "custom" ? [["custom", "Custom"]] : [])) +
         `<div class="note dim">Sets every graphics setting here at once (${presets().map((k) => { const p = presetSet(k); return PRESET_NAMES[k] + ": " + p.vs + ", " + (p.res === "full" ? "Full" : p.res + "x") + ", quality " + p.quality + (p.glass === false ? ", no glass" : ""); }).join("; ")}; the weather Subtle in all). Ultra is the default. Custom once one is changed by hand.</div>` +
@@ -21744,6 +21744,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     liquid: { cues: SC.LIQUID, key: 65, scale: [0, 3, 5, 7, 10], sting: { bass: 41, notes: [65, 68, 72], bell: 77 }, vinyl: -2,
       swap: { kalimba: ["keys", 0, -2], glass: ["keys", 0, -2], bell: ["keys", -12, -2], bass: ["lsub", 0, 0] } },
   };
+  // Mix (the settings' last style, music.js setStyle): these by turns, the next each time the music has gone out
+  SC.MIX = ["ambient", "drift", "liquid"];
 })();
 
 </script>
@@ -22691,6 +22693,7 @@ function MG_SFX(L) {
    the chord's root under it, with a low-passed reese an octave up once the fighting is on; sparse Rhodes
    notes, now and then a chord stab thrown into the ping-pong delay, a riser into a section, a reverse
    swell into a chord change. The outro is the pad, the sub and a soft half-time break.
+   Mix plays the three by turns (score.js, MIX), one per breath: the style changes while the music is out.
    A cue plays on one of two decks, each its own copy of the music sub-buses (audio.js). On a phase or
    mood change the next cue starts on the other deck on a fresh bar (a wave's on the next beat), swelling
    in while the old one's ringing notes fade out. A cleared wave ends the wave with a sting (a low F,
@@ -23071,6 +23074,8 @@ function MG_SFX(L) {
       this.on = true; this.breathAt = 0; this.quietAt = 0; this.breathScale = G.devFlag ? G.devFlag("breath", 1) : 1;
       // the style (the settings' Music style, setStyle) and whether its change waits for the next bar line
       this.style = "ambient"; this.restyle = false;
+      // Mix: whether it is on, the style it is at (score.js, MIX) and whether it has turned in this rest
+      this.mixed = false; this.mixAt = 0; this.mixTurned = false;
       for (const ev of ["spawn", "hit", "kill", "tower_placed", "tower_upgraded", "tower_sold", "wave_start", "wave_clear", "boss", "heart_hit", "boon", "game_over"]) G.on(ev, (d) => this.onEvent(ev, d));
       G.on("phase", (d) => this.onPhase(d.phase));
     }
@@ -23090,10 +23095,16 @@ function MG_SFX(L) {
     // the style (score.js, STYLES) and its cue table
     get Y() { return SC.STYLES[this.style] || SC.STYLES.ambient; }
     get cues() { return this.Y.cues; }
-    // the settings' Music style ("ambient", "drift" or "liquid"): on the next bar line (after a sting has rung) the
+    // the settings' Music style ("ambient", "drift", "liquid" or "mix"): on the next bar line (after a sting has rung) the
     // wanted cue starts in it on the free deck while the old style's ringing notes fade out under it, as
-    // on any cue change, so nothing is cut or left hanging
+    // on any cue change, so nothing is cut or left hanging. Mix plays score.js MIX by turns from the style
+    // playing (so choosing it changes nothing yet), the next one each time the music has gone out (barStart)
     setStyle(s) {
+      if (s === "mix") {
+        if (this.mixed) return;
+        this.mixed = true; this.mixAt = Math.max(0, SC.MIX.indexOf(this.style)); this.mixTurned = !this.on; this.logCue("mix");
+        s = SC.MIX[this.mixAt];
+      } else if (SC.STYLES[s]) this.mixed = false;
       if (!SC.STYLES[s] || s === this.style) return;
       this.style = s; this.restyle = true; this.logCue("style:" + s);
     }
@@ -23134,7 +23145,7 @@ function MG_SFX(L) {
       const g = this.mix.gate.gain;
       g.cancelScheduledValues(now); g.setValueAtTime(g.value, now); g.setTargetAtTime(1, now, GATE_IN);
       if (!this.on) this.logCue("in");
-      this.on = true; if (this.live) this.live.newPhrase();
+      this.on = true; this.mixTurned = false; if (this.live) this.live.newPhrase();
       this.nextBreath(now, "on");
     }
     goOut(now) {
@@ -23244,6 +23255,13 @@ function MG_SFX(L) {
       const i = this.intensity, q = this.seq;
       if (!this.tense && i > 0.6) this.tense = true;
       else if (this.tense && i < 0.42) this.tense = false;
+      // Mix: the next style on the first bar line after the music has gone out and struck its last notes,
+      // so the change happens unheard and the next passage comes in in it
+      if (this.mixed && !this.mixTurned && !this.on && q.clock >= this.quietAt) {
+        this.mixTurned = true; this.mixAt = (this.mixAt + 1) % SC.MIX.length;
+        const s = SC.MIX[this.mixAt];
+        if (s !== this.style) { this.style = s; this.restyle = true; this.logCue("style:" + s); }
+      }
       // a cue change waits for a bar line (after the sting, for the sting to ring; while the tape winds
       // down, for the outro)
       if ((this.want !== this.cue || this.restyle) && q.clock >= this.holdUntil && this.tapeState !== 1) this.switchCue(t);
