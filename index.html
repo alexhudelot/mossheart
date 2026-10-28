@@ -14369,7 +14369,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.26.0", name: "Mossheart", commit: "437cca0" };
+  G.VERSION = { v: "0.27.0", name: "Mossheart", commit: "559648d" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -21007,13 +21007,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // (it starts as the system's reduced-motion choice); text: the HUD's and the menus' text size, a factor; weather: how strong the sky panel's weather is (atmos.js)
   // glass: the terrarium glass, "auto" as the quality has it (none on Low), or true/false over it (the Settings row)
   // res: the resolution, the canvas's pixels per CSS pixel: "full" (the screen's own, however fine) or "2", "1.5", "1", "0.75" (main.js fitCanvas; ?dpr= pins it)
-  // musicStyle: the music's style, "ambient", "drift" or "mix" (music.js setStyle; ?music= pins it); the HUD's ♫ button cycles them (MUSIC_STYLES)
+  // musicStyle: the music's style, "ambient", "drift", "liquid" or "mix" (music.js setStyle; ?music= pins it); the HUD's ♫ button cycles them (MUSIC_STYLES)
   const calmOS = !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
   const DEFAULTS = {
     master: 0.7, music: 0.5, sfx: 0.7, ambience: 0.45, musicStyle: "ambient",
     quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, camera: true, vs: 40, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, weather: "subtle", glass: "auto", res: "full",
   };
-  const MUSIC_STYLES = [["ambient", "Ambient"], ["drift", "Drift"], ["mix", "Mix"]];
+  const MUSIC_STYLES = [["ambient", "Ambient"], ["drift", "Drift"], ["liquid", "Liquid"], ["mix", "Mix"]];
   const OLD_VOLUMES ={ master: 0.9, music: 0.8, sfx: 0.9, ambience: 0.8 };
   // vs: the voxel density, Ultimate (40) unless the player picked one (vsPicked; the device's cap still applies).
   // Before 24 became the default every save held vs 16 unless picked, so only another value was a choice.
@@ -21278,7 +21278,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (a && a.mixer) {
         const bus = a.mixer.bus, set = (n, v) => { if (bus[n] && bus[n].gain) bus[n].gain.value = v * s.master; };
         set("Music", s.music); set("Sfx", s.sfx); set("Ambience", s.ambience);
-        // (?music=ambient|drift|mix pins it, for a check; a style music.js does not know yet plays as ambient)
+        // (?music=ambient|drift|liquid|mix pins it, for a check; a style music.js does not know yet plays as ambient)
         if (a.music) { const st = ME.params.get("music") || s.musicStyle; a.music.setStyle(!G.Score || !G.Score.STYLES || G.Score.STYLES[st] ? st : "ambient"); }
       }
       this.showMusic();
@@ -21441,8 +21441,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 /* The score's material: slow progressions in F major, each chord held two bars or more, D Aeolian ones
    (i-bVI-bVII) for the hard fighting and the boss, plain triads with an added ninth or a sus2 at most,
    the pentatonic scale the notes are drawn from, the cues the director crossfades between (one per phase
-   of a run, in two styles, Ambient and Drift, which has its own harmony in D minor: what lies under them, which voices sound over it, how long
-   the music stays in and how long it leaves the valley alone), the sting of a cleared wave and the figure each kind of creature is
+   of a run, in three styles, Ambient, Drift, which has its own harmony in D minor, and Liquid, in F
+   minor: what lies under them, which voices sound over it, how long the music stays in and how long it
+   leaves the valley alone), the sting of a cleared wave and the figure each kind of creature is
    announced with. Pure data; music.js plays it. */
 (function () {
   const G = window.MG;
@@ -21488,6 +21489,37 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const MA = "12 . . 15 . . 10", MB = "7 10 . 12", MC = "15 . 14 . 12 . . 7", MD = "19 . . 17 15";
   const ME = "12 . 7 . . 3 . 5", MF = "10 12", MG = "22 . . 19 . 17 . 12", MH = "14 15 . . 12 . 7";
   const MP1 = "13 . . 12 . . 7", MP2 = "12 13 . . 10 . 8 7", MP3 = "19 . 20 . . 15 . 13", MP4 = "7 . 8 7";
+
+  // Liquid's own harmony, F minor: lush rootless minor ninths and elevenths, a ninth with a fourth and a
+  // 6/9 on the flat sixth (for the waves and the boss), each held two bars; `dark` thinner, plainer
+  // sevenths. Same rules as above: no two notes a semitone apart, none a semitone from the bass
+  const FM9 = C(41, [56, 60, 63, 67], [56, 60, 63, 70]), BBM9 = C(46, [49, 56, 60, 65], [49, 53, 56, 61]); // i9 (Fm7 add11), iv9 (Bbm7)
+  const CM11 = C(48, [55, 58, 63, 65], [51, 55, 58, 65]), EB9SUS = C(51, [56, 58, 61, 65], [53, 56, 58, 61]); // v11 (Cm7 add11), bVII9sus4 (Fm7 over Eb)
+  const DB69 = C(49, [53, 56, 58, 63], [56, 58, 61, 65]); // bVI6/9 (Bbm7 over Db)
+  const LQ_A = [FM9, FM9, BBM9, BBM9, EB9SUS, EB9SUS, CM11, CM11]; // i iv bVII v
+  const LQ_C = [BBM9, BBM9, FM9, FM9, BBM9, BBM9, EB9SUS, EB9SUS]; // iv i iv bVII
+  const LQ_B = [FM9, FM9, DB69, DB69, BBM9, BBM9, CM11, CM11]; // i bVI iv v
+  const LQ_WAVE = [FM9, FM9, DB69, DB69, EB9SUS, EB9SUS, CM11, CM11]; // i bVI bVII v
+  const LQ_TENSE = [BBM9, BBM9, CM11, CM11, DB69, DB69, EB9SUS, EB9SUS]; // climbing: iv v bVI bVII
+  const LQ_BOSS = [FM9, FM9, FM9, FM9, DB69, DB69, EB9SUS, EB9SUS]; // i | bVI bVII
+  const LQ_BOSS_B = [BBM9, BBM9, DB69, DB69, FM9, FM9, CM11, CM11]; // iv bVI i v
+  const LQ_OUTRO = [FM9, FM9, FM9, FM9, BBM9, BBM9, FM9, FM9]; // i | iv i
+  // Liquid's breaks, a bar each: per lane (k kick, s snare, g ghost snare, h hat, sh shuffle) 16 steps,
+  // "." a rest, "x" a hit, "o" a softer one (-6 dB), "X" an accent (+2). Two-step at full tempo (the kick
+  // on one and the "and" of three, the snare on two and four, steady 16th hats) in the build, the waves
+  // and the boss; half-time (the snare on the third beat, eighth hats) only for the outro
+  const HALF_A = { k: "x.........x.....", s: "........X.......", g: "...........o..o.", h: "x.o.x.o.x.o.x.o." };
+  const HALF_C = { k: "x.........x..o..", s: "........X.......", g: ".....o.....o....", h: "x.oox.o.x.oox.o." };
+  const HALF_FILL = { k: "x.........x.....", s: "........X.....o.", g: "...o..o....o.oo.", h: "x.o.x.o.x.o.x..." };
+  const TWO_A = { k: "x.........x.....", s: "....X.......X...", g: ".......o.o....o.", h: "xoxoxoxoxoxoxoxo" };
+  const TWO_B = { k: "x.........xo....", s: "....X.......X...", g: "..o....o......o.", h: "xoxoxooxxoxoxoxo", sh: "......x........." };
+  const TWO_C = { k: "x.........x.....", s: "....X.......X...", g: "..o....o.o....oo", h: "xoxoxoxoxoxoxxox", sh: "..x.......x....." };
+  const TWO_D = { k: "x.....x...x.....", s: "....X.......X...", g: ".......o.o..o..o", h: "xooxxoxoxooxxoxo", sh: "..........x....." };
+  const TWO_FILL = { k: "x.........x.....", s: "....X.......X.oo", g: "..o....o.oo.o...", h: "xoxoxoxoxoxo...." };
+  // Liquid's bass, a bar each: 16 tokens, semitones over the chord's root (the 5th, the b7, the
+  // octave), "." the note before held, "-" a rest
+  const B_HOLD = "0 . . . . . . . . . . . . . . .", B_KICK = "0 . . . . . . . . . 0 . . . . .";
+  const B_ROLL = "0 . . . . . . - . . 0 . . 7 . .", B_STEP = "0 . . . . . . . . . 12 . . 10 . .", B_DRIVE = "0 . . . . . 0 . . . 0 . . 7 10 .";
 
   // a voice: an instrument on a sub-bus at `db`, playing a loop `len` 16ths long (picked in that range for
   // each phrase) with `notes` struck in it, each on a degree of the pentatonic in `deg` (0: the F above
@@ -21631,6 +21663,68 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         voices: [V("spark", "Keys", -22, [64, 96], 1, [0, 5])],
         breath: { on: [40, 60], off: [40, 90] } },
     },
+    // The third style, Liquid (the user's words, 2026-10-27: "atmospheric liquid dnb, very chill and
+    // relaxed, tasteful stabs and effects over well engineered modern dnb percussions and a warm dnb
+    // bass"), and the user's 2026-10-28, "chill cozy": its own harmony in F minor (LQ_ above), at
+    // 170-175 bpm, a soft two-step break you can follow (kick and snare about 15 dB over the pads and
+    // keys, dry, audio.js) from the build on, half-time only in the outro, a round sub with no reese,
+    // light pumping. Its cues have the Ambient fields and Drift's sweep, pump, phase, pan, lpan, taps and fx
+    // (rev on a held chord's second bar, into the next one; the riser two bars before the section ends),
+    // `duck` (how far each kick ducks the bass), and:
+    // - bed.inst `silk`, a soft unison pad, with its breath; no bass note and no drone (the sub is the bass).
+    // - brk: the break, one of `pats` for each phrase (and now and then a new one at a section), `fill` on
+    //   a section's last bar, at `db` per lane, the odd 16ths `swing` of a 16th late; from intensity `i`.
+    // - low: the bass, one of `pats` for each phrase, `fill` on a section's last bar: a warm sub on the
+    //   chord's root (folded into the octave from E1 up), each note held to the next, at db[0], and once
+    //   the intensity reaches `ri`, a low-passed reese an octave over it at db[1].
+    // - stab: with odds `odds` a bar (from intensity `i`), the chord's top three notes struck once on a
+    //   16th of `at`, on an instrument of `insts` (`stab` two soft saws, `keys` the Rhodes), into the
+    //   keys' chorus or, with odds `throw`, the ping-pong delay (taps[0] 16ths, a dotted eighth).
+    LIQUID: {
+      build: { bpm: 170, drive: 0, progs: [LQ_A, LQ_C], lp: [5200, 7000], wet: [0.3, 0.32], fadeIn: 3, fadeOut: 4, sweep: [32, 0.25],
+        pump: 0.08, duck: 0.3, phase: 0.12, pan: 0.45, lpan: 0, taps: [3, 6, 9],
+        bed: { every: 2, inst: "silk", pad: -28, breath: -34 },
+        brk: { pats: [TWO_A, TWO_B, TWO_A], fill: TWO_FILL, db: { k: -9, s: -10, g: -24, h: -18, sh: -23 }, swing: 0.16 },
+        low: { db: [-16], pats: [B_HOLD, B_KICK, B_HOLD] },
+        stab: { insts: ["keys", "stab"], db: -25, odds: 0.35, at: [6, 10, 14], throw: 0.6 },
+        fx: { whoosh: -32, riser: [-33, 0.3], rev: -31 },
+        voices: [V("keys", "Keys", -24, [44, 68], 1, [0, 5]), V("keys", "Keys", -27, [60, 84], 1, [-3, 2])],
+        breath: { on: [60, 120], off: [20, 50] },
+        alt: { progs: [LQ_C, LQ_B],
+          brk: { pats: [TWO_B, TWO_C], fill: TWO_FILL, db: { k: -9, s: -10, g: -24, h: -18, sh: -23 }, swing: 0.18 },
+          stab: { insts: ["stab"], db: -26, odds: 0.4, at: [6, 10, 14], throw: 0.7 },
+          voices: [V("piano", "Keys", -23, [44, 68], 1, [0, 5]), V("keys", "Keys", -27, [60, 84], 1, [-3, 2])] } },
+      wave: { bpm: 172, drive: 1, progs: [LQ_WAVE, LQ_A], tense: LQ_TENSE, lp: [6000, 9000], wet: [0.28, 0.3], fadeIn: 2, fadeOut: 3, sweep: [24, 0.2],
+        pump: 0.1, duck: 0.3, phase: 0.15, pan: 0.5, lpan: 0, taps: [3, 6, 9],
+        bed: { every: 2, inst: "silk", pad: -28, breath: -34 },
+        brk: { pats: [TWO_A, TWO_B, TWO_C], fill: TWO_FILL, db: { k: -8, s: -9, g: -23, h: -17, sh: -22 }, swing: 0.15 },
+        low: { db: [-15], pats: [B_KICK, B_ROLL, B_STEP], fill: B_ROLL },
+        stab: { insts: ["keys", "stab", "stab"], db: -24, odds: 0.5, at: [3, 6, 10, 14], throw: 0.5 },
+        fx: { whoosh: -31, riser: [-31, 0.5], rev: -30 },
+        voices: [V("keys", "Keys", -24, [36, 56], 1, [0, 5]), V("keys", "Keys", -26, [52, 76], 2, [-3, 2])],
+        breath: { on: [90, 160], off: [10, 25] },
+        alt: { progs: [LQ_B, LQ_WAVE],
+          brk: { pats: [TWO_B, TWO_D], fill: TWO_FILL, db: { k: -8, s: -9, g: -23, h: -17, sh: -22 }, swing: 0.17 } } },
+      boss: { bpm: 174, drive: 1, progs: [LQ_BOSS, LQ_BOSS_B], lp: [7000, 10000], wet: [0.3, 0.32], fadeIn: 1.5, fadeOut: 3, sweep: [16, 0.15],
+        pump: 0.12, duck: 0.3, phase: 0.15, pan: 0.55, lpan: 0, taps: [3, 6, 9],
+        bed: { every: 2, inst: "silk", pad: -27, breath: -33 },
+        brk: { pats: [TWO_A, TWO_B, TWO_C], fill: TWO_FILL, db: { k: -7, s: -8, g: -23, h: -17, sh: -22 }, swing: 0.15 },
+        low: { db: [-14], pats: [B_KICK, B_ROLL, B_STEP], fill: B_ROLL },
+        stab: { insts: ["keys", "stab"], db: -23, odds: 0.6, at: [3, 6, 10, 14], throw: 0.5 },
+        fx: { whoosh: -30, riser: [-30, 0.6], rev: -29 },
+        voices: [V("keys", "Keys", -24, [32, 48], 1, [0, 5]), V("glass", "Lead", -28, [48, 64], 1, [5, 9])],
+        breath: { on: [120, 200], off: [8, 15] },
+        alt: { progs: [LQ_BOSS_B, LQ_BOSS] } },
+      over: { bpm: 170, drive: 0, progs: [LQ_OUTRO, LQ_C], lp: [3200, 3200], wet: [0.34, 0.34], fadeIn: 3, fadeOut: 3, sweep: [30, 0.2],
+        phase: 0.15, pan: 0.4, lpan: 0, taps: [3, 6, 9],
+        bed: { every: 2, inst: "silk", pad: -29, breath: -34 },
+        brk: { pats: [HALF_A, HALF_C], fill: HALF_FILL, db: { k: -13, s: -14, g: -27, h: -23, sh: -28 }, swing: 0.16 },
+        low: { db: [-18], pats: [B_HOLD] },
+        stab: { insts: ["keys"], db: -27, odds: 0.2, at: [6, 10], throw: 0.8 },
+        fx: { rev: -31 },
+        voices: [V("keys", "Keys", -25, [64, 96], 1, [0, 5])],
+        breath: { on: [40, 60], off: [40, 90] } },
+    },
     // a cleared wave: a low F, three glass notes up the F chord with space between them, then a bell
     STING: { bass: 41, notes: [65, 69, 72], bell: 77 },
     // kalimba figures (chord-tone indices) announcing each kind of creature
@@ -21645,6 +21739,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // D minor pentatonic; the sting a low D, then D, F and A, then a sparkle
     drift: { cues: SC.DRIFT, key: 62, scale: [0, 3, 5, 7, 10], sting: { bass: 38, notes: [62, 65, 69], bell: 74 }, vinyl: -40,
       swap: { kalimba: ["mote", 0, -1], glass: ["spark", 0, 0], bell: ["spark", 12, -3], bass: ["sub", 0, 0] } },
+    // F minor pentatonic; the sting a low F on the sub, then F, Ab and C on the Rhodes, then a low one;
+    // a little more of the crackle, the air under it
+    liquid: { cues: SC.LIQUID, key: 65, scale: [0, 3, 5, 7, 10], sting: { bass: 41, notes: [65, 68, 72], bell: 77 }, vinyl: -2,
+      swap: { kalimba: ["keys", 0, -2], glass: ["keys", 0, -2], bell: ["keys", -12, -2], bass: ["lsub", 0, 0] } },
   };
 })();
 
@@ -21656,7 +21754,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
    bell, a heartbeat and vinyl crackle, and the Drift score's synths: a deep sub, a muted kick, a shaker
    and hats, a supersaw pad, a PWM drone, the phrase synths (a chorused saw lead, its reverse and an FM glint), an
    acid line, granular sparkles, a squelchy rolling bass (and its accent) and a few effects: a riser, a low whoosh, a reverse swell and a
-   bit-crushed blip. Each is synthesised once at a base pitch; the sequencer pitch-shifts it per note.
+   bit-crushed blip, and the Liquid score's: a tight kick, a snare with its short room baked in, a ghost
+   snare, a crisp hat and a shuffle, a warm sub, a low-passed reese, a chord stab and a silky pad.
+   Each is synthesised once at a base pitch; the sequencer pitch-shifts it per note.
    Keyboards have a "_hi" twin so no note is shifted far. Self-contained: it runs in the bank worker
    with only the DSP library L (MA_DSP). */
 function MG_INSTRUMENTS(L) {
@@ -21671,6 +21771,8 @@ function MG_INSTRUMENTS(L) {
     sub: [36, 22050], kick: [36, 22050], shaker: [60, 32000], hat: [60, 32000], saw: [57, 22050], pwm: [50, 22050],
     mote: [74, 32000], motr: [74, 32000], pling: [81, 32000], acid: [50, 22050], spark: [81, 32000],
     roll: [38, 22050], rolla: [38, 22050], riser: [62, 22050], whoosh: [50, 22050], rev: [57, 22050], blip: [81, 32000],
+    lkick: [36, 22050], snare: [60, 32000], ghost: [60, 32000], lhat: [60, 32000], shuf: [60, 32000],
+    lsub: [36, 22050], reese: [45, 22050], stab: [60, 32000], silk: [57, 22050],
   };
 
   // ------------------------------------------------------------------ instruments
@@ -21962,6 +22064,83 @@ function MG_INSTRUMENTS(L) {
     return out;
   }
 
+  // --- the Liquid score's (music.js): a modern break that rolls softly, a warm bass and lush chords
+  // a round kick: a sine falling fast from about 160 Hz to 50, a soft click on the strike, a body gone
+  // within a 16th or two, driven gently into tanh so it is round and dry
+  function lkick(sr, secs) {
+    const out = buf(secs, sr); let ph = 0, lp = 0;
+    for (let i = 0; i < out.length; i++) {
+      const t = i / sr, x = n1(); ph += (50 + 110 * exp(-t * 32)) / sr; lp += 0.3 * (x - lp);
+      out[i] = (tanh(1.4 * sin(TAU * ph) * exp(-t * 7.5)) / 0.89 + (x - lp) * exp(-t * 450) * 0.18) * min(t / 0.002, 1) * min((secs - t) / 0.04, 1);
+    }
+    return out;
+  }
+  // a soft snare: two drum-head modes (about 185 and 330 Hz, dropping a little after the strike) under
+  // a warm band of noise, struck over a few milliseconds so it has no sharp crack, and a short warm room
+  // baked in (early reflections, each softer and duller, and a faint tail); `soft` is the ghost note,
+  // brushed more than struck, with less body and almost no room
+  function snare(sr, secs, soft) {
+    const dry = buf(secs, sr), out = buf(secs, sr), band = svf(sr), air = svf(sr); let lp = 0, a = 0, b = 0;
+    for (let i = 0; i < dry.length; i++) {
+      const t = i / sr, x = n1(), drop = 1 + 0.25 * exp(-t * 40); lp += 0.4 * (x - lp);
+      a += (185 * drop) / sr; b += (330 * drop) / sr;
+      const body = (sin(TAU * a) * exp(-t * 26) + 0.6 * sin(TAU * b) * exp(-t * 34)) * (soft ? 0.35 : 0.8);
+      const noise = (band(x, 3000, 0.6) * 0.9 + (x - lp) * 0.3) * exp(-t * (soft ? 34 : 17)) + air(x, 6000, 0.9) * exp(-t * 60) * 0.1;
+      dry[i] = (body + noise) * smooth(0, 0.004, t);
+    }
+    const taps = soft ? [[0.007, 0.12]] : [[0.007, 0.32], [0.013, 0.24], [0.019, 0.17], [0.029, 0.12], [0.041, 0.08]];
+    let tail = 0, dull = 0;
+    for (let i = 0; i < out.length; i++) {
+      const t = i / sr; let r = 0;
+      for (const [d, g] of taps) { const j = i - Math.floor(d * sr); if (j >= 0) r += dry[j] * g; }
+      dull += 0.2 * (r - dull); tail += 0.1 * (n1() - tail);
+      out[i] = (dry[i] + dull + (soft ? 0 : tail * 0.22 * smooth(0, 0.01, t) * exp(-t * 11))) * min((secs - t) / 0.05, 1);
+    }
+    return out;
+  }
+  // a gentle closed hat (noise, its lows taken out, a band near 6 kHz, gone in a hundredth or two);
+  // `open` is the shuffle, the same longer and softer at the start, a half-open hat between the hits
+  function lhat(sr, secs, open) {
+    const out = buf(secs, sr), band = svf(sr); let lp = 0;
+    for (let i = 0; i < out.length; i++) {
+      const t = i / sr, x = n1(); lp += 0.45 * (x - lp);
+      out[i] = ((x - lp) * 0.5 + band(x, 6000, 0.45) * 0.7) * min(t / (open ? 0.006 : 0.0015), 1) * exp(-t * (open ? 16 : 75)) * min((secs - t) / 0.02, 1);
+    }
+    return out;
+  }
+  // a warm sub: a sine and a touch of its second harmonic (so a small speaker still hears it), a rounded
+  // attack and a long, slowly falling hold; the score cuts each note where the next begins
+  function lsub(f, sr, secs) {
+    const out = buf(secs, sr), w = (TAU * f) / sr;
+    for (let i = 0; i < out.length; i++) { const t = i / sr; out[i] = tanh(1.15 * (sin(w * i) + 0.14 * sin(2 * w * i))) * min(t / 0.01, 1) * (0.75 + 0.25 * exp(-t * 0.8)) * min((secs - t) / 0.1, 1); }
+    return out;
+  }
+  // a reese kept warm: two saws twelve cents apart (their slow beating is the movement) and a sine an
+  // octave down, through a lowpass at about three times the note that settles after the strike, so no
+  // harsh mids
+  function reese(f, sr, secs) {
+    const out = buf(secs, sr), lp = lowSvf(sr), ia = (f * pow(2, 12 / 1200) * TABLE) / sr, ib = (f * pow(2, -12 / 1200) * TABLE) / sr, w = (TAU * f) / sr;
+    let a = 0, b = rnd() * TABLE;
+    for (let i = 0; i < out.length; i++) {
+      const t = i / sr, x = (SAW[Math.floor(a) & MASK] + SAW[Math.floor(b) & MASK]) * 0.5;
+      const y = lp(x, f * (2.6 + 1.6 * exp(-t * 4) + 0.3 * sin(TAU * 0.35 * t)), 0.55);
+      out[i] = tanh(1.4 * (y + 0.45 * sin(w * i * 0.5))) * min(t / 0.012, 1) * min((secs - t) / 0.1, 1); a += ia; b += ib;
+    }
+    return out;
+  }
+  // a chord stab: two saws a few cents apart through a lowpass that opens on the strike and closes
+  // within a beat, soft enough to be thrown into the delays
+  function stab(f, sr, secs) {
+    const out = buf(secs, sr), lp = lowSvf(sr), ia = (f * pow(2, 7 / 1200) * TABLE) / sr, ib = (f * pow(2, -7 / 1200) * TABLE) / sr; let a = 0, b = rnd() * TABLE;
+    for (let i = 0; i < out.length; i++) {
+      const t = i / sr, x = (SAW[Math.floor(a) & MASK] + SAW[Math.floor(b) & MASK]) * 0.5;
+      out[i] = tanh(1.2 * lp(x, f * (1.4 + 5 * exp(-t * 13)), 0.5)) * min(t / 0.003, 1) * exp(-t * 3.6) * min((secs - t) / 0.1, 1); a += ia; b += ib;
+    }
+    return out;
+  }
+  // a silky pad: five voices of a soft wavetable ten cents apart, a slow swell and a long release
+  const SILK = table([1, 0.42, 0.22, 0.12, 0.07, 0.04]);
+
   function render(name) {
     const [base, sr] = INSTRUMENTS[name], f = midiHz(base);
     let s;
@@ -21994,6 +22173,15 @@ function MG_INSTRUMENTS(L) {
       case "whoosh": s = whoosh(sr, 2.6); break;
       case "rev": s = rev(f, sr, 1.6); break;
       case "blip": s = blip(f, sr, 0.14); break;
+      case "lkick": s = lkick(sr, 0.32); break;
+      case "snare": s = snare(sr, 0.45, false); break;
+      case "ghost": s = snare(sr, 0.16, true); break;
+      case "lhat": s = lhat(sr, 0.07, false); break;
+      case "shuf": s = lhat(sr, 0.26, true); break;
+      case "lsub": s = lsub(f, sr, 3.2); break;
+      case "reese": s = reese(f, sr, 3.2); break;
+      case "stab": s = stab(f, sr, 1.2); break;
+      case "silk": s = ensemble(SILK, f, sr, 5, 5, 10, 0.6, 2.2, 0.3); break;
       case "vinyl": s = seam(vinyl(sr, 8 + LOOP_FADE), Math.floor(LOOP_FADE * sr)); break;
     }
     return { data: s, sr, loop: name === "vinyl" };
@@ -22495,6 +22683,14 @@ function MG_SFX(L) {
    change, all sparing, and a slow sweep of the music bus's lowpass. The gestures and the sting play in
    its synths too (score.js, STYLES[].swap). A style change crossfades on the next bar line like a cue
    change (setStyle).
+   A third style, Liquid (score.js, LIQUID; the user's words, 2026-10-27: "atmospheric liquid dnb, very
+   chill and relaxed, tasteful stabs and effects over well engineered modern dnb percussions and a warm
+   dnb bass"): its own harmony in F minor (rootless minor ninths and elevenths, two bars each) on a soft
+   unison pad, at 170-175 bpm, led by a dry, swung two-step break (Deck.liquid) from the build on: 16th
+   hats, ghost snares and a shuffle, the kick ducking the pads a little and the bass more. A warm sub holds
+   the chord's root under it, with a low-passed reese an octave up once the fighting is on; sparse Rhodes
+   notes, now and then a chord stab thrown into the ping-pong delay, a riser into a section, a reverse
+   swell into a chord change. The outro is the pad, the sub and a soft half-time break.
    A cue plays on one of two decks, each its own copy of the music sub-buses (audio.js). On a phase or
    mood change the next cue starts on the other deck on a fresh bar (a wave's on the next beat), swelling
    in while the old one's ringing notes fade out. A cleared wave ends the wave with a sting (a low F,
@@ -22528,11 +22724,12 @@ function MG_SFX(L) {
   const LOOKAHEAD = LOW ? 0.5 : 0.35;
   // how often a second the tape's wow and the tone (filters, pans, sends) move (Music.update)
   const CTL_HZ = LOW ? 15 : 30;
-  const SUBS = ["Pads", "Keys", "Lead", "Perc", "Throw"];
-  // voices per bus: the shared buses the gestures and the sting play on, and each deck's own
+  const SUBS = ["Pads", "Keys", "Lead", "Perc", "Throw", "Drum", "Bass"];
+  // voices per bus: the shared buses the gestures and the sting play on, and each deck's own (Drum and
+  // Bass: Liquid's break, and its sub and reese, so the held sub isn't stolen by the hats)
   const POOL = LOW ? { MusicPads: 4, MusicKeys: 6, MusicLead: 7, MusicPerc: 3, MusicThrow: 3 } : { MusicPads: 6, MusicKeys: 8, MusicLead: 10, MusicPerc: 4, MusicThrow: 4 };
-  for (const d of ["A", "B"]) Object.assign(POOL, LOW ? { ["MusicPads" + d]: 10, ["MusicKeys" + d]: 7, ["MusicLead" + d]: 9, ["MusicPerc" + d]: 10, ["MusicThrow" + d]: 4 }
-    : { ["MusicPads" + d]: 16, ["MusicKeys" + d]: 10, ["MusicLead" + d]: 14, ["MusicPerc" + d]: 16, ["MusicThrow" + d]: 6 });
+  for (const d of ["A", "B"]) Object.assign(POOL, LOW ? { ["MusicPads" + d]: 10, ["MusicKeys" + d]: 7, ["MusicLead" + d]: 9, ["MusicPerc" + d]: 8, ["MusicThrow" + d]: 4, ["MusicDrum" + d]: 10, ["MusicBass" + d]: 4 }
+    : { ["MusicPads" + d]: 16, ["MusicKeys" + d]: 10, ["MusicLead" + d]: 14, ["MusicPerc" + d]: 12, ["MusicThrow" + d]: 6, ["MusicDrum" + d]: 16, ["MusicBass" + d]: 6 });
   const posmod = (a, n) => ((a % n) + n) % n;
   const rf = () => Math.random(), rr = (a, b) => a + (b - a) * Math.random(), ri = (a, b) => a + Math.floor(Math.random() * (b - a + 1)), pick = (a) => a[Math.floor(Math.random() * a.length)];
   const lerp = (a, b, u) => a + (b - a) * u, clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -22540,6 +22737,12 @@ function MG_SFX(L) {
   // a Drift motif (score.js, DRIFT phr): one token a 16th, semitones over the key, null a rest
   const parseMotif = (p) => p.split(" ").map((w) => (w === "." ? null : parseInt(w, 10)));
   const parseRoll = (p) => p.split(" ").map((w) => (w === "." ? null : { n: parseInt(w, 10), a: w.includes("a"), s: w.includes("s") }));
+  // a Liquid break bar (score.js, LIQUID brk): per lane 16 steps, null a rest, else the hit's dB over the lane's ("o" -6, "X" +2)
+  const parseLanes = (p) => { const o = {}; for (const k in p) o[k] = [...p[k]].map((c) => (c === "x" ? 0 : c === "o" ? -6 : c === "X" ? 2 : null)); return o; };
+  // a Liquid bass bar (score.js, LIQUID low): 16 tokens, { n semitones, len the 16ths it is held }, null a hold or a rest
+  const parseBass = (p) => { const w = p.split(" "); return w.map((x, k) => { if (x === "." || x === "-") return null; let e = k + 1; while (e < w.length && w[e] === ".") e++; return { n: parseInt(x, 10), len: e - k }; }); };
+  // Liquid's break lanes and their instruments (instruments.js)
+  const LANES = [["k", "lkick"], ["s", "snare"], ["g", "ghost"], ["h", "lhat"], ["sh", "shuf"]];
   // whether the notes (semitones; nulls left out) hold a major triad's three pitch classes
   const majorIn = (c) => { const pc = new Set(c.filter((v) => v !== null).map((v) => posmod(v, 12))); for (let r = 0; r < 12; r++) if (pc.has(r) && pc.has((r + 4) % 12) && pc.has((r + 7) % 12)) return true; return false; };
   // the vinyl voice's gain in dB: at the start, while the score plays, after a lost run, and what the
@@ -22605,6 +22808,9 @@ function MG_SFX(L) {
       // Drift's: a low whoosh on the section change, and one note of the phrase's motif moved
       if (D.fx && D.fx.whoosh !== undefined && t !== undefined) this.play("whoosh", 50, D.fx.whoosh + rr(-2, 0), "Perc", t);
       if (this.motif && rf() < 0.7) this.mutate(D.phr.mode);
+      // Liquid's: now and then another break and bass bar for the section
+      if (D.brk && rf() < 0.5) this.brkPat = parseLanes(pick(D.brk.pats));
+      if (D.low && rf() < 0.5) this.lowPat = parseBass(pick(D.low.pats));
     }
     // moves one note of the motif a fourth, a fifth or an octave, within `mode` and the motif's range,
     // unless that would spell a major triad in it
@@ -22638,6 +22844,11 @@ function MG_SFX(L) {
       this.motif = D.phr ? parseMotif(pick(D.phr.motifs)) : null;
       const R = D.roll;
       this.rollPat = R ? parseRoll(pick(R.pats)) : null; this.rollFill = R && R.fill ? parseRoll(R.fill) : null;
+      // Liquid's break and bass bars (and their fills), one of each for the phrase
+      const B = D.brk, W = D.low;
+      this.brkPat = B ? parseLanes(pick(B.pats)) : null; this.brkFill = B && B.fill ? parseLanes(B.fill) : null;
+      this.lowPat = W ? parseBass(pick(W.pats)) : null; this.lowFill = W && W.fill ? parseBass(W.fill) : null;
+      this.stabAt = -1;
       this.n = 0; this.lastChord = null; this.sparkAt = -1; this.blipAt = -1;
     }
     // pitch classes of the chord at a bar of the section
@@ -22663,7 +22874,52 @@ function MG_SFX(L) {
         this.play(L.v.inst, this.fit(this.degreeNote(L.deg[k]), bar, pcs), L.v.db + rr(-2.5, 0.5), L.v.sub, t + rr(0, 0.01));
       }
       if (this.def.pulse) this.drift(s, t, i);
+      if (this.def.low) this.liquid(s, t, i);
       this.n++;
+    }
+    // the Liquid style's floor (score.js, LIQUID): the break on the dry Drum bus, its odd 16ths swung late
+    // and its kick ducking the pads and the bass; the sub held from note to note under it on the dry Bass
+    // bus, the reese over it once the fighting is on; now and then a chord stab, a riser two bars before
+    // the section ends and a reverse swell into a chord change
+    liquid(s, t, i) {
+      const D = this.def, B = D.brk, W = D.low, St = D.stab, F = D.fx || {}, ch = this.chord, bar = this.sectionBar, sx = this.m.sixteenth();
+      const swing = B && s % 2 ? B.swing * sx : 0;
+      if (B && this.brkPat && i >= (B.i || 0)) {
+        const P = bar === 7 && this.brkFill ? this.brkFill : this.brkPat;
+        for (const [lane, inst] of LANES) {
+          const v = P[lane] ? P[lane][s] : null;
+          // (a phone: no ghost notes and no shuffle)
+          if (v === null || v === undefined || (LOW && (lane === "g" || lane === "sh"))) continue;
+          const kick = lane === "k", at = t + swing + (kick ? 0 : rr(0, 0.004));
+          if (this.play(inst, kick ? 36 : 60 + rr(-0.15, 0.15), B.db[lane] + v + rr(kick ? -0.5 : -2, 0), "Drum", at)) this.m.hits[lane]++;
+          if (kick && D.pump) this.m.pump(this.m.ctxTime(at), D.pump * (v < 0 ? 0.5 : 1), D.duck);
+        }
+      }
+      // (the sub folded into the octave from E1 up, each note faded out as the next comes in)
+      if (W && this.lowPat) {
+        const tok = (bar === 7 && this.lowFill ? this.lowFill : this.lowPat)[s];
+        if (tok) {
+          const note = 28 + posmod(ch.bass - 28, 12) + tok.n, end = this.m.ctxTime(t + swing + tok.len * sx);
+          const v = this.play("lsub", note, W.db[0] + (s === 0 ? 0 : -1.5), "Bass", t + swing);
+          if (v) this.m.mixer.stop(v, end, 0.015);
+          if (W.db[1] !== undefined && i >= (W.ri || 0) && !LOW) { const r = this.play("reese", note + 12, W.db[1] + rr(-1, 0), "Bass", t + swing); if (r) this.m.mixer.stop(r, end, 0.02); }
+        }
+      }
+      // (the chord's top three notes, a hair apart, into the keys' chorus or thrown into the ping-pong)
+      if (St && i >= (St.i || 0)) {
+        if (s === 0) this.stabAt = rf() < St.odds ? pick(St.at) : -1;
+        if (s === this.stabAt) {
+          const inst = pick(St.insts), sub = rf() < (St.throw || 0) ? "Throw" : "Keys", top = this.chordNotes.slice().sort((a, b) => a - b).slice(-3);
+          top.forEach((n, k) => this.play(inst, n, St.db - 1.5 * k + rr(-1.5, 0), sub, t + swing + k * 0.012));
+        }
+      }
+      if (F.riser && s === 0 && bar === 6 && rf() < F.riser[1]) this.play("riser", 62, F.riser[0], "Perc", t);
+      // (on a held chord's first bar, when the chord changes two bars on: the next chord's top two notes
+      // backwards, ending on that bar line)
+      if (F.rev !== undefined && s === 0 && bar + 2 <= 7 && this.prog[bar + 1] === ch && this.prog[bar + 2] !== ch && rf() < 0.5) {
+        const nb = bar + 2, next = this.prog[nb], top = (this.dark[nb] ? next.dark : next.notes).slice().sort((a, b) => a - b).slice(-2), q = this.m.seq;
+        top.forEach((n, k) => this.play("rev", n, F.rev - 3 * k, "Pads", t + 32 * sx - 1.6 / (Math.pow(2, (n - q.instruments.rev[0]) / 12) * q.rate)));
+      }
     }
     // the Drift style's moving floor (score.js, DRIFT): the sub on the root, the rolling bass (the groove)
     // with its slides, the kit once the intensity reaches it, a phrase every bar or few (phrase), the acid
@@ -22785,7 +23041,8 @@ function MG_SFX(L) {
       if (b.drone !== undefined && this.sectionBar % 4 === 0) this.play("pwm", this.Y.key - 12, b.drone, "Pads", t);
       // Drift's reverse swell on the next chord's top two notes, ending on its bar line (now and then)
       const F = this.def.fx, nb = this.sectionBar + 1, next = this.prog[nb % this.prog.length];
-      if (F && F.rev !== undefined && nb < 8 && next !== ch && rf() < 0.6) {
+      // (Liquid's are its own, Deck.liquid: at its tempo a bar is shorter than the swell)
+      if (F && F.rev !== undefined && !this.def.low && nb < 8 && next !== ch && rf() < 0.6) {
         const top = (this.dark[nb] ? next.dark : next.notes).slice().sort((a, b) => a - b).slice(-2);
         top.forEach((n, k) => this.play("rev", n, F.rev - 3 * k, "Pads", t + 16 * this.m.sixteenth() - 1.6));
       }
@@ -22807,6 +23064,7 @@ function MG_SFX(L) {
       this.tapeDip = 0; this.tapeSpeed = 1; this.tapeState = 0; this.outroWait = 0;
       this.glides = []; // (Drift's bass slides: voices whose pitch moves at a ctx time, Deck.glide)
       this.phr = { phrases: 0, notes: 0, thrown: 0 }; // (Drift's phrases, their notes, and the glitch edits by kind, Deck.phrase; for the checks)
+      this.hits = { k: 0, s: 0, g: 0, h: 0, sh: 0 }; // (Liquid's break hits struck, by lane, Deck.liquid; for the checks)
       this.ctlT = 0; this.tapKey = ""; // (the time to the next control-rate move, and the delay times last set, Music.update)
       // in and out: whether the music is in, the ctx time it next turns, and the music-clock time after
       // which an outgoing passage strikes no more notes; ?breath= scales the cycle (0: always in)
@@ -22823,7 +23081,7 @@ function MG_SFX(L) {
       q.onBarEnd = () => { for (const d of this.decks) d.sectionBar++; };
       q.start(0.1);
       this.ready = true;
-      this.vinyl = G.devFlag && !G.devFlag("vinyl", 1) ? null : m.voice("vinyl", "Music", VINYL.start, 1, 0, null, true);
+      this.vinyl = G.devFlag && !G.devFlag("vinyl", 1) ? null : m.voice("vinyl", "MusicWash", VINYL.start, 1, 0, null, true);
       // fade the score in over four seconds
       this.mix.fade.gain.setValueAtTime(0.01, now); this.mix.fade.gain.exponentialRampToValueAtTime(1, now + 4);
       this.nextBreath(now, "on");
@@ -22832,7 +23090,7 @@ function MG_SFX(L) {
     // the style (score.js, STYLES) and its cue table
     get Y() { return SC.STYLES[this.style] || SC.STYLES.ambient; }
     get cues() { return this.Y.cues; }
-    // the settings' Music style ("ambient" or "drift"): on the next bar line (after a sting has rung) the
+    // the settings' Music style ("ambient", "drift" or "liquid"): on the next bar line (after a sting has rung) the
     // wanted cue starts in it on the free deck while the old style's ringing notes fade out under it, as
     // on any cue change, so nothing is cut or left hanging
     setStyle(s) {
@@ -22855,10 +23113,12 @@ function MG_SFX(L) {
       const n = this.seq.played; this.seq.play(inst, note, db, bus, at);
       return this.seq.played > n ? this.seq.voices[bus][this.seq.voices[bus].length - 1] : null;
     }
-    // Drift's sidechain: the pads duck by `depth` at ctx time `at` and swell back within the beat
-    pump(at, depth) {
+    // the sidechain: the pads duck by `depth` at ctx time `at` and swell back within the beat, and Liquid's
+    // dry bass by `bass` (so the kick's thump isn't masked by the sub), back within an eighth
+    pump(at, depth, bass) {
       const g = this.mix.pump.gain;
       g.setTargetAtTime(1 - depth, at, 0.01); g.setTargetAtTime(1, at + 0.04, this.sixteenth());
+      if (bass) { const b = this.mix.bassPump.gain; b.setTargetAtTime(1 - bass, at, 0.004); b.setTargetAtTime(1, at + 0.05, 0.06); }
       this.pumping = true;
     }
     // a voice's pitch bent to `pitch` at ctx time `at` (update() keeps it there under the tape's rate)
@@ -22975,7 +23235,7 @@ function MG_SFX(L) {
         const W = D.wob, wob = W ? Math.pow(2, W[1] * Math.sin((2 * Math.PI * (q.bar + q.step / q.stepsPerBar)) / W[0])) : 1;
         mx.leadLp.frequency.setTargetAtTime(R[0] * Math.pow(R[1] / R[0], u) * wob, now, 0.2); mx.leadLp.Q.setTargetAtTime(lerp(R[3], R[4], v), now, 0.2);
       } else { mx.leadLp.frequency.setTargetAtTime(18000, now, 0.4); mx.leadLp.Q.setTargetAtTime(-3, now, 0.4); }
-      if (!D.pump && this.pumping) { const g = mx.pump.gain; g.cancelScheduledValues(now); g.setValueAtTime(g.value, now); g.setTargetAtTime(1, now, 0.1); this.pumping = false; }
+      if (!D.pump && this.pumping) { for (const g of [mx.pump.gain, mx.bassPump.gain]) { g.cancelScheduledValues(now); g.setValueAtTime(g.value, now); g.setTargetAtTime(1, now, 0.1); } this.pumping = false; }
       if (!this.gameOver && this.vinyl) this.vinyl.g.gain.setTargetAtTime(MA.dbToGain(VINYL.calm + rot * VINYL.blight + (this.Y.vinyl || 0)), now, 0.3);
     }
 
@@ -23072,7 +23332,8 @@ function MG_SFX(L) {
       this.tapeSpeed = 1; this.tapeState = 0; this.seen.clear(); this.stinger = "";
     }
     // a cleared wave: the wave stops, a low F, three glass notes up the F chord with space between them
-    // and a bell (the style's own sting: Drift's on D minor, in its synths); the build cue comes in on
+    // and a bell (the style's own sting: Drift's on D minor, in its synths, Liquid's on F minor, on the sub
+    // and the Rhodes); the build cue comes in on
     // the first bar after it has rung
     sting(g) {
       const st = this.Y.sting || SC.STING, end = g + st.notes.length * 0.4;
@@ -23111,6 +23372,10 @@ function MG_SFX(L) {
    screen and gets quieter the further it is from the middle of the view. Birds sing from the valley's
    songbirds, frogs from its frogs, crickets from the moss (the app's ambient-life layer, app.critters);
    they fall silent where the blight spreads and as the battle grows, while the wind rises with it.
+   The ambience comes and goes (the user, 2026-10-28: "make ambient sound more subtle, less constant"):
+   each layer of the bed (a waterfall, a stretch of water, the wind) is a tide on its own clock (TIDE) that
+   swells in, holds 3.5 dB under the old steady level, fades out and rests silent; the critters and the
+   falling leaves only sing in clusters (LIFE), with tens of seconds of quiet between.
    Plays queue and start once a rendered frame (update), at most BUDGET of them, the most important first. */
 (function () {
   const G = window.MG, S = G.state, D = G.Defs, MA = window.MA;
@@ -23161,12 +23426,24 @@ function MG_SFX(L) {
   const DEW = { db: -21, gap: [150, 115], voices: 4, rest: 1200, late: 400, tau: 2000 };
   const SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
   const clamp01 = (x) => Math.min(1, Math.max(0, x)), semis = (n) => Math.pow(2, n / 12);
+  // A tide's phases in order, each lasting a random [min, max] seconds: silent, swelling in, at its peak (db
+  // from the layer's level), fading out. A layer starts somewhere in a random phase, so they drift apart.
+  const TIDE = { db: -3.5, phases: [[15, 45], [6, 14], [8, 25], [8, 18]] };
+  const newTide = () => { const k = Math.floor(Math.random() * 4), len = rr(...TIDE.phases[k]); return { k, len, u: Math.random() * len }; };
+  // `rest` scales the silent phase (the wind rests less as the battle grows)
+  const tideStep = (t, dt, rest = 1) => { t.u += dt; while (t.u >= t.len) { t.u -= t.len; t.k = (t.k + 1) % 4; t.len = rr(...TIDE.phases[t.k]) * (t.k === 0 ? rest : 1); } };
+  const tideDb = (t) => { const s = t.u / t.len, e = s * s * (3 - 2 * s), a = [0, e, 1, 1 - e][t.k]; return a < 0.003 ? -60 : TIDE.db + toDb(a); };
+  // The critters' clusters: on for a few seconds, then quiet for tens; each family joins a cluster with its
+  // chance (dusk: the birds settle and the crickets take over), at least one of them.
+  const LIFE = { on: [8, 20], off: [20, 45], first: [4, 10] };
+  const joins = (dusk) => ({ bird: lerp(0.85, 0.4, dusk), cricket: lerp(0.55, 0.95, dusk), frog: 0.45, leaves: 0.5 });
 
   class Soundscape {
     constructor(mixer, game, app) {
       this.mixer = mixer; this.game = game; this.app = app; this.ready = false;
       this.sp = new MA.Spatial(mixer, { bus: "Sfx", mix: MIX, protect: PROTECTED, voices: G.AUDIO_LOW ? 24 : 40 });
       this.t = { vocal: 1, bird: 2, cricket: 1, frog: 4, leaves: 5, boss: 6 };
+      this.life = { on: false, u: rr(...LIFE.first), who: {}, clusters: 0 };
       this.q = []; this.frame = 0; this.merged = 0; this.deferred = 0; this.dropped = 0;
       for (const ev of ["fire", "hit", "kill", "spawn", "heart_hit", "tower_placed", "tower_upgraded", "tower_sold"]) G.on(ev, (d) => this.onEvent(ev, d));
       this.dew = { acc: 0, since: 0, pos: null, own: 0, at: 0, last: -1e5, step: 0, hot: 0, spark: -1e5, shower: -1e5, voices: [], drops: 0, merged: 0, stolen: 0 };
@@ -23177,6 +23454,11 @@ function MG_SFX(L) {
     get played() { return this.sp.played; }
     // the queue's metering: plays merged into one in the same frame, put off to a later frame, dropped stale
     get queue() { return { merged: this.merged, deferred: this.deferred, dropped: this.dropped }; }
+    // the ambience's metering: clusters opened, one sounding now, each bed layer's tide (dB from its old level)
+    get ambience() {
+      const l = this.life, db = (t) => +tideDb(t).toFixed(1);
+      return { clusters: l.clusters, on: l.on, who: l.on ? Object.keys(l.who).filter((k) => l.who[k]) : [], bed: (this.bed || []).map((b) => db(b.tide)), wind: this.windTide ? db(this.windTide) : null };
+    }
     start() {
       this.ready = true;
       const app = this.app, T = app.T;
@@ -23186,12 +23468,19 @@ function MG_SFX(L) {
         const p = [(f.a[0] + f.b[0]) / 2, (f.a[1] + f.b[1]) / 2, f.zbot], near = feet.find((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < 1.6);
         if (near) { near[0] = (near[0] + p[0]) / 2; near[1] = (near[1] + p[1]) / 2; } else feet.push(p);
       }
-      for (const p of feet) this.sp.loop("waterfall", p, -13, "Ambience");
+      // each on its own tide (update sets the loop's level, which Spatial.update follows)
+      this.bed = [];
+      const bed = (name, p, db) => {
+        const tide = newTide(), v = this.sp.loop(name, p, db + tideDb(tide), "Ambience"), l = v && this.sp.loops.find((l) => l.v === v);
+        if (l) this.bed.push({ l, db, tide });
+      };
+      for (const p of feet) bed("waterfall", p, -13);
       const levels = new Map();
       for (const w of T.water) { const k = Math.round(w.z * 2); if (!levels.has(k)) levels.set(k, []); levels.get(k).push(w); }
       this.water = [];
-      for (const ws of levels.values()) { const n = ws.length, p = [ws.reduce((a, w) => a + w.x, 0) / n + 0.5, ws.reduce((a, w) => a + w.y, 0) / n + 0.5, ws[0].z]; this.water.push(p); this.sp.loop("stream", p, -20, "Ambience"); }
-      this.wind = this.mixer.voice("wind", "Ambience", -22, 1, 0, null, true);
+      for (const ws of levels.values()) { const n = ws.length, p = [ws.reduce((a, w) => a + w.x, 0) / n + 0.5, ws.reduce((a, w) => a + w.y, 0) / n + 0.5, ws[0].z]; this.water.push(p); bed("stream", p, -20); }
+      this.windTide = newTide();
+      this.wind = this.mixer.voice("wind", "Ambience", -24 + tideDb(this.windTide), 1, 0, null, true);
       const cr = app.critters;
       this.trees = cr ? cr.trees.map((t) => [t.X, t.Y, t.Z + t.h * 0.8]) : [];
       this.moss = cr ? cr.cells.m : [];
@@ -23254,12 +23543,14 @@ function MG_SFX(L) {
       if (!this.ready) return;
       // the loops' gain and pan follow the view, at 30 Hz on a phone (fewer param retargets on the audio thread)
       this.spT = (this.spT || 0) - dt; const ctl = !G.AUDIO_LOW || this.spT <= 0; if (ctl) this.spT = 1 / 30;
+      const now = this.mixer.ctx.currentTime, i = S.intensity;
+      for (const b of this.bed) { tideStep(b.tide, dt); b.l.db = b.db + tideDb(b.tide); }
+      if (this.windTide) tideStep(this.windTide, dt, lerp(1, 0.4, i));
       this.sp.listen(L.vp, L.zoom, L.aspect);
       if (ctl) this.sp.update();
       this.flush();
       this.dewTick(dt);
-      const now = this.mixer.ctx.currentTime, i = S.intensity;
-      if (this.wind && ctl) { this.wind.g.gain.setTargetAtTime(MA.dbToGain(lerp(-24, -13, i)), now, 0.3); this.wind.src.playbackRate.setTargetAtTime(lerp(0.9, 1.15, i), now, 0.3); }
+      if (this.wind && ctl) { this.wind.g.gain.setTargetAtTime(MA.dbToGain(lerp(-24, -13, i) + tideDb(this.windTide)), now, 0.3);this.wind.src.playbackRate.setTargetAtTime(lerp(0.9, 1.15, i), now, 0.3); }
       this.creatureCalls(dt);
       // the Heart Tree's leaves fall as it worsens (view/scene.js heartStage), and it crumbles when lost
       const sc = this.app.scene, w = this.game.world, hp = [w.heart[0], w.heart[1], w.heartZ + 1.4];
@@ -23270,25 +23561,36 @@ function MG_SFX(L) {
       this.fallen = fallen;
       if (S.phase === G.Phase.GAME_OVER) return;
       // dusk (the view's, while waves run): the birds settle and the crickets take over
-      const T = this.t, cr = this.app.critters, dusk = sc.dusk || 0;
+      const T = this.t, cr = this.app.critters, dusk = sc.dusk || 0, life = this.life;
+      // a cluster opens or closes; an opening one starts its singers soon
+      if ((life.u -= dt) <= 0) {
+        life.on = !life.on; life.u = rr(...(life.on ? LIFE.on : LIFE.off));
+        if (life.on) {
+          const j = joins(dusk); life.who = {}; life.clusters++;
+          for (const k in j) life.who[k] = Math.random() < j[k];
+          if (!Object.values(life.who).some(Boolean)) life.who[dusk > 0.5 ? "cricket" : "bird"] = true;
+          T.bird = rr(0.2, 2); T.cricket = rr(0.2, 1.5); T.frog = rr(0.5, 4); T.leaves = rr(0.5, 5);
+        }
+      }
+      const sing = (k) => life.on && life.who[k];
       if ((T.bird -= dt) <= 0) {
         T.bird = rr(2.5, 6.5) * (1 + 2.5 * dusk);
-        const birds = cr ? cr.agents.filter((a) => a.kind === "bird" && !a.hide && a.x !== undefined) : [];
-        const at = birds.length ? (({ x, y, z }) => [x, y, z])(pick(birds)) : this.trees.length ? pick(this.trees) : null;
+        const birds = sing("bird") && cr ? cr.agents.filter((a) => a.kind === "bird" && !a.hide && a.x !== undefined) : [];
+        const at = !sing("bird") ? null : birds.length ? (({ x, y, z }) => [x, y, z])(pick(birds)) : this.trees.length ? pick(this.trees) : null;
         if (at) { const calm = this.calm(at, 0.85); if (Math.random() < calm) this.play(pick(["uguisu", "chirp", "trill", "chirp"]), at, toDb(Math.max(calm, 0.05))); }
       }
       if ((T.cricket -= dt) <= 0 && this.moss.length) {
         T.cricket = rr(1, 2.8) * (1 - 0.6 * dusk);
         const [cx, cy] = pick(this.moss), at = [cx + 0.5, cy + 0.5, cr ? cr.gz(cx + 0.5, cy + 0.5) : 0], calm = this.calm(at, 0.6 * (1 - dusk));
-        if (Math.random() < calm) this.play("cricket", at, toDb(Math.max(calm, 0.05)) + 3 * dusk, rr(0.94, 1.06));
+        if (sing("cricket") && Math.random() < calm) this.play("cricket", at, toDb(Math.max(calm, 0.05)) + 3 * dusk, rr(0.94, 1.06));
       }
       if ((T.frog -= dt) <= 0) {
         T.frog = rr(5, 11);
-        const frogs = cr ? cr.agents.filter((a) => a.kind === "frog" && !a.hide && a.x !== undefined) : [];
-        const at = frogs.length ? (({ x, y, z }) => [x, y, z])(pick(frogs)) : this.water.length ? pick(this.water) : null;
+        const frogs = sing("frog") && cr ? cr.agents.filter((a) => a.kind === "frog" && !a.hide && a.x !== undefined) : [];
+        const at = !sing("frog") ? null : frogs.length ? (({ x, y, z }) => [x, y, z])(pick(frogs)) : this.water.length ? pick(this.water) : null;
         if (at && Math.random() < this.calm(at, 0.7)) this.play("frog", at, 0, rr(0.85, 1.15));
       }
-      if ((T.leaves -= dt) <= 0 && this.trees.length) { T.leaves = rr(4, 9) * lerp(1, 0.5, i); this.play("leaves", pick(this.trees), lerp(0, 4, i)); }
+      if ((T.leaves -= dt) <= 0 && this.trees.length) { T.leaves = rr(4, 9) * lerp(1, 0.5, i); if (sing("leaves")) this.play("leaves", pick(this.trees), lerp(0, 4, i)); }
     }
     // --- dew gained: kills' dew waits for the next drop (dewTick); a bonus showers at once
     dewGain(d) {
@@ -23357,11 +23659,12 @@ function MG_SFX(L) {
 /* The game's audio: the bus layout of the Godot build, built from the audio engine's mixer (MA.Mixer),
    with the game's two sound banks (instruments.js, sfx.js), the music director (music.js) and the
    soundscape (soundscape.js):
-     Music      lowpass -> reverb -> gentle compressor; sub-buses MusicPads (a gain Drift pumps, and a
-                phaser), MusicKeys (chorus + slow autopan), MusicLead (a lowpass Drift sweeps and a panner,
-                then three delay taps on the 16th grid), MusicPerc (dusty lowpass), MusicThrow (a ping-pong
-                delay for a Drift phrase's last note), and two decks of those five (MusicPadsA ... MusicThrowB)
-                the director crossfades its cues on
+     Music      MusicWash (lowpass -> reverb) and the dry buses -> the Music volume -> gentle compressor;
+                sub-buses MusicPads (a gain Drift pumps, and a phaser), MusicKeys (chorus + slow autopan),
+                MusicLead (a lowpass Drift sweeps and a panner, then three delay taps on the 16th grid),
+                MusicPerc (dusty lowpass), MusicThrow (a ping-pong delay for a Drift phrase's last note), all
+                into the wash, and Liquid's dry Drum (glue + a short room) and Bass (ducked by the kick); two
+                decks of those seven (MusicPadsA ... MusicBassB) the director crossfades its cues on
      Sfx        short reverb       Ambience   longer reverb
    G.Audio is what the game talks to: it unlocks the context on the first tap and remembers the sound
    toggle. */
@@ -23371,17 +23674,22 @@ function MG_SFX(L) {
   G.SOUND_BANKS = [MG_INSTRUMENTS, MG_SFX];
 
   // the game's buses on the mixer; returns the controls the music director moves. low (a phone, G.AUDIO_LOW):
-  // shorter reverbs, no phaser and two lead taps, the audio thread's heaviest work
+  // shorter reverbs, no phaser and two lead taps, the audio thread's heaviest work.
+  // dev: ?solo=1 the drums alone, ?solo=2 the drums and the bass (the wash and all in it, Sfx and Ambience
+  // never reach the output); ?record=1 also meters each bus (`meters`, for the takes' level table)
   function buildBuses(m, low) {
+    const solo = G.devFlag ? G.devFlag("solo") : 0;
     // Music: lowpass -> a long, airy reverb -> compressor (+3 dB, less the ~3.8 dB the node adds by itself)
     // -> fade (the score's fade-in) -> gate (the music coming in and going out, music.js)
     const fade = m.gain(0), lp = m.lowpass(6000, 0.8), verb = m.verbBus(low ? 2.4 : 3.6, 2.6, 0.55, 0.3, 0.9, 0.03), gate = m.gain(1);
     const comp = m.compressor({ threshold: -16, ratio: 2.5, knee: 6, attack: 0.01, release: 0.2 }), makeup = m.gain(MA.dbToGain(3 - 3.8));
-    const music = m.gain();
-    music.connect(lp); lp.connect(verb.input); verb.out.connect(comp); comp.connect(makeup); makeup.connect(fade); fade.connect(gate); gate.connect(m.master);
+    // wash: what goes through the lowpass and the long reverb (every sub-bus but Liquid's drums and bass);
+    // music: the settings' Music volume (menu.js), after the reverb, so the dry buses below obey it too
+    const wash = m.gain(), music = m.gain();
+    wash.connect(lp); lp.connect(verb.input); if (!solo) verb.out.connect(music); music.connect(comp); comp.connect(makeup); makeup.connect(fade); fade.connect(gate); gate.connect(m.master);
     // pads: through a gain Drift ducks on each beat, a sidechain's pumping (music.js; 1 otherwise), and a
     // phaser beside them (four allpasses swept by a slow LFO) whose share Drift sets (`phase`, 0 otherwise)
-    const pads = m.gain(), pump = m.gain(1); pads.connect(pump); pump.connect(music);
+    const pads = m.gain(), pump = m.gain(1); pads.connect(pump); pump.connect(wash);
     // (four filters whose frequency moves every sample: none on a phone, where `phase` is null)
     const c = m.ctx;
     let phase = null;
@@ -23390,29 +23698,47 @@ function MG_SFX(L) {
       phase = m.gain(0);
       phaseLfo.frequency.value = 0.07; phaseLfo.connect(phaseAmt);
       for (let k = 0; k < 4; k++) { const f = c.createBiquadFilter(); f.type = "allpass"; f.frequency.value = 700; f.Q.value = 0.7; phaseAmt.connect(f.frequency); ph.connect(f); ph = f; }
-      ph.connect(phase); phase.connect(music); phaseLfo.start();
+      ph.connect(phase); phase.connect(wash); phaseLfo.start();
     }
     // keys: a light chorus and a slow autopan
     const keys = m.gain(), ch = m.chorus(0.014, 0.0025, 0.8, 0.2), keysPan = m.panner();
-    keys.connect(ch.input); ch.out.connect(keysPan); keysPan.connect(music);
+    keys.connect(ch.input); ch.out.connect(keysPan); keysPan.connect(wash);
     // lead: through a lowpass (wide open but in Drift, which sweeps it and its resonance, music.js) and a
     // panner Drift swings (centred otherwise), dry plus three delay taps (3, 6 and 10 sixteenths), panned
     // apart, so a lone note echoes into the space after it
-    const lead = m.gain(), leadLp = m.lowpass(18000, -3), leadPan = m.panner(); lead.connect(leadLp); leadLp.connect(leadPan); leadPan.connect(music);
-    const taps = [[-0.35, -14], [0.35, -19], [0, -25]].slice(0, low ? 2 : 3).map(([pan, db]) => m.delayTap(leadLp, music, db, pan));
+    const lead = m.gain(), leadLp = m.lowpass(18000, -3), leadPan = m.panner(); lead.connect(leadLp); leadLp.connect(leadPan); leadPan.connect(wash);
+    const taps = [[-0.35, -14], [0.35, -19], [0, -25]].slice(0, low ? 2 : 3).map(([pan, db]) => m.delayTap(leadLp, wash, db, pan));
     // throw: a Drift phrase's last note thrown into a ping-pong delay, two delays feeding each other from side to
     // side through a lowpass, so its echoes bounce away and darken (the delay times music.js sets)
     const thr = m.gain(), dl = c.createDelay(4), dr = c.createDelay(4), fb = m.gain(0.45), fbLp = m.lowpass(2600, 0.5), pl = m.panner(-0.8), pr = m.panner(0.8), wetL = m.gain(0.7), wetR = m.gain(0.7);
-    thr.connect(leadLp); thr.connect(dl); dl.connect(wetL); wetL.connect(pl); pl.connect(music); dl.connect(dr); dr.connect(wetR); wetR.connect(pr); pr.connect(music);
+    thr.connect(leadLp); thr.connect(dl); dl.connect(wetL); wetL.connect(pl); pl.connect(wash); dl.connect(dr); dr.connect(wetR); wetR.connect(pr); pr.connect(wash);
     dr.connect(fbLp); fbLp.connect(fb); fb.connect(dl);
     // perc: dusty, no fizz on top
-    const perc = m.gain(), dust = m.lowpass(7000); perc.connect(dust); dust.connect(music);
+    const perc = m.gain(), dust = m.lowpass(7000); perc.connect(dust); dust.connect(wash);
+    // drum (Liquid's break): dry, out of the lowpass's sweep, rolled off above 10 kHz so the hats never
+    // turn harsh, glued by a light compressor, with a short warm room beside it (none on a phone) and a
+    // little of it into the wash's long tail (the glue's level back down by about the makeup gain the
+    // node adds by itself; its threshold high enough that it only rounds the loudest hits)
+    const drum = m.gain(), drumLp = m.lowpass(10000, -3), glue = m.compressor({ threshold: -12, ratio: 2.5, knee: 4, attack: 0.004, release: 0.12 }), glueUp = m.gain(MA.dbToGain(-2));
+    drum.connect(drumLp); drumLp.connect(glue); glue.connect(glueUp); glueUp.connect(music);
+    const drumTail = m.gain(MA.dbToGain(-16)); glueUp.connect(drumTail); drumTail.connect(wash);
+    if (!low) {
+      const roomHp = c.createBiquadFilter(), roomLp = m.lowpass(4000, -3), room = m.verbBus(0.6, 3.5, 0.35, MA.dbToGain(-13), 0, 0.008);
+      roomHp.type = "highpass"; roomHp.frequency.value = 350; glueUp.connect(roomHp); roomHp.connect(roomLp); roomLp.connect(room.input); room.out.connect(music);
+    }
+    // bass (Liquid's sub and reese): dry, no reverb to muddy it, ducked by the kick (bassPump, music.js)
+    const bass = m.gain(), bassPump = m.gain(1); bass.connect(bassPump); if (solo !== 1) bassPump.connect(music);
     const sfx = m.verbBus(1.2, 2.5, 0.5, 0.12), amb = m.verbBus(low ? 1.8 : 2.6, 2, 0.8, 0.28);
-    sfx.out.connect(m.master); amb.out.connect(m.master);
-    for (const [name, input] of [["Music", music], ["MusicPads", pads], ["MusicKeys", keys], ["MusicLead", lead], ["MusicPerc", perc], ["MusicThrow", thr], ["Sfx", sfx.input], ["Ambience", amb.input]]) m.addBus(name, input);
+    if (!solo) { sfx.out.connect(m.master); amb.out.connect(m.master); }
+    // (the music's level before and after its compressor, `music` and `comp`, and each bus into it)
+    const meters = G.devFlag && G.devFlag("record") ? Object.entries({ drum: glueUp, bass: bassPump, wash: verb.out, music, comp: gate }).map(([name, node]) => {
+      const an = c.createAnalyser(); an.fftSize = 2048; node.connect(an);
+      return { name, an, buf: new Float32Array(2048), peak: 0, sum: 0, n: 0 };
+    }) : null;
+    for (const [name, input] of [["Music", music], ["MusicWash", wash], ["MusicPads", pads], ["MusicKeys", keys], ["MusicLead", lead], ["MusicPerc", perc], ["MusicThrow", thr], ["Sfx", sfx.input], ["Ambience", amb.input]]) m.addBus(name, input);
     // two decks of the sub-buses, silent until a cue plays on one (music.js)
-    const decks = ["A", "B"].map((d) => [["Pads", pads], ["Keys", keys], ["Lead", lead], ["Perc", perc], ["Throw", thr]].map(([k, bus]) => { const g = m.gain(0); g.connect(bus); m.addBus("Music" + k + d, g); return g; }));
-    return { fade, gate, lp, wet: verb.wet, pump, phase, keysPan, leadLp, leadPan, taps, throw: [dl, dr], decks };
+    const decks = ["A", "B"].map((d) => [["Pads", pads], ["Keys", keys], ["Lead", lead], ["Perc", perc], ["Throw", thr], ["Drum", drum], ["Bass", bass]].map(([k, bus]) => { const g = m.gain(0); g.connect(bus); m.addBus("Music" + k + d, g); return g; }));
+    return { fade, gate, lp, wet: verb.wet, pump, bassPump, phase, keysPan, leadLp, leadPan, taps, throw: [dl, dr], decks, meters };
   }
 
   class Audio {
@@ -23427,7 +23753,9 @@ function MG_SFX(L) {
       try { this.mixer = new MA.Mixer({ latencyHint: G.AUDIO_LOW ? "playback" : "interactive" }); } catch (e) { MA.log("WARN no WebAudio:", e.message); this.mixer = null; return; }
       const m = this.mixer;
       m.master.gain.value = this.enabled ? 1 : 0;
-      this.music = new G.Music(m, buildBuses(m, G.AUDIO_LOW));
+      const buses = buildBuses(m, G.AUDIO_LOW);
+      this.meters = buses.meters;
+      this.music = new G.Music(m, buses);
       // A hidden page suspends the context (nothing plays, so nothing underruns while the browser starves
       // the tab) and a shown one resumes it; a browser that wants a gesture for that (iOS, or a context
       // interrupted by a call) gets it from the next touch, key or click anywhere on the page. The suspend
@@ -23469,11 +23797,19 @@ function MG_SFX(L) {
       this.music.update(rdt);
       this.sound.update(rdt, listener);
       this.mixer.meterFrame();
+      // (the buses' meters, as the mixer's on the output: the highest peak, the mean power)
+      if (this.meters) for (const b of this.meters) {
+        b.an.getFloatTimeDomainData(b.buf);
+        let pk = 0, ss = 0;
+        for (const x of b.buf) { pk = Math.max(pk, Math.abs(x)); ss += x * x; }
+        b.peak = Math.max(b.peak, pk); b.sum += ss / b.buf.length; b.n++;
+      }
     }
     stats() {
       const m = this.mixer;
       if (!m) return null;
-      return Object.assign({ ready: m.ready, readyAt: this.readyAt, state: m.ctx.state, samples: Object.keys(m.samples).length, renderMs: m.renderMs, worker: m.worker, notes: this.music.notes, late: this.music.late, skipped: this.music.skipped, sfx: this.sound.played, sfxq: this.sound.queue, mood: this.music.mood, style: this.music.style, breath: this.music.on ? "in" : "out", bpm: Math.round(this.music.bpm), cues: this.music.cueLog.join(" "), low: !!G.AUDIO_LOW, latency: m.latency(), voices: m.live, peakVoices: m.livePeak, stolen: this.music.seq ? this.music.seq.stolen : 0, phr: this.music.phr, resumes: this.resumes }, m.meterStats());
+      return Object.assign({ ready: m.ready, readyAt: this.readyAt, state: m.ctx.state, samples: Object.keys(m.samples).length, renderMs: m.renderMs, worker: m.worker, notes: this.music.notes, late: this.music.late, skipped: this.music.skipped, sfx: this.sound.played, sfxq: this.sound.queue, mood: this.music.mood, style: this.music.style, breath: this.music.on ? "in" : "out", bpm: Math.round(this.music.bpm), cues: this.music.cueLog.join(" "), low: !!G.AUDIO_LOW, latency: m.latency(), voices: m.live, peakVoices: m.livePeak, stolen: this.music.seq ? this.music.seq.stolen : 0, phr: this.music.phr, hits: this.music.hits, resumes: this.resumes,
+        levels: this.meters ? Object.fromEntries(this.meters.map((b) => [b.name, b.n ? [+(20 * Math.log10(b.peak + 1e-9)).toFixed(1), +(10 * Math.log10(b.sum / b.n + 1e-12)).toFixed(1)] : null])) : undefined }, m.meterStats());
     }
   }
   G.Audio = Audio;
