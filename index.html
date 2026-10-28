@@ -4356,12 +4356,15 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     return b;
   };
 
-  // 3D texture with optional extra mips, all supplied as typed arrays (x fastest, then y, then z).
+  // 3D texture with optional extra mips, all supplied as typed arrays (x fastest, then y, then z). Each level goes
+  // up in z-slabs of at most ME.TEX_WRITE_MAX bytes (64 MB): one writeTexture of a 512 MB brick pool would make the
+  // browser stage all of it at once.
+  ME.TEX_WRITE_MAX = 64 << 20;
   ME.tex3d = function (device, label, format, dims, levels, bpp, usage = 0) {
     const t = device.createTexture({ label, format, dimension: "3d", size: dims, mipLevelCount: levels.length, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | usage });
     levels.forEach((data, mip) => {
-      const w = Math.max(1, dims[0] >> mip), h = Math.max(1, dims[1] >> mip), d = Math.max(1, dims[2] >> mip);
-      device.queue.writeTexture({ texture: t, mipLevel: mip }, data, { bytesPerRow: w * bpp, rowsPerImage: h }, [w, h, d]);
+      const w = Math.max(1, dims[0] >> mip), h = Math.max(1, dims[1] >> mip), d = Math.max(1, dims[2] >> mip), layer = w * h * bpp, dz = Math.max(1, Math.floor(ME.TEX_WRITE_MAX / layer));
+      for (let z = 0; z < d; z += dz) device.queue.writeTexture({ texture: t, mipLevel: mip, origin: [0, 0, z] }, data, { offset: z * layer, bytesPerRow: w * bpp, rowsPerImage: h }, [w, h, Math.min(dz, d - z)]);
     });
     return t;
   };
@@ -5002,7 +5005,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   ME.voxelizeModel.parts = [dPrim, evalModel, setInfo, evalRaw, cull, sampleModel, superBricks, tightBox, modelBox, normalAt, focusRegions, voxelCore, paintDetail, octEnc, workerSrc];
 
   // cull: false turns prim culling off (tools/cull-check.js compares the two)
-  ME.sdf = { dPrim, evalModel, mat: () => EV_M, cull: true, setInfo, evalRaw, cullPrims: cull, MAT, SMOOTH, stats: CS, paintDetail, workerSrc };
+  ME.sdf = { dPrim, evalModel, mat: () => EV_M, cull: true, setInfo, evalRaw, cullPrims: cull, MAT, SMOOTH, stats: CS, paintDetail, workerSrc, tightBox };
 })();
 
 </script>
@@ -6321,6 +6324,13 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   ME.POOL_SLAB_MAX = 32;
   ME.poolMaxDepth = (limits = ME.limits) => (limits && limits.maxTextureDimension3D) || 2048;
   ME.poolMaxBricks = (limits, S = ME.POOL_SLAB_MAX) => Math.floor(ME.poolMaxDepth(limits) / 8) * S * S;
+  // The pool's budget on this device, under the ceiling: ME.POOL_PHONE (65,536 bricks, 128 MB, the ceiling before
+  // E6) on a phone-like device (a mobile UA, or navigator.deviceMemory <= 4 GB), else the ceiling. The LOD drop (no
+  // 2x copies when they don't fit), the bake's throw and MB.stats.fill read it, so a phone keeps the thresholds it
+  // had before E6. ME.poolBudget (or ?poolbudget=) sets it.
+  ME.POOL_PHONE = 65536;
+  ME.phoneLike = () => /Android|iPhone|iPad|Mobile/.test(navigator.userAgent) || (navigator.deviceMemory || 8) <= 4;
+  ME.poolBricks = (limits) => Math.min(ME.poolMaxBricks(limits), ME.poolBudget || ME.qn("poolbudget", 0) || (ME.phoneLike() ? ME.POOL_PHONE : Infinity));
   // A model baked finer than POOL_HOLLOW voxels per tile edge (VS x fine) keeps only its surface bricks in the pool:
   // a brick whose 512 voxels are solid and whose 6 neighbours' facing layers are solid is never reached by a ray
   // from outside (each step of the walk crosses a face, and the voxel before it is solid), so the brick map marks
@@ -6368,7 +6378,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // voxels (a face open) their averaged normal and AO, and a material of theirs (pick): the rarest on the volume's
   // whole surface among those emissive (emi[id]) or on 2+ of them, so eyes and glow survive without a big
   // many-material volume going speckled; else their most common (ties: the commoner on the surface). A half
-  // voxel with none (all inside) keeps the interior normal.
+  // voxel with none (all inside) keeps the interior normal. Ties between materials go to the lower rk[id] (rk
+  // omitted: the lower id); a progressive bake (E4) passes the order the single-pass bake would have numbered them in.
   // Returns { dims, bmap, chunks, nsolid } (bricksOf's), built brick by brick: a half brick is 2^3 source bricks.
   // The interior bricks of a volume { dims, bmap, chunks } (ME.POOL_HOLLOW): is[chunk] 1 for a brick whose 512 voxels
   // are solid and whose 6 neighbours (inside the volume, occupied) are solid on the layer that faces it; n of them
@@ -6402,8 +6413,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     return { is, n };
   }
 
-  function halfOf(v, emi) {
+  function halfOf(v, emi, rk) {
     const [nx, ny, nz] = v.dims, px = Math.ceil(nx / 8), py = Math.ceil(ny / 8), pz = Math.ceil(nz / 8), mat = v.mat, { bmap, chunks } = v;
+    const R = rk || Uint16Array.from({ length: 256 }, (_, i) => i);
     const at = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < nx && y < ny && z < nz && mat(x, y, z) !== 0;
     const open = (x, y, z) => !at(x - 1, y, z) || !at(x + 1, y, z) || !at(x, y - 1, z) || !at(x, y + 1, z) || !at(x, y, z - 1) || !at(x, y, z + 1);
     // the surface's material counts
@@ -6420,8 +6432,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         const m = C[o + i];
         let k = 0;
         for (let j = 0; j < n; j++) if (C[o + j] === m) k++;
-        if ((emi[m] || k >= 2) && (!best || freq[m] < freq[best] || (freq[m] === freq[best] && m < best))) best = m;
-        if (k > mc || (k === mc && (freq[m] > freq[most] || (freq[m] === freq[most] && m < most)))) { most = m; mc = k; }
+        if ((emi[m] || k >= 2) && (!best || freq[m] < freq[best] || (freq[m] === freq[best] && R[m] < R[best]))) best = m;
+        if (k > mc || (k === mc && (freq[m] > freq[most] || (freq[m] === freq[most] && R[m] < R[most])))) { most = m; mc = k; }
       }
       return best || most;
     };
@@ -6442,7 +6454,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           if (!m) continue;
           any = true;
           const x = sx * 8 + (j & 7), y = sy * 8 + ((j >> 3) & 7), z = sz * 8 + (j >> 6), h = ((((z >> 1) & 7) * 8 + ((y >> 1) & 7)) * 8 + ((x >> 1) & 7));
-          if (!open(x, y, z)) { if (!I[h] || m < I[h]) I[h] = m; continue; }
+          if (!open(x, y, z)) { if (!I[h] || R[m] < R[I[h]]) I[h] = m; continue; }
           // the oct normal back to a vector (src/sdf.js octEnc)
           let ox = (c[j * 4] / 255) * 2 - 1, oy = (c[j * 4 + 1] / 255) * 2 - 1;
           const oz = 1 - Math.abs(ox) - Math.abs(oy);
@@ -6476,6 +6488,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // wait from its probe), ms: this job's, for stats.startMs, idleMs, busyMs
     const t0 = performance.now(), idle = t0 - (workerJob.end || t0), first = !workerJob.n, done = (r, tr) => { workerJob.n = 1; r.idle = idle; r.first = first; r.ms = (workerJob.end = performance.now()) - t0; postMessage(r, tr); };
     if (q.probe) { workerJob.end = performance.now(); postMessage({ probe: q.probe.map((p) => noise(p[0], p[1], p[2], p[3])) }); return; }
+    if (q.finish) { try { const [r, tr] = finishOf(q); done(r, tr); } catch (e) { done({ id: q.id, error: e.message }, []); } return; }
     try {
       ME.sdf.cull = q.cull; ME.content = { defaultMaterial: q.def }; CS.calls = CS.prims = CS.kept = 0;
       const pal = { names: [null], ids: {}, id(n) { if (n === undefined) n = q.def; let i = this.ids[n]; if (i === undefined) { i = this.names.length; this.names.push(n); this.ids[n] = i; } return i; } };
@@ -6483,6 +6496,11 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       b.chunks.forEach((c, k) => buf.set(c, k * 2048));
       const r = { id: q.id, box: vx.box, dims: vx.dims, solid: vx.solid, surf: vx.surf, names: pal.names, bmap: b.bmap, nb: b.chunks.length, buf, nsolid: b.solid, cs: { calls: CS.calls, prims: CS.prims, kept: CS.kept } };
       const tr = [b.bmap.buffer, buf.buffer];
+      if (q.fullK) {
+        const [nx, ny] = vx.dims;
+        r.full = tightBox(Object.assign({}, q.md, { k: q.fullK }), q.vs);
+        r.est = estOf(vx.dims, (x, y, z) => vx.rgba[((z * ny + y) * nx + x) * 4 + 3], q.vf, [0, 1, 2].map((k) => vx.box[k] - r.full[k] / q.vf), r.full.slice(3), q.hollow);
+      }
       if (vx.det) {
         const d = vx.det, emNames = [null], at = new Map([[null, 0]]);
         r.em = Uint16Array.from(d.m, (m) => { let k = at.get(m); if (k === undefined) { at.set(m, (k = emNames.length)); emNames.push(m); } return k; });
@@ -6492,13 +6510,67 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       done(r, tr);
     } catch (e) { done({ id: q.id, error: e.message }, []); }
   }
+  // E4's finish job, in a worker: a full-density volume the main thread has numbered and painted (q.buf, q.nb
+  // chunks; q.bmap, q.dims) back with its interior bricks (q.hollow: innerOf) and its 2x-down copy (q.lod: halfOf,
+  // ties by q.rk), each copy's interior too. The buffers go there and back by transfer.
+  function finishOf(q) {
+    const chunks = [];
+    for (let k = 0; k < q.nb; k++) chunks.push(q.buf.subarray(k * 2048, k * 2048 + 2048));
+    const v = { dims: q.dims, bmap: q.bmap, chunks };
+    v.mat = matOf(v);
+    const inner = q.hollow ? innerOf(v) : null, l = q.lod ? halfOf(v, q.emi, q.rk) : null;
+    if (l && inner) l.inner = innerOf(l);
+    const r = { id: q.id, buf: q.buf, bmap: q.bmap, inner: inner && inner.is, ninner: inner ? inner.n : 0 }, tr = [q.buf.buffer, q.bmap.buffer];
+    if (inner) tr.push(inner.is.buffer);
+    if (l) {
+      const lb = new Uint8Array(l.chunks.length * 2048);
+      l.chunks.forEach((c, k) => lb.set(c, k * 2048));
+      r.lod = { dims: l.dims, bmap: l.bmap, nb: l.chunks.length, buf: lb, nsolid: l.nsolid, inner: l.inner && l.inner.is, ninner: l.inner ? l.inner.n : 0 };
+      tr.push(lb.buffer, l.bmap.buffer);
+      if (l.inner) tr.push(l.inner.is.buffer);
+    }
+    return [r, tr];
+  }
+  // E4: the pool bricks a progressive frame's full bake will take, [model, 2x-down copy], estimated from its fine-1
+  // copy (cd its dims, at(x, y, z) a voxel's material) before the full bake exists: vf the density ratio, off the
+  // fine-1 box's offset in its own voxels (a full voxel f is fine-1 voxel f / vf - off), fd the full dims, hollow
+  // whether the full model keeps its interior out of the pool. A full brick counts if a fine-1 voxel within one of
+  // its span is solid (a summed-volume table answers each brick in 8 reads); with hollow, not one away from the
+  // volume's edge whose span two voxels out is all solid. 5% and 2 bricks over (a thin part the fine-1 copy lost).
+  function estOf(cd, at, vf, off, fd, hollow) {
+    const [cx, cy, cz] = cd, X = cx + 1, Y = cy + 1, sat = new Uint32Array(X * Y * (cz + 1));
+    for (let z = 0; z < cz; z++) for (let y = 0; y < cy; y++) {
+      let row = 0;
+      for (let x = 0; x < cx; x++) { if (at(x, y, z)) row++; const i = ((z + 1) * Y + y + 1) * X + x + 1; sat[i] = row + sat[i - X] + sat[i - X * Y] - sat[i - X - X * Y]; }
+    }
+    const s = (x, y, z) => sat[(z * Y + y) * X + x];
+    const sum = (a, b) => s(b[0], b[1], b[2]) - s(a[0], b[1], b[2]) - s(b[0], a[1], b[2]) - s(b[0], b[1], a[2]) + s(a[0], a[1], b[2]) + s(a[0], b[1], a[2]) + s(b[0], a[1], a[2]) - s(a[0], a[1], a[2]);
+    const est = (bs) => {
+      const nb = fd.map((n) => Math.ceil(n / bs)), a = [0, 0, 0], b = [0, 0, 0], a2 = [0, 0, 0], b2 = [0, 0, 0], p = [0, 0, 0];
+      let n = 0;
+      for (p[2] = 0; p[2] < nb[2]; p[2]++) for (p[1] = 0; p[1] < nb[1]; p[1]++) for (p[0] = 0; p[0] < nb[0]; p[0]++) {
+        let edge = false;
+        for (let k = 0; k < 3; k++) {
+          const lo = Math.floor((p[k] * bs) / vf - off[k]), hi = Math.ceil(Math.min(p[k] * bs + bs, fd[k]) / vf - off[k]);
+          a[k] = Math.min(cd[k], Math.max(0, lo - 1)); b[k] = Math.min(cd[k], Math.max(0, hi + 1));
+          a2[k] = lo - 2; b2[k] = hi + 2;
+          if (p[k] === 0 || p[k] === nb[k] - 1 || a2[k] < 0 || b2[k] > cd[k]) edge = true;
+        }
+        if (b[0] <= a[0] || b[1] <= a[1] || b[2] <= a[2] || !sum(a, b)) continue;
+        if (hollow && !edge && sum(a2, b2) === (b2[0] - a2[0]) * (b2[1] - a2[1]) * (b2[2] - a2[2])) continue;
+        n++;
+      }
+      return Math.min(nb[0] * nb[1] * nb[2], Math.ceil(n * 1.05) + 2);
+    };
+    return [est(8), est(16)];
+  }
   // n workers from a Blob of sources (the engine runs from file://, so not from a script file), each trusted once
   // its noise matches P.noise to the bit. Resolves to those that answered within 3 s: none without Worker or
   // under a CSP that refuses blob: workers, and the bake stays on the main thread.
   function startWorkers(n) {
     if (typeof Worker === "undefined") return Promise.resolve([]);
     let url;
-    try { url = URL.createObjectURL(new Blob([ME.sdf.workerSrc(), "\n", String(bricksOf), "\n", String(workerJob), "\nonmessage = (e) => workerJob(e.data);\n"], { type: "text/javascript" })); } catch (e) { return Promise.resolve([]); }
+    try { url = URL.createObjectURL(new Blob([ME.sdf.workerSrc(), "\n", String(bricksOf), "\nconst matOf = ", String(matOf), ";\n", String(innerOf), "\n", String(halfOf), "\n", String(finishOf), "\n", String(estOf), "\nME.octEnc = octEnc;\n", String(workerJob), "\nonmessage = (e) => workerJob(e.data);\n"], { type: "text/javascript" })); } catch (e) { return Promise.resolve([]); }
     const probe = [[0.37, 1.7, 2.2, 7], [-5.13, 3.3, 0.91, 7], [12.25, -8.5, 4.75, 3]], want = probe.map((p) => window.PX.noise(p[0], p[1], p[2], p[3]));
     const one = () => new Promise((res) => {
       let w = null;
@@ -6513,29 +6585,39 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     });
     return Promise.all(Array.from({ length: n }, one)).then((ws) => { URL.revokeObjectURL(url); return ws.filter(Boolean); });
   }
-  // jobs ({ id, name, q }) on the workers, posted in their order, `depth` in hand on each worker: the next is
-  // posted from a worker's answer, which runs on the main thread, and during the terrain bake only at its yields
-  // (ME.bakeModels.start, ~40 ms or more apart; a mean job is ~15 ms), so a few jobs in hand keep a worker busy
-  // between them (ME.bakeJobDepth, 4 by default). out: id -> a promise of its
+  // jobs ({ id, name, q, tr? }) on the workers, posted in their order (q with the buffers tr transferred),
+  // run.depth in hand on each worker: the next is posted from a worker's answer, which runs on the main thread, and
+  // during the terrain bake only at its yields (ME.bakeModels.start, ~40 ms or more apart; a mean job is ~15 ms), so
+  // a few jobs in hand keep a worker busy between them (ME.bakeJobDepth, 4 by default). out: id -> a promise of its
   // result, or of null where it failed (a prim that is not plain data, an error, a worker lost), and that variant
-  // bakes on the main thread. The watchdog terminates a worker that holds jobs and has sent nothing for
-  // ME.bakeJobMs (30 s by default; restarted on each answer, so it bounds one job), and every job it held bakes
-  // here. startMs, idleMs, busyMs: the workers' summed time from the probe to their first job, between jobs
-  // (waiting for a post; not after the last) and in them. stop() ends it.
+  // bakes on the main thread (a job's miss: what happens instead). The watchdog terminates a worker that holds jobs
+  // and has sent nothing for ME.bakeJobMs (30 s by default; restarted on each answer, so it bounds one job), and
+  // every job it held bakes here. startMs, idleMs, busyMs: the workers' summed time from the probe to their first
+  // job, between jobs (waiting for a post; not after the last) and in them. add(jobs, front) queues more (E4: a
+  // progressive bake's full bakes once its upgrade starts, its finishing jobs with front: before those waiting),
+  // each null at once when stopped or no worker is left. stop() ends it.
   function runJobs(ws, jobs, depth = ME.bakeJobDepth || 4) {
-    const out = new Map(), queue = jobs.slice(), limit = ME.bakeJobMs || 30000, run = { out, startMs: 0, idleMs: 0, busyMs: 0 };
-    let alive = ws.length;
-    for (const j of jobs) out.set(j.id, new Promise((r) => { j.res = r; }));
-    const failed = (j, why) => { ME.log("WARN BAKE worker: " + j.name + ": " + why + "; baked on the main thread"); j.res(null); };
-    const quit = (w) => { clearTimeout(w.dog); w.terminate(); w.onmessage = w.onerror = null; };
+    const out = new Map(), queue = [], limit = ME.bakeJobMs || 30000, run = { out, depth, startMs: 0, idleMs: 0, busyMs: 0 };
+    let alive = ws.length, stopped = false;
+    const failed = (j, why) => { ME.log("WARN BAKE worker: " + j.name + ": " + why + "; " + (j.miss || "baked on the main thread")); j.res(null); };
+    const quit = (w) => { clearTimeout(w.dog); w.dead = true; w.terminate(); w.onmessage = w.onerror = null; };
     const arm = (w) => { clearTimeout(w.dog); w.dog = w.held.length ? setTimeout(() => lose(w, "no answer in " + limit + " ms"), limit) : 0; };
     const lose = (w, why) => {
       quit(w);
       for (const j of w.held.splice(0)) failed(j, why);
       if (--alive === 0) while (queue.length) queue.shift().res(null);
     };
-    const give = (w) => { const j = queue.shift(); try { w.postMessage(j.q); w.held.push(j); } catch (e) { failed(j, e.message); } };
-    const fill = (w) => { while (w.held.length < depth && queue.length) give(w); };
+    const give = (w) => { const j = queue.shift(); try { w.postMessage(j.q, j.tr || []); w.held.push(j); } catch (e) { failed(j, e.message); } };
+    const fill = (w) => { while (!w.dead && w.held.length < run.depth && queue.length) give(w); };
+    // the queue dealt round the workers, one each per round (the least busy first), so a flipbook's frames (next to
+    // each other, the same cost) start on different workers
+    const deal = () => { for (let k = 1; k <= run.depth && queue.length; k++) for (const w of ws) if (!w.dead && w.held.length < k && queue.length) give(w); for (const w of ws) if (!w.dead) arm(w); };
+    run.add = (more, front = false) => {
+      for (const j of more) out.set(j.id, new Promise((r) => { j.res = r; }));
+      if (stopped || !alive) { for (const j of more) j.res(null); return; }
+      if (front) queue.unshift(...more); else queue.push(...more);
+      deal();
+    };
     for (const w of ws) {
       w.held = [];
       w.onmessage = (e) => {
@@ -6546,12 +6628,11 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       };
       w.onerror = (e) => { if (e.preventDefault) e.preventDefault(); lose(w, e.message || "worker error"); };
     }
-    // the first fill deals the jobs round the workers, one each per round, so a flipbook's frames (next to each
-    // other, the same cost) start on different workers
-    for (let k = 0; k < depth && queue.length; k++) for (const w of ws) if (queue.length) give(w);
-    for (const w of ws) arm(w);
+    for (const j of jobs) out.set(j.id, new Promise((r) => { j.res = r; }));
+    queue.push(...jobs);
+    deal();
     // every job not yet answered resolves to null (bakes here), quietly: the bake is over or cancelled
-    run.stop = () => { for (const w of ws) { quit(w); for (const j of w.held.splice(0)) j.res(null); } while (queue.length) queue.shift().res(null); };
+    run.stop = () => { stopped = true; for (const w of ws) { quit(w); for (const j of w.held.splice(0)) j.res(null); } while (queue.length) queue.shift().res(null); };
     return run;
   }
 
@@ -6612,23 +6693,68 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   const notData = (md, opts) => (md.contour ? "contour" : opts.focus && md.focus && md.focus.length ? "focus" : md.prims.some((p) => p.k === 5) ? "function prim"
     : md.prims.some((p) => Object.values(p).some((x) => typeof x === "function")) ? "function field" : null);
   const defOf = (pal) => (pal.defaultName ? pal.defaultName() : (ME.content || {}).defaultMaterial);
+  // E4, progressive hero density: an app's flipbook (opts.models) baked finer than tile density (o.fine > 1) and
+  // at ME.PROG_MIN voxels per tile edge or more (VS x fine) bakes at fine 1 first, the game starts on it, and a
+  // worker bakes it at full density meanwhile; R.swapModel puts the full flipbook in its place (MB.prog below).
+  // Off with opts.progressive = false, ME.progressive = false or ?progressive=0, with a focus bake and without
+  // the workers.
+  ME.PROG_MIN = 32;
+  // The full bakes start once the game's frames settle (its first frames after READY compile pipelines, and the
+  // bakes' CPU would make that freeze longer): ME.PROG_SETTLE ms of frames, none longer than ME.PROG_HITCH ms, or
+  // ME.PROG_SETTLE_MAX ms after R's first frame at the latest.
+  ME.PROG_SETTLE = 1500; ME.PROG_HITCH = 100; ME.PROG_SETTLE_MAX = 10000;
+  const progOn = (opts = {}) => opts.progressive !== false && ME.progressive !== false && ME.qn("progressive", 1) !== 0 && !opts.focus && workersOn(opts);
+  const hollowOn = () => ME.poolHollow !== false && ME.qn("hollow", 1) !== 0;
+  // the progressive flipbooks, [{ key, vs }] in variant order: every frame data-only, finer than tile density,
+  // used by that flipbook only (a variant shared with a static, a walker or a critter keeps one bake), and the
+  // frames numbered next to each other
+  function progOf(L, mds, opts) {
+    if (!progOn(opts)) return [];
+    const uses = new Uint32Array(L.variants.length), count = (a) => { for (const i of a) uses[i]++; };
+    L.statics.forEach(count);
+    for (const m of [L.walkerFrames, L.extraFrames, L.critterFrames]) Object.values(m).forEach(count);
+    const groups = [];
+    for (const key in L.extraFrames) {
+      const vs = L.extraFrames[key];
+      if (vs.some((i, j) => i !== vs[0] + j)) continue;
+      if (vs.every((i) => { const { md, vf } = mds[i]; return vf > 1 && ME.VS * vf >= ME.PROG_MIN && !notData(md, opts) && uses[i] === 1; })) groups.push({ key, vs: vs.slice() });
+    }
+    return groups;
+  }
+  // rk[id]: the order the single-pass bake would have numbered the materials in, for halfOf's ties: the ids the
+  // palette held before the bake (below n0) as they are, then the others by their first use over lists (one Set
+  // of ids per variant, each in the order its bake met them, the variants in order), any left after them
+  function rankOf(lists, n0) {
+    const R = new Uint16Array(256);
+    for (let i = 0; i < 256; i++) R[i] = i < n0 ? i : 256 + i;
+    let k = n0;
+    for (const s of lists) for (const id of s) if (R[id] >= 256) R[id] = k++;
+    return R;
+  }
   // all a bake's worker jobs depend on but the models' sources: the variants, in order, the density, the cull, the
-  // default material and which variants go to the workers
-  const sigOf = (L, def, opts) => JSON.stringify([L.variants.map((v) => v.key), ME.VS, ME.sdf.cull, def, !!opts.focus, workersOn(opts)]);
+  // default material, which variants go to the workers and whether flipbooks bake progressively
+  const sigOf = (L, def, opts) => JSON.stringify([L.variants.map((v) => v.key), ME.VS, ME.sdf.cull, def, !!opts.focus, workersOn(opts), progOn(opts)]);
 
   // A bake's models built and its data-only ones posted to the workers (opts.worker = false or ME.bakeWorkers =
   // false keeps them here), largest first, so a long job doesn't start last: h.mds, h.offWorker, h.ready
   // (resolved once the workers answer their probe, h.ws and h.res set), h.cancel() (safe twice: ends the workers,
-  // every job not yet answered resolves to null).
+  // every job not yet answered resolves to null). A progressive flipbook's frames (h.prog: progOf's) go as two jobs
+  // each: id i its fine-1 copy, sized with the full bake's box (r.full), with the others; id nv + i the full bake, in
+  // variant order, held back (h.full) till the upgrade starts them (once R's frames settle) or the fallback asks
+  // for them, so the boot has the workers for its own jobs and the CPU to itself once they are done.
   function launch(L, pal, opts) {
-    const def = defOf(pal), mds = modelsOf(L.variants), offWorker = {}, jobs = [], on = workersOn(opts);
-    mds.forEach(({ md }, i) => {
+    const def = defOf(pal), mds = modelsOf(L.variants), offWorker = {}, jobs = [], on = workersOn(opts), nv = L.variants.length;
+    const prog = progOf(L, mds, opts), pv = new Set(prog.flatMap((g) => g.vs)), full = [];
+    mds.forEach(({ md, vf }, i) => {
       const name = L.variants[i].name, why = on ? notData(md, opts) : "off";
       if (why) { offWorker[name] = why; return; }
-      jobs.push({ id: i, name, cost: md.prims.length * (md.r || 1) ** 2 * (md.h || 1) * md.k ** 3, q: { id: i, md: { prims: md.prims, k: md.k, r: md.r, h: md.h }, vs: ME.VS, cull: ME.sdf.cull, def, detail: !!md.detail } });
+      const cost = md.prims.length * (md.r || 1) ** 2 * (md.h || 1) * md.k ** 3, q = { id: i, md: { prims: md.prims, k: md.k, r: md.r, h: md.h }, vs: ME.VS, cull: ME.sdf.cull, def, detail: !!md.detail };
+      if (!pv.has(i)) { jobs.push({ id: i, name, cost, q }); return; }
+      jobs.push({ id: i, name, cost: cost / vf ** 3, q: Object.assign({}, q, { md: Object.assign({}, q.md, { k: md.k / vf }), fullK: md.k, vf, hollow: hollowOn() && ME.VS * vf > ME.POOL_HOLLOW }) });
+      full.push({ id: nv + i, name, cost, q: Object.assign({}, q, { id: nv + i }), miss: "kept the fine-1 model" });
     });
     jobs.sort((a, b) => b.cost - a.cost);
-    const h = { sig: sigOf(L, def, opts), mds, offWorker, ws: [], res: new Map(), run: null, done: false };
+    const h = { sig: sigOf(L, def, opts), mds, offWorker, prog, nv, full, ws: [], res: new Map(), run: null, done: false };
     h.cancel = () => { if (h.done) return; h.done = true; if (h.run) h.run.stop(); };
     h.ready = (jobs.length ? startWorkers(Math.min(Math.max(1, Math.floor(ME.bakeWorkerMax || ME.qn("bakeworkers", 0) || 4)), Math.max(1, (navigator.hardwareConcurrency || 2) - 1), jobs.length)) : Promise.resolve([])).then((ws) => {
       if (h.done) { for (const w of ws) w.terminate(); return; }
@@ -6654,66 +6780,131 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // dense rgba dropped at once, so the bake holds one dense volume at a time beside what it outputs (the
     // memory budget, #135): bricksOf below. A bake worker sends its volume back already in bricks.
     const sparse = (v) => { const b = bricksOf(v.dims, v.rgba); v.rgba = null; v.bmap = b.bmap; v.chunks = b.chunks; v.nsolid = b.solid; v.mat = matOf(v); return v; };
+    // E4: fn() with the ids pal.id hands out recorded in list, each once, in the order first met: the order a
+    // variant's bake met its materials, for rankOf
+    const recIds = (list, fn) => {
+      const seen = list.seen || (list.seen = new Uint8Array(256)), own = Object.prototype.hasOwnProperty.call(pal, "id"), id0 = pal.id;
+      pal.id = function (n) { const i = id0.call(this, n); if (!seen[i]) { seen[i] = 1; list.push(i); } return i; };
+      try { return fn(); } finally { if (own) pal.id = id0; else delete pal.id; }
+    };
     // a worker's volume: its materials renumbered in this palette in the order the worker met them (the order
-    // voxelizeModel here would have met them), then md.detail painted here, over the surface voxels it listed
-    const S = ME.sdf.stats, fromWorker = (r, md) => {
-      const map = r.names.map((n, k) => (k ? pal.id(n) : 0)), chunks = [];
-      for (let k = 0; k < r.nb; k++) { const c = r.buf.subarray(k * 2048, k * 2048 + 2048); for (let j = 3; j < 2048; j += 4) c[j] = map[c[j]]; chunks.push(c); }
+    // voxelizeModel here would have met them), then md.detail painted here, over the surface voxels it listed. A
+    // generator that yields every 64 bricks and 512 painted voxels, so a progressive bake spreads it over frames
+    // (paintDetail reads and writes one voxel per entry, so its slices paint what one call would); drive() runs it
+    // through at once
+    const S = ME.sdf.stats, takeIn = function* (r, md, list) {
+      const map = recIds(list, () => r.names.map((n, k) => (k ? pal.id(n) : 0))), chunks = [];
+      for (let k = 0; k < r.nb; k++) { const c = r.buf.subarray(k * 2048, k * 2048 + 2048); for (let j = 3; j < 2048; j += 4) c[j] = map[c[j]]; chunks.push(c); if ((k & 63) === 63) yield; }
       const v = { box: r.box, dims: r.dims, rgba: null, solid: r.solid, surf: r.surf, bmap: r.bmap, chunks, nsolid: r.nsolid };
       v.mat = matOf(v); S.calls += r.cs.calls; S.prims += r.cs.prims; S.kept += r.cs.kept;
       if (md.detail) {
         const [nx, ny] = v.dims, px = Math.ceil(nx / 8), py = Math.ceil(ny / 8);
         const at = (i) => { const x = i % nx, y = Math.floor(i / nx) % ny, z = Math.floor(i / (nx * ny)); return [chunks[v.bmap[((z >> 3) * py + (y >> 3)) * px + (x >> 3)]], (((z & 7) * 8 + (y & 7)) * 8 + (x & 7)) * 4 + 3]; };
-        const det = { idx: r.idx, m: Array.from(r.em, (k) => r.emNames[k]), n: r.n };
-        ME.sdf.paintDetail(md, VS, pal, { box: v.box, dims: v.dims, det }, 1 / (VS * md.k), (i) => { const [c, o] = at(i); return c[o]; }, (i, m) => { const [c, o] = at(i); c[o] = m; });
+        const get = (i) => { const [c, o] = at(i); return c[o]; }, set = (i, m) => { const [c, o] = at(i); c[o] = m; }, m = Array.from(r.em, (k) => r.emNames[k]);
+        for (let a = 0; a < r.idx.length; a += 512) {
+          const b = Math.min(r.idx.length, a + 512), det = { idx: r.idx.subarray(a, b), m: m.slice(a, b), n: r.n.subarray(a * 3, b * 3) };
+          recIds(list, () => ME.sdf.paintDetail(md, VS, pal, { box: v.box, dims: v.dims, det }, 1 / (VS * md.k), get, set));
+          yield;
+        }
       }
       return v;
     };
+    const drive = (g) => { let x; while (!(x = g.next()).done); return x.value; };
 
     // each kept in variant order, wherever it was voxelised: the palette numbers materials in the order the
     // single-thread bake meets them, so the pool is byte-identical to it (tools/worker-check.js)
     const vols = [], { mds, offWorker } = h;
     // the main thread's time (stats): waiting for the workers to start (readyMs), then on their jobs (waitMs),
     // voxelising here, taking in worker volumes (md.detail)
-    let inWorkers = 0, readyMs = 0, waitMs = 0, hereMs = 0, takeMs = 0, ws, run;
+    let inWorkers = 0, readyMs = 0, waitMs = 0, hereMs = 0, takeMs = 0, ws, run, res;
+    // E4: the palette's size before the bake (rankOf), the ids each variant's bake met (recIds), the progressive
+    // flipbooks (h.prog; none without workers) and each of their frames' group. Such a frame bakes here at fine 1
+    // (mdc) with kf = vf, the factor its voxels are drawn at (sim.put), and full, its full bake's box.
+    const n0 = pal.names.length, nv = variants.length, lists = variants.map(() => []);
+    let prog = null;
+    const gOf = new Map();
     try {
       let t = ME.now();
       await h.ready;
       readyMs = ME.now() - t;
-      const res = h.res;
+      res = h.res;
       ws = h.ws; run = h.run;
+      if (h.prog && h.prog.length && ws.length) { prog = h.prog; for (const g of prog) for (const i of g.vs) gOf.set(i, g); }
       for (let i = 0; i < variants.length; i++) {
-        const v = variants[i], { md, vf } = mds[i];
+        const v = variants[i], { md, vf } = mds[i], g = gOf.get(i), mdc = g ? Object.assign({}, md, { k: md.k / vf }) : md;
         if ((i & 1) === 0) { ME.progress("voxelising " + v.name + " (" + (i + 1) + "/" + variants.length + ")", 0.5 + 0.3 * (i / variants.length)); await ME.tick(); }
         t = ME.now();
         const r = res.has(i) ? await res.get(i) : null;
         if (res.has(i)) { waitMs += ME.now() - t; t = ME.now(); if (!r) offWorker[v.name] = "worker failed"; }
-        const vx = r ? fromWorker(r, md) : sparse(ME.voxelizeModel(md, VS, pal, { focus: !!opts.focus }));
+        const vx = r ? drive(takeIn(r, mdc, lists[i])) : sparse(recIds(lists[i], () => ME.voxelizeModel(mdc, VS, pal, { focus: !!opts.focus })));
         if (r) { inWorkers++; takeMs += ME.now() - t; } else hereMs += ME.now() - t;
         vx.md = md; vx.name = v.name; vx.fine = vf;
+        if (g) {
+          vx.kf = vf; vx.full = (r && r.full) || ME.sdf.tightBox(md, VS);
+          vx.est = (r && r.est) || estOf(vx.dims, vx.mat, vf, [0, 1, 2].map((k) => vx.box[k] - vx.full[k] / vf), vx.full.slice(3), hollowOn() && VS * vf > ME.POOL_HOLLOW);
+        }
         vols.push(vx);
       }
-    } finally { h.cancel(); }
+    } finally { if (!prog) h.cancel(); else h.done = true; } // a progressive bake keeps the workers (MB.prog), and an early.cancel() leaves them
 
     // every volume's 2x-down copy (halfOf), packed after them; none when the pool could not hold them all
     const tl = ME.now();
-    // emi: the palette's emissive materials (src/palette.js: an em, or the class EMISSIVE)
+    // emi: the palette's emissive materials (src/palette.js: an em, or the class EMISSIVE); again (setEmi) once a
+    // progressive bake's full models bring new materials
     const emi = new Uint8Array(256), byName = (ME.content && ME.content.materialClass) || {};
-    if (pal.mat) pal.names.forEach((n, i) => { if (i) { const M = pal.mat(n); emi[i] = M.em || M.cls === ME.CLS.EMISSIVE || byName[n] === "EMISSIVE" ? 1 : 0; } });
-    let lods = opts.lod === false ? [] : vols.map((v) => halfOf(v, emi));
-    // the interior bricks of the fine models (ME.POOL_HOLLOW) and of their copies stay out of the pool
-    const th = ME.now(), hollow = ME.poolHollow !== false && ME.qn("hollow", 1) !== 0;
-    vols.forEach((v, i) => { v.inner = hollow && VS * v.fine > ME.POOL_HOLLOW ? innerOf(v) : null; if (lods[i]) lods[i].inner = v.inner ? innerOf(lods[i]) : null; });
-    const kept = (l) => l.chunks.length - (l.inner ? l.inner.n : 0), hollowMs = ME.now() - th;
-    if (vols.reduce((a, v) => a + kept(v), 0) + lods.reduce((a, l) => a + kept(l), 0) > ME.poolMaxBricks()) lods = [];
+    const setEmi = () => { if (pal.mat) pal.names.forEach((n, i) => { if (i) { const M = pal.mat(n); emi[i] = M.em || M.cls === ME.CLS.EMISSIVE || byName[n] === "EMISSIVE" ? 1 : 0; } }); };
+    setEmi();
+    // the copies (halfOf, ties by rk), and the interior bricks of the fine models (ME.POOL_HOLLOW; a coarse model of
+    // a progressive bake is VS x fine / kf to the tile edge) and of their copies, which stay out of the pool
+    const hollow = hollowOn(), kept = (l) => l.chunks.length - (l.inner ? l.inner.n : 0);
+    let lods, hollowMs = 0;
+    const prep = (rk) => {
+      lods = opts.lod === false ? [] : vols.map((v) => halfOf(v, emi, rk));
+      const th = ME.now();
+      vols.forEach((v, i) => { v.inner = hollow && (VS * v.fine) / (v.kf || 1) > ME.POOL_HOLLOW ? innerOf(v) : null; if (lods[i]) lods[i].inner = v.inner ? innerOf(lods[i]) : null; });
+      hollowMs += ME.now() - th;
+    };
+    prep();
+    // E4: a progressive bake's pool, sized once (no new texture while it upgrades) to its peak C: the models that
+    // never change, then at group g's upgrade the full models up to g (estimated: vx.est) and the coarse ones from g
+    // on (g's are drawn until its swap has faded). Its slots are reused (the upgrade: used, lw). The copies stay or
+    // go as the single-pass bake's would, on the estimate. A peak the pool can't hold waits for the full models (the
+    // single-pass bake, its material order ranked back: rankOf).
+    const fs = ME.poolSlab || ME.qn("poolslab", 0), slabOf = (n) => (fs === ME.POOL_SLAB || fs === ME.POOL_SLAB_MAX ? fs : n <= ME.poolMaxBricks(undefined, ME.POOL_SLAB) ? ME.POOL_SLAB : ME.POOL_SLAB_MAX);
+    let C = 0, sp = null;
+    if (prog) {
+      const est = (g, k) => g.vs.reduce((a, i) => a + vols[i].est[k], 0), rest = (L) => vols.reduce((a, v, i) => a + (gOf.has(i) ? 0 : kept(v) + (L && lods[i] ? kept(lods[i]) : 0)), 0);
+      // (copies cut on the estimate: lodCut, a WARN; the single pass may have kept them)
+      const cut = lods.length > 0 && rest(true) + prog.reduce((a, g) => a + est(g, 0) + est(g, 1), 0) > ME.poolBricks();
+      if (cut) { lods = []; ME.log("WARN BAKE progressive: the copies are cut on the estimate of the full models' bricks"); }
+      const L1 = lods.length > 0, base = rest(L1), F = prog.map((g) => est(g, 0) + (L1 ? est(g, 1) : 0)), Cc = prog.map((g) => g.vs.reduce((a, i) => a + kept(vols[i]) + (L1 ? kept(lods[i]) : 0), 0));
+      for (let g = 0; g < prog.length; g++) { let n = base; for (let j = 0; j < prog.length; j++) n += (j <= g ? F[j] : 0) + (j >= g ? Cc[j] : 0); C = Math.max(C, n); }
+      sp = { groups: prog.length, frames: gOf.size, C, est: F.reduce((a, b) => a + b, 0), coarse: Cc.reduce((a, b) => a + b, 0), swaps: [], failed: [], doneAt: 0, ...(cut ? { lodCut: true } : {}) };
+      const lim = Math.min(ME.poolMaxBricks(undefined, slabOf(C)), ME.poolBricks());
+      if (C > lim) {
+        ME.log(`WARN BAKE progressive: its pool would peak at ${C} bricks, over the ${lim} it may hold: the full models are waited for`);
+        run.add(h.full);
+        for (const g of prog) for (const i of g.vs) {
+          const r = await res.get(nv + i), { md, vf } = mds[i], list = (lists[i] = []);
+          const vx = r ? drive(takeIn(r, md, list)) : sparse(recIds(list, () => ME.voxelizeModel(md, VS, pal, { focus: !!opts.focus })));
+          vx.md = md; vx.name = variants[i].name; vx.fine = vf; vols[i] = vx;
+        }
+        run.stop(); prog = null; sp.fallback = true;
+        setEmi(); prep(rankOf(lists, n0));
+      }
+    }
+    if (!prog && vols.reduce((a, v) => a + kept(v), 0) + lods.reduce((a, l) => a + kept(l), 0) > ME.poolBricks()) lods = [];
     const lodMs = ME.now() - tl, lodBricks = lods.reduce((a, l) => a + kept(l), 0), all = vols.concat(lods), hollowN = all.reduce((a, l) => a + (l.inner ? l.inner.n : 0), 0);
     for (const l of lods) l.copy = true;
 
     // shelf-pack brick-aligned volumes into the atlas; short volumes stack in z inside a column whose
-    // footprint fits them (critters and ferns would otherwise each reserve the full atlas depth)
-    const pad = (n) => Math.ceil(n / 8) * 8, W = 1024, AZ = Math.max(8, ...vols.map((v) => pad(v.dims[2]))), cols = [];
+    // footprint fits them (critters and ferns would otherwise each reserve the full atlas depth). E4: a progressive
+    // frame's full model and its copy get their place now, a proxy { dims } with no bricks yet (v.px)
+    const proxies = [];
+    if (prog) for (const g of prog) for (const i of g.vs) { const d = vols[i].full.slice(3); proxies.push((vols[i].px = { dims: d })); if (lods.length) proxies.push((lods[i].px = { dims: d.map((n) => Math.ceil(n / 2)) })); }
+    const pad = (n) => Math.ceil(n / 8) * 8, W = 1024, AZ = Math.max(8, ...vols.concat(proxies).map((v) => pad(v.dims[2]))), cols = [];
     let x = 0, y = 0, rowH = 0;
-    for (const v of all) {
+    for (const v of all.concat(proxies)) {
       const [nx, ny, nz] = v.dims.map(pad);
       let c = cols.find((c) => c.w >= nx && c.h >= ny && c.w - nx <= 16 && c.h - ny <= 16 && c.z + nz <= AZ);
       if (!c) {
@@ -6723,8 +6914,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       }
       v.base = [c.x, c.y, c.z]; v.pdims = [nx, ny, nz]; c.z += nz;
     }
-    // brick map (one u32 per 8^3 brick of the layout above: bits 0..23 are 0 for empty, else 1 + pool slot; bits 24..31
-    // the occupied 4^3 octants, filled below) and a dense
+    // brick map (one u32 per 8^3 brick of the layout above: bits 24..31 the occupied 4^3 octants, filled below, and
+    // bits 0..23 1 + pool slot; 0 for empty; an interior brick (no octant) 1 + its index in MB.inner) and a dense
     // pool holding only the occupied bricks (the layout is ~1% solid, so the pool is a fraction of it)
     const AX = W, AY = pad(y + rowH), BX = AX / 8, BY = AY / 8, BZ = AZ / 8, bricks = new Uint32Array(BX * BY * BZ);
     let nb = 0, ni = 0, solid = 0;
@@ -6737,28 +6928,35 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         else bricks[((bz + iz) * BY + by + iy) * BX + bx + ix] = ++nb;
       }
     }
-    // the slab: 16 x 16 while the bricks fit (the pool and its rounding as before E6), else 32 x 32
-    const fs = ME.poolSlab || ME.qn("poolslab", 0), PB = fs === ME.POOL_SLAB || fs === ME.POOL_SLAB_MAX ? fs : nb <= ME.poolMaxBricks(undefined, ME.POOL_SLAB) ? ME.POOL_SLAB : ME.POOL_SLAB_MAX;
-    const PX = PB * 8, PY = PB * 8, PZ = Math.max(1, Math.ceil(nb / (PB * PB))) * 8;
-    if (nb > ME.poolMaxBricks(undefined, PB)) throw new Error(`the volume pool needs ${nb} bricks; the device allows ${ME.poolMaxBricks(undefined, PB)} (a ${PX} x ${PY} x ${PZ} texture against maxTextureDimension3D ${ME.poolMaxDepth()}): fewer or smaller volumes, or fewer frames`);
+    // the slab: 16 x 16 while the bricks fit (the pool and its rounding as before E6), else 32 x 32; a progressive
+    // bake's pool holds its peak
+    const need = prog ? C : nb, PB = slabOf(need);
+    const PX = PB * 8, PY = PB * 8, PZ = Math.max(1, Math.ceil(need / (PB * PB))) * 8;
+    const cap = ME.poolMaxBricks(undefined, PB), budget = ME.poolBricks();
+    if (need > Math.min(cap, budget)) throw new Error(`the volume pool needs ${need} bricks; ` + (budget < cap ? `this device's budget is ${budget} (ME.poolBudget)` : `the device allows ${cap} (a ${PX} x ${PY} x ${PZ} texture against maxTextureDimension3D ${ME.poolMaxDepth()})`) + ": fewer or smaller volumes, or fewer frames");
     const pool = new Uint8Array(PX * PY * PZ * 4);
-    // the models' interior bricks (not their copies'): brick-map index and 512 material bytes each
-    const inner = ni ? { at: new Uint32Array(ni), mats: new Uint8Array(ni * 512) } : null;
+    // the models' interior bricks (not their copies'): 512 material bytes each, found through the brick map
+    let inner = ni ? { mats: new Uint8Array(ni * 512) } : null;
     ni = 0;
     // each occupied brick into its pool slot, 8 x 8 rows of 8 voxels. Its 4^3 octants that hold a voxel go into
     // the brick map's top byte (bit x + 2y + 4z), and each volume gets the bounds of its voxels, lo and hi (the
-    // volume shader skips the empty octants and draws its proxy box over lo..hi, not the whole dims)
-    for (const v of all) {
+    // volume shader skips the empty octants and draws its proxy box over lo..hi, not the whole dims). putVol(v,
+    // take): volume v's, take(bk) the pool slot of brick-map entry bk (by default the one the count above gave it);
+    // a generator that yields every 64 bricks, run through at once here (drive) and over frames by an upgrade (E4)
+    const putVol = function* (v, take = (bk) => bricks[bk] - 1) {
       const [px, py, pz] = v.pdims.map((n) => n / 8), [bx, by, bz] = v.base.map((n) => n / 8), lo = [1e9, 1e9, 1e9], hi = [0, 0, 0];
+      let c = 0;
       for (let iz = 0; iz < pz; iz++) for (let iy = 0; iy < py; iy++) for (let ix = 0; ix < px; ix++) {
         const bi = v.bmap[(iz * py + iy) * px + ix];
         if (bi < 0) continue;
-        const b = v.chunks[bi], bk = ((bz + iz) * BY + by + iy) * BX + bx + ix, k = bricks[bk] - 1;
-        // an interior brick: never extremal (solid neighbours on every side), so lo and hi don't need it
+        const b = v.chunks[bi], bk = ((bz + iz) * BY + by + iy) * BX + bx + ix;
+        // an interior brick: never extremal (solid neighbours on every side), so lo and hi don't need it. Its map
+        // entry has no octant (the shader's empty) and 1 + its index in MB.inner below
         if (v.inner && v.inner.is[bi]) {
-          if (!v.copy) { inner.at[ni] = bk; for (let j = 0; j < 512; j++) inner.mats[ni * 512 + j] = b[j * 4 + 3]; ni++; }
+          if (!v.copy) { bricks[bk] = ni + 1; for (let j = 0; j < 512; j++) inner.mats[ni * 512 + j] = b[j * 4 + 3]; ni++; }
           continue;
         }
+        const k = take(bk);
         let om = 0;
         for (let j = 0; j < 512; j++) {
           if (!b[j * 4 + 3]) continue;
@@ -6770,11 +6968,28 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         bricks[bk] = ((k + 1) | (om << 24)) >>> 0;
         const qx = (k % PB) * 8, qy = (Math.floor(k / PB) % PB) * 8, qz = Math.floor(k / (PB * PB)) * 8;
         for (let z = 0; z < 8; z++) for (let yy = 0; yy < 8; yy++) pool.set(b.subarray((z * 8 + yy) * 32, (z * 8 + yy) * 32 + 32), ((qz + z) * PY + qy + yy) * PX * 4 + qx * 4);
+        if ((++c & 63) === 0) yield;
       }
       if (lo[0] > hi[0]) lo.fill(0); // no voxel: an empty box
       v.lo = lo; v.hi = hi;
-      if (v.box) solid += v.nsolid;
-    }
+    };
+    for (const v of all) { drive(putVol(v)); if (v.box) solid += v.nsolid; }
+    // E4: the pool's slots as an upgrade takes and frees them: used[k] (one byte a slot; the pool is sized to the
+    // peak, so a free list never has to grow it), lw the lowest slot that may be free, inUse their count, touched
+    // the pool's z-layers written since the last upload
+    const slots = (PZ / 8) * PB * PB, used = prog ? new Uint8Array(slots).fill(1, 0, nb) : null, touched = new Set();
+    let lw = nb, inUse = nb;
+    const take = () => { let k = lw; while (used[k]) k++; if (k >= slots) throw new Error("the progressive pool is full"); used[k] = 1; lw = k + 1; inUse++; touched.add(Math.floor(k / (PB * PB))); return k; };
+    // the bricks of a volume's place in the layout (base, dims) out of the map, their slots freed: the box in bricks
+    const clear = (base, dims) => {
+      const b = base.map((n) => n / 8), e = dims.map((n, a) => b[a] + Math.ceil(n / 8));
+      for (let z = b[2]; z < e[2]; z++) for (let y = b[1]; y < e[1]; y++) for (let x = b[0]; x < e[0]; x++) {
+        const bk = (z * BY + y) * BX + x, w = bricks[bk];
+        if (w >>> 24) { const k = (w & 0xffffff) - 1; used[k] = 0; if (k < lw) lw = k; inUse--; }
+        bricks[bk] = 0;
+      }
+      return b.concat(e);
+    };
 
     // static volumes shade the sun volume: splat their voxels into the coarse occupancy (foliage half weight),
     // at the size they are drawn (1 / fine of their voxel scale: fine heroes and critters, chunky toys)
@@ -6797,6 +7012,10 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const splat = new Uint8Array(acc.length);
     for (let i = 0; i < acc.length; i++) if (acc[i]) { splat[i] = Math.min(255, Math.round(acc[i] * 255)); T.coarse[i] = Math.min(255, T.coarse[i] + splat[i]); }
     T.splat = splat;
+    // (E4: the models after the first progressive one keep their volume, and their copy its interior, till the
+    // upgrade's end: their copy is made again if the full bakes reorder its ties)
+    const relod = [];
+    if (prog && lods.length) { const i0 = Math.min(...gOf.keys()); vols.forEach((v, i) => { if (i > i0 && !gOf.has(i)) relod.push({ i, v: { dims: v.dims, bmap: v.bmap, chunks: v.chunks }, inner: lods[i].inner }); }); }
     for (const v of all) v.bmap = v.chunks = v.mat = v.inner = null;
 
     // point lights from emissive primitives of static volumes, at their drawn offsets (md.k / fine)
@@ -6817,17 +7036,147 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 
     // h and r in world units (a fine model is drawn at 1/fine scale)
     // lod: model i's 2x-down copy in MB.lods (its base and dims in the atlas, lo and hi its voxels' bounds), -1 for none
-    const models = vols.map((v, i) => ({ name: v.name, base: v.base, dims: v.dims, box: v.box, lo: v.lo, hi: v.hi, k: v.md.k, fine: v.fine, h: (v.md.h * v.md.k) / v.fine, r: (v.md.r * v.md.k) / v.fine, lod: lods.length ? i : -1 }));
-    // bricks: the pool's; fill: their share of the ceiling (%); hollow: the interior bricks kept out of it (models
+    const models = vols.map((v, i) => ({ name: v.name, base: v.base, dims: v.dims, box: v.box, lo: v.lo, hi: v.hi, k: v.md.k, fine: v.fine, ...(v.kf ? { kf: v.kf } : {}), h: (v.md.h * v.md.k) / v.fine, r: (v.md.r * v.md.k) / v.fine, lod: lods.length ? i : -1 }));
+    // bricks: the pool's; budget: ME.poolBricks(); fill: their share of it (%); hollow: the interior bricks kept out of it (models
     // and copies), the models' ones in MB.inner, the ms to find them; slab: S; mapMB: the brick map's texture
-    const stats = { variants: vols.length, layout: [AX, AY, AZ], bricks: nb, fill: +((nb / ME.poolMaxBricks()) * 100).toFixed(1), hollow: { bricks: hollowN, inner: inner ? inner.at.length : 0, ms: Math.round(hollowMs) }, slab: PB, pool: [PX, PY, PZ], poolMB: +((pool.byteLength / 1048576).toFixed(1)), mapMB: +((bricks.byteLength / 1048576).toFixed(1)), solid, surface: vols.reduce((a, v) => a + v.surf, 0), lights: lights.length, lod: { models: lods.length, bricks: lodBricks }, lodMs: Math.round(lodMs), workers: ws.length, inWorkers, offWorker, early: how, startMs: run ? Math.round(run.startMs) : 0, idleMs: run ? Math.round(run.idleMs) : 0, busyMs: run ? Math.round(run.busyMs) : 0, readyMs: Math.round(readyMs), waitMs: Math.round(waitMs), hereMs: Math.round(hereMs), takeMs: Math.round(takeMs), ms: Math.round(ME.now() - t0) };
+    const stats = { variants: vols.length, layout: [AX, AY, AZ], bricks: nb, budget, fill: +((nb / budget) * 100).toFixed(1), hollow: { bricks: hollowN, inner: inner ? inner.mats.length / 512 : 0, ms: Math.round(hollowMs) }, slab: PB, pool: [PX, PY, PZ], poolMB: +((pool.byteLength / 1048576).toFixed(1)), mapMB: +((bricks.byteLength / 1048576).toFixed(1)), solid, surface: vols.reduce((a, v) => a + v.surf, 0), lights: lights.length, lod: { models: lods.length, bricks: lodBricks }, lodMs: Math.round(lodMs), workers: ws.length, inWorkers, offWorker, early: how, startMs: run ? Math.round(run.startMs) : 0, idleMs: run ? Math.round(run.idleMs) : 0, busyMs: run ? Math.round(run.busyMs) : 0, readyMs: Math.round(readyMs), waitMs: Math.round(waitMs), hereMs: Math.round(hereMs), takeMs: Math.round(takeMs), ms: Math.round(ME.now() - t0), ...(sp ? { prog: sp } : {}) };
     const MB = { atlas: pool, adims: [PX, PY, PZ], bricks, bdims: [BX, BY, BZ], inner, models, lods: lods.map((l) => ({ base: l.base, dims: l.dims, lo: l.lo, hi: l.hi })), statics, walkerTypes, walkerFrames, critterFrames, extraFrames, lights, stats };
     MB.voxel = ME.brickVoxel(MB);
+    if (prog) MB.prog = progOf2();
     return MB;
+
+    // E4: MB.prog, a progressive bake's upgrade: { maxGroup (the most models one swap takes), started, stats (sp:
+    // stats.prog), upgraded (a promise: true once every flipbook is swapped, false if one failed or it was
+    // cancelled), cancel() (ends the workers; safe twice), gen(R), live() (MB itself, for the bake cache) }. R.init
+    // runs gen on R.addTask: for each
+    // flipbook, in variant order, each frame's full bake taken in from its worker (numbered and painted here, a
+    // slice a frame), sent back for its interior and its 2x-down copy (finishOf; here if no worker is left), put
+    // into free slots and its proxy's place in the layout, then the touched pool layers and map boxes uploaded,
+    // the palette too if it grew, and R.swapModel. Once the fade is done the coarse frames' places are cleared and
+    // their slots freed. A frame that fails (its full bake lost, or no room) leaves that flipbook coarse.
+    function progOf2() {
+      let cancelled = false, finish;
+      const upgraded = new Promise((r) => (finish = r)), maxGroup = Math.max(...prog.map((g) => g.vs.length));
+      const cancel = () => { if (cancelled) return; cancelled = true; run.stop(); finish(false); };
+      const gen = function* (R) {
+        // palN: the materials R's tables hold (the app built them from pal after the bake)
+        let ok = true, palN = pal.names.length;
+        try {
+          // the frames settle first (ME.PROG_SETTLE above; sp.settle: the ms it took)
+          for (let t0 = ME.now(), last = t0, calm = 0; calm < ME.PROG_SETTLE && last - t0 < ME.PROG_SETTLE_MAX; ) {
+            yield "frame";
+            const n = ME.now(), d = n - last;
+            last = n; calm = d > ME.PROG_HITCH ? 0 : calm + d; sp.settle = Math.round(n - t0);
+          }
+          if (cancelled) { ok = false; return; }
+          // then the full bakes (launch), one a worker: a frame's finishing job, put first in the queue, then goes
+          // to the first worker done, not behind the full bakes already posted (ME.bakeJobDepth of them)
+          run.depth = 1;
+          run.add(h.full);
+          for (const g of prog) {
+            if (cancelled) { ok = false; break; }
+            const tg = ME.now(), cur = lists.slice(), recs = [], lrecs = [], put = [], boxes = [];
+            let fail = null, wait = 0, got = 0;
+            for (const i of g.vs) {
+              const { md, vf } = mds[i], px = vols[i].px, lp = lods.length ? lods[i].px : null;
+              let t = ME.now();
+              const r = yield res.get(nv + i);
+              wait += ME.now() - t;
+              if (cancelled) { fail = "cancelled"; break; }
+              if (!r) { fail = "its full bake failed"; break; }
+              if (r.dims.some((n, a) => n !== px.dims[a])) { fail = `its full bake is ${r.dims} voxels, not the ${px.dims} it has room for`; break; }
+              const list = [];
+              yield* takeIn(r, md, list);
+              cur[i] = list;
+              setEmi();
+              // its interior and its copy, in a worker (copies of the buffers go, so a lost worker loses nothing)
+              const q = { finish: true, id: 2 * nv + i, buf: r.buf, nb: r.nb, bmap: r.bmap, dims: r.dims, hollow: hollow && VS * vf > ME.POOL_HOLLOW, lod: !!lp, emi, rk: rankOf(cur, n0) };
+              let f = null;
+              if (h.ws.length) {
+                const qc = Object.assign({}, q, { buf: q.buf.slice(), bmap: q.bmap.slice() });
+                run.add([{ id: q.id, name: variants[i].name, q: qc, tr: [qc.buf.buffer, qc.bmap.buffer], miss: "finished on the main thread" }], true);
+                t = ME.now();
+                f = yield run.out.get(q.id);
+                wait += ME.now() - t;
+                if (cancelled) { fail = "cancelled"; break; }
+              }
+              if (!f) f = finishOf(q)[0];
+              const chunksOf = (buf, n) => Array.from({ length: n }, (_, k) => buf.subarray(k * 2048, k * 2048 + 2048));
+              const fv = { base: px.base, pdims: px.pdims, bmap: f.bmap, chunks: chunksOf(f.buf, r.nb), inner: f.inner ? { is: f.inner, n: f.ninner } : null };
+              const lv = lp && f.lod ? { base: lp.base, pdims: lp.pdims, bmap: f.lod.bmap, chunks: chunksOf(f.lod.buf, f.lod.nb), inner: f.lod.inner ? { is: f.lod.inner, n: f.lod.ninner } : null, copy: true } : null;
+              const need = r.nb - f.ninner + (lv ? f.lod.nb - f.lod.ninner : 0);
+              if (need > slots - inUse) { fail = `no room: ${need} bricks against the ${slots - inUse} free`; break; }
+              // MB.inner grows by its interior bricks (doubling; trimmed at the end)
+              if (f.ninner && (ni + f.ninner) * 512 > (inner ? inner.mats.length : 0)) {
+                const m = new Uint8Array(Math.max(ni + f.ninner, ni * 2) * 512);
+                if (inner) m.set(inner.mats.subarray(0, ni * 512));
+                MB.inner = inner = { mats: m };
+              }
+              yield* putVol(fv, take);
+              put.push([px.base, r.dims]);
+              if (lv) { yield* putVol(lv, take); put.push([lp.base, f.lod.dims]); }
+              recs.push({ name: variants[i].name, base: px.base, dims: r.dims, box: r.box, lo: fv.lo, hi: fv.hi, k: md.k, fine: vf, h: (md.h * md.k) / vf, r: (md.r * md.k) / vf, lod: MB.models[i].lod });
+              lrecs.push(lv ? { base: lp.base, dims: f.lod.dims, lo: lv.lo, hi: lv.hi } : null);
+              got += need;
+            }
+            if (cancelled) { ok = false; break; } // (the app is done with R: nothing more to upload)
+            if (fail) {
+              // the frames put so far out again; the flipbook stays coarse
+              for (const [b, d] of put) boxes.push(clear(b, d));
+              for (const b of boxes) R.uploadBricks(b);
+              touched.clear();
+              ok = false; sp.failed.push({ key: g.key, why: fail });
+              if (!cancelled) ME.log(`WARN BAKE progressive ${g.key}: ${fail}; it stays at fine 1`);
+              continue;
+            }
+            // up to the GPU: the pool layers written, the proxies' boxes of the map, the palette if it grew
+            for (const bz of [...touched].sort((a, b) => a - b)) { R.uploadPool(bz); yield; }
+            touched.clear();
+            for (const [b, d] of put) { const o = b.map((n) => n / 8); R.uploadBricks(o.concat(d.map((n, a) => o[a] + Math.ceil(n / 8)))); }
+            if (pal.names.length > palN) { R.refreshPalette(pal); palN = pal.names.length; }
+            yield "frame";
+            // the swap; the coarse frames' places (models and copies) are in use till its fade is done
+            const old = g.vs.flatMap((i) => [[MB.models[i].base, MB.models[i].dims]].concat(lods.length ? [[MB.lods[i].base, MB.lods[i].dims]] : []));
+            const at = ME.now();
+            yield R.swapModel({ key: g.key, ids: g.vs, models: recs, lods: lrecs });
+            for (const i of g.vs) lists[i] = cur[i];
+            for (const [b, d] of old) boxes.push(clear(b, d));
+            for (const b of boxes) R.uploadBricks(b);
+            const s = { key: g.key, frames: g.vs.length, bricks: got, est: g.vs.reduce((a, i) => a + vols[i].est[0] + (lods.length ? vols[i].est[1] : 0), 0), wait: Math.round(wait), ms: Math.round(at - tg - wait), at: Math.round(at), done: Math.round(ME.now()) };
+            sp.swaps.push(s);
+            ME.log(`PROG ${g.key}: ${s.frames} frames at full density, ${got} bricks (est. ${s.est}), swapped at ${s.at} ms (${s.wait} ms waiting on the workers, ${s.ms} ms here)`);
+          }
+          if (cancelled) return;
+          // the copies the full bakes' material order changes (halfOf's ties: rankOf) made again in their slots
+          // (the same bricks: only a tie's material differs)
+          const rkF = rankOf(lists, n0), same = (bk) => { const k = (bricks[bk] & 0xffffff) - 1; touched.add(Math.floor(k / (PB * PB))); return k; };
+          // (none if a flipbook failed: the bake is no longer the single pass's)
+          for (const { i, v, inner: li } of sp.failed.length ? [] : relod) {
+            // its materials in id order (the order its copy was made in) against the single pass's (rkF)
+            if (lists[i].slice().sort((a, b) => a - b).every((id, k, a) => !k || rkF[a[k - 1]] < rkF[id])) continue;
+            v.mat = matOf(v);
+            const l = halfOf(v, emi, rkF), L = MB.lods[i];
+            l.inner = li; l.base = L.base; l.pdims = L.dims.map((n) => Math.ceil(n / 8) * 8); l.copy = true;
+            yield* putVol(l, same);
+            sp.relod = (sp.relod || 0) + 1;
+          }
+          relod.length = 0;
+          for (const bz of [...touched].sort((a, b) => a - b)) { R.uploadPool(bz); yield; }
+          touched.clear();
+          if (inner && inner.mats.length > ni * 512) { MB.inner = inner = { mats: inner.mats.slice(0, ni * 512) }; MB.voxel = ME.brickVoxel(MB); }
+          // the pool past its budget now (the copies kept on the estimate): no copies, as the single-pass bake
+          if (lods.length && inUse > ME.poolBricks()) { for (const m of MB.models) m.lod = -1; R.refreshModels(); sp.lodDropped = true; ME.log(`WARN BAKE progressive: ${inUse} bricks, over the pool's budget: the 2x-down copies are dropped`); }
+          // MB.stats.bricks and fill then tell the pool as it is (hollow, lod and the times stay the first bake's)
+          stats.bricks = inUse; stats.fill = +((inUse / budget) * 100).toFixed(1);
+          sp.doneAt = Math.round(ME.now());
+        } catch (e) { ok = false; throw e; } finally { run.stop(); finish(ok && !cancelled); }
+      };
+      return { maxGroup, started: false, stats: sp, upgraded, cancel, gen, live: () => MB };
+    }
   };
 
   // the private functions a model bake depends on, for the bake cache's key (src/cache.js)
-  ME.bakeModels.parts = [bricksOf, matOf, innerOf, halfOf, workerJob, runJobs, listOf, modelsOf, launch, workersOn, notData, defOf, sigOf];
+  ME.bakeModels.parts = [bricksOf, matOf, innerOf, halfOf, workerJob, finishOf, estOf, runJobs, listOf, modelsOf, launch, workersOn, notData, defOf, sigOf, progOf, rankOf, progOn, hollowOn];
 
   // Starts a bake's worker jobs before the terrain bake, so the workers run during it (#185): the variant list
   // from st (ME.volumeDecoOf, the props bakeTerrain bakes as volumes), the models built, the jobs posted. Returns
@@ -6835,27 +7184,15 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // never reaches it calls early.cancel(). It reads pal only for its default material and numbers no material.
   ME.bakeModels.start = (st, pal, opts = {}) => launch(listOf(ME.volumeDecoOf(st), st, opts), pal, opts);
 
-  // The interior bricks of MB (ME.POOL_HOLLOW) by brick-map index: index into MB.inner.mats / 512 (none: null)
-  const innerMaps = new WeakMap();
-  const innerMap = (MB) => {
-    if (!MB.inner) return null;
-    let m = innerMaps.get(MB.inner);
-    if (!m) { m = new Map(); MB.inner.at.forEach((bk, i) => m.set(bk, i)); innerMaps.set(MB.inner, m); }
-    return m;
-  };
-
   // Material byte of voxel (x, y, z) of model mi (0 = empty), through the brick map into the pool (PB x PB
-  // bricks per pool layer, PB = MB.adims[0] / 8), or into MB.inner for an interior brick. Rebuilt from the
-  // arrays on a cache hit.
+  // bricks per pool layer, PB = MB.adims[0] / 8), or into MB.inner for an interior brick (an entry with no octant
+  // byte). It holds MB's arrays as they are now: a swap (R.swapModel) that replaces them sets a new MB.voxel.
   ME.brickVoxel = (MB) => {
-    const { atlas: pool, bricks, models } = MB, [PX, PY] = MB.adims, [BX, BY] = MB.bdims, PB = PX / 8, im = innerMap(MB);
+    const { atlas: pool, bricks, models } = MB, [PX, PY] = MB.adims, [BX, BY] = MB.bdims, PB = PX / 8, mats = MB.inner && MB.inner.mats;
     return (mi, x, y, z) => {
-      const [bx, by, bz] = models[mi].base, bk = (((bz + z) >> 3) * BY + ((by + y) >> 3)) * BX + ((bx + x) >> 3), k = (bricks[bk] & 0xffffff) - 1;
-      if (k < 0) {
-        const ii = im ? im.get(bk) : undefined;
-        return ii === undefined ? 0 : MB.inner.mats[ii * 512 + ((z & 7) << 6) + ((y & 7) << 3) + (x & 7)];
-      }
-      const qx = (k % PB) * 8 + (x & 7), qy = (Math.floor(k / PB) % PB) * 8 + (y & 7), qz = Math.floor(k / (PB * PB)) * 8 + (z & 7);
+      const [bx, by, bz] = models[mi].base, e = bricks[(((bz + z) >> 3) * BY + ((by + y) >> 3)) * BX + ((bx + x) >> 3)];
+      if (!(e >>> 24)) return e ? mats[(e - 1) * 512 + ((z & 7) << 6) + ((y & 7) << 3) + (x & 7)] : 0;
+      const k = (e & 0xffffff) - 1, qx = (k % PB) * 8 + (x & 7), qy = (Math.floor(k / PB) % PB) * 8 + (y & 7), qz = Math.floor(k / (PB * PB)) * 8 + (z & 7);
       return pool[((qz * PY + qy) * PX + qx) * 4 + 3];
     };
   };
@@ -6869,14 +7206,15 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // warm-up probe 2026-10-26). A model too sparse for that, or a cap near its size, is scanned as before.
   // (A seeded rnd draws differently since #335: the same seed picks other voxels than the old scan did.)
   ME.sampleVoxels = (MB, mi, max, s = 1, rnd = Math.random) => {
-    const { atlas: pool, bricks, models } = MB, [PX, PY] = MB.adims, [BX, BY] = MB.bdims, PB = PX / 8, im = innerMap(MB);
+    const { atlas: pool, bricks, models } = MB, [PX, PY] = MB.adims, [BX, BY] = MB.bdims, PB = PX / 8;
     const m = models[mi], [bx, by, bz] = m.base, [nx, ny, nz] = m.dims, [ox, oy, oz] = m.box, out = [];
+    if (m.kf) s *= m.kf; // a coarse model of a progressive bake (E4): its voxels are kf times bigger
     // the occupied bricks: [cx, cy, cz, qx, qy, qz, ii], ii >= 0 an interior brick in MB.inner (then q is unused)
     const occ = [], mats = MB.inner && MB.inner.mats;
     for (let cz = 0; cz < nz; cz += 8) for (let cy = 0; cy < ny; cy += 8) for (let cx = 0; cx < nx; cx += 8) {
-      const bk = (((bz + cz) >> 3) * BY + ((by + cy) >> 3)) * BX + ((bx + cx) >> 3), k = (bricks[bk] & 0xffffff) - 1;
-      if (k >= 0) occ.push([cx, cy, cz, (k % PB) * 8, (Math.floor(k / PB) % PB) * 8, Math.floor(k / (PB * PB)) * 8, -1]);
-      else if (im && im.has(bk)) occ.push([cx, cy, cz, 0, 0, 0, im.get(bk)]);
+      const e = bricks[(((bz + cz) >> 3) * BY + ((by + cy) >> 3)) * BX + ((bx + cx) >> 3)], k = (e & 0xffffff) - 1;
+      if (e >>> 24) occ.push([cx, cy, cz, (k % PB) * 8, (Math.floor(k / PB) % PB) * 8, Math.floor(k / (PB * PB)) * 8, -1]);
+      else if (e) occ.push([cx, cy, cz, 0, 0, 0, k]);
     }
     // the material at (x, y, z) & 7 of brick e
     const matOf = (e, lx, ly, lz) => e[6] >= 0 ? mats[e[6] * 512 + (lz << 6) + (ly << 3) + lx] : pool[(((e[5] + lz) * PY + e[4] + ly) * PX + e[3] + lx) * 4 + 3];
@@ -7131,10 +7469,19 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // the write commits in the background. Packing copies the big arrays; with the database get() opened,
     // IndexedDB's put() clones the rest (synchronous); without it, structuredClone keeps a copy while the
     // database opens. It replaces its slot's other records and any record without a slot (from before slots).
+    // E4: a progressive bake's record (rec.MB.prog) is stored once its upgrade is done, with the full models, so the
+    // next launch starts on them: the rest is copied now as it is (T, the mesh, the grass and MB's statics, which
+    // the game plays), MB and the palette's names (the full models bring materials) then. Nothing is stored if the
+    // upgrade fails or is cancelled.
     async put(key, rec) {
       if (ME.qn("nocache", 0) || !window.indexedDB) return;
-      const slot = slotOf(key), st = { raw: 0, packed: 0, ms: 0 };
-      try { rec = pack(rec, st); } catch (e) { ME.log("WARN bake cache pack failed:", e && e.message); return; }
+      const slot = slotOf(key), st = { raw: 0, packed: 0, ms: 0 }, prog = rec.MB && rec.MB.prog, names = rec.palNames;
+      try { rec = pack(prog ? Object.assign({}, rec, { palNames: null, MB: { statics: rec.MB.statics } }) : rec, st); if (prog) rec = structuredClone(rec); } catch (e) { ME.log("WARN bake cache pack failed:", e && e.message); return; }
+      if (prog) {
+        if (!(await prog.upgraded)) { ME.log("WARN bake cache: the progressive bake's upgrade did not finish, so it is not stored"); return; }
+        const { prog: _p, voxel: _v, ...mb } = prog.live();
+        try { rec.MB = pack(Object.assign(mb, { statics: rec.MB.statics }), st); rec.palNames = names.slice(); } catch (e) { ME.log("WARN bake cache pack failed:", e && e.message); return; }
+      }
       ME.bakeCache.packed = { rawMB: +(st.raw / 1048576).toFixed(1), packedMB: +(st.packed / 1048576).toFixed(1), ms: Math.round(st.ms) }; // (checks read it)
       const write = (db, r) => {
         const tx = db.transaction(STORE, "readwrite"), s = tx.objectStore(STORE);
@@ -7289,8 +7636,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // shader hook (see ME.SHADER_HOOKS).
     // (E9: scalar math on scratch matrices, no allocation; the same arithmetic as before, so the same bytes)
     put(i, mi, X, Y, Z, yaw, flip, sc, sh, flags, pitch = 0, mark = 0, markV = 0) {
-      const m = this.MB.models[mi], vs = this.VS, c = Math.cos(yaw), s = Math.sin(yaw), M = this.mx;
-      // L = R * F * S * H / vs ; t = L * box + [X,Y,Z]
+      const m = this.MB.models[mi], vs = this.VS / (m.kf || 1), c = Math.cos(yaw), s = Math.sin(yaw), M = this.mx;
+      // L = R * F * S * H / vs ; t = L * box + [X,Y,Z] (vs: a coarse model of a progressive bake, m.kf, has voxels kf times bigger)
       set9(M.H, 1, 0, sh[0], 0, 1, sh[1], 0, 0, 1);
       set9(M.S, sc[0], 0, 0, 0, sc[1], 0, 0, 0, sc[2]);
       if (flip) set9(M.F, 0, 1, 0, 1, 0, 0, 0, 0, 1); else set9(M.F, 1, 0, 0, 0, 1, 0, 0, 0, 1);
@@ -7741,10 +8088,12 @@ fn faceN(d: u32) -> vec3f {
   W.volume = W.common + /* wgsl */ `
 struct Inst { a0: vec4f, a1: vec4f, a2: vec4f, b0: vec4f, b1: vec4f, b2: vec4f, info: vec4u };
 // base.xyz the atlas corner, base.w the voxels' low bound lo (10 bits an axis), dims.xyz their high bound hi,
-// dims.w the 2x-down copy's entry (0 none): the proxy box spans lo..hi, not the model's whole box
-struct Model { base: vec4u, dims: vec4u };
+// dims.w the 2x-down copy's entry (0 none): the proxy box spans lo..hi, not the model's whole box.
+// ext.x 1 + the entry this one dissolves in from (0 none: R.swapModel), ext.y the fade (f32 bits, 0..1: the
+// share of pixels already drawn from this entry); off maps that entry's voxels l to this one's: (l + off.xyz) * off.w
+struct Model { base: vec4u, dims: vec4u, ext: vec4u, off: vec4f };
 @group(1) @binding(0) var pool: texture_3d<f32>;   // occupied 8^3 bricks, S x S per layer (S 16 or 32: its width / 8)
-@group(1) @binding(1) var bricks: texture_3d<u32>; // per brick of the layout: bits 0..23 0 empty, else 1 + pool slot; 24..31 its occupied 4^3 octants
+@group(1) @binding(1) var bricks: texture_3d<u32>; // per brick of the layout: bits 24..31 its occupied 4^3 octants, 0 for none (empty, or an interior brick the CPU keeps: bake-models.js); bits 0..23 1 + its pool slot
 @group(1) @binding(2) var<storage, read> insts: array<Inst>;
 @group(1) @binding(3) var<storage, read> models: array<Model>;
 @group(1) @binding(4) var<storage, read> mats: array<vec4f>;
@@ -7790,14 +8139,20 @@ fn loOf(M: Model) -> vec3f { return vec3f(f32(M.base.w & 1023u), f32((M.base.w >
   if (select(-1.0, 1.0, (f & 1u) == 1u) * rl[f >> 1u] > 0.0) { o.pos = vec4f(2.0, 2.0, 0.0, 1.0); return o; }
   var cube = CUBE;
   let mk = lodOf(I); let M = models[mk.x];
-  let lo = loOf(M);
-  let l = lo + cube[vi] * (vec3f(M.dims.xyz) - lo);
+  var lo = loOf(M); var hi = vec3f(M.dims.xyz);
+  // while it dissolves in, the proxy box also covers the entry it replaces
+  if (M.ext.x != 0u) { let O = models[M.ext.x - 1u]; lo = min(lo, (loOf(O) + M.off.xyz) * M.off.w); hi = max(hi, (vec3f(O.dims.xyz) + M.off.xyz) * M.off.w); }
+  let l = lo + cube[vi] * (hi - lo);
   o.pos = u.vp * vec4f(xf(I, l * f32(mk.y)), 1.0); o.l = l; o.ii = ii; o.mk = mk;
   return o;
 }
 
 @fragment fn fs(i: VO) -> GO {
-  let I = insts[i.ii]; let M = models[i.mk.x]; let kf = f32(i.mk.y); // (kf: one voxel in the instance's model voxels)
+  let I = insts[i.ii]; var M = models[i.mk.x]; let kf = f32(i.mk.y); // (kf: one voxel in the instance's model voxels)
+  // a swap's dissolve (R.swapModel): the pixels past the fade on a fixed dither still march the old entry,
+  // in its own voxels (ro), mapped back (om) for the hit's position
+  var ro = i.l; var om = vec4f(0.0, 0.0, 0.0, 1.0); var old = false;
+  if (M.ext.x != 0u && fract(52.9829189 * fract(dot(i.pos.xy, vec2f(0.06711056, 0.00583715)))) >= bitcast<f32>(M.ext.y)) { om = M.off; M = models[M.ext.x - 1u]; ro = i.l / om.w - om.xyz; old = true; }
   let dims = vec3f(M.dims.xyz); let idims = vec3i(M.dims.xyz);
   let vd = u.vdir.xyz;
   let rd = normalize(vec3f(dot(I.b0.xyz, vd), dot(I.b1.xyz, vd), dot(I.b2.xyz, vd)));
@@ -7805,7 +8160,6 @@ fn loOf(M: Model) -> vec3f { return vec3f(f32(M.base.w & 1023u), f32((M.base.w >
   // (3pi/4) has rd.x exactly 0, and +1e-6 against sgn -1 sent t backwards and missed the whole model
   let zax = abs(rd) < vec3f(1e-6);
   let inv = 1.0 / select(rd, select(vec3f(-1e-6), vec3f(1e-6), rd > vec3f(0.0)), zax);
-  let ro = i.l;
   let ta = (loOf(M) - ro) * inv; let tb = (dims - ro) * inv;
   let tmin = min(ta, tb); let tmax = max(ta, tb);
   let tEnter = max(max(tmin.x, tmin.y), tmin.z);
@@ -7827,7 +8181,7 @@ fn loOf(M: Model) -> vec3f { return vec3f(f32(M.base.w & 1023u), f32((M.base.w >
     let p = ro + rd * t;
     let br = vec3i(floor(p / 8.0));
     let slot = textureLoad(bricks, bbase + br, 0).r;
-    if (slot == 0u) {
+    if ((slot >> 24u) == 0u) {
       // a zero axis (zax) never crosses a plane: a ray starting exactly on one got t 0 there and stalled
       let tb2 = select((vec3f(br) * 8.0 + select(vec3f(0.0), vec3f(8.0), pos) - ro) * inv, vec3f(1e30), zax);
       if (tb2.x <= tb2.y && tb2.x <= tb2.z) { axis = 0; } else if (tb2.y <= tb2.z) { axis = 1; } else { axis = 2; }
@@ -7868,13 +8222,14 @@ fn loOf(M: Model) -> vec3f { return vec3f(f32(M.base.w & 1023u), f32((M.base.w >
   }
   if (!hit) { discard; }
   let v = textureLoad(pool, pb + (cell & vec3i(7)), 0);
-  let hw = xf(I, (ro + rd * t) * kf);
+  var lp = ro + rd * t; if (old) { lp = (lp + om.xyz) * om.w; }
+  let hw = xf(I, lp * kf);
   var fl = vec3f(0.0);
   fl[axis] = -sgn[axis];
   let n = normalize(mix(nrmW(I, fl), nrmW(I, octDec(v.xy * 2.0 - 1.0)), 0.8));
   let mat = u32(v.a * 255.0 + 0.5);
   let m0 = mats[mat * 2u]; let m1 = mats[mat * 2u + 1u];
-  let hc = hash13(vec3f(cell) * kf + f32(I.info.x) * 7.0);
+  let hc = hash13(vec3f(cell) * select(kf, 1.0, old) + f32(I.info.x) * 7.0);
   let jit = (hc - 0.5) * m1.y;
   var nn = n;
   // foliage: every leaf voxel tilts on its own in the wind, so crowns shimmer as they sway
@@ -7888,7 +8243,8 @@ fn loOf(M: Model) -> vec3f { return vec3f(f32(M.base.w & 1023u), f32((M.base.w >
   o.e = vec4f(0.0);
   let mb = I.info.z; let mv = bitcast<f32>(I.info.w);
   if (mb != 0u || mv > 0.0) {
-    let g = hookMark(mb, mv, n, (vec3f(cell) * kf + 0.5 * (kf - 1.0)) / u.grid.w, hc, f32(i.ii));
+    let ctr = select(vec3f(cell) + 0.5, (vec3f(cell) + 0.5 + om.xyz) * om.w, old); // the voxel's centre, in this entry's voxels
+    let g = hookMark(mb, mv, n, (ctr * kf - 0.5) / u.grid.w, hc, f32(i.ii));
     o.a = vec4f(mix(o.a.rgb, g.tint.rgb, g.tint.a), o.a.a);
     o.e = vec4f(g.emit, 1.0);
   }
@@ -9392,6 +9748,9 @@ fn boxOf(V: Vox) -> Box {
                      the mesh, the faces they bared drawn, the density mips and sun volume updated
      pick(px, py, cam, o)  the terrain voxel or instance under a canvas pixel, on the CPU (o: terrain,
                         instances: false to skip one; accept(layer, index) to skip some instances)
+     addTask(gen)    CPU work spread over the frames, a few ms each (a progressive bake's upgrade runs on it)
+     swapModel(o)    models replaced in place under the same ids, dissolved in over a fade (onSwap(key, ids)
+                     tells the app; a progressive bake's upgrade calls it: ME.bakeModels, MB.prog)
    Instances come from the Sim (sim.layers). */
 (function () {
   const ME = window.ME, W = ME.wgsl, GU = GPUTextureUsage, BU = GPUBufferUsage;
@@ -9575,18 +9934,14 @@ fn boxOf(V: Vox) -> Box {
       this.canV = this.canTex.createView();
       this.atlasTex = ME.tex3d(d, "brick pool", "rgba8unorm", MB.adims, [MB.atlas], 4);
       this.brickTex = ME.tex3d(d, "bricks", "r32uint", MB.bdims, [MB.bricks], 4);
-      // the models, then their 2x-down copies (MB.lods): base.xyz the atlas corner, base.w its voxels' low bound lo
-      // (10 bits an axis), dims.xyz their high bound hi (the proxy box spans lo..hi), dims.w the copy's entry, 0 for
-      // none (a bake from before the LOD has no MB.lods)
-      const lods = MB.lods || [], nm = MB.models.length, mdl = new Uint32Array((nm + lods.length) * 8);
-      const ent = (m, w) => {
-        const lo = m.lo || [0, 0, 0], hi = m.hi || m.dims;
-        if (m.dims.some((n) => n >= 1024)) throw new Error(`a volume of ${m.dims} voxels: the model buffer packs its bounds in 10 bits an axis`);
-        return [m.base[0], m.base[1], m.base[2], lo[0] | (lo[1] << 10) | (lo[2] << 20), hi[0], hi[1], hi[2], w];
-      };
-      MB.models.forEach((m, i) => mdl.set(ent(m, m.lod >= 0 && lods[m.lod] ? nm + m.lod : 0), i * 8));
-      lods.forEach((m, j) => mdl.set(ent(m, 0), (nm + j) * 8));
-      this.modelBuf = ME.buffer(d, mdl, BU.STORAGE, "models");
+      // the models, then their 2x-down copies (MB.lods), then the spare entries a swap dissolves from (R.swapModel:
+      // MB.prog.maxGroup of them), 16 u32 each (W.volume's Model): base.xyz the atlas corner, base.w its voxels' low
+      // bound lo (10 bits an axis), dims.xyz their high bound hi (the proxy box spans lo..hi), dims.w the copy's
+      // entry, 0 for none (a bake from before the LOD has no MB.lods); ext and off zero but while a swap fades
+      const nm = MB.models.length, nl = (MB.lods || []).length;
+      this.mdl = new Uint32Array((nm + nl + (MB.prog ? MB.prog.maxGroup : 0)) * 16); this.mdlF = new Float32Array(this.mdl.buffer);
+      this.putModels();
+      this.modelBuf = ME.buffer(d, this.mdl, BU.STORAGE, "models");
       this.instBuf = d.createBuffer({ label: "instances", size: S.sim.inst.byteLength, usage: BU.STORAGE | BU.COPY_DST });
       this.tVB = ME.buffer(d, S.mesh.verts, BU.VERTEX, "terrain vb");
       this.tIB = ME.buffer(d, S.mesh.index, BU.INDEX, "terrain ib");
@@ -9641,6 +9996,118 @@ fn boxOf(V: Vox) -> Box {
         this.qBusy = false;
       }
       for (const L of this.layers) L.init(this);
+      // a progressive bake's upgrade (ME.bakeModels: the full-density models after the coarse ones), over the frames
+      if (MB.prog && !MB.prog.started) { MB.prog.started = true; this.addTask(MB.prog.gen(this)); }
+    }
+
+    // Entry i of the model buffer (the first 8 u32: a swap's ext and off stay): model or copy m, w its copy's entry
+    putEntry(i, m, w) {
+      const lo = m.lo || [0, 0, 0], hi = m.hi || m.dims, u = this.mdl, o = i * 16;
+      if (m.dims.some((n) => n >= 1024)) throw new Error(`a volume of ${m.dims} voxels: the model buffer packs its bounds in 10 bits an axis`);
+      u[o] = m.base[0]; u[o + 1] = m.base[1]; u[o + 2] = m.base[2]; u[o + 3] = lo[0] | (lo[1] << 10) | (lo[2] << 20);
+      u[o + 4] = hi[0]; u[o + 5] = hi[1]; u[o + 6] = hi[2]; u[o + 7] = w;
+    }
+    putModels() {
+      const MB = this.S.MB, lods = MB.lods || [], nm = MB.models.length;
+      MB.models.forEach((m, i) => this.putEntry(i, m, m.lod >= 0 && lods[m.lod] ? nm + m.lod : 0));
+      lods.forEach((m, j) => this.putEntry(nm + j, m, 0));
+    }
+    // MB.models and MB.lods again into the model buffer (a model's lod, lo or hi changed: no swap, no fade)
+    refreshModels() { this.putModels(); this.dev.queue.writeBuffer(this.modelBuf, 0, this.mdl); }
+
+    // Work spread over frames: gen, a generator, steps at the start of R.frame (before the Sim writes the
+    // instances, so a step's swap draws that same frame) for up to ME.TASK_MS (3 ms) a frame, all tasks together.
+    // It yields to go on, "frame" to stop until the next frame, or a promise to wait for (its value is what that
+    // yield returns, its rejection is thrown there). Returns a promise of gen's return value; a throw is logged
+    // (ME.err) and rejects it. this.taskStat: { frames, ms, max }, the frames that ran a step and their ms
+    // (a step longer than the budget runs to its end: max says how long the longest frame's share was).
+    addTask(gen) {
+      return new Promise((res, rej) => (this.tasks || (this.tasks = [])).push({ gen, res, rej, wait: false, v: undefined, e: null }));
+    }
+    runTasks() {
+      const ts = this.tasks;
+      if (!ts || !ts.length || ts.every((t) => t.wait)) return;
+      const t0 = ME.now(), end = t0 + (ME.TASK_MS ?? 3), st = this.taskStat || (this.taskStat = { frames: 0, ms: 0, max: 0 });
+      try { this.stepTasks(ts, end); } finally { const d = ME.now() - t0; st.frames++; st.ms += d; if (d > st.max) st.max = d; }
+    }
+    stepTasks(ts, end) {
+      for (let k = 0; k < ts.length && ME.now() < end; k++) {
+        const t = ts[k];
+        while (!t.wait && ME.now() < end) {
+          let r;
+          try { r = t.e ? t.gen.throw(t.e) : t.gen.next(t.v); } catch (e) { ME.err("TASK", e && e.message); t.rej(e); ts.splice(k--, 1); break; }
+          t.e = null; t.v = undefined;
+          if (r.done) { t.res(r.value); ts.splice(k--, 1); break; }
+          const y = r.value;
+          if (y === "frame") break;
+          if (y && typeof y.then === "function") { t.wait = true; y.then((v) => { t.wait = false; t.v = v; }, (e) => { t.wait = false; t.e = e || new Error("a task's promise was rejected"); }); }
+        }
+      }
+    }
+
+    // A swap (R.swapModel) after a progressive bake writes its bricks into the pool and the brick map as they are on
+    // the CPU (MB.atlas, MB.bricks), a brick z-layer of the pool or a box of the map at a time
+    uploadPool(bz) {
+      const MB = this.S.MB, [PX, PY] = MB.adims, layer = PX * PY * 8 * 4;
+      this.dev.queue.writeTexture({ texture: this.atlasTex, origin: [0, 0, bz * 8] }, MB.atlas, { offset: bz * layer, bytesPerRow: PX * 4, rowsPerImage: PY }, [PX, PY, 8]);
+    }
+    uploadBricks(b) { // b: [x0, y0, z0, x1, y1, z1] in bricks, x1.. exclusive
+      const MB = this.S.MB, [BX, BY] = MB.bdims;
+      this.dev.queue.writeTexture({ texture: this.brickTex, origin: [b[0], b[1], b[2]] }, MB.bricks, { offset: ((b[2] * BY + b[1]) * BX + b[0]) * 4, bytesPerRow: BX * 4, rowsPerImage: BY }, [b[3] - b[0], b[4] - b[1], b[5] - b[2]]);
+    }
+    // the palette again after it grew (a swapped-in model brought new materials): the material table, the ramps,
+    // and each layer's copy (L.refreshMats). The tables keep their size (256 materials), so the bind groups stay
+    refreshPalette(pal) {
+      const S = this.S, d = this.dev;
+      S.tables = pal.build();
+      d.queue.writeBuffer(this.matBuf, 0, S.tables.mats);
+      d.queue.writeTexture({ texture: this.rampTex }, S.tables.ramps, { bytesPerRow: 64 }, [16, 256]);
+      for (const L of this.layers) if (L.refreshMats) L.refreshMats();
+    }
+
+    // Swaps models in place: model ids[n] (an index into MB.models, the id instances draw it by) becomes models[n],
+    // a record like MB.models' (its bricks already in the pool and the brick map, uploaded), and its 2x-down copy
+    // (MB.lods[its lod]) lods[n]. The new model may differ in box and voxel scale (kf): its entry draws the old
+    // one's voxels, mapped onto its own, on a dither that hands every pixel over to it in fade ms (default 400),
+    // so the switch neither hitches nor pops. MB.models' records change in place (MB.voxel, its sampler, is made
+    // again), every static is written again (the Sim's still stamps cleared), and this.onSwap(key, ids) tells
+    // the app (a box it keeps per model must be read again). Returns a promise, resolved when the fade is done;
+    // the old bricks are in use until then. One swap fades at a time, of at most MB.prog.maxGroup models.
+    swapModel({ key = null, ids, models, lods = [], fade = 400 }) {
+      const S = this.S, MB = S.MB, nm = MB.models.length, nl = (MB.lods || []).length, spare = this.mdl.length / 16 - nm - nl;
+      if (this.fading) throw new Error("R.swapModel: a swap is still fading (one at a time: await the last one)");
+      if (ids.length > spare) throw new Error(`R.swapModel: ${ids.length} models against ${spare} spare entries (MB.prog.maxGroup)`);
+      const u = this.mdl, F = this.mdlF, ents = [];
+      const ext = (e, o, off, w) => { u[e * 16 + 8] = 1 + o; F[e * 16 + 9] = 0; F[e * 16 + 12] = off[0]; F[e * 16 + 13] = off[1]; F[e * 16 + 14] = off[2]; F[e * 16 + 15] = w; ents.push(e); };
+      ids.forEach((id, n) => {
+        const m = MB.models[id], o = nm + nl + n, nw = models[n], K = (m.kf || 1) / (nw.kf || 1);
+        // the old entry, kept in a spare one (no copy of its own: dims.w 0); off: its voxels l to the new model's,
+        // (l + off) K, from the two placements (src/sim.js put: a voxel's scale is 1 / (VS / kf))
+        u.copyWithin(o * 16, id * 16, id * 16 + 7); u.fill(0, o * 16 + 7, o * 16 + 16);
+        const off = [0, 1, 2].map((a) => m.box[a] - nw.box[a] / K);
+        if (!("kf" in nw)) delete m.kf;
+        Object.assign(m, nw);
+        const j = m.lod >= 0 && MB.lods[m.lod] ? m.lod : -1;
+        this.putEntry(id, m, j >= 0 ? nm + j : 0); ext(id, o, off, K);
+        // its copy draws the same old entry: the copy's voxel is two of the model's
+        if (j >= 0) { if (lods[n]) Object.assign(MB.lods[j], lods[n]); this.putEntry(nm + j, MB.lods[j], 0); ext(nm + j, o, off, K / 2); }
+      });
+      this.dev.queue.writeBuffer(this.modelBuf, 0, u);
+      MB.voxel = ME.brickVoxel(MB);
+      if (S.sim && S.sim.stillAt) S.sim.stillAt.fill(-1);
+      if (this.onSwap) this.onSwap(key, ids);
+      return new Promise((res) => { this.fading = { t0: ME.now(), ms: Math.max(1, fade), ents, res }; });
+    }
+    // the fading swap's share of new pixels, written each frame; at 1 its entries are plain again (ext, off 0)
+    fadeStep() {
+      const f = this.fading;
+      if (!f) return;
+      const a = Math.min(1, (ME.now() - f.t0) / f.ms), u = this.mdl;
+      for (const e of f.ents) {
+        if (a < 1) this.mdlF[e * 16 + 9] = a; else u.fill(0, e * 16 + 8, e * 16 + 16);
+        this.dev.queue.writeBuffer(this.modelBuf, e * 64 + 32, u, e * 16 + 8, 8);
+      }
+      if (a >= 1) { this.fading = null; f.res(); }
     }
 
     buildWater() {
@@ -10275,6 +10742,8 @@ fn boxOf(V: Vox) -> Box {
     frame(cam, time, dt) {
       if (this.out) this.resize(this.out[0], this.out[1]); // a changed render scale (dynres, a setting) rebuilds the targets
       const d = this.dev, P = this.pl, S = this.S, sim = S.sim, s = this.set, g0 = this.g0, g1 = this.g1;
+      if (this.tasks) this.runTasks(); // (R.addTask: a swap here writes the instances below)
+      if (this.fading) this.fadeStep();
       const nInst = sim.update(time, s);
       this.time = time;
       this.updateRings(time);
@@ -10489,17 +10958,25 @@ fn boxOf(V: Vox) -> Box {
     get active() { return this.enabled && (this.clock < this.activeUntil || this.queued > 0 || this.clearReq || this.pours.length > 0 || this.digs.length > 0 || this.carveQ.length > 0 || this.jobs.length > 0 || this.occReset > 0 || (this.keepLive > 0 && this.clock < this.keepUntil)); }
     rng() { let t = (this.seed = (this.seed + 0x6d2b79f5) | 0); t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }
 
-    init(R) {
-      this.R = R;
-      const d = (this.dev = R.dev), T = this.T, W = ME.wgsl, M = this.mode, mats = R.S.tables.mats;
-      // foliage materials drift and do not heap
+    // foliage materials drift and do not heap; droplets take the first water-class material unless the app set
+    // one. Again when the palette grows (R.refreshPalette: a progressive bake's new materials, E4).
+    refreshMats() {
+      const mats = this.R.S.tables.mats;
       this.leaf = new Uint8Array(256);
+      let water = 0;
       for (let m = 0; m < 256 && (m * 2 + 1) * 4 + 3 < mats.length; m++) {
         const cls = Math.round(mats[(m * 2 + 1) * 4 + 3]);
         this.leaf[m] = cls === ME.CLS.FOLIAGE ? 1 : 0;
-        if (m && this.waterMat === undefined && cls === ME.CLS.WATER) this.waterMat = m;
+        if (m && !water && cls === ME.CLS.WATER) water = m;
       }
-      this.waterMat ??= 1;
+      if (this.waterAuto) this.waterMat = water || 1;
+    }
+
+    init(R) {
+      this.R = R;
+      const d = (this.dev = R.dev), T = this.T, W = ME.wgsl, M = this.mode;
+      this.waterAuto = this.waterMat === undefined;
+      this.refreshMats();
       // which terrain materials dig and collapse loosen: opts.sand, else the content pack's (palette names)
       this.setSand(this.sandOpt ?? (ME.content && ME.content.sand) ?? []);
       // per map tile: water surface z (-99 where dry), current (units/s: brisk in streams, a slow drift in
@@ -10604,11 +11081,11 @@ fn boxOf(V: Vox) -> Box {
 
     // A static volume (an MB.statics entry) bursts into the voxels of its model, flung out from its
     // middle; the volume is hidden (s.hidden, skipped by the Sim). o.speed, o.life. Reads the model
-    // through MB.voxel(mi, x, y, z) when the bake provides it, else straight from the atlas.
+    // through MB.voxel(mi, x, y, z) (ME.brickVoxel's, made here when MB has none). A model still at its first,
+    // coarser bake (m.kf, R.swapModel) has kf x fewer voxels a tile.
     shatter(MB, s, o = {}) {
-      const mi = s.frames[0], m = MB.models[mi], VS = this.T.VS * (m.fine || 1), [nx, ny, nz] = m.dims, [ox, oy, oz] = m.box, p = s.place, rnd = () => this.rng();
-      let at = MB.voxel ? (x, y, z) => MB.voxel(mi, x, y, z) : null;
-      if (!at) { const A = MB.atlas, [AX, AY] = MB.adims, [bx, by, bz] = m.base; at = (x, y, z) => A[(((bz + z) * AY + by + y) * AX + bx + x) * 4 + 3]; }
+      const mi = s.frames[0], m = MB.models[mi], VS = (this.T.VS * (m.fine || 1)) / (m.kf || 1), [nx, ny, nz] = m.dims, [ox, oy, oz] = m.box, p = s.place, rnd = () => this.rng();
+      const voxel = MB.voxel || ME.brickVoxel(MB), at = (x, y, z) => voxel(mi, x, y, z);
       const cz = p.Z + m.h * 0.35, sp0 = o.speed ?? 1.4, life = o.life ?? 16;
       let n = 0;
       for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
@@ -14369,7 +14846,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.28.0", name: "Mossheart", commit: "fec1916" };
+  G.VERSION = { v: "0.29.0", name: "Mossheart", commit: "1b2db2a" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -24057,6 +24534,10 @@ function MG_SFX(L) {
     const bakeOpts = { walkers: false, models: G.bakeList() };
     // (no model finer than G.HERO_MAX voxels per tile edge, menu.js: 32 on phones)
     for (const k in bakeOpts.models) { const o = bakeOpts.models[k][1]; if (o && o.fine && o.fine * ME.VS > G.HERO_MAX) o.fine = G.HERO_MAX / ME.VS; }
+    // (and no progressive bake, E4, on a phone, the devices that cap at 32 (ME.phoneLike() is menu.js's test): at vs20
+    // and vs24 the capped fine is still > 1, and the upgrade's higher peak would land on the phones the crash guard
+    // has already stepped down to 24, the Architect's must-fix on #376. ?progressive=1 keeps it, for a check)
+    if (ME.phoneLike() && !ME.params.has("progressive")) bakeOpts.progressive = false;
     // (the crash guard's mark, menu.js: cleared once the garden has drawn its first frames, and when the player
     // reloads or leaves mid-bake: no pagehide comes from a tab that crashed. Not when the load died, the GPU
     // device lost or the boot thrown (G.bootDied): a reload then is a retry and must find the mark, or a phone
