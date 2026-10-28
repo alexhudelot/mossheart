@@ -8001,6 +8001,9 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     // (rgb, a = mix) and emitted light. n world normal, lp model-local position (tiles), hc a per-voxel
     // hash, seed a per-instance number.
     mark: "fn hookMark(bits: u32, v: f32, n: vec3f, lp: vec3f, hc: f32, seed: f32) -> Mark { return Mark(vec4f(0.0), vec3f(0.0)); }",
+    // the one the volume pass calls: hookMark plus alb, the voxel's albedo before the tint (its material
+    // colour with the per-voxel jitter), e.g. to scale a glow by the body colour. The default is hookMark.
+    markAlb: "fn hookMarkAlb(bits: u32, v: f32, n: vec3f, lp: vec3f, hc: f32, seed: f32, alb: vec3f) -> Mark { return hookMark(bits, v, n, lp, hc, seed); }",
     // lighting pass, before the point lights: re-colours a lit pixel (cls = material class, ME.CLS).
     // fieldAt and cellAt are available.
     shade: "fn hookShade(col: vec3f, p: vec3f, n: vec3f, cls: u32, unit: bool) -> vec3f { return col; }",
@@ -8100,9 +8103,9 @@ struct Model { base: vec4u, dims: vec4u, ext: vec4u, off: vec4f };
 
 struct VO { @builtin(position) pos: vec4f, @location(0) l: vec3f, @location(1) @interpolate(flat) ii: u32, @location(2) @interpolate(flat) mk: vec2u };
 struct GO { @location(0) a: vec4f, @location(1) n: vec4f, @location(2) e: vec4f, @builtin(frag_depth) depth: f32 };
-// a marked instance's look (the app's hookMark): albedo tint (a = mix) and emitted light
+// a marked instance's look (the app's hookMark, or hookMarkAlb with the albedo): albedo tint (a = mix) and emitted light
 struct Mark { tint: vec4f, emit: vec3f };
-//#hooks mark
+//#hooks mark markAlb
 
 const CUBE = array<vec3f, 36>(
   vec3f(0,0,0), vec3f(0,1,0), vec3f(0,1,1), vec3f(0,0,0), vec3f(0,1,1), vec3f(0,0,1),
@@ -8244,7 +8247,7 @@ fn loOf(M: Model) -> vec3f { return vec3f(f32(M.base.w & 1023u), f32((M.base.w >
   let mb = I.info.z; let mv = bitcast<f32>(I.info.w);
   if (mb != 0u || mv > 0.0) {
     let ctr = select(vec3f(cell) + 0.5, (vec3f(cell) + 0.5 + om.xyz) * om.w, old); // the voxel's centre, in this entry's voxels
-    let g = hookMark(mb, mv, n, (ctr * kf - 0.5) / u.grid.w, hc, f32(i.ii));
+    let g = hookMarkAlb(mb, mv, n, (ctr * kf - 0.5) / u.grid.w, hc, f32(i.ii), o.a.rgb);
     o.a = vec4f(mix(o.a.rgb, g.tint.rgb, g.tint.a), o.a.a);
     o.e = vec4f(g.emit, 1.0);
   }
@@ -13039,8 +13042,14 @@ fn boxOf(V: Vox) -> Box {
       const CT = ME.content || {}, extra = (CT.critterExtra || {})[st.map.id] || {}, padTop = CT.padTop || {};
       let seed2 = 0x5ec2a17;
       this.rnd2 = () => { seed2 = (seed2 + 0x6d2b79f5) | 0; let t = Math.imul(seed2 ^ (seed2 >>> 15), 1 | seed2); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-      this.extra = Object.keys(extra).length > 0;
-      for (const kind in extra) for (let k = 0; k < extra[kind]; k++) this.agents.push({ kind, k, ph: this.rnd2(), seed: this.rnd2() });
+      this.extra = Object.keys(extra).some((kind) => kind !== "wisp");
+      for (const kind in extra) if (kind !== "wisp") for (let k = 0; k < extra[kind]; k++) this.agents.push({ kind, k, ph: this.rnd2(), seed: this.rnd2() });
+      // the garden wisplings (extra kind wisp, the app's flipbooks wisp0..7): a third stream, so the other critters
+      // keep their places and their draws; each map shows its own run of the eight designs
+      let seed3 = 0x7a15e33, d0 = 0;
+      this.rnd3 = () => { seed3 = (seed3 + 0x6d2b79f5) | 0; let t = Math.imul(seed3 ^ (seed3 >>> 15), 1 | seed3); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+      for (const c of st.map.id || "") d0 += c.charCodeAt(0);
+      for (let k = 0; k < (extra.wisp || 0); k++) this.agents.push({ kind: "wisp", k, d: (d0 + k) % 8, ph: this.rnd3(), seed: this.rnd3() });
       this.pads = MB.statics.filter((s) => padTop[s.place.name] !== undefined).map((s) => ({ x: s.place.X, y: s.place.Y, z: s.place.Z + padTop[s.place.name] }));
       this.lastT = null;
     }
@@ -13071,16 +13080,17 @@ fn boxOf(V: Vox) -> Box {
       return null;
     }
     // a ground point near (x, y): same terrace, on moss (or lanes), clear of tree trunks, straight path
-    spot(x, y, r0, r1, lanes) {
+    // (R: the random stream, the critters' own by default)
+    spot(x, y, r0, r1, lanes, R = this.rnd) {
       const h = this.hgt(x, y), ok = (px, py) => { const t = this.typ(px, py); return (t === "m" || (lanes && t === "u")) && this.hgt(px, py) === h && this.inside(px, py, 0.6); };
       for (let k = 0; k < 14; k++) {
-        const a = this.rnd() * TAU, d = lerp(r0, r1, this.rnd()), px = x + Math.cos(a) * d, py = y + Math.sin(a) * d;
+        const a = R() * TAU, d = lerp(r0, r1, R()), px = x + Math.cos(a) * d, py = y + Math.sin(a) * d;
         if (!ok(px, py) || !ok((x + px) / 2, (y + py) / 2) || this.trees.some((t) => Math.hypot(t.X - px, t.Y - py) < 0.3)) continue;
         return [px, py, this.gz(px, py)];
       }
       return null;
     }
-    anyMoss() { const c = this.cells.m[Math.floor(this.rnd() * this.cells.m.length)]; return [c[0] + 0.15 + this.rnd() * 0.7, c[1] + 0.15 + this.rnd() * 0.7]; }
+    anyMoss(R = this.rnd) { const c = this.cells.m[Math.floor(R() * this.cells.m.length)]; return [c[0] + 0.15 + R() * 0.7, c[1] + 0.15 + R() * 0.7]; }
     // sun pool i where the shaft pass draws it at t (R.beamAt: the pools drift); its fixed foot without a renderer
     sunAt(i, t) { if (this.beamAt) return this.beamAt(i, t); const R = ME.app && ME.app.R, b = this.T.beams[i]; return R && R.beamAt ? R.beamAt(i, t) : [b.x, b.y]; }
     wetPoint(w) { return [w.x + 0.15 + this.rnd() * 0.7, w.y + 0.15 + this.rnd() * 0.7]; }
@@ -13097,6 +13107,7 @@ fn boxOf(V: Vox) -> Box {
     // ---- per-kind behaviour: init places the agent, decide picks the next state when one ends,
     //      pose(a, t, dt) sets x,y,z,yaw,pitch and the model frame mi (or a.hide)
     init(a, t) {
+      if (a.kind === "wisp") return this.wispInit(a, t);
       const R = this.rnd;
       a.yaw = R() * TAU; a.pitch = 0; a.hide = false;
       const place = (p) => { a.x = p[0]; a.y = p[1]; a.z = this.gz(p[0], p[1]); };
@@ -13155,6 +13166,7 @@ fn boxOf(V: Vox) -> Box {
     }
 
     decide(a, t) {
+      if (a.kind === "wisp") return this.wispDecide(a, t);
       const R = this.rnd;
       switch (a.kind) {
         case "butterfly": {
@@ -13360,6 +13372,7 @@ fn boxOf(V: Vox) -> Box {
     pose(a, t, dt) {
       const F = this.F, u = a.end > a.t0 ? clamp01((t - a.t0) / (a.end - a.t0)) : 1, mv = () => { if (!a.to) return; a.x = lerp(a.from[0], a.to[0], u); a.y = lerp(a.from[1], a.to[1], u); };
       a.pitch = 0;
+      if (a.kind === "wisp") return this.wispPose(a, t, u, mv);
       switch (a.kind) {
         case "butterfly": {
           if (a.state === "perch") { a.mi = frame(a.fr, 0.6, t, a.ph); break; }
@@ -13499,6 +13512,7 @@ fn boxOf(V: Vox) -> Box {
         this.pose(a, t, dt);
         if (a.hide) continue;
         const m = this.MB.models[a.mi], sc = 1 / m.fine, z = a.z + (a.zOff || 0);
+        if (a.kind === "wisp") { this.wispPut(a, t, sim, i++, m, sc); continue; }
         sim.put(i++, a.mi, a.x, a.y, z, a.yaw, false, [sc, sc, sc], [0, 0], 1, a.pitch);
       }
       return i;
@@ -13521,7 +13535,91 @@ fn boxOf(V: Vox) -> Box {
       } else if (a.kind === "bunny" && !a.flee) {
         const w = this.threat(a, 0.9);
         if (w) { a.flee = true; a.hops = 5; a.yaw = Math.atan2(a.y - w[1], a.x - w[0]); const p = this.hopFrom(a, 0.36); if (p) this.go(a, "hop", p, t, 0.24); }
+      } else if (a.kind === "wisp" && (busy("idle") || busy("hop") || busy("peek"))) {
+        // a wispling ducks into the moss where it stands, and peeks up somewhere near once the walker has gone
+        if (this.threat(a, 0.9)) { const s = a.state === "peek" ? 1 - (a.sink || 0) : 1; this.go(a, "duck", null, t - 0.3 * (1 - s), 0.3); }
       }
+    }
+
+    // ---- the garden wisplings (kind wisp): they peek up out of the moss, breathe, blink and hop about, hop over to
+    //      meet a friend now and then, duck under the moss from a walker, and at dusk two of each six float up and
+    //      drift by the lamps. Yaw stays 0: their faces are drawn on the model's axes (the app's wispling builder),
+    //      so they always look out of the screen. Draws come from rnd3 only.
+    dusk(t) { const R = ME.app && ME.app.R, s = R && R.set; return !s ? 0 : s.cycle > 0 ? 0.5 - 0.5 * Math.cos((t / s.cycle) * TAU) : clamp01(s.dusk); }
+    mossOk(px, py, h) { return this.typ(px, py) === "m" && this.hgt(px, py) === h && this.inside(px, py, 0.6) && !this.trees.some((r) => Math.hypot(r.X - px, r.Y - py) < 0.3); }
+    wispInit(a, t) {
+      const R = this.rnd3;
+      a.pitch = 0; a.hide = false; a.yaw = 0; a.fr = this.F["wisp" + a.d];
+      if (!a.fr || !this.cells.m.length) { a.dead = a.hide = true; return; }
+      const p = this.anyMoss(R); a.x = p[0]; a.y = p[1]; a.z = this.gz(p[0], p[1]);
+      this.wait(a, "under", t, R() * 2);
+    }
+    wispDecide(a, t) {
+      const R = this.rnd3, night = this.dusk(t) > 0.5 && a.k % 3 === 0, h = this.hgt(a.x, a.y);
+      switch (a.state) {
+        case "duck": this.wait(a, "under", t, 1.5 + R() * 2); return;
+        case "under": {
+          const p = this.spot(a.x, a.y, 0.6, 1.4, false, R) || this.anyMoss(R);
+          a.x = p[0]; a.y = p[1]; a.z = this.gz(p[0], p[1]); this.wait(a, "peek", t, 0.5);
+          return;
+        }
+        case "lift": case "float": {
+          if (night) {
+            // drift on round the nearest lamp on its terrace (or its own patch), a little over the moss
+            const L = this.lamps.reduce((b, l) => (!b || Math.hypot(l.p[0] - a.x, l.p[1] - a.y) < Math.hypot(b.p[0] - a.x, b.p[1] - a.y) ? l : b), null);
+            const c = L && Math.hypot(L.p[0] - a.x, L.p[1] - a.y) < 3 ? L.p : [a.x, a.y], p = this.spot(c[0], c[1], 0.3, 1.0, false, R) || this.spot(a.x, a.y, 0.3, 0.9, false, R);
+            if (p && this.hgt(p[0], p[1]) === h) { this.go(a, "float", [p[0], p[1], p[2] + 0.4 + R() * 0.5], t, 3 + R() * 4); return; }
+          }
+          this.go(a, "land", [a.x, a.y, this.gz(a.x, a.y)], t, 1.5);
+          return;
+        }
+        case "hop": if (a.hops > 0) break;
+        // falls through: the run is over
+        case "land": case "peek": a.goal = null; this.wait(a, "idle", t, 2 + R() * 3); return;
+      }
+      // idle, or a run of hops going on: the next hop toward the friend it is meeting, or about its patch
+      if (a.state === "idle") {
+        if (night) { this.go(a, "lift", [a.x, a.y, a.z + 0.4 + R() * 0.5], t, 1.5); return; }
+        const r = R();
+        if (r < 0.25) {
+          const f = this.agents.find((b) => b !== a && b.kind === "wisp" && !b.dead && (b.state === "idle" || b.state === "hop") && Math.hypot(b.x - a.x, b.y - a.y) < 2.5 && this.hgt(b.x, b.y) === h);
+          if (f) { a.goal = [f.x, f.y]; a.hops = 6; }
+        } else if (r < 0.7) a.hops = 1 + Math.floor(R() * 3);
+        else { this.wait(a, "idle", t, 2 + R() * 3); return; }
+      }
+      a.hops--;
+      let p = null;
+      if (a.goal) {
+        const dx = a.goal[0] - a.x, dy = a.goal[1] - a.y, d = Math.hypot(dx, dy), s = Math.min(0.5, d - 0.42) / (d || 1), px = a.x + dx * s, py = a.y + dy * s;
+        if (d > 0.5 && this.mossOk(px, py, h) && this.mossOk((a.x + px) / 2, (a.y + py) / 2, h)) p = [px, py, this.gz(px, py)];
+        if (!p) { a.goal = null; a.hops = 0; }
+      } else p = this.spot(a.x, a.y, 0.3, 0.6, false, R);
+      if (p) { this.go(a, "hop", p, t, 0.32 + Math.hypot(p[0] - a.x, p[1] - a.y) * 0.25); }
+      else { a.goal = null; this.wait(a, "idle", t, 2 + R() * 3); }
+    }
+    // frames: 0 and 1 breathe, 2 blinks, 3 crouches, 4 stretches. a.sink: 0 up, 1 under the moss
+    wispPose(a, t, u, mv) {
+      const F = a.fr, st = a.state, e = ease(u), breath = (t * 0.8 + a.ph) % 1 < 0.5 ? 0 : 1, blink = (t * 0.31 + a.ph * 7) % 1 < 0.035;
+      a.hide = st === "under"; a.sink = 0;
+      if (st === "hop") { mv(); a.z = lerp(a.from[2], a.to[2], u) + Math.sin(u * Math.PI) * 0.12; a.mi = F[u < 0.18 || u > 0.86 ? 3 : 4]; }
+      else if (st === "lift" || st === "float" || st === "land") {
+        a.x = lerp(a.from[0], a.to[0], e); a.y = lerp(a.from[1], a.to[1], e);
+        a.z = lerp(a.from[2], a.to[2], e) + (st === "float" ? Math.sin(t * 1.9 + a.ph * TAU) * 0.03 * Math.sin(u * Math.PI) : 0);
+        a.mi = F[blink ? 2 : st === "land" && u > 0.85 ? 3 : breath];
+      } else {
+        a.z = this.gz(a.x, a.y);
+        if (st === "peek") { a.sink = 1 - e; a.mi = F[u > 0.7 ? 4 : 0]; }
+        else if (st === "duck") { a.sink = e; a.mi = F[3]; }
+        else a.mi = F[blink ? 2 : breath];
+      }
+      a.yaw = 0;
+    }
+    // sunk into the moss by a.sink (the ground hides what is under it) and squashed as it goes; the app's mark
+    // (ME.content.wispMark, the hookMark bit) with markV the glow: dim by day, full at dusk, a slow pulse
+    wispPut(a, t, sim, i, m, sc) {
+      const s = a.sink || 0, CT = ME.content || {}, mk = CT.wispMark || 0;
+      const v = mk ? clamp01(0.15 + 0.85 * this.dusk(t)) * (0.85 + 0.15 * Math.sin(t * 1.6 + a.ph * TAU)) : 0;
+      sim.put(i, a.mi, a.x, a.y, a.z - s * 0.7 * m.h, 0, false, [sc, sc, sc * (1 - 0.35 * s)], [0, 0], 1, 0, mk, v);
     }
   }
 
@@ -14846,7 +14944,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.30.0", name: "Mossheart", commit: "ad2ca7b" };
+  G.VERSION = { v: "0.31.0", name: "Mossheart", commit: "c45b13c" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -16623,6 +16721,13 @@ function MA_DSP() {
     Object.assign(st.mats, AK.MATS);
     Object.assign(st.ramps, TOWERS.RAMPS); // the plants' own (stumpsAndStones, below)
     Object.assign(st.mats, TOWERS.MATS);
+    // the garden wisplings, six to a garden on Momiji and Fernglass (critters.js, kind wisp): eight designs of five
+    // frames at size 1.5 (a body ~0.5 tiles tall, ~15 px at the fit zoom: the user's pick), ~9.6 voxels across the
+    // body at any density (fine 40 / VS, from 1.6, under G.HERO_MAX). ME.content outlives the level, so another map drops them
+    const CT = ME.content, id = st.map && st.map.id, on = id === "mf-valley" || id === "fernglass", VS = ME.VS || 32;
+    const fine = +Math.min(Math.max(1.6, 40 / VS), (G.HERO_MAX || 64) / VS).toFixed(3);
+    for (let d = 0; d < 8; d++) if (on) CT.critters["wisp" + d] = ["wispling", { d, size: 1.5 }, 5, fine]; else delete CT.critters["wisp" + d];
+    if (on) CT.critterExtra = Object.assign(CT.critterExtra || {}, { [id]: Object.assign({}, (CT.critterExtra || {})[id], { wisp: 6 }) });
   };
 
   // What the game bakes. Creatures: size = world scale relative to the asset's own, fine = voxel density
@@ -16690,6 +16795,9 @@ function MA_DSP() {
       twPetal: [["#f8d828", 6, 0.38, 0.9, 0.06]], twPetalDk: [["#eab820", 5, 0.3, 0.76, 0.06]], twStinkOr: [["#f08c1c", 6, 0.3, 0.8, 0.06]],
       twMoonPetal: [["#5a86e8", 5, 0.3, 0.8, 0.15]], twMoonPetalLt: [["#9ab8f4", 4, 0.5, 0.88, 0.15]], twMoon: [["#4a78f0", "#6290f4", "#80a8f8", "#a0c0fc"], { em: 1, flat: 1 }],
       twLily: [["#f2f4f0", 4, 0.68, 0.98], { bias: 0.2 }], twJade: [["#30a87e", 5, 0.28, 0.72, 0.15]], twJadeGlow: [["#40d8a0", "#60e4b4", "#88eecc"], { em: 1, flat: 1 }],
+      // their glow twins, the garden wisplings' bodies (critter, below): the same ramps, lit softly from within
+      wGlow: [["#eef2e8", 4, 0.7, 0.97], { em: 0.3 }], wMintGlow: [["#e0f2da", 4, 0.66, 0.96], { em: 0.3 }], wPeachGlow: [["#f8e6d6", 4, 0.68, 0.97], { em: 0.3 }],
+      wDewGlow: [["#d8ecfa", 4, 0.66, 0.97], { em: 0.3 }], wLilacGlow: [["#eee0f8", 4, 0.66, 0.97], { em: 0.3 }],
     };
     const RAMPS = {}, MATS = {};
     for (const k in MAT) { RAMPS[k] = MAT[k][0]; if (MAT[k][1]) MATS[k] = MAT[k][1]; }
@@ -17157,7 +17265,32 @@ function MA_DSP() {
       }
       return { errs, stats };
     };
-    return { RAMPS, MATS, KINDS, build, check };
+    // ---- the wisplings as garden critters (ME.content.critters wisp0..wisp7, G.addMaterials): one wispling of design o.d
+    // at the origin, its body and head piece in a soft glow twin of its colour (the eyes, cap, leaves and maple stay unlit).
+    // Five frames, o.t = i / 5: breathe in, breathe out, blink (no eyes), crouch, stretch, each squashing the model about
+    // the ground (SQ). Its density is the critter's own (drawn at 1 / fine, o.size times), so wth and WT follow the critter's voxels
+    const GLOW = { [WS]: "wGlow", wMint: "wMintGlow", wPeach: "wPeachGlow", wDew: "wDewGlow", wLilac: "wLilacGlow" }, SQ = [1, 1.05, 1, 0.86, 1.12];
+    const critter = (o) => {
+      const fr = Math.min(4, Math.floor((o.t || 0) * 5 + 1e-6)), sq = SQ[fr], vs = (ME.VS || 32) * (o.fine || 1) * (o.size || 1) * ((ME.content || {}).critterScale ?? 1);
+      HI = 0; chips = 0; wi = (o.d || 0) % 8; WK = 1; WVS = 0.75 * vs; WT = 0.1 * vs < 7.5 ? 1.2 : 1; // 0.1 * vs: the body's voxels across
+      const p = [], F = [];
+      wispling(p, F, [0, 0, 0], 0.78);
+      for (const q of p) {
+        q.z *= sq;
+        if (q.k === 1 && !q.R) q.rz *= sq;
+        if (q.k === 2) { q.bz *= sq; q.bb = q.bx * q.bx + q.by * q.by + q.bz * q.bz || 1e-6; }
+        q.m = GLOW[q.m] || q.m;
+      }
+      for (const f of F) { f[0] = [f[0][0], f[0][1], f[0][2] * sq]; f[4] *= sq; f[3] = GLOW[f[3]] || f[3]; }
+      return {
+        prims: p, r: 0.1, h: 0.2 * sq, k: 1,
+        detail: (x, y, z, m, nx, ny, nz, tv = 1 / 60) => {
+          for (const [c, hr, fo, bm, hz, cap] of F) if ((m === bm || (cap && m === "wAcorn")) && near([x, y, z], c, hr * 1.12 + 0.855 * tv)) { const f = wface([x - c[0], y - c[1], z - c[2]], hr, hz, fo, cap, tv); if (f && !(fr === 2 && f === "void")) return f; }
+          return m;
+        },
+      };
+    };
+    return { RAMPS, MATS, KINDS, build, check, critter };
   }
   const TOWERS = stumpsAndStones(), TOWERS_SRC = String(stumpsAndStones);
   Object.assign(ME.LIGHT_COL, { twLure: [1.0, 0.74, 0.32, 0.45], twStinkGlow: [1.0, 0.6, 0.25, 0.6], twMoon: [0.45, 0.62, 1.0, 0.8], twJadeGlow: [0.5, 1.0, 0.78, 0.8] });
@@ -17167,6 +17300,9 @@ function MA_DSP() {
     ME.ASSET_BY[name] += TOWERS_SRC; ME.ASSET_SRC += TOWERS_SRC; // the bake key takes the builder's source too, not only the wrapper's
   }
   G.checkTowers = () => JSON.stringify(TOWERS.check());
+  // the garden wisplings' model (critter above); the bake key takes the builder's source, as the plants' do
+  M.wispling = (o) => TOWERS.critter(o);
+  ME.ASSET_BY.wispling = "wispling" + TOWERS_SRC; ME.ASSET_SRC += "wispling" + TOWERS_SRC;
 
   // frames: the idle loop's flipbook (FRAMES when unset). The plants hold still for now (one frame each,
   // 24 volumes for the eight at three levels); their idle loop is a follow-up. fine: the voxel density, as
@@ -18082,8 +18218,10 @@ ${K} .coachrow .btn { box-shadow: 0 2px 0 #2b2c22; }
 </script>
 <script>/* src/view/shaders.js */
 /* The game's look in the engine's shader hooks (ME.SHADER_HOOKS; spliced in by the Renderer):
-     mark     creature halos and veins (element matchups), hit flashes, spore dust, the placement ghost
-              and the selected plant, from the bits GameView packs into each instance (MARK below)
+     mark     creature halos and veins (element matchups), hit flashes, spore dust, the placement ghost,
+              the selected plant and the wisplings' glow, from the bits GameView (and the critters, for a
+              wispling) pack into each instance (MARK below)
+     markAlb  the wisplings' glow scaled by the body colour (the albedo), so the eyes stay dark
      shade    the blight withering moss, grass and foliage (the field map is the blight)
      overlay  the build grid, the hovered cell and the range rings (the cell map holds the build flags)
      wilt     blighted grass shrinking and flopping over
@@ -18101,7 +18239,10 @@ ${K} .coachrow .btn { box-shadow: 0 2px 0 #2b2c22; }
   // is in: G.standIn), tinted in its own colour, 18-20 which (Defs.TOWER_ORDER); with bit 21 set, a
   // creature standing in another's model (G.creatureStandIn), 18-20 which (STANDIN_CREATURES); 22 the Heart
   // Tree, 23-24 its stage (healthy, wounded, critical), and then markV is its knot's glow 0..1 (view/scene.js)
-  G.MARK = { WEAK_SHIFT: 4, HIT_SHIFT: 8, HIT_WEAK: 1 << 10, HIT_RESISTED: 1 << 11, SLOWED: 1 << 13, GHOST_OK: 1 << 14, GHOST_BAD: 1 << 15, SELECTED: 1 << 16, STANDIN: 1 << 17, PLANT_SHIFT: 18, CREATURE: 1 << 21, HEART: 1 << 22, HEART_SHIFT: 23 };
+  // 25 a garden wispling (MossheartEngine/content/critters.js wispPut, through ME.content.wispMark), and then markV
+  // is its glow 0..1 (dim by day, full at dusk)
+  G.MARK = { WEAK_SHIFT: 4, HIT_SHIFT: 8, HIT_WEAK: 1 << 10, HIT_RESISTED: 1 << 11, SLOWED: 1 << 13, GHOST_OK: 1 << 14, GHOST_BAD: 1 << 15, SELECTED: 1 << 16, STANDIN: 1 << 17, PLANT_SHIFT: 18, CREATURE: 1 << 21, HEART: 1 << 22, HEART_SHIFT: 23, WISP: 1 << 25 };
+  ME.content = ME.content || {}; ME.content.wispMark = G.MARK.WISP;
   G.plantMark = (kind) => (G.standIn && G.standIn(kind) !== kind ? G.MARK.STANDIN | (G.Defs.TOWER_ORDER.indexOf(kind) << G.MARK.PLANT_SHIFT) : 0);
   // the creatures that can stand in another's model (the first 8 with a Defs `standIn`), and the mark of a
   // creature kind (an index into Defs.ENEMY_ORDER): 0 once Art's model is in
@@ -18138,6 +18279,12 @@ fn hookMark(m: u32, flash: f32, n: vec3f, lp: vec3f, hc: f32, seed: f32) -> Mark
     let band = exp(-d * d);
     let mote = step(0.93, hc);
     g.emit += hcol * flash * (0.7 + 0.15 * st) * (0.45 * band + 0.3 * rim * (0.3 + 0.7 * band) + 0.35 * mote * band);
+    return g;
+  }
+  // a garden wispling's glow (flash is the glow here, from critters.js; never a hit, as nothing targets one):
+  // a soft warm white-mint core and a brighter rim, over the body's own faint emissive, so it reads at dusk
+  if ((m & ${G.MARK.WISP}u) != 0u && (m & 0xF00u) == 0u) {
+    g.emit += vec3f(0.86, 1.0, 0.84) * flash * (0.3 + 0.6 * rim);
     return g;
   }
   var ward = vec3f(0.0); var weak = vec3f(0.0); var nWard = 0.0; var nWeak = 0.0;
@@ -18177,6 +18324,15 @@ fn hookMark(m: u32, flash: f32, n: vec3f, lp: vec3f, hc: f32, seed: f32) -> Mark
   else if (gh == ${G.MARK.GHOST_BAD}u) { g.emit += vec3f(1.0, 0.3, 0.25) * (0.45 + 0.2 * sin(tm * 7.0)) * (0.4 + rim); }
   else if (gh != 0u) { g.tint = vec4f(0.6, 0.66, 0.78, max(g.tint.a, 0.55)); g.emit += vec3f(0.4, 0.68, 1.0) * (0.4 + 0.15 * sin(tm * 3.0)) * (0.4 + rim); }
   if ((m & ${G.MARK.SELECTED}u) != 0u) { g.emit += vec3f(1.0, 0.92, 0.65) * rim * (0.9 + 0.3 * sin(tm * 3.0)); }
+  return g;
+}`,
+
+    // The wisplings' glow takes the body's own colour (alb, linear), so the dark eyes and mouths stay dark
+    // and each design glows in its own hue; every other mark is hookMark's as is
+    markAlb: /* wgsl */ `
+fn hookMarkAlb(m: u32, flash: f32, n: vec3f, lp: vec3f, hc: f32, seed: f32, alb: vec3f) -> Mark {
+  var g = hookMark(m, flash, n, lp, hc, seed);
+  if ((m & ${G.MARK.WISP}u) != 0u && (m & 0xF00u) == 0u) { g.emit *= alb * 1.9; }
   return g;
 }`,
 
