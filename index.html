@@ -5399,7 +5399,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       const wd = ME.waterDist(m.water), flood = new Float64Array(hs.length).fill(NaN), floodKind = new Array(hs.length).fill(null);
       for (const f of m.flood || []) for (const t of floodRegion(m, f)) if (names[t] !== null && z[t] < f.level) { flood[t] = f.level; floodKind[t] = f.water || null; }
       return {
-        W: m.W, H: m.H, hv: hs, z, names, kinds: names.map((n) => (n === null ? null : kinds[n])), kindTable: kinds, flood, floodKind,
+        W: m.W, H: m.H, hv: hs, z, names, kinds: names.map((n) => (n === null ? null : kinds[n])), kindTable: kinds, flood, floodKind, laneKinds: (m.game && m.game.lane) || [],
         floorZ: m.floor * hStep, wd, wholeWater: !wd,
         props: propsOf(st),
         frame: f.type === "jar"
@@ -5802,6 +5802,65 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       return Math.max(0, Math.round(v));
     };
     const kPB = kOf(PL_ZB), kPT = kOf(PL_ZT), kD = kOf(DRUM), kF = kOf(ZF);
+    // Edge breakup (the voxel detail layer's PR 1, docs/designs/2026-10-29-voxel-detail-layer.md, option c):
+    // ME.content.edgeBreak = { amp, core, rough, minVS, recipes, kinds } turns it on; it is off without it,
+    // below minVS (16) and with ?edgebreak=0. Tile borders wander: a column within 2 amp of a side is moved
+    // by noise (at most 1.5 amp, tapering to nothing at 2 amp) and takes the kind, height and surface of
+    // the tile it lands in, so kind and height borders meander up to about amp tiles (0.15) either side of
+    // the tile line, and the tile's core (at least core, 0.4 of the tile) is never moved. A border warps by
+    // the smaller amp of its two tiles (recipes: { recipe: amp }, kinds: { name: amp }; lane and water 0),
+    // and never into or out of a wet tile or no ground. Rough cliffs: where a dry neighbour lies rough tiles
+    // (0.12) or more below, the step's face is pitted by 3D noise up to rough tiles deep, under the top
+    // voxels. The map's tiles, heights, lanes, walk and build grid stay; grass, lobes, lamps and the ground
+    // (T.top) read the result.
+    const EB0 = ME.qn("edgebreak", 1) === 0 ? null : CT.edgeBreak;
+    const EB = EB0 && VS >= (EB0.minVS ?? 16) ? Object.assign({ amp: 0.15, core: 0.4, rough: 0.12 }, EB0) : null;
+    const EBR = Object.assign({ lane: 0, water: 0 }, EB && EB.recipes), EBK = (EB && EB.kinds) || {}, EBF = 2.2;
+    // the map's lane kinds (game.lane: Fernglass walks flagstone and potting sand) keep straight edges too,
+    // whatever kinds says: the game reads the ground across a lane (G.laneFrom)
+    const EBL = new Set(G.laneKinds || []);
+    const ampAt = (x, y) => {
+      const kd = kindAt(x, y);
+      if (!kd || wetAt(x, y) || EBL.has(kindName.get(kd))) return 0;
+      return Math.max(0, Math.min(EBK[kindName.get(kd)] ?? EBR[kd.recipe] ?? EB.amp, (1 - EB.core) / 4));
+    };
+    const ebN = (X, Y, s) => Math.max(-1, Math.min(1, (P.fbm(X * EBF, Y * EBF, 0, s) - 0.5) * 4));
+    // the warped position and its tile into w = [Xw, Yw, tx, ty]
+    const ebWarp = (X, Y, cx, cy, w) => {
+      w[0] = X; w[1] = Y; w[2] = cx; w[3] = cy;
+      const fx = X - cx, fy = Y - cy, sx = fx < 0.5 ? -1 : 1, sy = fy < 0.5 ? -1 : 1, dX = sx < 0 ? fx : 1 - fx, dY = sy < 0 ? fy : 1 - fy;
+      const a0 = ampAt(cx, cy);
+      if (!(a0 > 0) || (dX >= 2 * a0 && dY >= 2 * a0)) return;
+      // per axis, the amp of the border across the nearer side (the same seen from both tiles)
+      const ax = Math.min(a0, ampAt(cx + sx, cy)), ay = Math.min(a0, ampAt(cx, cy + sy));
+      const Xw = dX < 2 * ax ? X + ebN(X, Y, 83) * 1.5 * ax * (1 - dX / (2 * ax)) : X;
+      let Yw = dY < 2 * ay ? Y + ebN(X, Y, 89) * 1.5 * ay * (1 - dY / (2 * ay)) : Y;
+      const tx = Math.floor(Xw);
+      let ty = Math.floor(Yw);
+      if (tx !== cx && ty !== cy && !(ampAt(tx, ty) > 0)) { Yw = Y; ty = cy; } // a corner tile that may not warp: stay in the row
+      w[0] = Xw; w[1] = Yw; w[2] = tx; w[3] = ty;
+    };
+    // the step faces within rough of a column (in warped space): its voxels from the lower top up to under its
+    // top voxels are dropped where 3D noise beats a cut rising with the distance from the face
+    const RD = EB ? EB.rough * VS : 0, EB_KEEP = 2;
+    const roughen = (Xw, Yw, tx, ty, kEnd, bc) => {
+      const fx = Xw - tx, fy = Yw - ty, sx = fx < 0.5 ? -1 : 1, sy = fy < 0.5 ? -1 : 1, dx = (sx < 0 ? fx : 1 - fx) * VS, dy = (sy < 0 ? fy : 1 - fy) * VS;
+      if ((dx >= RD && dy >= RD) || wetAt(tx, ty)) return 0;
+      const kT = kOf(G.z[ty * G.W + tx]), drop = Math.max(4, RD);
+      let kN = Infinity, d = RD;
+      if (dx < RD && !wetAt(tx + sx, ty)) { const k = tileK(tx + sx, ty); if (kT - k >= drop) { kN = Math.min(kN, k); d = Math.min(d, dx); } }
+      if (dy < RD && !wetAt(tx, ty + sy)) { const k = tileK(tx, ty + sy); if (kT - k >= drop) { kN = Math.min(kN, k); d = Math.min(d, dy); } }
+      if (kN === Infinity) return 0;
+      const cut = 0.4 + 0.6 * (d / RD);
+      let n = 0;
+      for (let k = Math.max(kN, kF); k < kEnd - EB_KEEP; k++) {
+        const q = k * BPL + bc;
+        if (band[q] && P.noise(Xw * 6, Yw * 6, ((k + 0.5) / VS) * 6, 97) > cut) { band[q] = 0; n++; }
+      }
+      return n;
+    };
+    const ebW = [0, 0, 0, 0];
+    let ebCols = 0, ebCarved = 0;
     // the rim spill (W6, frame.spill or st.spill): a drum column under a wet map tile on the rim (half a tile
     // inside the island's edge, on the column's own radius) that lies lower than the drum top is notched down
     // to that tile's top; the tile's water falls down the drum's face below (the falls)
@@ -5843,11 +5902,17 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           top[col] = kN;
           if (r > RI) continue;
         }
-        const cx = Math.floor(X), cy = Math.floor(Y), kd = kindAt(cx, cy);
+        let cx = Math.floor(X), cy = Math.floor(Y), kd = kindAt(cx, cy), Xw = X, Yw = Y;
         if (!kd) continue;
+        // edge breakup: the column takes the tile at its warped position (the own tile in the core)
+        if (EB) {
+          ebWarp(X, Y, cx, cy, ebW);
+          Xw = ebW[0]; Yw = ebW[1];
+          if (ebW[2] !== cx || ebW[3] !== cy) { cx = ebW[2]; cy = ebW[3]; kd = kindAt(cx, cy); ebCols++; }
+        }
         // terrain column: the kind's recipe gives the surface material and micro relief
         out.kT = kOf(G.z[cy * G.W + cx]); out.mTop = 0; out.extra = 0; out.two = false; out.bed = false; out.layer = 0;
-        c.X = X; c.Y = Y; c.cx = cx; c.cy = cy;
+        c.X = Xw; c.Y = Yw; c.cx = cx; c.cy = cy;
         RECIPE[kd.recipe](kd, c, out);
         const { kT, mTop, extra, two, bed, layer } = out;
         if (bed) wetCols++;
@@ -5859,11 +5924,12 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         const n1 = P.noise(X * 9, Y * 9, 0, 5);
         if (n1 > 0.52) dd += Math.round((n1 - 0.52) * 30);
         if (P.noise(X * 21, Y * 21, 0, 6) > 0.8) dd += 5;
-        const kEnd = kT + extra - soften(kd, X, Y, cx, cy);
+        const kEnd = kT + extra - soften(kd, Xw, Yw, cx, cy);
         for (let k = kF; k < kEnd; k++) {
           const dz = kEnd - 1 - k;
           band[k * BPL + bc] = layer ? (dz < layer + extra ? mTop : kd.under) : dz === 0 || (two && dz === 1) ? mTop : dr && dz <= dd && !bed ? (n1 > 0.7 ? dr[1] : dr[0]) : kd.under;
         }
+        if (RD > 0) ebCarved += roughen(Xw, Yw, cx, cy, kEnd, bc);
         if (jar) for (let k = kEnd; k < kD; k++) band[k * BPL + bc] = 0; // beds carved below the drum top
         // a box's skirt: the outer faces of the map's edge tiles, under their top voxel, in one material
         if (skirt && (X < e1 || Y < e1 || X > G.W - e1 || Y > G.H - e1)) for (let k = kF; k < kEnd - 1; k++) band[k * BPL + bc] = skirt;
@@ -6079,7 +6145,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 
     // Walkable ground: first solid voxel scanning down from zFrom.
 
-    const stats = { dims: [NX, NY, NZ], solid, wetCols, lobes, props: propCount, lanterns: lights.length, stampedVoxels: stamped, water: water.length, falls: falls.length, flooded: G.flood ? water.filter((w) => fullAt(w.x, w.y)).length : 0, zTop: O[2] + (kMax + 1) / VS, ms: Math.round(ME.now() - t0) };
+    const stats = { dims: [NX, NY, NZ], solid, wetCols, lobes, props: propCount, lanterns: lights.length, stampedVoxels: stamped, water: water.length, falls: falls.length, flooded: G.flood ? water.filter((w) => fullAt(w.x, w.y)).length : 0, edgeBreak: EB ? { cols: ebCols, carved: ebCarved } : null, zTop: O[2] + (kMax + 1) / VS, ms: Math.round(ME.now() - t0) };
     // bounds: the world box in tiles; frame: the map's (jar or box); geo: the jar's measures (null in a box)
     const bounds = { min: O.slice(), max: [O[0] + B.size[0], O[1] + B.size[1], O[2] + B.size[2]] };
     // tiles: per tile of the map, its top (tiles), its kind's name (null on a generator map) and recipe (null:
@@ -7442,10 +7508,12 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       const C = ME.content, src = (k, v) => (typeof v === "function" ? String(v) : v);
       const v1 = st.map && st.map.v !== undefined, kinds = {};
       if (v1 && C && C.kinds) for (const n of Object.values(st.map.legend || {})) if (n !== null && C.kinds[n]) kinds[n] = C.kinds[n];
-      const content = C ? JSON.stringify([C.terrain, kinds, C.defaultMaterial, C.grass, C.critters, C.walkers, C.groundLamps, C.edgeRound], src) : "";
+      const content = C ? JSON.stringify([C.terrain, kinds, C.defaultMaterial, C.grass, C.critters, C.walkers, C.groundLamps, C.edgeRound, ME.qn("edgebreak", 1) === 0 ? null : C.edgeBreak], src) : "";
       const lists = C ? JSON.stringify([C.volumeDeco, C.flipbookFrames, C.modelScale, C.critterScale, C.primLights, C.sunShadeHalf], src) : "";
-      // a v1 map names the bake, and its game block (route, cover, spawns) is not baked
-      const s = v1 ? Object.assign({}, st, { map: Object.assign({}, st.map, { game: undefined }) }) : st, id = v1 ? st.map.id : st.id;
+      // a v1 map names the bake, and its game block (route, cover, spawns) is not baked, but for its lane
+      // kinds (game.lane: the edge breakup keeps their borders straight, bake-terrain.js)
+      const game = v1 && st.map.game ? { lane: st.map.game.lane } : undefined;
+      const s = v1 ? Object.assign({}, st, { map: Object.assign({}, st.map, { game }) }) : st, id = v1 ? st.map.id : st.id;
       const slot = encodeURIComponent(o.app ?? pageApp()) + "/" + encodeURIComponent(id) + "/";
       const own = content + JSON.stringify(s) + extra;
       // the pool's check knobs (bake-models.js: ME.poolSlab / ?poolslab, ME.poolHollow / ?hollow), when set
@@ -11946,6 +12014,10 @@ fn boxOf(V: Vox) -> Box {
   // terrain materials the engine's dig() and collapse() loosen into grains: the sand-bank tiles and the shades
   // their covers paint them in (critter-models.js, sandCover)
   C.sand = ["sand", "sand2", "sand3"];
+  // edge breakup at vs 16 and up (bake-terrain.js, the voxel detail layer's PR 1): tile borders meander up to
+  // 0.15 tile, cliff faces pitted 0.12 deep; lanes and water keep straight edges. For both packs (Fernglass
+  // too); Art tunes it per kind (the design's PR 2)
+  C.edgeBreak = { amp: 0.15, core: 0.4, rough: 0.12 };
   // the material of a model prim that names none
   C.defaultMaterial = "stone";
   // grass tufts: the ground materials they grow on, and the blade materials
@@ -14944,7 +15016,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.31.0", name: "Mossheart", commit: "c45b13c" };
+  G.VERSION = { v: "0.32.0", name: "Mossheart", commit: "ba8155f" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
