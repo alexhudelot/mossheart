@@ -130,6 +130,7 @@ body.alm-open #dewbar { visibility: hidden; } /* (the bulb stays, under the alma
 #musicbtn small { font-size: calc(11px * var(--ts)); letter-spacing: 0.02em; }
 #musicbtn:disabled { opacity: 0.6; cursor: default; }
 #fps { color: #fffd; font: calc(12px * var(--ts)) ui-monospace, Consolas, monospace; text-shadow: 0 0 4px #000; margin-right: 6px; pointer-events: none; }
+#vox.down { color: #ffc14d; font-weight: 700; } /* (the density came out under 40 or what was asked for) */
 
 #almanac { position: fixed; right: calc(12px + var(--sr)); top: calc(72px + var(--st)); width: min(340px, calc(100vw - 24px)); max-height: calc(100vh - 460px); display: flex; flex-direction: column; align-items: flex-start;
   background: rgba(26, 23, 18, 0.78); border: 2px solid #8c6b42; border-radius: 12px; color: #ede6d1; padding: 4px 10px 6px; font-weight: 500; font-size: calc(13px * var(--ts)); }
@@ -624,7 +625,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     <div id="heart"><div id="hearttxt">Heart 20/20</div><div class="hbar"><div id="heartfill"></div></div></div>
     <div id="wave">Wave 0</div>
   </div>
-  <div id="topright"><span id="fps"></span><div id="viewctl"><button id="skybtn" class="btn small" title="mood and weather">☁</button><button id="turnl" class="btn small" title="turn left">↺</button><button id="turnr" class="btn small" title="turn right">↻</button></div><button id="sound" class="btn small" title="sound (M)"><span class="lb">♪</span></button><button id="musicbtn" class="btn small" title="music style"><span class="lb">♫</span><small id="musicname">Ambient</small></button><button id="speed" class="btn small" title="speed (F)"><span class="lb">1x</span></button><button id="pausebtn" class="btn small" title="menu (Esc)">☰</button></div>
+  <div id="topright"><span id="fps"><span id="fpsn"></span> · <span id="vox"></span></span><div id="viewctl"><button id="skybtn" class="btn small" title="mood and weather">☁</button><button id="turnl" class="btn small" title="turn left">↺</button><button id="turnr" class="btn small" title="turn right">↻</button></div><button id="sound" class="btn small" title="sound (M)"><span class="lb">♪</span></button><button id="musicbtn" class="btn small" title="music style"><span class="lb">♫</span><small id="musicname">Ambient</small></button><button id="speed" class="btn small" title="speed (F)"><span class="lb">1x</span></button><button id="pausebtn" class="btn small" title="menu (Esc)">☰</button></div>
   <div id="giftbox"><div id="boonbar"></div><div id="boontip" class="panel"></div></div>
   <div id="almanac"><button id="almtog">Almanac ▸</button><div id="almbody"></div></div>
   <div id="sky" class="panel"><div class="skyrow"><b>Mood</b><div class="seg" id="moodseg"></div></div><div class="skyrow"><b>Weather</b><div class="seg" id="wxseg"></div></div></div>
@@ -5803,28 +5804,61 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     };
     const kPB = kOf(PL_ZB), kPT = kOf(PL_ZT), kD = kOf(DRUM), kF = kOf(ZF);
     // Edge breakup (the voxel detail layer's PR 1, docs/designs/2026-10-29-voxel-detail-layer.md, option c):
-    // ME.content.edgeBreak = { amp, core, rough, minVS, recipes, kinds } turns it on; it is off without it,
-    // below minVS (16) and with ?edgebreak=0. Tile borders wander: a column within 2 amp of a side is moved
-    // by noise (at most 1.5 amp, tapering to nothing at 2 amp) and takes the kind, height and surface of
-    // the tile it lands in, so kind and height borders meander up to about amp tiles (0.15) either side of
+    // ME.content.edgeBreak = { amp, core, rough, minVS, recipes, kinds, vary, laneWave } turns it on; it is off
+    // without it, below minVS (16) and with ?edgebreak=0. Tile borders wander: a column within 2 amp of a side
+    // is moved by noise (at most 1.5 amp, tapering to nothing at 2 amp) and takes the kind, height and surface
+    // of the tile it lands in, so kind and height borders meander up to about amp tiles (0.15) either side of
     // the tile line, and the tile's core (at least core, 0.4 of the tile) is never moved. A border warps by
     // the smaller amp of its two tiles (recipes: { recipe: amp }, kinds: { name: amp }; lane and water 0),
     // and never into or out of a wet tile or no ground. Rough cliffs: where a dry neighbour lies rough tiles
     // (0.12) or more below, the step's face is pitted by 3D noise up to rough tiles deep, under the top
     // voxels. The map's tiles, heights, lanes, walk and build grid stay; grass, lobes, lamps and the ground
     // (T.top) read the result.
+    // PR 2a's knobs, each off when left out: a kind's or recipe's entry may be { amp, rough } (a number is its
+    // amp; a step's face takes the rough of its upper tile); vary: { scale, amp: [lo, hi], rough: [lo, hi] }
+    // scales each column's amp and rough by low noise fields about scale tiles across; laneWave: { amp, maxDz }
+    // carries the top material across the border of a lane and a dry tile about as high (material only).
     const EB0 = ME.qn("edgebreak", 1) === 0 ? null : CT.edgeBreak;
     const EB = EB0 && VS >= (EB0.minVS ?? 16) ? Object.assign({ amp: 0.15, core: 0.4, rough: 0.12 }, EB0) : null;
-    const EBR = Object.assign({ lane: 0, water: 0 }, EB && EB.recipes), EBK = (EB && EB.kinds) || {}, EBF = 2.2;
+    const EBR = Object.assign({ lane: 0, water: 0 }, EB && EB.recipes), EBK = (EB && EB.kinds) || {}, EBF = 2.2, AMAX = EB ? (1 - EB.core) / 4 : 0;
     // the map's lane kinds (game.lane: Fernglass walks flagstone and potting sand) keep straight edges too,
     // whatever kinds says: the game reads the ground across a lane (G.laneFrom)
     const EBL = new Set(G.laneKinds || []);
+    // a kind's [amp, rough]: its kinds entry, else its recipe's, else the defaults, field by field
+    const ebC = new Map(), ebF = (v, f) => (typeof v === "number" ? (f === "amp" ? v : undefined) : v ? v[f] : undefined);
+    const ebOf = (kd) => {
+      let r = ebC.get(kd);
+      if (!r) { const a = EBK[kindName.get(kd)], b = EBR[kd.recipe]; r = [ebF(a, "amp") ?? ebF(b, "amp") ?? EB.amp, ebF(a, "rough") ?? ebF(b, "rough") ?? EB.rough]; ebC.set(kd, r); }
+      return r;
+    };
+    // the column's vary factors for amp and rough (1 without vary), set per column by ebVary
+    let ebFa = 1, ebFr = 1;
     const ampAt = (x, y) => {
       const kd = kindAt(x, y);
       if (!kd || wetAt(x, y) || EBL.has(kindName.get(kd))) return 0;
-      return Math.max(0, Math.min(EBK[kindName.get(kd)] ?? EBR[kd.recipe] ?? EB.amp, (1 - EB.core) / 4));
+      return Math.max(0, Math.min(ebOf(kd)[0] * ebFa, AMAX));
     };
     const ebN = (X, Y, s) => Math.max(-1, Math.min(1, (P.fbm(X * EBF, Y * EBF, 0, s) - 0.5) * 4));
+    // vary: two 2-octave fbm fields at 1/scale (seeds 211 and 223, used nowhere else), smoothstepped from
+    // 0.3..0.7 to 0..1 and lerped to [lo, hi]; sampled on a quarter-tile grid, read bilinearly per column
+    const EBV = EB && EB.vary, VQ = 4;
+    let vf = null, vx0 = 0, vy0 = 0, vw = 0;
+    if (EBV) {
+      const sc = EBV.scale || 7, VA = EBV.amp || [1, 1], VR = EBV.rough || [1, 1], ss = (t) => { t = Math.max(0, Math.min(1, (t - 0.3) / 0.4)); return t * t * (3 - 2 * t); };
+      vx0 = Math.floor(O[0]) - 1; vy0 = Math.floor(O[1]) - 1; vw = Math.ceil(NX / VS + 3) * VQ + 1;
+      const vh = Math.ceil(NY / VS + 3) * VQ + 1;
+      vf = new Float32Array(vw * vh * 2);
+      for (let j = 0; j < vh; j++) for (let i = 0; i < vw; i++) {
+        const X = (vx0 + i / VQ) / sc, Y = (vy0 + j / VQ) / sc, q = (j * vw + i) * 2;
+        vf[q] = VA[0] + (VA[1] - VA[0]) * ss(P.fbm(X, Y, 0, 211, 2));
+        vf[q + 1] = VR[0] + (VR[1] - VR[0]) * ss(P.fbm(X, Y, 0, 223, 2));
+      }
+    }
+    const ebVary = (X, Y) => {
+      const u = (X - vx0) * VQ, v = (Y - vy0) * VQ, i = Math.floor(u), j = Math.floor(v), a = u - i, b = v - j, q = (j * vw + i) * 2, r = q + vw * 2;
+      ebFa = (vf[q] * (1 - a) + vf[q + 2] * a) * (1 - b) + (vf[r] * (1 - a) + vf[r + 2] * a) * b;
+      ebFr = (vf[q + 1] * (1 - a) + vf[q + 3] * a) * (1 - b) + (vf[r + 1] * (1 - a) + vf[r + 3] * a) * b;
+    };
     // the warped position and its tile into w = [Xw, Yw, tx, ty]
     const ebWarp = (X, Y, cx, cy, w) => {
       w[0] = X; w[1] = Y; w[2] = cx; w[3] = cy;
@@ -5841,9 +5875,13 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       w[0] = Xw; w[1] = Yw; w[2] = tx; w[3] = ty;
     };
     // the step faces within rough of a column (in warped space): its voxels from the lower top up to under its
-    // top voxels are dropped where 3D noise beats a cut rising with the distance from the face
-    const RD = EB ? EB.rough * VS : 0, EB_KEEP = 2;
-    const roughen = (Xw, Yw, tx, ty, kEnd, bc) => {
+    // top voxels are dropped where 3D noise beats a cut rising with the distance from the face. The rough is
+    // the column's tile's (the upper tile of the step), times the column's vary factor, at most 2 AMAX, so
+    // no content value undercuts the tile's core
+    const EB_KEEP = 2;
+    const roughen = (Xw, Yw, tx, ty, kd, kEnd, bc) => {
+      const RD = Math.min(ebOf(kd)[1] * ebFr, 2 * AMAX) * VS;
+      if (!(RD > 0)) return 0;
       const fx = Xw - tx, fy = Yw - ty, sx = fx < 0.5 ? -1 : 1, sy = fy < 0.5 ? -1 : 1, dx = (sx < 0 ? fx : 1 - fx) * VS, dy = (sy < 0 ? fy : 1 - fy) * VS;
       if ((dx >= RD && dy >= RD) || wetAt(tx, ty)) return 0;
       const kT = kOf(G.z[ty * G.W + tx]), drop = Math.max(4, RD);
@@ -5859,8 +5897,32 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       }
       return n;
     };
+    // laneWave: a column within 2 amp of the border between a lane tile (the lane recipe or a game.lane kind)
+    // and a dry tile of another sort whose tops differ by maxDz voxels at most takes the top material of the
+    // neighbour where the warp's wave (the same noise, at amp) would carry it across, either way: into w =
+    // [X, Y, tx, ty] the landing point and tile, true if it crossed. Kind, height and tile logic stay the column's.
+    // A sand kind (top or mottle in content.sand) never waves, either way: dig and collapse go by material
+    const LW = EB && EB.laneWave, LWA = LW ? LW.amp ?? 0.1 : 0, LWZ = LW ? LW.maxDz ?? 1 : 0;
+    const laneAt = (x, y) => { const kd = kindAt(x, y); return kd.recipe === "lane" || EBL.has(kindName.get(kd)); };
+    const SAND = new Set(CT.sand || []), sandKd = (kd) => SAND.has(pal.names[kd.top]) || SAND.has(pal.names[kd.mottle]);
+    const waveTo = (Xw, Yw, cx, cy, w) => {
+      const fx = Xw - cx, fy = Yw - cy, sx = fx < 0.5 ? -1 : 1, sy = fy < 0.5 ? -1 : 1, dX = sx < 0 ? fx : 1 - fx, dY = sy < 0 ? fy : 1 - fy;
+      if ((dX >= 2 * LWA && dY >= 2 * LWA) || wetAt(cx, cy) || sandKd(kindAt(cx, cy))) return false;
+      const ln = laneAt(cx, cy), kT = kOf(G.z[cy * G.W + cx]);
+      const other = (x, y) => !!kindAt(x, y) && !wetAt(x, y) && !sandKd(kindAt(x, y)) && laneAt(x, y) !== ln && Math.abs(kOf(G.z[y * G.W + x]) - kT) <= LWZ;
+      if (dX < 2 * LWA && other(cx + sx, cy)) {
+        const Xv = Xw + ebN(Xw, Yw, 83) * 1.5 * LWA * (1 - dX / (2 * LWA));
+        if (Math.floor(Xv) === cx + sx) { w[0] = Xv; w[1] = Yw; w[2] = cx + sx; w[3] = cy; return true; }
+      }
+      if (dY < 2 * LWA && other(cx, cy + sy)) {
+        const Yv = Yw + ebN(Xw, Yw, 89) * 1.5 * LWA * (1 - dY / (2 * LWA));
+        if (Math.floor(Yv) === cy + sy) { w[0] = Xw; w[1] = Yv; w[2] = cx; w[3] = cy + sy; return true; }
+      }
+      return false;
+    };
+    const lwW = [0, 0, 0, 0], lwOut = {};
     const ebW = [0, 0, 0, 0];
-    let ebCols = 0, ebCarved = 0;
+    let ebCols = 0, ebCarved = 0, lwCols = 0;
     // the rim spill (W6, frame.spill or st.spill): a drum column under a wet map tile on the rim (half a tile
     // inside the island's edge, on the column's own radius) that lies lower than the drum top is notched down
     // to that tile's top; the tile's water falls down the drum's face below (the falls)
@@ -5906,6 +5968,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         if (!kd) continue;
         // edge breakup: the column takes the tile at its warped position (the own tile in the core)
         if (EB) {
+          if (vf) ebVary(X, Y);
           ebWarp(X, Y, cx, cy, ebW);
           Xw = ebW[0]; Yw = ebW[1];
           if (ebW[2] !== cx || ebW[3] !== cy) { cx = ebW[2]; cy = ebW[3]; kd = kindAt(cx, cy); ebCols++; }
@@ -5914,6 +5977,15 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         out.kT = kOf(G.z[cy * G.W + cx]); out.mTop = 0; out.extra = 0; out.two = false; out.bed = false; out.layer = 0;
         c.X = Xw; c.Y = Yw; c.cx = cx; c.cy = cy;
         RECIPE[kd.recipe](kd, c, out);
+        // laneWave: the neighbour's recipe at the landing point gives the top material, nothing else
+        if (LW && waveTo(Xw, Yw, cx, cy, lwW)) {
+          const nk = kindAt(lwW[2], lwW[3]);
+          lwOut.kT = 0; lwOut.mTop = 0; lwOut.extra = 0; lwOut.two = false; lwOut.bed = false; lwOut.layer = 0;
+          c.X = lwW[0]; c.Y = lwW[1]; c.cx = lwW[2]; c.cy = lwW[3];
+          RECIPE[nk.recipe](nk, c, lwOut);
+          c.X = Xw; c.Y = Yw; c.cx = cx; c.cy = cy;
+          if (lwOut.mTop) { out.mTop = lwOut.mTop; lwCols++; }
+        }
         const { kT, mTop, extra, two, bed, layer } = out;
         if (bed) wetCols++;
         // drape: a couple of voxels under every lip, with hanging strands, and the lobes it hangs over lower
@@ -5929,7 +6001,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           const dz = kEnd - 1 - k;
           band[k * BPL + bc] = layer ? (dz < layer + extra ? mTop : kd.under) : dz === 0 || (two && dz === 1) ? mTop : dr && dz <= dd && !bed ? (n1 > 0.7 ? dr[1] : dr[0]) : kd.under;
         }
-        if (RD > 0) ebCarved += roughen(Xw, Yw, cx, cy, kEnd, bc);
+        if (EB) ebCarved += roughen(Xw, Yw, cx, cy, kd, kEnd, bc);
         if (jar) for (let k = kEnd; k < kD; k++) band[k * BPL + bc] = 0; // beds carved below the drum top
         // a box's skirt: the outer faces of the map's edge tiles, under their top voxel, in one material
         if (skirt && (X < e1 || Y < e1 || X > G.W - e1 || Y > G.H - e1)) for (let k = kF; k < kEnd - 1; k++) band[k * BPL + bc] = skirt;
@@ -6145,7 +6217,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 
     // Walkable ground: first solid voxel scanning down from zFrom.
 
-    const stats = { dims: [NX, NY, NZ], solid, wetCols, lobes, props: propCount, lanterns: lights.length, stampedVoxels: stamped, water: water.length, falls: falls.length, flooded: G.flood ? water.filter((w) => fullAt(w.x, w.y)).length : 0, edgeBreak: EB ? { cols: ebCols, carved: ebCarved } : null, zTop: O[2] + (kMax + 1) / VS, ms: Math.round(ME.now() - t0) };
+    const stats = { dims: [NX, NY, NZ], solid, wetCols, lobes, props: propCount, lanterns: lights.length, stampedVoxels: stamped, water: water.length, falls: falls.length, flooded: G.flood ? water.filter((w) => fullAt(w.x, w.y)).length : 0, edgeBreak: EB ? Object.assign({ cols: ebCols, carved: ebCarved }, LW ? { waved: lwCols } : null) : null, zTop: O[2] + (kMax + 1) / VS, ms: Math.round(ME.now() - t0) };
     // bounds: the world box in tiles; frame: the map's (jar or box); geo: the jar's measures (null in a box)
     const bounds = { min: O.slice(), max: [O[0] + B.size[0], O[1] + B.size[1], O[2] + B.size[2]] };
     // tiles: per tile of the map, its top (tiles), its kind's name (null on a generator map) and recipe (null:
@@ -7508,7 +7580,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       const C = ME.content, src = (k, v) => (typeof v === "function" ? String(v) : v);
       const v1 = st.map && st.map.v !== undefined, kinds = {};
       if (v1 && C && C.kinds) for (const n of Object.values(st.map.legend || {})) if (n !== null && C.kinds[n]) kinds[n] = C.kinds[n];
-      const content = C ? JSON.stringify([C.terrain, kinds, C.defaultMaterial, C.grass, C.critters, C.walkers, C.groundLamps, C.edgeRound, ME.qn("edgebreak", 1) === 0 ? null : C.edgeBreak], src) : "";
+      const content = C ? JSON.stringify([C.terrain, kinds, C.defaultMaterial, C.grass, C.critters, C.walkers, C.groundLamps, C.edgeRound, ME.qn("edgebreak", 1) === 0 ? null : C.edgeBreak, C.sand], src) : "";
       const lists = C ? JSON.stringify([C.volumeDeco, C.flipbookFrames, C.modelScale, C.critterScale, C.primLights, C.sunShadeHalf], src) : "";
       // a v1 map names the bake, and its game block (route, cover, spawns) is not baked, but for its lane
       // kinds (game.lane: the edge breakup keeps their borders straight, bake-terrain.js)
@@ -12016,8 +12088,14 @@ fn boxOf(V: Vox) -> Box {
   C.sand = ["sand", "sand2", "sand3"];
   // edge breakup at vs 16 and up (bake-terrain.js, the voxel detail layer's PR 1): tile borders meander up to
   // 0.15 tile, cliff faces pitted 0.12 deep; lanes and water keep straight edges. For both packs (Fernglass
-  // too); Art tunes it per kind (the design's PR 2)
-  C.edgeBreak = { amp: 0.15, core: 0.4, rough: 0.12 };
+  // adds its kinds). Per kind (the design's PR 2, Art): the moss terraces break up most; the sand banks stay
+  // soft, gently curved shores. vary: over about 7 tiles amp and rough swell and fade (their own noise), so
+  // some terraces are calm ledges and others ragged, pitted and here and there overhung. laneWave: where the
+  // road meets moss at its height the moss creeps onto the setts and grit into the moss (material only)
+  C.edgeBreak = {
+    amp: 0.15, core: 0.3, rough: 0.12, kinds: { moss: 0.15, sandbank: { amp: 0.07, rough: 0.05 } },
+    vary: { scale: 7, amp: [0.25, 1.2], rough: [0, 2.2] }, laneWave: { amp: 0.1, maxDz: 1 },
+  };
   // the material of a model prim that names none
   C.defaultMaterial = "stone";
   // grass tufts: the ground materials they grow on, and the blade materials
@@ -12642,6 +12720,9 @@ fn boxOf(V: Vox) -> Box {
   // soft tile edges at vs 24 and up (bake-terrain.js): stone stays crisp beside the soft turf; layers would get
   // the sand banks' 0.15 (Art, #238)
   CT.edgeRound = Object.assign(CT.edgeRound || {}, { kinds: Object.assign((CT.edgeRound && CT.edgeRound.kinds) || {}, { flagstone: 0.05, wall: 0.05 }) });
+  // edge breakup (momiji.js's edgeBreak, Art): the walls are laid masonry and keep straight lines; the fern
+  // beds sprawl like the moss; the pond floor under the flood only wavers (the walks are lane kinds: straight)
+  if (CT.edgeBreak) CT.edgeBreak.kinds = Object.assign(CT.edgeBreak.kinds || {}, { wall: 0, fernbed: 0.15, pond: 0.05 });
 
   // ---------------------------------------------------------------- models
   // Model conventions are the generator's: tile units, the anchor at the ground centre, Z up. A stamp's
@@ -15016,7 +15097,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.32.0", name: "Mossheart", commit: "ba8155f" };
+  G.VERSION = { v: "0.33.0", name: "Mossheart", commit: "e937acc" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -20584,7 +20665,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
     // the game's speed on its button (main.js steps it: 1x, 2x, 3x)
     showSpeed(s) { label("speed", `${s}x`); $("speed").classList.toggle("on", s > 1); }
-    setFps(fps, scale) { $("fps").textContent = `${Math.round(fps)} fps · ${Math.round(scale * 100)}%`; }
+    setFps(fps, scale) { $("fpsn").textContent = `${Math.round(fps)} fps · ${Math.round(scale * 100)}%`; }
+    // and the density beside it, set once a load (main.js, G.vsLabel), marked when it came out coarser
+    setDensity({ text, down }) { const v = $("vox"); v.textContent = text; v.classList.toggle("down", down); }
 
     // The gifts on offer: each card framed by its rarity, with its icon (Art's, or the element's glyph),
     // the level it would reach (I-III, pips for the levels) and that level's description. A fused boon
@@ -21778,6 +21861,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
   } catch (e) { /* storage blocked: no guard */ }
   if (!ME.vsPinned) ME.setVS(Math.min(VS_MAX, boot.vs));
+  // The density beside the fps (the baked one, from main.js): "vox 40", or "vox 32↓" when under the default or
+  // what was asked for, with why when this load knows: ?vs= ("url"), the crash guard ("crash", this load only:
+  // it then saves the coarser density as the player's choice) or the device's cap ("cap").
+  G.vsLabel = (baked) => {
+    const drop = G.vsDropped, want = drop ? drop.from : boot.vs, down = baked < Math.max(DEFAULTS.vs, want);
+    const why = !down ? "" : ME.vsPinned ? " url" : drop ? " crash" : want > VS_MAX ? " cap" : "";
+    return { text: `vox ${baked}${down ? "↓" + why : ""}`, down };
+  };
   // and the garden (view/level.js): ?level=, else the one picked on the title screen
   G.levelId = G.pickLevel(boot.level);
   // and the resolution, for main.js's first fitCanvas (apply() keeps it after)
@@ -25050,6 +25141,8 @@ function MG_SFX(L) {
       if (ME.now() - perf.t < 2000) return;
       perf.fps = perf.n / Math.max(1e-3, perf.acc); perf.acc = 0; perf.n = 0; perf.t = ME.now();
     };
+
+    hud.setDensity(G.vsLabel(T.VS)); // (what this load's terrain really holds, baked or from the cache)
 
     const bot = G.Bot && ME.qn("autoplay", 0) ? new G.Bot(game, {
       maxWaves: ME.qn("waves", 8), early: ME.qn("early", -1) >= 0 ? ME.qn("early", -1) : null, now: () => ME.now(), log: (line) => ME.log("BOT", line),
