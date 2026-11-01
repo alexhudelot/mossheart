@@ -4152,7 +4152,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 
   // Voxels per tile edge: every bake reads ME.VS (and stores it as T.VS). An app picks one of VS_LEVELS
   // with ME.setVS before it bakes; ?vs=N overrides the app's choice. Memory and bake time grow with VS³:
-  // above 24 a game offers what ME.vsCeiling allows; 64 is for close-up asset work (it bakes the whole library
+  // above 24 a game offers what ME.vsCeiling allows; 64 also serves close-up asset work (it bakes the whole library
   // in about 190 s).
   ME.VS_LEVELS = [8, 12, 16, 20, 24, 32, 40, 48, 64];
   ME.setVS = (n) => { const L = ME.VS_LEVELS; ME.VS = L.reduce((b, v) => (Math.abs(v - n) < Math.abs(b - n) ? v : b), L[0]); return ME.VS; };
@@ -4160,13 +4160,14 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   if (ME.vsPinned) ME.setVS(ME.qn("vs", 16));
   // The densest level this device should offer. Engine's measure (2026-10-24, Mossheart's gardens on a 16 GB
   // Iris Xe laptop, cold bake and the machine's commit charge): 24 bakes in ~34 s for +0.9 GB, 32 in 50-59 s
-  // for +1.3-1.5 GB, 40 for +2-2.7 GB (docs/decisions/2026-10-24-density-levels.md). It is 40, Ultimate, on
-  // every device, phones and small-memory machines included (the user, 2026-10-26: "Enable 40 density
-  // (ultimate)", "have 40 option available on phones as well"). A game's default stays below it, so 40 is
+  // for +1.3-1.5 GB, 40 for +2-2.7 GB (docs/decisions/2026-10-24-density-levels.md); 48 and 64 are unmeasured
+  // in the game, as no check bakes 64 on that laptop. It is 64, Maximum, on
+  // every device, phones and small-memory machines included (the user: "enable 64 options on published version,
+  // mobile included"; 40 opened the same way on 2026-10-26). A game's default stays below it, so 48 and 64 are
   // opt-in, and a load that dies is caught by the game's own crash guard (Mossheart's menu.js starts the next
-  // boot a level coarser). 48 and 64 are never a game's. The adapter argument and ME.initGPU's ME.gpuClass stay
+  // boot a level coarser). The adapter argument and ME.initGPU's ME.gpuClass stay
   // for a later per-device tier. ?vsmax=N overrides it (tests).
-  ME.vsCeiling = (adapter = null) => (ME.params.has("vsmax") ? ME.qn("vsmax", 24) : 40);
+  ME.vsCeiling = (adapter = null) => (ME.params.has("vsmax") ? ME.qn("vsmax", 24) : 64);
 
   // Let the page paint between bake steps, but only every ~40 ms: each real yield costs a frame, and the
   // bake calls this often. A message-channel post is not clamped like setTimeout.
@@ -15097,7 +15098,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.33.0", name: "Mossheart", commit: "e937acc" };
+  G.VERSION = { v: "0.34.0", name: "Mossheart", commit: "7fb025f" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
