@@ -6464,11 +6464,12 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   ME.poolMaxDepth = (limits = ME.limits) => (limits && limits.maxTextureDimension3D) || 2048;
   ME.poolMaxBricks = (limits, S = ME.POOL_SLAB_MAX) => Math.floor(ME.poolMaxDepth(limits) / 8) * S * S;
   // The pool's budget on this device, under the ceiling: ME.POOL_PHONE (65,536 bricks, 128 MB, the ceiling before
-  // E6) on a phone-like device (a mobile UA, or navigator.deviceMemory <= 4 GB), else the ceiling. The LOD drop (no
-  // 2x copies when they don't fit), the bake's throw and MB.stats.fill read it, so a phone keeps the thresholds it
-  // had before E6. ME.poolBudget (or ?poolbudget=) sets it.
+  // E6) on a phone-like device (a mobile UA, an iPad, whose Safari says Macintosh but has a touch screen, or
+  // navigator.deviceMemory <= 4 GB), else the ceiling. The LOD drop (no 2x copies when they don't fit), the bake's
+  // throw and MB.stats.fill read it, so a phone keeps the thresholds it had before E6. ME.poolBudget (or
+  // ?poolbudget=) sets it.
   ME.POOL_PHONE = 65536;
-  ME.phoneLike = () => /Android|iPhone|iPad|Mobile/.test(navigator.userAgent) || (navigator.deviceMemory || 8) <= 4;
+  ME.phoneLike = () => /Android|iPhone|iPad|Mobile/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent)) || (navigator.deviceMemory || 8) <= 4;
   ME.poolBricks = (limits) => Math.min(ME.poolMaxBricks(limits), ME.poolBudget || ME.qn("poolbudget", 0) || (ME.phoneLike() ? ME.POOL_PHONE : Infinity));
   // A model baked finer than POOL_HOLLOW voxels per tile edge (VS x fine) keeps only its surface bricks in the pool:
   // a brick whose 512 voxels are solid and whose 6 neighbours' facing layers are solid is never reached by a ray
@@ -6835,8 +6836,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // E4, progressive hero density: an app's flipbook (opts.models) baked finer than tile density (o.fine > 1) and
   // at ME.PROG_MIN voxels per tile edge or more (VS x fine) bakes at fine 1 first, the game starts on it, and a
   // worker bakes it at full density meanwhile; R.swapModel puts the full flipbook in its place (MB.prog below).
-  // Off with opts.progressive = false, ME.progressive = false or ?progressive=0, with a focus bake and without
-  // the workers.
+  // A critter's flipbook does too when its model is named in opts.progCritters (the small critters aren't worth a
+  // swap each). Off with opts.progressive = false, ME.progressive = false or ?progressive=0, with a focus bake and
+  // without the workers.
   ME.PROG_MIN = 32;
   // The full bakes start once the game's frames settle (its first frames after READY compile pipelines, and the
   // bakes' CPU would make that freeze longer): ME.PROG_SETTLE ms of frames, none longer than ME.PROG_HITCH ms, or
@@ -6852,13 +6854,42 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const uses = new Uint32Array(L.variants.length), count = (a) => { for (const i of a) uses[i]++; };
     L.statics.forEach(count);
     for (const m of [L.walkerFrames, L.extraFrames, L.critterFrames]) Object.values(m).forEach(count);
-    const groups = [];
-    for (const key in L.extraFrames) {
-      const vs = L.extraFrames[key];
-      if (vs.some((i, j) => i !== vs[0] + j)) continue;
+    const groups = [], crit = new Set(opts.progCritters || []);
+    const each = (frames, on) => { for (const key in frames) {
+      const vs = frames[key];
+      if (!on(vs) || vs.some((i, j) => i !== vs[0] + j)) continue;
       if (vs.every((i) => { const { md, vf } = mds[i]; return vf > 1 && ME.VS * vf >= ME.PROG_MIN && !notData(md, opts) && uses[i] === 1; })) groups.push({ key, vs: vs.slice() });
-    }
+    } };
+    each(L.extraFrames, () => true);
+    each(L.critterFrames, (vs) => crit.has(L.variants[vs[0]].name));
     return groups;
+  }
+  // E4: a progressive bake's MB as the bake cache stores it, a new pool and map beside MB's (the game goes on
+  // playing MB): the upgrade's pool is sized for its peak and holds the freed slots of the coarse frames, MB.inner
+  // their interiors. The bricks the map points at are numbered in map order into a pool of just their number (the
+  // slab slabOf gives that number, as a single-pass bake's), and MB.inner cut down the same way.
+  function compactOf(MB, slabOf) {
+    const t0 = ME.now(), { prog: _p, voxel: _v, ...mb } = MB, [PX0, PY0, PZ0] = MB.adims, PB0 = PX0 / 8, map = MB.bricks.slice(), in0 = MB.inner ? MB.inner.mats : null;
+    const nS = new Uint32Array((PB0 * PB0 * PZ0) / 8), nI = new Uint32Array(in0 ? in0.length / 512 : 0);
+    let n = 0, m = 0;
+    for (let i = 0; i < map.length; i++) {
+      const e = map[i];
+      if (e >>> 24) { const k = (e & 0xffffff) - 1; map[i] = ((e & 0xff000000) | (nS[k] || (nS[k] = ++n))) >>> 0; }
+      else if (e) map[i] = nI[e - 1] || (nI[e - 1] = ++m);
+    }
+    const PB = slabOf(n), PX = PB * 8, PZ = Math.max(1, Math.ceil(n / (PB * PB))) * 8, atlas = new Uint8Array(PX * PX * PZ * 4), to = new Uint32Array(atlas.buffer), from = new Uint32Array(MB.atlas.buffer, MB.atlas.byteOffset, MB.atlas.length / 4);
+    for (let k = 0; k < nS.length; k++) {
+      if (!nS[k]) continue;
+      const j = nS[k] - 1, a = ((Math.floor(k / (PB0 * PB0)) * 8) * PY0 * PX0) + ((Math.floor(k / PB0) % PB0) * 8) * PX0 + (k % PB0) * 8, b = ((Math.floor(j / (PB * PB)) * 8) * PX * PX) + ((Math.floor(j / PB) % PB) * 8) * PX + (j % PB) * 8;
+      for (let z = 0; z < 8; z++) for (let y = 0; y < 8; y++) {
+        const p = a + z * PY0 * PX0 + y * PX0, q = b + z * PX * PX + y * PX;
+        for (let x = 0; x < 8; x++) to[q + x] = from[p + x];
+      }
+    }
+    const mats = in0 && new Uint8Array(m * 512);
+    if (in0) for (let k = 0; k < nI.length; k++) if (nI[k]) mats.set(in0.subarray(k * 512, (k + 1) * 512), (nI[k] - 1) * 512);
+    const stats = Object.assign({}, MB.stats, { slab: PB, pool: [PX, PX, PZ], poolMB: +(atlas.byteLength / 1048576).toFixed(1), hollow: Object.assign({}, MB.stats.hollow, { inner: m }), compact: { bricks: n, fromMB: +(MB.atlas.byteLength / 1048576).toFixed(1), staleInner: nI.length - m, ms: Math.round(ME.now() - t0) } });
+    return Object.assign(mb, { atlas, adims: [PX, PX, PZ], bricks: map, inner: in0 ? { mats } : MB.inner, stats });
   }
   // rk[id]: the order the single-pass bake would have numbered the materials in, for halfOf's ties: the ids the
   // palette held before the bake (below n0) as they are, then the others by their first use over lists (one Set
@@ -6872,7 +6903,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   }
   // all a bake's worker jobs depend on but the models' sources: the variants, in order, the density, the cull, the
   // default material, which variants go to the workers and whether flipbooks bake progressively
-  const sigOf = (L, def, opts) => JSON.stringify([L.variants.map((v) => v.key), ME.VS, ME.sdf.cull, def, !!opts.focus, workersOn(opts), progOn(opts)]);
+  const sigOf = (L, def, opts) => JSON.stringify([L.variants.map((v) => v.key), ME.VS, ME.sdf.cull, def, !!opts.focus, workersOn(opts), progOn(opts), opts.progCritters || []]);
 
   // A bake's models built and its data-only ones posted to the workers (opts.worker = false or ME.bakeWorkers =
   // false keeps them here), largest first, so a long job doesn't start last: h.mds, h.offWorker, h.ready
@@ -7186,7 +7217,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 
     // E4: MB.prog, a progressive bake's upgrade: { maxGroup (the most models one swap takes), started, stats (sp:
     // stats.prog), upgraded (a promise: true once every flipbook is swapped, false if one failed or it was
-    // cancelled), cancel() (ends the workers; safe twice), gen(R), live() (MB itself, for the bake cache) }. R.init
+    // cancelled), cancel() (ends the workers; safe twice), gen(R), compact() (compactOf: MB for the bake cache) }. R.init
     // runs gen on R.addTask: for each
     // flipbook, in variant order, each frame's full bake taken in from its worker (numbered and painted here, a
     // slice a frame), sent back for its interior and its 2x-down copy (finishOf; here if no worker is left), put
@@ -7310,12 +7341,12 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           sp.doneAt = Math.round(ME.now());
         } catch (e) { ok = false; throw e; } finally { run.stop(); finish(ok && !cancelled); }
       };
-      return { maxGroup, started: false, stats: sp, upgraded, cancel, gen, live: () => MB };
+      return { maxGroup, started: false, stats: sp, upgraded, cancel, gen, compact: () => compactOf(MB, slabOf) };
     }
   };
 
   // the private functions a model bake depends on, for the bake cache's key (src/cache.js)
-  ME.bakeModels.parts = [bricksOf, matOf, innerOf, halfOf, workerJob, finishOf, estOf, runJobs, listOf, modelsOf, launch, workersOn, notData, defOf, sigOf, progOf, rankOf, progOn, hollowOn];
+  ME.bakeModels.parts = [bricksOf, matOf, innerOf, halfOf, workerJob, finishOf, estOf, runJobs, listOf, modelsOf, launch, workersOn, notData, defOf, sigOf, progOf, compactOf, rankOf, progOn, hollowOn];
 
   // Starts a bake's worker jobs before the terrain bake, so the workers run during it (#185): the variant list
   // from st (ME.volumeDecoOf, the props bakeTerrain bakes as volumes), the models built, the jobs posted. Returns
@@ -7612,7 +7643,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // database opens. It replaces its slot's other records and any record without a slot (from before slots).
     // E4: a progressive bake's record (rec.MB.prog) is stored once its upgrade is done, with the full models, so the
     // next launch starts on them: the rest is copied now as it is (T, the mesh, the grass and MB's statics, which
-    // the game plays), MB and the palette's names (the full models bring materials) then. Nothing is stored if the
+    // the game plays), MB (compacted: MB.prog.compact) and the palette's names (the full models bring materials)
+    // then. Nothing is stored if the
     // upgrade fails or is cancelled.
     async put(key, rec) {
       if (ME.qn("nocache", 0) || !window.indexedDB) return;
@@ -7620,8 +7652,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       try { rec = pack(prog ? Object.assign({}, rec, { palNames: null, MB: { statics: rec.MB.statics } }) : rec, st); if (prog) rec = structuredClone(rec); } catch (e) { ME.log("WARN bake cache pack failed:", e && e.message); return; }
       if (prog) {
         if (!(await prog.upgraded)) { ME.log("WARN bake cache: the progressive bake's upgrade did not finish, so it is not stored"); return; }
-        const { prog: _p, voxel: _v, ...mb } = prog.live();
-        try { rec.MB = pack(Object.assign(mb, { statics: rec.MB.statics }), st); rec.palNames = names.slice(); } catch (e) { ME.log("WARN bake cache pack failed:", e && e.message); return; }
+        try { rec.MB = pack(Object.assign(prog.compact(), { statics: rec.MB.statics }), st); rec.palNames = names.slice(); } catch (e) { ME.log("WARN bake cache pack failed:", e && e.message); return; }
       }
       ME.bakeCache.packed = { rawMB: +(st.raw / 1048576).toFixed(1), packedMB: +(st.packed / 1048576).toFixed(1), ms: Math.round(st.ms) }; // (checks read it)
       const write = (db, r) => {
@@ -15098,7 +15129,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.34.0", name: "Mossheart", commit: "7fb025f" };
+  G.VERSION = { v: "0.35.0", name: "Mossheart", commit: "40f4e36" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -16877,34 +16908,37 @@ function MA_DSP() {
     Object.assign(st.mats, TOWERS.MATS);
     // the garden wisplings, six to a garden on Momiji and Fernglass (critters.js, kind wisp): eight designs of five
     // frames at size 1.5 (a body ~0.5 tiles tall, ~15 px at the fit zoom: the user's pick), ~9.6 voxels across the
-    // body at any density (fine 40 / VS, from 1.6, under G.HERO_MAX). ME.content outlives the level, so another map drops them
-    const CT = ME.content, id = st.map && st.map.id, on = id === "mf-valley" || id === "fernglass", VS = ME.VS || 32;
-    const fine = +Math.min(Math.max(1.6, 40 / VS), (G.HERO_MAX || 64) / VS).toFixed(3);
+    // body at the heroes' density (G.heroFine). ME.content outlives the level, so another map drops them
+    const CT = ME.content, id = st.map && st.map.id, on = id === "mf-valley" || id === "fernglass", fine = G.heroFine();
     for (let d = 0; d < 8; d++) if (on) CT.critters["wisp" + d] = ["wispling", { d, size: 1.5 }, 5, fine]; else delete CT.critters["wisp" + d];
     if (on) CT.critterExtra = Object.assign(CT.critterExtra || {}, { [id]: Object.assign({}, (CT.critterExtra || {})[id], { wisp: 6 }) });
   };
 
-  // What the game bakes. Creatures: size = world scale relative to the asset's own, fine = voxel density
-  // (drawn scaled back down), fwd = the angle of the model's forward (heads point +X), hover = how high
-  // the model already floats (in tiles, after scaling), gait = flipbook cycles per tile walked (fliers:
-  // per second), flap = animated by time rather than by distance.
+  // The heroes' density, one rule for every creature, plant, wisp and the Heart Tree: 64 voxels per tile edge over
+  // any terrain, under G.HERO_MAX (32 on phones), as a factor of the terrain's VS, drawn at 1 / fine. Scenery
+  // statics stay at the terrain's density.
+  G.heroFine = () => Math.min(64, G.HERO_MAX || 64) / (ME.VS || 32);
+
+  // What the game bakes. Creatures: size = world scale relative to the asset's own, fwd = the angle of the model's
+  // forward (heads point +X), hover = how high the model already floats (in tiles, after scaling), gait = flipbook
+  // cycles per tile walked (fliers: per second), flap = animated by time rather than by distance.
   G.CREATURE_MODELS = {
-    grub: { name: "ms_grub", size: 0.8, fine: 1.5, fwd: 0, hover: 0, gait: 2.6 },
-    beetle: { name: "ms_beetle", size: 0.8, fine: 1.5, fwd: 0, hover: 0, gait: 3.0 },
-    moth: { name: "ms_moth", size: 0.7, fine: 1.5, fwd: 0, hover: 0.375, gait: 3.2, flap: true },
-    golem: { name: "ms_golem", size: 0.75, fine: 1.25, fwd: 0, hover: 0, gait: 1.5 },
-    spirit: { name: "ms_spirit", size: 0.85, fine: 1, fwd: 0, hover: 0.06, gait: 0.9, flap: true },
+    grub: { name: "ms_grub", size: 0.8, fwd: 0, hover: 0, gait: 2.6 },
+    beetle: { name: "ms_beetle", size: 0.8, fwd: 0, hover: 0, gait: 3.0 },
+    moth: { name: "ms_moth", size: 0.7, fwd: 0, hover: 0.375, gait: 3.2, flap: true },
+    golem: { name: "ms_golem", size: 0.75, fwd: 0, hover: 0, gait: 1.5 },
+    spirit: { name: "ms_spirit", size: 0.85, fwd: 0, hover: 0.06, gait: 0.9, flap: true },
     // the mould creatures (game/enemies); sizes from their stand-ins' times Game's look factors
-    snail: { name: "ms_snail", size: 0.88, fine: 1.5, fwd: 0, hover: 0, gait: 2.2 },
-    bloat: { name: "ms_bloat", size: 1.0, fine: 1.5, fwd: 0, hover: 0, gait: 2.4 },
-    mite: { name: "ms_mite", size: 0.5, fine: 1.5, fwd: 0, hover: 0, gait: 4.0 },
-    mender: { name: "ms_mender", size: 0.75, fine: 1.5, fwd: 0, hover: 0, gait: 2.0 },
-    midge: { name: "ms_midge", size: 0.5, fine: 1.5, fwd: 0, hover: 0.34, gait: 4.0, flap: true },
-    mole: { name: "ms_mole", size: 0.84, fine: 1.5, fwd: 0, hover: 0, gait: 2.8 },
-    lichen: { name: "ms_lichen", size: 0.65, fine: 1.25, fwd: 0, hover: 0, gait: 2.0 },
-    mother: { name: "ms_mother", size: 1.0, fine: 1, fwd: 0, hover: 0, gait: 0.8 },
+    snail: { name: "ms_snail", size: 0.88, fwd: 0, hover: 0, gait: 2.2 },
+    bloat: { name: "ms_bloat", size: 1.0, fwd: 0, hover: 0, gait: 2.4 },
+    mite: { name: "ms_mite", size: 0.5, fwd: 0, hover: 0, gait: 4.0 },
+    mender: { name: "ms_mender", size: 0.75, fwd: 0, hover: 0, gait: 2.0 },
+    midge: { name: "ms_midge", size: 0.5, fwd: 0, hover: 0.34, gait: 4.0, flap: true },
+    mole: { name: "ms_mole", size: 0.84, fwd: 0, hover: 0, gait: 2.8 },
+    lichen: { name: "ms_lichen", size: 0.65, fwd: 0, hover: 0, gait: 2.0 },
+    mother: { name: "ms_mother", size: 1.0, fwd: 0, hover: 0, gait: 0.8 },
     // the blight creatures of the bestiary (authored in tiles, size 1); baked once Defs has the kind
-    crow: { name: "ms_crow", size: 1.0, fine: 1.5, fwd: 0, hover: 0, gait: 2.4, flap: true },
+    crow: { name: "ms_crow", size: 1.0, fwd: 0, hover: 0, gait: 2.4, flap: true },
   };
   // The plants: stumps and stones (the user's pick A3 of the wisp-towers design, #311). Each plant grows from
   // a dark vessel, a hollow stump or an old mossy temple stone, in the Willow Wisp's language: a moss top, small
@@ -17459,11 +17493,10 @@ function MA_DSP() {
   ME.ASSET_BY.wispling = "wispling" + TOWERS_SRC; ME.ASSET_SRC += "wispling" + TOWERS_SRC;
 
   // frames: the idle loop's flipbook (FRAMES when unset). The plants hold still for now (one frame each,
-  // 24 volumes for the eight at three levels); their idle loop is a follow-up. fine: the voxel density, as
-  // the creatures' (1.6: 64 over the vs40 terrain; G.HERO_MAX caps it, 32 on phones), drawn at 1/fine.
+  // 24 volumes for the eight at three levels); their idle loop is a follow-up. Their density is G.heroFine.
   G.TOWER_MODELS = {
-    thorn: { name: "ms_tw_thorn", size: 0.72, fine: 1.6, frames: 1 }, sun: { name: "ms_tw_sun", size: 0.72, fine: 1.6, frames: 1 }, puff: { name: "ms_tw_puff", size: 0.72, fine: 1.6, frames: 1 }, wisp: { name: "ms_tw_wisp", size: 0.72, fine: 1.6, frames: 1 },
-    briar: { name: "ms_tw_briar", size: 0.72, fine: 1.6, frames: 1 }, toad: { name: "ms_tw_toad", size: 0.72, fine: 1.6, frames: 1 }, moon: { name: "ms_tw_moon", size: 0.72, fine: 1.6, frames: 1 }, lily: { name: "ms_tw_lily", size: 0.72, fine: 1.6, frames: 1 },
+    thorn: { name: "ms_tw_thorn", size: 0.72, frames: 1 }, sun: { name: "ms_tw_sun", size: 0.72, frames: 1 }, puff: { name: "ms_tw_puff", size: 0.72, frames: 1 }, wisp: { name: "ms_tw_wisp", size: 0.72, frames: 1 },
+    briar: { name: "ms_tw_briar", size: 0.72, frames: 1 }, toad: { name: "ms_tw_toad", size: 0.72, frames: 1 }, moon: { name: "ms_tw_moon", size: 0.72, frames: 1 }, lily: { name: "ms_tw_lily", size: 0.72, frames: 1 },
   };
   G.HEART_MODEL = { name: "ms_heart", size: 1.25 };
   // the asset models grow by level themselves; the instance adds only a touch
@@ -17519,7 +17552,7 @@ function MA_DSP() {
       if (side) deco.push(["ms_glowcap", { scale: k0("ms_glowcap") * 0.7 }, x, y, { dx: side[0] * 0.38, dy: side[1] * 0.38 }]);
     }
   };
-  const heartO = (hurt) => ({ hurt, scale: k0(G.HEART_MODEL.name) * G.HEART_MODEL.size });
+  const heartO = (hurt) => ({ hurt, scale: k0(G.HEART_MODEL.name) * G.HEART_MODEL.size, fine: G.heroFine() });
 
   // Sand drawn as sand, after the bank tiles are retyped (main.js calls it after G.sandBanks). Each sand tile
   // gets a sandCover stamp (content/critter-models.js): grain, ripples and damp patches on its top, and
@@ -17554,9 +17587,9 @@ function MA_DSP() {
   // opts.models for ME.bakeModels: key -> [model, options, frames]
   G.bakeList = () => {
     const out = {};
-    for (const k in G.CREATURE_MODELS) { if (!G.Defs.ENEMIES[k]) continue; const c = G.CREATURE_MODELS[k]; out["e_" + k] = [c.name, { scale: k0(c.name) * c.size, fine: c.fine }, FRAMES]; }
+    for (const k in G.CREATURE_MODELS) { if (!G.Defs.ENEMIES[k]) continue; const c = G.CREATURE_MODELS[k]; out["e_" + k] = [c.name, { scale: k0(c.name) * c.size, fine: G.heroFine() }, FRAMES]; }
     // (only the plants the rules have: a model may land before its plant)
-    for (const k in G.TOWER_MODELS) { if (!G.Defs.TOWERS[k]) continue; const c = G.TOWER_MODELS[k]; for (let lv = 1; lv <= 3; lv++) out["t_" + k + lv] = [c.name, { lv, scale: k0(c.name) * c.size, fine: c.fine }, c.frames || FRAMES]; }
+    for (const k in G.TOWER_MODELS) { if (!G.Defs.TOWERS[k]) continue; const c = G.TOWER_MODELS[k]; for (let lv = 1; lv <= 3; lv++) out["t_" + k + lv] = [c.name, { lv, scale: k0(c.name) * c.size, fine: G.heroFine() }, c.frames || FRAMES]; }
     for (const h of [1, 2]) out["heart" + h] = [G.HEART_MODEL.name, heartO(h), FRAMES]; // its crown's sway, as stage 0's
     return out;
   };
@@ -17571,7 +17604,7 @@ function MA_DSP() {
     G.models = {
       creature: G.Defs.ENEMY_ORDER.map((k) => {
         const c = G.CREATURE_MODELS[k], frames = gf["e_" + k], m = MB.models[frames[0]];
-        return { frames, fwd: c.fwd, hover: c.hover * k0(c.name) * c.size, gait: c.gait, flap: !!c.flap, scale: 1 / c.fine, h: m.h, r: m.r };
+        return { frames, fwd: c.fwd, hover: c.hover * k0(c.name) * c.size, gait: c.gait, flap: !!c.flap, scale: 1 / m.fine, h: m.h, r: m.r };
       }),
       towerFrames,
       // the Heart Tree's flipbook per hurt stage (0 is the baked static's own)
@@ -21830,7 +21863,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // the voxels and bakes ~1.4x as long, at 24 ~3.4x and ~2.2x (Iris Xe: 6.7 s at 16, 14.8 s at 24; phones bake
   // several times slower: the crash guard below steps a density down when a load dies). GPU time barely
   // moves: it is per pixel.
-  const mobile = /Android|iPhone|iPad|Mobile/.test(navigator.userAgent), mem = navigator.deviceMemory || 8;
+  // (an iPad's Safari says Macintosh: its touch screen tells it, as in ME.phoneLike)
+  const mobile = /Android|iPhone|iPad|Mobile/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent)), mem = navigator.deviceMemory || 8;
   const VS_MAX = ME.params.has("vsmax") && ME.vsCeiling ? ME.vsCeiling() : Math.max(32, ME.vsCeiling ? ME.vsCeiling() : 32);
   // and the densest a model may bake (its o.fine x the terrain's VS; docs/decisions/2026-10-20-hero-density.md):
   // 32 on those devices, 64 elsewhere. main.js caps the bake list's fine to it.
@@ -24869,7 +24903,8 @@ function MG_SFX(L) {
     const pal = new ME.Palette(st);
     const ids = { sky: pal.id("sky"), water: pal.id("water"), fall: pal.id("fall"), maple: pal.id("maple") };
     // the bake, or the cached copy of it (the engine's IndexedDB bake cache; ?nocache=1 skips it)
-    const bakeOpts = { walkers: false, models: G.bakeList() };
+    // (the wisps bake progressively too, E4: fine, so they'd add to READY; the small critters stay as they are)
+    const bakeOpts = { walkers: false, models: G.bakeList(), progCritters: ["wispling"] };
     // (no model finer than G.HERO_MAX voxels per tile edge, menu.js: 32 on phones)
     for (const k in bakeOpts.models) { const o = bakeOpts.models[k][1]; if (o && o.fine && o.fine * ME.VS > G.HERO_MAX) o.fine = G.HERO_MAX / ME.VS; }
     // (and no progressive bake, E4, on a phone, the devices that cap at 32 (ME.phoneLike() is menu.js's test): at vs20
