@@ -538,7 +538,7 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
 #setbody .row { display: flex; align-items: center; gap: 10px; min-height: 42px; }
 #setbody .row > span { width: calc(120px * var(--ts)); flex: none; }
 #setbody input[type=range] { flex: 1; accent-color: var(--moss); height: 28px; }
-#setbody .row em { width: 44px; text-align: right; font-style: normal; color: #6b7560; }
+#setbody .row em { width: calc(44px * var(--ts)); flex: none; text-align: right; font-style: normal; color: #6b7560; }
 .seg { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; }
 .seg button { font: inherit; font-size: calc(14px * var(--ts)); color: var(--ink); background: #efe6c9; border: 2px solid #cdbf98; border-radius: 10px; padding: 7px 10px; cursor: pointer; touch-action: manipulation; }
 .seg button.on { background: #e3f0d6; border-color: var(--moss); }
@@ -611,6 +611,21 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
   #title h1 { position: fixed; left: 0; right: 0; top: calc(7% + var(--st)); text-align: center; }
   #title .sub { position: fixed; left: 0; right: 0; top: calc(7% + 70px + var(--st)); text-align: center; margin: 0 auto; }
 }
+/* (a phone: the header wraps to the right, as "How to play" ran off a 390 px screen; and in a short landscape the
+   hint and Start new sit in the bottom-right corner, off the jar's name and chip) */
+@media (max-width: 760px), (max-aspect-ratio: 4/5) {
+  .jtop { flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+  .jtop .jgap { display: none; }
+  .jtop .jback { margin-right: auto; }
+  .jtop .btn { padding: 7px 10px; }
+}
+@media (max-height: 480px) and (min-aspect-ratio: 3/2) {
+  .jfoot { left: auto; right: calc(14px + var(--sr)); width: 28%; align-items: flex-end; }
+  .jhint { text-align: right; }
+  .jnew { justify-content: flex-end; }
+}
+/* (the help line names keys and a wheel: none on a touch screen; there a scroller's bar overlays its content, and hid the Settings %) */
+@media (hover: none) and (pointer: coarse) { .help { display: none; } .cscroll { padding-right: 12px; } }
 body.calm .jar .bob, body.calm .chip i { animation: none; }
 body.calm .jar, body.calm .jar canvas { transition: none; }
 </style>
@@ -4393,6 +4408,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       this.C = [cx, cy];
       this.k = 0; this.theta = 0; this.from = 0; this.to = 0; this.t0 = null;
       this.zoom = 30; this.pan = [0, 0];
+      this.minZoom = 6; this.maxZoom = 400; // (canvas px per tile; a game scales them with its canvas DPR)
       this.D0 = D0; this.D1 = D1; this.foc = null;
     }
     snap(dir) {
@@ -4405,8 +4421,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // Ease the view to the world point p over o.s seconds (and the zoom to o.zoom, if given). The player's
     // drag or wheel, lookAt and fit cancel it; busy says whether the view still moves (a focus or a Q/E
     // turn). A turn on the way keeps p centred.
-    // s: seconds (at least 0.05); zoom: the zoom to end at (6-400), null or left out to keep it
-    focus(p, o = {}) { this.foc = { p: p.slice(), s: Math.max(0.05, o.s ?? 0.6), z0: this.zoom, z1: o.zoom != null ? Math.max(6, Math.min(400, o.zoom)) : null, from: this.pan.slice(), t0: ME.now() }; }
+    // s: seconds (at least 0.05); zoom: the zoom to end at (minZoom-maxZoom), null or left out to keep it
+    focus(p, o = {}) { this.foc = { p: p.slice(), s: Math.max(0.05, o.s ?? 0.6), z0: this.zoom, z1: o.zoom != null ? Math.max(this.minZoom, Math.min(this.maxZoom, o.zoom)) : null, from: this.pan.slice(), t0: ME.now() }; }
     get busy() { return !!this.foc || this.t0 !== null; }
     update(now) {
       const ease = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
@@ -4478,7 +4494,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 
     // Zoom by f keeping the canvas pixel m fixed (a canvas pixel is zoom * (screen - pan) + centre).
     zoomAt(m, f, el) {
-      const z = Math.max(6, Math.min(400, this.zoom * f)), c = [el.width / 2, el.height / 2];
+      const z = Math.max(this.minZoom, Math.min(this.maxZoom, this.zoom * f)), c = [el.width / 2, el.height / 2];
       for (const k of [0, 1]) this.pan[k] += (m[k] - c[k]) * (1 / this.zoom - 1 / z);
       this.zoom = z;
     }
@@ -6464,12 +6480,20 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   ME.poolMaxDepth = (limits = ME.limits) => (limits && limits.maxTextureDimension3D) || 2048;
   ME.poolMaxBricks = (limits, S = ME.POOL_SLAB_MAX) => Math.floor(ME.poolMaxDepth(limits) / 8) * S * S;
   // The pool's budget on this device, under the ceiling: ME.POOL_PHONE (65,536 bricks, 128 MB, the ceiling before
-  // E6) on a phone-like device (a mobile UA, an iPad, whose Safari says Macintosh but has a touch screen, or
-  // navigator.deviceMemory <= 4 GB), else the ceiling. The LOD drop (no 2x copies when they don't fit), the bake's
-  // throw and MB.stats.fill read it, so a phone keeps the thresholds it had before E6. ME.poolBudget (or
-  // ?poolbudget=) sets it.
+  // E6) on a phone-like device (ME.phone(), or navigator.deviceMemory <= 4 GB), else the ceiling. The LOD drop (no
+  // 2x copies when they don't fit), the bake's throw and MB.stats.fill read it, so a phone keeps the thresholds it
+  // had before E6. ME.poolBudget (or ?poolbudget=) sets it.
+  // ME.phone(): a phone or tablet, the engine's and the games' one test. A mobile UA; an iPad, whose Safari says
+  // Macintosh but has a touch screen; or a touch-only device (no mouse or trackpad) with a short screen side of
+  // 1024 or less: a phone whose browser asks for the desktop site, whose UA then says X11 Linux or Macintosh
+  // (the user's flagship, 2026-11-02). A touch laptop has a fine pointer, so it stays a desktop.
   ME.POOL_PHONE = 65536;
-  ME.phoneLike = () => /Android|iPhone|iPad|Mobile/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent)) || (navigator.deviceMemory || 8) <= 4;
+  ME.phone = () => {
+    const ua = navigator.userAgent || "", mq = (q) => !!(window.matchMedia && matchMedia(q).matches);
+    return /Android|iPhone|iPad|Mobile/.test(ua) || (navigator.maxTouchPoints > 1 && (/Macintosh/.test(ua) ||
+      (mq("(pointer: coarse)") && !mq("(any-pointer: fine)") && Math.min(screen.width, screen.height) <= 1024)));
+  };
+  ME.phoneLike = () => ME.phone() || (navigator.deviceMemory || 8) <= 4;
   ME.poolBricks = (limits) => Math.min(ME.poolMaxBricks(limits), ME.poolBudget || ME.qn("poolbudget", 0) || (ME.phoneLike() ? ME.POOL_PHONE : Infinity));
   // A model baked finer than POOL_HOLLOW voxels per tile edge (VS x fine) keeps only its surface bricks in the pool:
   // a brick whose 512 voxels are solid and whose 6 neighbours' facing layers are solid is never reached by a ray
@@ -15129,7 +15153,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.35.0", name: "Mossheart", commit: "40f4e36" };
+  G.VERSION = { v: "0.36.0", name: "Mossheart", commit: "1fbd227" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -21179,7 +21203,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   };
 
   // ------------------------------------------------------------------ the run log (the proxy only)
-  const MOBILE = /Android|iPhone|iPad|Mobile/.test(navigator.userAgent || "");
+  const MOBILE = !!(window.ME && ME.phone && ME.phone()); // (the engine's phone test; no engine in the leaderboard check)
   const version = () => (G.VERSION ? `${G.VERSION.v} ${G.VERSION.commit}`.slice(0, 32) : null);
   const logOff = () => {
     const q = new URLSearchParams(location.search).get("runlog");
@@ -21515,7 +21539,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       // the ring opens on the garden of the last run, else the one that is up
       const l = this.latest();
       this.rot = this.rotTo = Math.max(0, ids.indexOf(l ? l.id : G.levelId));
-      this.el.querySelector(".jback").style.visibility = this.menu.hasTitle() ? "" : "hidden";
+      this.el.querySelector(".jback").style.display = this.menu.hasTitle() ? "" : "none"; // (none, not hidden: it took the header's room on a phone)
       this.labels(); this.place(); this.say();
       this.el.focus({ preventScroll: true });
     }
@@ -21828,12 +21852,18 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // camera: the view eases to the rift when a boss comes (main.js); motion: "reduced" drops the screen shake, the camera moves and the lightning, softens the flashes and thins the weather
   // (it starts as the system's reduced-motion choice); text: the HUD's and the menus' text size, a factor; weather: how strong the sky panel's weather is (atmos.js)
   // glass: the terrarium glass, "auto" as the quality has it (none on Low), or true/false over it (the Settings row)
-  // res: the resolution, the canvas's pixels per CSS pixel: "full" (the screen's own, however fine) or "2", "1.5", "1", "0.75" (main.js fitCanvas; ?dpr= pins it)
+  // res: the resolution, the canvas's pixels per CSS pixel: "full" (the screen's own, however fine) or "2", "1.5", "1", "0.75" (main.js fitCanvas; ?dpr= pins it),
+  // PHONE_RES on a phone and "full" elsewhere unless the player picked one (resPicked)
   // musicStyle: the music's style, "ambient", "drift", "liquid" or "mix" (music.js setStyle; ?music= pins it); the HUD's ♫ button cycles them (MUSIC_STYLES)
+  // a phone or tablet: ME.phone(), the engine's test (it also catches a phone asking for the desktop site)
+  const mobile = ME.phone(), mem = navigator.deviceMemory || 8;
+  // A phone draws at 2x, not its own 3x or so: Full there is over twice the pixels for little visible gain, and
+  // the user found it slow on a flagship (2026-11-02: "low fps"). Full stays a choice.
+  const PHONE_RES = "2";
   const calmOS = !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
   const DEFAULTS = {
     master: 0.7, music: 0.5, sfx: 0.7, ambience: 0.45, musicStyle: "ambient",
-    quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, camera: true, vs: 40, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, weather: "subtle", glass: "auto", res: "full",
+    quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, camera: true, vs: 40, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, weather: "subtle", glass: "auto", res: mobile ? PHONE_RES : "full", resPicked: false,
   };
   const MUSIC_STYLES = [["ambient", "Ambient"], ["drift", "Drift"], ["liquid", "Liquid"], ["mix", "Mix"]];
   const OLD_VOLUMES ={ master: 0.9, music: 0.8, sfx: 0.9, ambience: 0.8 };
@@ -21850,6 +21880,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     if (!s.vsPicked) s.vs = DEFAULTS.vs;
     // res: "auto" (the screen's own up to 2x) was the default until then, so a save holding it never chose one
     if (raw.res === "auto") s.res = DEFAULTS.res;
+    // and on a phone "full" was the default until PHONE_RES, so a save holding it moves once, unless the player
+    // picked it since (resPicked: the Resolution row or a preset)
+    if (mobile && raw.res === "full" && !raw.resPicked) s.res = DEFAULTS.res;
     // the volumes were louder until 2026-10-24 (the user: "default to lower volumes for more subtle
     // atmosphere"); a saved volume still at its old default was never moved, so it takes the new one
     for (const [k, v] of Object.entries(OLD_VOLUMES)) if (raw[k] === v) s[k] = DEFAULTS[k];
@@ -21863,8 +21896,6 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // the voxels and bakes ~1.4x as long, at 24 ~3.4x and ~2.2x (Iris Xe: 6.7 s at 16, 14.8 s at 24; phones bake
   // several times slower: the crash guard below steps a density down when a load dies). GPU time barely
   // moves: it is per pixel.
-  // (an iPad's Safari says Macintosh: its touch screen tells it, as in ME.phoneLike)
-  const mobile = /Android|iPhone|iPad|Mobile/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent)), mem = navigator.deviceMemory || 8;
   const VS_MAX = ME.params.has("vsmax") && ME.vsCeiling ? ME.vsCeiling() : Math.max(32, ME.vsCeiling ? ME.vsCeiling() : 32);
   // and the densest a model may bake (its o.fine x the terrain's VS; docs/decisions/2026-10-20-hero-density.md):
   // 32 on those devices, 64 elsewhere. main.js caps the bake list's fine to it.
@@ -21916,7 +21947,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     low: { vs: 16, res: "1", quality: "low", glass: false, weather: "subtle" },
     medium: { vs: 24, res: "1.5", quality: "medium", glass: "auto", weather: "subtle" },
     high: { vs: 32, res: "2", quality: "high", glass: "auto", weather: "subtle" },
-    ultra: { vs: 40, res: "full", quality: "high", glass: "auto", weather: "subtle" },
+    ultra: { vs: 40, res: DEFAULTS.res, quality: "high", glass: "auto", weather: "subtle" },
   };
   const PRESET_KEYS = ["vs", "res", "quality", "glass", "weather"];
   const PRESET_NAMES = { low: "Low", medium: "Medium", high: "High", ultra: "Ultra" };
@@ -22079,9 +22110,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // ------------------------------------------------------------------ settings
     // (a preset sets every graphics setting at once, the density a reload's worth; Custom only shows)
     set(k, v) {
-      if (k === "preset") { if (!PRESETS[v]) return; Object.assign(this.s, presetSet(v)); k = "vs"; }
+      if (k === "preset") { if (!PRESETS[v]) return; Object.assign(this.s, presetSet(v)); this.s.resPicked = true; k = "vs"; }
       else this.s[k] = v;
       if (k === "vs") this.s.vsPicked = true;
+      if (k === "res") this.s.resPicked = true;
       save(this.s); this.apply();
     }
     apply() {
@@ -22126,7 +22158,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     renderSettings() {
       const s = Object.assign({}, this.s, { vs: Math.min(VS_MAX, this.s.vs), preset: presetOf(this.s) }), body = $("setbody"); // (the density as this device bakes it)
       const dprNow = +(this.app.dpr || 1).toFixed(2);
-      const resNote = ME.params.has("dpr") ? `Pinned to ${dprNow}x by the page address (?dpr=).` : `Pixels drawn per screen pixel (now ${dprNow}x). Full is the screen's own, however fine. Lower runs faster and looks softer.`;
+      const resNote = ME.params.has("dpr") ? `Pinned to ${dprNow}x by the page address (?dpr=).` : `Pixels drawn per screen pixel (now ${dprNow}x). Full is the screen's own, however fine. Lower runs faster and looks softer.${mobile ? " A phone starts at 2x: Full costs over twice the pixels for little to see." : ""}`;
       const slider = (k, label) => `<label class="row"><span>${label}</span><input type="range" min="0" max="1" step="0.05" value="${s[k]}" data-k="${k}"><em>${Math.round(s[k] * 100)}%</em></label>`;
       const choice = (k, label, opts) => `<div class="row"><span>${label}</span><div class="seg">${opts.map(([v, t]) => `<button class="${String(s[k]) === String(v) ? "on" : ""}" data-k="${k}" data-v="${v}">${t}</button>`).join("")}</div></div>`;
       const vsNow = ME.VS, vsNote = Math.min(VS_MAX, s.vs) !== vsNow && !ME.vsPinned ? `<div class="note">Takes effect on reload. <button class="btn" data-a="reload">Reload now</button></div>` : ME.vsPinned ? `<div class="note">Pinned to ${vsNow} by the page address (?vs=).</div>` : "";
@@ -24995,13 +25027,15 @@ function MG_SFX(L) {
     const cam = T.geo ? new ME.Camera(T.geo.C, T.geo.C) : new ME.Camera(map.W / 2, map.H / 2);
     // the canvas's pixels per CSS pixel: the settings' Resolution (G.resolution, menu.js), Full the screen's own
     // however fine (no 2x cap since 2026-10-24: the user's "full resolution"); ?dpr= pins it (at most the
-    // screen's). A new resolution scales the camera's zoom with it, so the framing stays put
+    // screen's). A new resolution scales the camera's zoom with it, so the framing stays put, and its bounds:
+    // they are canvas px per tile, so at 3x the old fixed 400 let a phone zoom in only a third as far as a desktop
     let dprNow = 0;
     const fitCanvas = () => {
       const res = G.resolution || "full", own = window.devicePixelRatio || 1;
       const dpr = ME.params.has("dpr") ? Math.min(own, ME.qn("dpr", 2)) : +res || own;
       if (dprNow && dpr !== dprNow) cam.zoom *= dpr / dprNow;
       dprNow = app.dpr = dpr;
+      cam.minZoom = 6 * dpr; cam.maxZoom = 400 * dpr;
       const w = Math.max(64, Math.round(canvas.clientWidth * dpr)), h = Math.max(64, Math.round(canvas.clientHeight * dpr));
       if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
       R.resize(w, h);
