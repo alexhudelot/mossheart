@@ -4335,6 +4335,25 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     if (txt) txt.textContent = label;
   };
   ME.now = () => performance.now();
+  // The load's stages: ME.stage(name) logs one LOAD line with the seconds since the last stage (the first counts
+  // from the navigation, so it includes the scripts) and keeps them in ME.load.stages, in order; ME.stage(name,
+  // { at: true }) logs a stage that ran alongside the others (the pipelines) by the time it ended instead.
+  // ME.loadNote(text) puts a small line under the loading bar (the bake cache's status), which a phone can read.
+  ME.load = { stages: [], last: 0 };
+  ME.stage = (name, o = {}) => {
+    const now = performance.now(), s = +((o.at ? now : now - ME.load.last) / 1000).toFixed(2);
+    if (!o.at) ME.load.last = now;
+    ME.load.stages.push([name, s, !!o.at]);
+    ME.log("LOAD", name, o.at ? "at " + s + " s" : s + " s");
+    return s;
+  };
+  ME.loadNote = (text) => {
+    const box = document.querySelector("#loading .box");
+    if (!box) return;
+    let el = document.getElementById("loadnote");
+    if (!el) { el = document.createElement("div"); el.id = "loadnote"; el.style.cssText = "margin-top:6px;opacity:.7;font:11px ui-monospace,Consolas,monospace"; box.appendChild(el); }
+    el.textContent = text;
+  };
 
   // ------------------------------------------------------------------ mat4, column-major (WGSL layout)
   const M4 = (ME.m4 = {});
@@ -7744,6 +7763,31 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // the default app id: the page's folder (each game's pages and the engine's live in their own)
   const pageApp = () => location.pathname.replace(/[^/]*$/, "");
 
+  // What the cache did this load (ME.bakeCache.status), for the LOAD line, the loading screen and a game's info,
+  // so a phone can show why a load was cold:
+  //   read: "hit", "miss: key changed" (the slot holds another key: a new release or density), "miss: no record",
+  //     "miss: evicted" (the last write landed but the record is gone), "miss: read failed <error>", or "off"
+  //   last: the previous load's write for this slot: "ok", "failed <error>", "never finished" (started with no
+  //     result: the tab was closed or killed mid-write, as Android does at the memory peak) or "none"
+  //   write: this load's: "writing" until put() ends, then as `last`; "none" if nothing was put
+  //   persist: navigator.storage.persist()'s answer, "persisted", "not persisted" or "n/a"
+  // Each write's state is kept per slot in localStorage (WRITES), before and after it, so the next load reads it.
+  // ME.bakeCache.onStatus(fn) calls fn on each change; statusText() is the one line.
+  const WRITES = "me.bakeCache.writes", status = { read: "off", last: "none", write: "none", persist: "n/a" }, subs = [];
+  const changed = () => subs.forEach((f) => { try { f(status); } catch (e) { ME.log("WARN bake cache status:", e.message); } });
+  const writes = () => { try { return JSON.parse(localStorage.getItem(WRITES) || "{}") || {}; } catch (e) { return {}; } };
+  const noteWrite = (key, state) => {
+    status.write = state === "started" ? "writing" : state; changed();
+    try { const w = writes(); w[slotOf(key)] = { key, state, at: Date.now() }; localStorage.setItem(WRITES, JSON.stringify(w)); } catch (e) { /* storage blocked */ }
+  };
+  // asked on every load the record isn't persisted yet: Chrome answers without a prompt, from the site's engagement,
+  // which grows as the game is played; Firefox asks the user once and keeps the answer
+  const persist = () => {
+    const s = navigator.storage;
+    if (!s || !s.persisted || !s.persist) return;
+    s.persisted().then((p) => p || s.persist()).then((p) => { status.persist = p ? "persisted" : "not persisted"; changed(); }, () => {});
+  };
+
   // The hand-authored models' sources this bake reads (assets/asset-kit.js, src/asset-format.js, a content
   // pack's own): each registration appends its source to ME.ASSET_SRC and records it by name in ME.ASSET_BY.
   // A key takes the sources of the models its map, content or extra names (as a quoted name), and of the
@@ -7786,16 +7830,35 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       return `${slot}${ME.VERSION}:${id}:vs${ME.VS}:${fnv(code + assetSrc(own) + own + lists + (o.focus ? "|focus" : "") + knobs)}`;
     },
     async get(key) {
-      if (ME.qn("nocache", 0) || !window.indexedDB) return null;
+      if (ME.qn("nocache", 0) || !window.indexedDB) { status.read = "off"; changed(); return null; }
+      const was = writes()[slotOf(key)];
+      status.last = !was ? "none" : was.state === "started" ? "never finished" : was.state;
+      persist();
       try {
-        const db = (held = await open());
-        const rec = await new Promise((res, rej) => { const r = db.transaction(STORE).objectStore(STORE).get(key); r.onsuccess = () => res(r.result || null); r.onerror = () => rej(r.error); });
-        if (!rec) return null;
+        const db = (held = await open()), s = db.transaction(STORE).objectStore(STORE);
+        const rec = await new Promise((res, rej) => { const r = s.get(key); r.onsuccess = () => res(r.result || null); r.onerror = () => rej(r.error); });
+        if (!rec) {
+          // why: another key in this slot, or the last write landed and its record is gone
+          const keys = await new Promise((res) => { try { const r = db.transaction(STORE).objectStore(STORE).getAllKeys(); r.onsuccess = () => res(r.result); r.onerror = () => res([]); } catch (e) { res([]); } });
+          status.read = "miss: " + (keys.some((k) => typeof k === "string" && slotOf(k) === slotOf(key)) ? "key changed" : was && was.state === "ok" ? "evicted" : "no record");
+          changed();
+          return null;
+        }
         const t0 = performance.now();
         unpack(rec); // (in place: the chunks go with the record's packed parts)
         ME.bakeCache.unpackMs = Math.round(performance.now() - t0);
+        status.read = "hit"; changed();
         return rec;
-      } catch (e) { ME.log("WARN bake cache read failed:", e.message); return null; }
+      } catch (e) { ME.log("WARN bake cache read failed:", e.message); status.read = "miss: read failed " + ((e && e.name) || "error"); changed(); return null; }
+    },
+    status,
+    onStatus(fn) { subs.push(fn); },
+    // "cache hit · last write ok · storage persisted"; "cache miss: key changed · write ok · ..." once this load's
+    // write is done. short: "hit · ok · persisted" (a corner label on a phone)
+    statusText(short) {
+      if (status.read === "off") return "cache off";
+      const mine = status.write !== "none", w = mine ? status.write : status.last;
+      return short ? `${status.read.replace("miss: ", "miss ")} · ${w} · ${status.persist}` : `cache ${status.read} · ${mine ? "write" : "last write"} ${w} · storage ${status.persist}`;
     },
     // fire and forget: the record is copied here, before the first await (the caller goes on to R.init, the sim
     // and the critters, which write some of T and MB in place: a later copy would store a played scene), and
@@ -7810,10 +7873,12 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     async put(key, rec) {
       if (ME.qn("nocache", 0) || !window.indexedDB) return;
       const slot = slotOf(key), st = { raw: 0, packed: 0, ms: 0 }, prog = rec.MB && rec.MB.prog, names = rec.palNames;
-      try { rec = pack(prog ? Object.assign({}, rec, { palNames: null, MB: { statics: rec.MB.statics } }) : rec, st); if (prog) rec = structuredClone(rec); } catch (e) { ME.log("WARN bake cache pack failed:", e && e.message); return; }
+      const name = (e) => (e && e.name) || "error";
+      noteWrite(key, "started");
+      try { rec = pack(prog ? Object.assign({}, rec, { palNames: null, MB: { statics: rec.MB.statics } }) : rec, st); if (prog) rec = structuredClone(rec); } catch (e) { ME.log("WARN bake cache pack failed:", e && e.message); noteWrite(key, "failed pack " + name(e)); return; }
       if (prog) {
-        if (!(await prog.upgraded)) { ME.log("WARN bake cache: the progressive bake's upgrade did not finish, so it is not stored"); return; }
-        try { rec.MB = pack(Object.assign(prog.compact(), { statics: rec.MB.statics }), st); rec.palNames = names.slice(); } catch (e) { ME.log("WARN bake cache pack failed:", e && e.message); return; }
+        if (!(await prog.upgraded)) { ME.log("WARN bake cache: the progressive bake's upgrade did not finish, so it is not stored"); noteWrite(key, "failed upgrade"); return; }
+        try { rec.MB = pack(Object.assign(prog.compact(), { statics: rec.MB.statics }), st); rec.palNames = names.slice(); } catch (e) { ME.log("WARN bake cache pack failed:", e && e.message); noteWrite(key, "failed pack " + name(e)); return; }
       }
       ME.bakeCache.packed = { rawMB: +(st.raw / 1048576).toFixed(1), packedMB: +(st.packed / 1048576).toFixed(1), ms: Math.round(st.ms) }; // (checks read it)
       const write = (db, r) => {
@@ -7836,8 +7901,10 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           tx = write(db, copy);
         }
         await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error); });
+        noteWrite(key, "ok");
       } catch (e) {
         ME.log("WARN bake cache write failed:", e && e.message);
+        noteWrite(key, "failed " + name(e));
         // the store is full (one record per app and map adds up): drop every other slot, so the next launch's
         // put fits. Not retried now: the record has changed since the call (see above)
         if (e && e.name === "QuotaExceededError") {
@@ -15688,7 +15755,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.48.0", name: "Mossheart", commit: "529521e" };
+  G.VERSION = { v: "0.49.0", name: "Mossheart", commit: "626daae" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -26137,7 +26204,7 @@ function MG_SFX(L) {
     G.gpuInfo = gpu.info; // (its vendor goes in the run log, view/leaderboard.js)
     // the pipelines (with the game's shader hooks) compile in the GPU process while the CPU bakes
     const hooks = G.shaderHooks(), pipelines = ME.compilePipelines(gpu, hooks);
-    pipelines.then(() => ME.log("PIPELINES", { ms: Math.round(ME.now() - t0) }), () => {}); // errors: reported by ME.err, rethrown in R.init
+    pipelines.then(() => { ME.log("PIPELINES", { ms: Math.round(ME.now() - t0) }); ME.stage("pipelines", { at: true }); }, () => {}); // errors: reported by ME.err, rethrown in R.init
     // the garden (view/level.js, G.LEVELS): ?level=, or the title screen's Garden choice (menu.js)
     const levelId = G.levelId || G.pickLevel();
     S.setLevel(levelId);
@@ -26182,7 +26249,12 @@ function MG_SFX(L) {
     try { localStorage.setItem(G.BAKE_KEY, JSON.stringify({ vs: ME.VS, pinned: !!ME.vsPinned })); } catch (e) { /* storage blocked */ }
     const leftMidBake = () => { if (G.bootDied) return; try { localStorage.removeItem(G.BAKE_KEY); } catch (e) { /* storage blocked */ } };
     addEventListener("pagehide", leftMidBake);
+    // the load's stages (ME.stage: one LOAD line each) and the bake cache's status under the loading bar, and in the
+    // version corner once in the garden (ME.bakeCache.statusText), so a phone shows why its load took the time it did
+    ME.bakeCache.onStatus(() => ME.loadNote(ME.bakeCache.statusText()));
+    ME.stage("boot");
     const key = ME.bakeCache.key(st, JSON.stringify(bakeOpts)), hit = await ME.bakeCache.get(key);
+    ME.stage("cache read");
     let T, mesh, MB, grass;
     if (hit) {
       for (const n of hit.palNames.slice(1)) pal.id(n); // same material ids as the baked arrays
@@ -26192,11 +26264,11 @@ function MG_SFX(L) {
     } else {
       const early = ME.bakeModels.start(st, pal, bakeOpts); // the model workers run during the terrain bake (#185)
       T = await ME.bakeTerrain(st, pal);
-      ME.log("TERRAIN", T.stats);
-      mesh = await ME.greedyMesh(T);
+      ME.log("TERRAIN", T.stats); ME.stage("terrain");
+      mesh = await ME.greedyMesh(T); ME.stage("mesh");
       MB = await ME.bakeModels(T, st, pal, bakeOpts, early);
-      ME.log("MODELS", MB.stats);
-      grass = ME.bakeGrass(T, st, pal);
+      ME.log("MODELS", MB.stats); ME.stage("models");
+      grass = ME.bakeGrass(T, st, pal); ME.stage("grass");
       ME.bakeCache.put(key, { palNames: pal.names, T: Object.assign({}, T, { groundAt: null }), mesh, MB: Object.assign({}, MB, { voxel: null }), grass });
     }
     // A creature Art has no model for yet (G.CREATURE_MODELS) wears the model of its Defs `standIn`, scaled
@@ -26231,8 +26303,8 @@ function MG_SFX(L) {
     sim.setCount(0);
     const R = new ME.Renderer(gpu, { T, mesh, MB, pal, st, sim, tables, ids, grass, hooks, pipelines, fieldRes: G.BLIGHT_RES });
     R.applyPreset(ME.q("preset", "cosy"));
-    ME.progress("compiling shaders", 0.9); await ME.tick();
-    await R.init();
+    ME.progress("compiling shaders", 0.9); await ME.tick(); ME.stage("setup");
+    await R.init(); ME.stage("init");
     const critters = new ME.Critters(T, st, MB, R.lightList, { beamAt: (i, t) => R.beamAt(i, t) }); // (the critters follow the drifting sun pools)
     // loose voxels: creatures burst into theirs, uprooted plants crumble, the fallen Heart Tree falls apart;
     // splashes on the water, digs and collapses in the sand banks
@@ -26251,8 +26323,10 @@ function MG_SFX(L) {
     S.newRun(seed);
     let game = new G.Game(level, G.body);
     scene.setGame(game);
+    ME.stage("level");
     const bakeMs = Math.round(ME.now() - t0);
     const drawn = () => { leftMidBake(); removeEventListener("pagehide", leftMidBake); };
+    ME.log("LOAD", ME.load.stages.map(([n, s, at]) => n + (at ? " @" : " ") + s).join(" · "), "·", ME.bakeCache.statusText());
     ME.log("READY", { bakeMs, materials: pal.names.length - 1, route: +sim.len.toFixed(1), statics: MB.statics.length, volumes: MB.stats.variants, buildable: game.world.buildCount, seed });
 
     // ------------------------------------------------------------------ camera, HUD, audio
@@ -26285,6 +26359,9 @@ function MG_SFX(L) {
     const watchDpr = () => matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener("change", () => { fitCanvas(); watchDpr(); }, { once: true });
     watchDpr();
     document.getElementById("loading").style.display = "none";
+    // the load's seconds and the cache's status in the version corner (src/version.js), updated when the write ends
+    const corner = () => { const el = document.getElementById("version"); if (el) el.textContent = `${G.VERSION.label} · ${(bakeMs / 1000).toFixed(1)} s · ${ME.bakeCache.statusText(true)}`; };
+    corner(); ME.bakeCache.onStatus(corner);
 
     // the player's mood and weather (view/atmos.js): the view's mood() ends with its pass
     const atmos = (app.atmos = scene.atmos = new G.Atmos(app));
@@ -26576,7 +26653,7 @@ function MG_SFX(L) {
         ok: ME.errors.length === 0 && /^\d+\.\d+\.\d+$/.test(G.VERSION.v), version: G.VERSION.label, adapter: gpu.info, canvas: [canvas.width, canvas.height], render: R.size, bakeMs, models: MB.stats,
         frames: N, avgFrameIntervalMs: avg(ints.slice(5)), avgCpuMs: avg(cpus.slice(5)), gpuMs: R.gpuMs,
         game: { wave: S.wave, enemies: game.enemies.count, towers: game.towers.length, dew: S.dew, heart: S.heartHp, corruption: +S.corruption.toFixed(3), sprites: R.sprites.nAdd + R.sprites.nAlpha, volumes: sim.count, looseVoxels: phys.spawned, dusk: +scene.dusk.toFixed(2) },
-        banks: bankStats, errors: ME.errors,
+        banks: bankStats, load: ME.load.stages, cache: ME.bakeCache.status, errors: ME.errors,
       });
       drawn();
       document.title = "SELFTEST DONE";
