@@ -5747,11 +5747,13 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // brick row J from band (the bake): 16 rows of j, NX x 16 x NZ cells, x fastest, then j - 16 J, then k.
     // The bricks sorted, then the mixed ones copied to slots (the pool grown once for the row). When NX is a
     // multiple of 4 (every density in use) a brick's rows are 4-byte aligned in band and in pool, so the
-    // uniform test and the copy go a word (4 cells) at a time
-    band(J, buf) {
+    // uniform test and the copy go a word (4 cells) at a time. pre (optional, a brick row's K * BX + I): a
+    // material the caller knows fills the brick (0: air), which is taken without looking at buf; -1 scans
+    band(J, buf, pre) {
       const { NX, NY, NZ, table: T } = this, BPL = NX * 16, j1 = Math.min(16, NY - J * 16), mix = [];
       const w = (NX & 3) === 0 && (buf.byteOffset & 3) === 0, B4 = w ? new Uint32Array(buf.buffer, buf.byteOffset, buf.length >> 2) : null;
       for (let K = 0; K < this.BZ; K++) for (let I = 0; I < this.BX; I++) {
+        if (pre && pre[K * this.BX + I] >= 0) { T[(K * this.BY + J) * this.BX + I] = pre[K * this.BX + I]; continue; }
         const k1 = Math.min(NZ, K * 16 + 16), i0 = I * 16, i1 = Math.min(NX, i0 + 16), v = buf[K * 16 * BPL + i0];
         let uni = true;
         if (w) {
@@ -5906,6 +5908,13 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // the grid (T.grid) takes the columns a brick row (16 rows of j) at a time from band, so the bake never holds
     // the dense grid (433 MB at vs40; the band is 16 / NY of it)
     const g = new BrickGrid(NX, NY, NZ), BPL = NX * 16, band = new Uint8Array(BPL * NZ);
+    // Per band column: wLo..wHi bounds the cells written (other than air), and dLo..dHi (dLo -1: none) is the
+    // column's deep run of its kind's under material dM, which is left out of band: a brick that every one of
+    // its columns' runs fills is handed to g.band whole (pre), one that no column writes as air, and the runs'
+    // cells in the other bricks are written in at the brick row's end (or by roughen, before it carves)
+    const wLo = new Int32Array(BPL), wHi = new Int32Array(BPL), dLo = new Int32Array(BPL), dHi = new Int32Array(BPL), dM = new Uint8Array(BPL);
+    const pre = new Int32Array(g.BZ * g.BX);
+    const undefer = (bc) => { const a = dLo[bc]; if (a < 0) return; for (let k = a, b = dHi[bc], m = dM[bc]; k < b; k++) band[k * BPL + bc] = m; dLo[bc] = -1; };
     const top = new Int16Array(PLANE).fill(-1), lobe = new Uint8Array(PLANE); // lobe: the material a column hangs over lower neighbours
     const id = (n) => pal.id(n);
     // material ids of the roles (moss, moss2, gravel, stone, rock, earth, pebble, pebble2, wood, brass, litter), then of the kinds
@@ -6061,6 +6070,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       if (dx < RD && !wetAt(tx + sx, ty)) { const k = tileK(tx + sx, ty); if (kT - k >= drop) { kN = Math.min(kN, k); d = Math.min(d, dx); } }
       if (dy < RD && !wetAt(tx, ty + sy)) { const k = tileK(tx, ty + sy); if (kT - k >= drop) { kN = Math.min(kN, k); d = Math.min(d, dy); } }
       if (kN === Infinity) return 0;
+      undefer(bc);
       const cut = 0.4 + 0.6 * (d / RD);
       let n = 0;
       for (let k = Math.max(kN, kF); k < kEnd - EB_KEEP; k++) {
@@ -6111,7 +6121,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     for (let j = 0; j < NY; j++) {
       if ((j & 31) === 0) { ME.progress("terrain columns " + Math.round((j / NY) * 100) + "%", 0.05 + 0.15 * (j / NY)); await ME.tick(); }
       const Y = O[1] + (j + 0.5) / VS;
-      if ((j & 15) === 0) band.fill(0);
+      if ((j & 15) === 0) { band.fill(0); wLo.fill(NZ); wHi.fill(0); dLo.fill(-1); }
       for (let i = 0; i < NX; i++) {
         const X = O[0] + (i + 0.5) / VS, col = j * NX + i, bc = (j & 15) * NX + i;
         if (jar) {
@@ -6119,6 +6129,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           if (r > PL_R) continue;
           // wooden plinth with a brass trim on its upper outer edge
           for (let k = kPB; k < kPT; k++) band[k * BPL + bc] = k === kPT - 1 && r > PL_R - 0.09 ? M.brass : M.wood;
+          wLo[bc] = kPB; wHi[bc] = kPT;
           top[col] = kPT; lobe[col] = M.moss;
           if (r > RG - 0.06) continue;
           // drum: soil strata seen through the glass, a moss lip under the rim, a moss ring on top
@@ -6133,6 +6144,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
             band[k * BPL + bc] = m;
           }
           if (r > RI - 0.12) band[(kN - 1) * BPL + bc] = P.fbm(X * 0.45, Y * 0.45, 0, 29) > 0.78 ? M.moss2 : M.moss;
+          if (kN > wHi[bc]) wHi[bc] = kN;
           top[col] = kN;
           if (r > RI) continue;
         }
@@ -6169,17 +6181,44 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         if (n1 > 0.52) dd += Math.round((n1 - 0.52) * 30);
         if (P.noise(X * 21, Y * 21, 0, 6) > 0.8) dd += 5;
         const kEnd = kT + extra - soften(kd, Xw, Yw, cx, cy);
+        const sk = skirt && (X < e1 || Y < e1 || X > G.W - e1 || Y > G.H - e1);
+        // the deep run: below the top voxels, the drape and a layer's top, and above what the jar wrote (the
+        // skirt overwrites the whole column, so it has none)
+        const uHi = Math.min(kEnd, kEnd - (layer ? layer + extra : 1 + Math.max(two ? 1 : 0, dr && !bed ? dd : 0))), uLo = Math.max(kF, wHi[bc]);
+        let a = -1;
+        if (!sk && uHi > uLo) { a = uLo; dLo[bc] = uLo; dHi[bc] = uHi; dM[bc] = kd.under; }
+        if (kF < wLo[bc]) wLo[bc] = kF;
+        if (kEnd > wHi[bc]) wHi[bc] = kEnd;
         for (let k = kF; k < kEnd; k++) {
+          if (k === a && (k = uHi) >= kEnd) break;
           const dz = kEnd - 1 - k;
           band[k * BPL + bc] = layer ? (dz < layer + extra ? mTop : kd.under) : dz === 0 || (two && dz === 1) ? mTop : dr && dz <= dd && !bed ? (n1 > 0.7 ? dr[1] : dr[0]) : kd.under;
         }
         if (EB) ebCarved += roughen(Xw, Yw, cx, cy, kd, kEnd, bc);
         if (jar) for (let k = kEnd; k < kD; k++) band[k * BPL + bc] = 0; // beds carved below the drum top
         // a box's skirt: the outer faces of the map's edge tiles, under their top voxel, in one material
-        if (skirt && (X < e1 || Y < e1 || X > G.W - e1 || Y > G.H - e1)) for (let k = kF; k < kEnd - 1; k++) band[k * BPL + bc] = skirt;
+        if (sk) for (let k = kF; k < kEnd - 1; k++) band[k * BPL + bc] = skirt;
         top[col] = kEnd;
       }
-      if ((j & 15) === 15 || j === NY - 1) g.band(j >> 4, band);
+      if ((j & 15) === 15 || j === NY - 1) {
+        const j1 = (j & 15) + 1, BX = g.BX;
+        for (let K = 0; K < g.BZ; K++) for (let I = 0; I < BX; I++) {
+          const k0 = K * 16, k1 = Math.min(NZ, k0 + 16), i0 = I * 16, i1 = Math.min(NX, i0 + 16);
+          let w = false, m = -1; // m: the runs' material while every column's run fills the brick, -2 once one doesn't
+          for (let r = 0; r < j1 && !(w && m === -2); r++) for (let bc = r * NX + i0, e = r * NX + i1; bc < e; bc++) {
+            if (wLo[bc] < k1 && wHi[bc] > k0) w = true;
+            if (m !== -2) m = dLo[bc] >= 0 && dLo[bc] <= k0 && dHi[bc] >= k1 && (m < 0 || dM[bc] === m) ? dM[bc] : -2;
+          }
+          pre[K * BX + I] = !w ? 0 : m >= 0 ? m : -1;
+        }
+        for (let bc = 0; bc < j1 * NX; bc++) {
+          const a = dLo[bc];
+          if (a < 0) continue;
+          const b = dHi[bc], m = dM[bc], I = (bc % NX) >> 4;
+          for (let K = a >> 4; K <= (b - 1) >> 4; K++) if (pre[K * BX + I] < 0) for (let k = Math.max(a, K * 16), k1 = Math.min(b, K * 16 + 16); k < k1; k++) band[k * BPL + bc] = m;
+        }
+        g.band(j >> 4, band, pre);
+      }
     }
 
     // Moss overhangs: where a column stands 4+ voxels above a neighbour, hang 0-3 voxels over the lip.
@@ -6522,6 +6561,25 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       }
     };
 
+    // Each brick's occupancy: 0 all air, 1 all solid (whatever the materials), 2 both. Between two bricks of
+    // class 0, or two of class 1, there is no face, so the masks below are only computed (and their rows only
+    // read) over the rest; outside the grid is air. A skipped stretch of a mask stays zero: merge clears what it takes
+    const { table, pool, BX, BY } = grid, cls = new Uint8Array(table.length);
+    for (let b = 0; b < table.length; b++) {
+      const e = table[b];
+      if (e < 256) { cls[b] = e ? 1 : 0; continue; }
+      const I = b % BX, J = Math.floor(b / BX) % BY, K = Math.floor(b / grid.BXY), s = (e - 256) * 4096;
+      const n0 = Math.min(16, NX - I * 16), n1 = Math.min(16, NY - J * 16), n2 = Math.min(16, NZ - K * 16);
+      let a = 0, f = 0;
+      for (let z = 0; z < n2 && !(a && f); z++) for (let y = 0; y < n1 && !(a && f); y++) {
+        const o = s + (z << 8) + (y << 4);
+        for (let x = 0; x < n0; x++) if (pool[o + x]) f = 1; else a = 1;
+      }
+      cls[b] = a && f ? 2 : f;
+    }
+    const clsAt = (I, J, K) => (J < 0 || J >= BY || K < 0 || K >= grid.BZ ? 0 : cls[(K * BY + J) * BX + I]);
+    const none = (a, b) => a === b && a !== 2; // no face between two bricks of these classes
+
     // +z faces: slice planes between z = s-1 and s
     let mask = new Int16Array(PLANE), below = pa, cur = pb;
     if (kLo > 0) grid.plane(kLo - 1, below); else below.fill(0);
@@ -6529,7 +6587,12 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       if ((s & 15) === 0) { ME.progress("meshing tops " + s, 0.36 + 0.04 * ((s - kLo) / ZN)); await ME.tick(); }
       if (s < NZ) grid.plane(s, cur); else cur.fill(0);
       let any = false;
-      for (let c = 0; c < PLANE; c++) { const va = below[c], vb = cur[c]; const m = va && !vb ? va : 0; mask[c] = m; any = any || m !== 0; }
+      const Ka = s > 0 ? (s - 1) >> 4 : -1, Kb = s < NZ ? s >> 4 : -1;
+      for (let J = 0; J < BY; J++) for (let I = 0; I < BX; I++) {
+        if (none(clsAt(I, J, Ka), clsAt(I, J, Kb))) continue;
+        const i0 = I * 16, i1 = Math.min(NX, i0 + 16), j1 = Math.min(NY, J * 16 + 16);
+        for (let j = J * 16; j < j1; j++) for (let c = j * NX + i0, c1 = j * NX + i1; c < c1; c++) { const va = below[c], vb = cur[c]; const m = va && !vb ? va : 0; mask[c] = m; any = any || m !== 0; }
+      }
       [below, cur] = [cur, below];
       if (any) merge(mask, NX, NY, (i, j, w, h, c) => emit(4, c, [i, j, s], [i + w, j, s], [i + w, j + h, s], [i, j + h, s]));
     }
@@ -6542,8 +6605,14 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       ME.progress("meshing x sides " + s0, 0.4 + 0.04 * (s0 / NX)); await ME.tick();
       const s1 = Math.min(NX, s0 + XS - 1), r0 = Math.max(0, s0 - 1), r1 = Math.min(NX, s1 + 1);
       xany.fill(0);
-      for (let z = 0; z < ZN; z++) {
-        for (let y = 0; y < NY; y++) {
+      // a row of bricks all air, or all solid away from the grid's x ends, has no x face in this slab
+      const I0 = r0 >> 4, I1 = (r1 - 1) >> 4, inner = s0 > 0 && s1 < NX;
+      for (let z = 0; z < ZN; z++) for (let J = 0; J < BY; J++) {
+        const b0 = (((z + kLo) >> 4) * BY + J) * BX;
+        let c0 = 0, c1 = 0;
+        for (let I = I0; I <= I1; I++) { const c = cls[b0 + I]; if (c === 0) c0++; else if (c === 1) c1++; }
+        if (c0 === I1 - I0 + 1 || (inner && c1 === I1 - I0 + 1)) continue;
+        for (let y = J * 16, y1 = Math.min(NY, y + 16); y < y1; y++) {
           const mo = y + z * NY;
           grid.row(y, z + kLo, r0, r1, rb);
           let va = s0 > 0 ? rb[s0 - 1 - r0] : 0;
@@ -6566,14 +6635,37 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // y faces: mask over (x, z). Rows s - 1 and s of every z are kept (ya, yb) and swapped, so each row is read once
     mask = new Int16Array(NX * ZN);
     let ya = new Uint8Array(NX * ZN), yb = new Uint8Array(NX * ZN);
+    // a brick's stretch of row s is read where a face may lie on either side of it (sk: none between rows
+    // s - 1 and s, sn: none between s and s + 1), and the mask computed where sk allows; what isn't read isn't used
+    const KL = kLo >> 4, KN = (kHi >> 4) - KL + 1, sk = new Uint8Array(BX * KN), sn = new Uint8Array(BX * KN);
+    const skips = (s, out) => {
+      const Ja = s > 0 ? (s - 1) >> 4 : -1, Jb = s < NY ? s >> 4 : -1; // a row past the grid is air, even inside a brick
+      for (let K = 0; K < KN; K++) for (let I = 0; I < BX; I++) out[K * BX + I] = s > NY || none(clsAt(I, Ja, K + KL), clsAt(I, Jb, K + KL)) ? 1 : 0;
+    };
     for (let s = 0; s <= NY; s++) {
       if ((s & 31) === 0) { ME.progress("meshing y sides " + s, 0.44 + 0.04 * (s / NY)); await ME.tick(); }
       let any = false;
-      if (s < NY) for (let z = 0; z < ZN; z++) grid.row(s, z + kLo, 0, NX, yb, z * NX); else yb.fill(0);
-      for (let c = 0; c < NX * ZN; c++) {
-        const va = ya[c], vb = yb[c];
-        const m = va && !vb ? va : !va && vb ? -vb : 0;
-        mask[c] = m; any = any || m !== 0;
+      skips(s, sk); skips(s + 1, sn);
+      if (s < NY) for (let z = 0; z < ZN; z++) {
+        const q = (((z + kLo) >> 4) - KL) * BX;
+        for (let I = 0; I < BX; ) {
+          if (sk[q + I] && sn[q + I]) { I++; continue; }
+          let I1 = I + 1;
+          while (I1 < BX && !(sk[q + I1] && sn[q + I1])) I1++;
+          grid.row(s, z + kLo, I * 16, Math.min(NX, I1 * 16), yb, z * NX + I * 16);
+          I = I1;
+        }
+      } else yb.fill(0);
+      for (let z = 0; z < ZN; z++) {
+        const q = (((z + kLo) >> 4) - KL) * BX;
+        for (let I = 0; I < BX; I++) {
+          if (sk[q + I]) continue;
+          for (let c = z * NX + I * 16, c1 = z * NX + Math.min(NX, I * 16 + 16); c < c1; c++) {
+            const va = ya[c], vb = yb[c];
+            const m = va && !vb ? va : !va && vb ? -vb : 0;
+            mask[c] = m; any = any || m !== 0;
+          }
+        }
       }
       [ya, yb] = [yb, ya];
       if (any) merge(mask, NX, ZN, (i, j, w, h, c) => {
@@ -15932,7 +16024,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.50.0", name: "Mossheart", commit: "f39a6a4" };
+  G.VERSION = { v: "0.51.0", name: "Mossheart", commit: "8565c8b" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
