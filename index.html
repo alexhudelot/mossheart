@@ -295,9 +295,11 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 #inspbody .tomore::after { content: " ▸"; }
 #inspector.open #inspbody .tomore::after { content: " ▾"; }
 #inspbody .tips .short { display: inline-block; }
-/* (on a phone the seed's card sits above the garden, under the almanac) */
-@media (max-width: 760px) {
-  #inspector.seedinfo { top: calc(150px + var(--st)); bottom: auto; }
+/* (a touch screen wider than the phone layout, a phone on its side or a tablet: the card docks above the seeds on the
+   left, its text scrolling, not in the middle of the field; hud.js frame anchors it only under a mouse) */
+@media (hover: none) and (min-width: 761px) {
+  #inspector { top: auto; bottom: calc(20px + 104px * var(--ts) + var(--sb)); transform: none; max-height: calc(100vh - 104px - 104px * var(--ts) - var(--st) - var(--sb)); }
+  #inspbody { min-height: 0; overflow-y: auto; }
 }
 
 .veil { position: fixed; inset: 0; display: none; place-items: center; background: rgba(20, 31, 15, 0.45); animation: fade 0.35s; padding: 16px; }
@@ -536,8 +538,8 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   /* (as wide as the gap between the right-hand buttons, the music button and the turns, and their twin on the left) */
   #hint { top: auto; bottom: calc(168px + 128px * var(--ts) + var(--sb)); font-size: calc(17px * var(--ts)); width: calc(100vw - 112px - 2 * max(var(--sl), var(--sr))); }
   .coach { top: auto; bottom: calc(168px + 128px * var(--ts) + var(--sb)); font-size: calc(14.5px * var(--ts)); padding: 10px 12px 8px; }
-  /* (a card open at the bottom covers the tip's place: the tip goes to the top, under the readouts, over the field) */
-  body:has(#inspector.show:not(.seedinfo)) .coach { top: calc(96px + var(--st)); bottom: auto; }
+  /* (the card, docked at the bottom, covers the tip's place: the tip goes to the top, under the readouts, over the field) */
+  body:has(#inspector.show) .coach { top: calc(96px + var(--st)); bottom: auto; }
   /* (the two bottom rows: the seeds in a grid, a garden's five three over two, eight five over three, and the
      wave button in the slot after them, hud.js's --seedcols; nothing floats over the field above them. They sit 11 px
      up, the build's tag, #version, under the wave button) */
@@ -559,19 +561,19 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   /* (the dew gauge: under the turn buttons, against the edge, from under the almanac to above the seed rows,
      clear of the hint on its left; the open almanac reaches down over it, so it hides) */
   #dewgauge { right: calc(3px + var(--sr)); width: 44px; top: calc(160px + var(--st)); bottom: calc(27px + 128px * var(--ts) + var(--sb)); }
-  body.alm-open #dewgauge { visibility: hidden; }
+  body.alm-open #dewgauge, body:has(#inspector.show) #dewgauge { visibility: hidden; } /* (and under the docked card, which spans its place) */
   #dew { padding: 5px 1px 6px; border-radius: 20px / 18px; font-size: calc(15px * var(--ts)); gap: 1px; }
   #dew::before { width: 14px; margin-left: -7px; }
   #dewbar { width: 18px; margin-bottom: -6px; border-radius: 9px 9px 0 0; }
   #dewbar .bub:nth-child(2) { left: 8px; }
   #dewbar .luck { font-size: calc(11px * var(--ts)); padding: 1px 5px; }
-  #inspector { left: calc(6px + var(--sl)); top: auto; bottom: calc(25px + 128px * var(--ts) + var(--sb)); max-height: calc(100vh - 55px - 204px * var(--ts) - var(--st) - var(--sb)); transform: none; width: min(320px, calc(100vw - 12px)); padding: 10px 12px; gap: 6px; }
+  /* (the card, a plant's or a seed's while placing, docks just above the two rows at their width: the field stays clear) */
+  #inspector { left: calc(6px + var(--sl)); right: calc(6px + var(--sr)); top: auto; bottom: calc(23px + 128px * var(--ts) + var(--sb)); max-height: calc(100vh - 55px - 204px * var(--ts) - var(--st) - var(--sb)); transform: none; width: auto; padding: 10px 12px; gap: 6px; }
   #inspector .btn { flex: none; height: 44px; font-size: calc(16px * var(--ts)); }
   #insptitle { font-size: calc(18px * var(--ts)); }
   #inspbody { font-size: calc(13px * var(--ts)); min-height: 0; overflow-y: auto; } /* (the text scrolls, Grow and Uproot stay in view) */
   /* (More on a phone: the card grows into a sheet up to the top bar, its detail scrolling, Grow and Uproot in view; a big tap target) */
   #inspector.open { max-height: calc(100vh - 85px - 128px * var(--ts) - var(--st) - var(--sb)); box-shadow: 0 -6px 24px #0006; }
-  #inspector.seedinfo.open { max-height: calc(100vh - 175px - 128px * var(--ts) - var(--st) - var(--sb)); }
   #inspbody .tomore { display: block; padding: 9px 0 3px; margin-top: 0; }
   .boon { width: min(320px, calc(100vw - 32px)); min-height: 0; padding: 12px; gap: 6px; }
   .boon b { font-size: calc(18px * var(--ts)); }
@@ -15591,7 +15593,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.42.0", name: "Mossheart", commit: "ded33d4" };
+  G.VERSION = { v: "0.43.0", name: "Mossheart", commit: "52db714" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -20633,11 +20635,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const sa = this.safeEl.getBoundingClientRect();
       const bar = document.getElementById("dewbar"), br = bar && bar.offsetWidth ? bar.getBoundingClientRect().left - 6 : sa.right - 8;
       const x = Math.max(Math.min(sx / dpr, br - h + 8), sa.left + h);
-      // Over the ghost, unless the seed's card (the inspector panel) would cover it there, as on a phone where
-      // the card spans the screen: then under the ghost's foot, and below the card if it still reaches there.
+      // Over the ghost, unless the seed's card (the inspector panel) beside it would cover it there: then under the
+      // ghost's foot, and below the card if it still reaches there. (Docked over the seed rows, on a phone or a
+      // touch screen, the card is one more floor under the tag, below.)
       let y = sy / dpr, under = false;
-      const box = document.getElementById("inspector");
-      if (box && box.classList.contains("show")) {
+      const box = document.getElementById("inspector"), docked = !!box && box.classList.contains("show") && !box.classList.contains("anchored");
+      if (box && box.classList.contains("show") && !docked) {
         const r = box.getBoundingClientRect();
         if (x + h - 8 > r.left && x - h + 8 < r.right && y - this.tagH < r.bottom && y > r.top) {
           const foot = cam.toScreen([X, Y, Z], canvas.width, canvas.height)[1] / dpr + 12;
@@ -20648,6 +20651,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       // panel and the buttons above it, and under a ghost near the rows it ran into the seeds and the wave button)
       let low = sa.bottom - 6, high = sa.top + 8;
       for (const e of [document.getElementById("seeds"), document.getElementById("wavebtn")]) if (e && e.offsetWidth) low = Math.min(low, e.getBoundingClientRect().top - 6);
+      if (docked) { const r = box.getBoundingClientRect(); if (x + h - 8 > r.left && x - h + 8 < r.right) low = Math.min(low, r.top - 6); }
       for (const e of [document.getElementById("top"), document.getElementById("topright")]) if (e && e.offsetWidth) {
         const r = e.getBoundingClientRect();
         if (x + h - 8 > r.left && x - h + 8 < r.right) high = Math.max(high, r.bottom + 6);
@@ -22187,8 +22191,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 <script>/* src/view/terrariums.js */
 /* The terrarium screen (#237, as the user picked it): the gardens float in a dark void as jars, each turning
    on its turntable sheet (MG.TURNTABLE, art/turntable/<id>.js), on a slow ring with one jar in front (Orbit).
-   The arrows, a swipe or ←/→ turn the ring. A click or tap on a jar, at the side or in front, or Enter on
-   the front one, goes straight into play (the user's ask, no card between):
+   The arrows, a swipe or ←/→ turn the ring. A click or tap on a jar at the side turns the ring until it is in
+   front and opens nothing (the user's ask, 2026-11-04), as does one while the ring still turns (it only
+   retargets the turn); a click or tap on the jar in front, or Enter, goes straight into play (no card between):
      a run in that garden (one saved run per garden, core/save.js; the run in play for the garden that is up)
        it resumes; the front jar's Start new (under the ring, which asks first) begins anew in its place
      no run    a run begins
@@ -22280,7 +22285,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (this.swiped) { this.swiped = false; return; }
         const j = e.target.closest("[data-j]"), jar = e.target.closest(".jar");
         if (j) this.act(j.dataset.j);
-        else if (jar) this.play(jar.dataset.id);
+        else if (jar) this.pick(jar.dataset.id);
       });
       // a swipe turns the ring (and is not also a click on the jar it started on)
       let x0 = null;
@@ -22344,14 +22349,25 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
     front() { const ids = this.ids(), n = ids.length; return ids[((Math.round(this.rotTo) % n) + n) % n]; }
     turn(d) { this.rotTo += d; }
-    // a jar clicked, tapped or Entered: its garden's run resumes, else one begins; a garden in the works
-    // turns round and the hint line says it is not playable yet
-    play(id) {
-      const g = this.info(id);
-      if (!g.soon) { this.menu.go(id, g.run ? "resume" : "begin"); return; }
+    turning() { return Math.abs(this.rotTo - this.rot) > 0.01; }
+    // the ring turned the short way round until that jar is in front
+    toFront(id) {
       const ids = this.ids(), n = ids.length, cur = Math.round(this.rotTo);
       let d = (((ids.indexOf(id) - cur) % n) + n) % n; if (d > n / 2) d -= n;
       this.rotTo = cur + d;
+    }
+    // a jar clicked or tapped: the one in front, the ring at rest, plays; any other (or any while the ring
+    // still turns) is brought round to the front; one in the works turns round and says so
+    pick(id) {
+      if (this.info(id).soon || (this.front() === id && !this.turning())) this.play(id);
+      else this.toFront(id);
+    }
+    // the front jar played (a click on it, or Enter): its garden's run resumes, else one begins; a garden in
+    // the works turns round and the hint line says it is not playable yet
+    play(id) {
+      const g = this.info(id);
+      if (!g.soon) { this.menu.go(id, g.run ? "resume" : "begin"); return; }
+      this.toFront(id);
       this.say(`${g.name} is still in the works, not playable yet`);
     }
     // the hint line: how to play, or the warning for leaving the garden that is up mid-wave; a note (a
@@ -22359,7 +22375,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     say(note) {
       clearTimeout(this.said);
       const warn = !note && this.leaving(), coarse = matchMedia("(pointer: coarse)").matches;
-      this.hint.textContent = note || warn || (coarse ? "Tap a jar to play · swipe to turn" : "Click a jar to play · ←/→ or the arrows turn the ring");
+      this.hint.textContent = note || warn || (coarse ? "Tap a jar to bring it round, the front one to play · swipe to turn" : "Click a jar to bring it round, the front one to play · ←/→ or the arrows turn the ring");
       this.hint.classList.toggle("warn", !!warn);
       if (note) this.said = setTimeout(() => this.say(), 3000);
     }
