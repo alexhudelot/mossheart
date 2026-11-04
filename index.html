@@ -15591,7 +15591,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.41.0", name: "Mossheart", commit: "b9be5ca" };
+  G.VERSION = { v: "0.42.0", name: "Mossheart", commit: "ded33d4" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -15718,6 +15718,16 @@ function MA_DSP() {
     { id: "ghostlight", kinds: ["lily", "wisp"], name: "Ghost Light", gives: { lily: { heat: 1 }, wisp: { dmg: 0.1 } }, desc: "The Lily heats up twice as fast; the Wisp hits 10% harder" },
   ];
   // the link two kinds make, or null
+  // Placement zones: plots the garden itself favours, found on every map from its shape (core/world.js), one
+  // per plot at most; a plant on one gets its bonus on top of its links (Game.relink). Heartwood: within 3
+  // tiles of the Heart Tree; Overlook: a step or more (OVERLOOK_STEP tiles) above the lane within 3 tiles;
+  // Dewbank: beside water. `rgb` tints the plot glows while a seed is in hand (view/scene.js).
+  D.ZONES = [
+    { id: "heartwood", name: "Heartwood", gives: { dmg: 0.15 }, desc: "hits 15% harder near the Heart Tree", rgb: [1.0, 0.55, 0.35] },
+    { id: "overlook", name: "Overlook", gives: { range: 0.15 }, desc: "reaches 15% further from above the road", rgb: [0.95, 0.85, 0.4] },
+    { id: "dewbank", name: "Dewbank", gives: { rate: 0.12 }, desc: "fires 12% faster beside the water", rgb: [0.4, 0.8, 1.0] },
+  ];
+  D.OVERLOOK_STEP = 0.45;
   D.linkOf = (a, b) => D.LINKS.find((l) => (l.kinds[0] === a && l.kinds[1] === b) || (l.kinds[0] === b && l.kinds[1] === a)) || null;
 
   // `blight` is how fast a creature corrupts the plants around it, `color` its HUD swatch
@@ -16136,7 +16146,7 @@ function MA_DSP() {
        path: [[cx, cy], ...] in walking order, len, at(s) -> [X, Y, Z, dx, dy] (the road at distance s),
        lane: [[cx, cy], ...] the tiles across the lane (the path's included; the path when left out),
        sides, sideStep: the lane's reach each side of the road, a pair per sideStep (view/level.js; optional),
-       groundZ(X, Y), heart: [X, Y],
+       water: Uint8Array W*H (the water tiles, for the Dewbank zone; optional), groundZ(X, Y), heart: [X, Y],
        roads: [{ path, len, at, lane, sides, sideStep }, ...] one per entrance (optional; the fields above are
        the first one's) }
    A creature walks one road (Enemies.road); the roads meet before the Heart Tree. */
@@ -16187,7 +16197,23 @@ function MA_DSP() {
       const dist = (this.pathDist = new Float32Array(W * H).fill(99));
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) for (const [px, py] of this.laneCells) dist[at(x, y)] = Math.min(dist[at(x, y)], Math.max(Math.abs(px - x), Math.abs(py - y)));
       this.buildCount = blocked.reduce((a, b) => a + (b ? 0 : 1), 0);
+      // the placement zones (D.ZONES), one per build cell at most, in this order: Heartwood within 3 tiles of
+      // the Heart Tree; Overlook a step or more above the lane within 3 tiles; Dewbank beside water
+      const zone = (this.zone = new Uint8Array(W * H)), water = level.water, hx = Math.floor(this.heart[0]), hy = Math.floor(this.heart[1]);
+      const zAt = (x, y) => this.groundZ(x + 0.5, y + 0.5);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = at(x, y);
+        if (blocked[i]) continue;
+        if (Math.max(Math.abs(x - hx), Math.abs(y - hy)) <= 3) { zone[i] = 1; continue; }
+        if (dist[i] <= 3) {
+          const z = zAt(x, y);
+          if (this.laneCells.some(([px, py]) => Math.max(Math.abs(px - x), Math.abs(py - y)) <= 3 && z - zAt(px, py) >= G.Defs.OVERLOOK_STEP)) { zone[i] = 2; continue; }
+        }
+        if (water) for (let v = -1; v <= 1 && !zone[i]; v++) for (let u = -1; u <= 1; u++) { const xx = x + u, yy = y + v; if (xx >= 0 && yy >= 0 && xx < W && yy < H && water[at(xx, yy)]) { zone[i] = 3; break; } }
+      }
     }
+    // the zone of a cell (a D.ZONES entry), or null
+    zoneAt(cx, cy) { return this.inside(cx, cy) ? G.Defs.ZONES[this.zone[this.idx(cx, cy)] - 1] || null : null; }
     idx(cx, cy) { return cy * this.W + cx; }
     inside(cx, cy) { return cx >= 0 && cy >= 0 && cx < this.W && cy < this.H; }
     isBuildable(cx, cy) { return this.inside(cx, cy) && !this.blocked[this.idx(cx, cy)] && !this.occupied.has(this.idx(cx, cy)); }
@@ -17012,6 +17038,9 @@ function MA_DSP() {
       for (const t of this.towers) {
         t.links = this.linksAt(t.kind, t.cx, t.cy); t.bond = {};
         for (const link of new Set(t.links.map((l) => l.link))) { const g = link.gives[t.kind]; for (const k in g) t.bond[k] = (t.bond[k] || 0) + g[k]; }
+        // and the plot's placement zone (D.ZONES), on top
+        t.zone = this.world.zoneAt(t.cx, t.cy);
+        if (t.zone) for (const k in t.zone.gives) t.bond[k] = (t.bond[k] || 0) + t.zone.gives[k];
       }
       G.emit("links", { count: this.towers.reduce((n, t) => n + t.links.length, 0) / 2 });
     }
@@ -19231,7 +19260,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
     // one road per entrance (the engine's sim.roads, the first the sim's own road), each with its lane
     const roads = (sim.roads || [sim]).map((r) => Object.assign({ path: r.cells, len: r.len, at: (s) => r.at(s) }, G.laneFrom(T, r, groundZ, (map.game && map.game.lane) || [])));
-    return Object.assign({ W, H, blocked, groundZ, heart: (map.game && map.game.heart) || [7.5, 5.5], roads }, roads[0]);
+    // the water tiles (the "water" recipe or a flood), for the plots beside them (core/world.js, zones)
+    const water = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++) if (TL.recipe[i] === "water" || (TL.wet && TL.wet[i] === 1)) water[i] = 1;
+    return Object.assign({ W, H, blocked, water, groundZ, heart: (map.game && map.game.heart) || [7.5, 5.5], roads }, roads[0]);
   };
 
   // How wide the lane is around the route (docs/decisions/2026-10-21-map-format.md, "Wider lanes": a lane
@@ -20183,7 +20215,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
     // a new run (on the same baked world)
     setGame(game) {
-      this.game = game; this.anim.clear(); this.heartKick = 0; this.heartRot = 0;
+      this.game = game; this.anim.clear(); this.zoneCells = null; this.heartKick = 0; this.heartRot = 0;
       this.selected = null; this.seed = ""; this.hover = null;
       const w = game.world, b = game.blight;
       // the Heart Tree's baked static stays hidden; the view draws it (writeInstances) from its own record,
@@ -20542,6 +20574,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         }
       }
       // (the bosses' motes: creaturefx.js)
+      // while a seed is in hand, a faint pulsing glow on every free plot of a placement zone (D.ZONES), in its colour
+      if (this.seed) {
+        const w = game.world;
+        if (!this.zoneCells) { this.zoneCells = []; for (let y = 0; y < w.H; y++) for (let x = 0; x < w.W; x++) if (w.zone[w.idx(x, y)]) this.zoneCells.push([x, y, w.cellCentre(x, y), D.ZONES[w.zone[w.idx(x, y)] - 1].rgb]); }
+        for (const [x, y, p, c] of this.zoneCells) {
+          if (w.occupied.has(w.idx(x, y))) continue;
+          const k = 0.45 + Math.sin(t * 2.5 + (x + y) * 0.7) * 0.15;
+          sp.put(p[0], p[1], p[2] + 0.12, 0.16, 0, 0, 0, K.ORB, c[0] * k, c[1] * k, c[2] * k, 1);
+        }
+      }
       const E = game.enemies;
       sp.overlay();
       // health bars over hurt creatures, green to red, sized in render pixels
@@ -20576,6 +20618,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
           return seen.size > 2 ? name : `${name} ${link.desc}`;
         });
         if (lines.length > 2) lines.splice(0, lines.length, `${lines.length} links: ${lines.join(", ")}`);
+        // (and the plot's placement zone, first: D.ZONES)
+        const zone = block !== "spot" && w.zoneAt(c[0], c[1]);
+        if (zone) lines.unshift(`<b style="color:${G.css(zone.rgb)}">${zone.name}</b> ${zone.desc}`);
         const a = this.armed;
         if (!block && a && a.kind === kind && a.x === c[0] && a.y === c[1]) lines.push(`<i>tap again to plant</i>`);
         html = lines.map((s) => `<div>${s}</div>`).join("");
@@ -21421,10 +21466,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const tips = [by.size ? [...by.keys()].map((l) => `<span class="lnk">${G.linkIcon(l.id) || "⟡"} ${esc(l.name)}</span>`).join(" ")
         : `<span class="dim">${partners.length ? `Links with ${esc(partners.join(", "))}: plant beside it` : "No links"}</span>`];
       if (strong.length) tips.push(`Strong vs <b>${esc(strong.slice(0, 3).join(", "))}</b>`);
+      // (and the placement zone it stands in, first: D.ZONES)
+      const zone = t.zone ? `<b style="color:${G.css(t.zone.rgb)}">${esc(t.zone.name)}</b> ${esc(t.zone.desc)}` : "";
+      if (zone) tips.unshift(zone);
       this.inspected = t;
       this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, `Lv ${ROMAN[t.level]}`),
         [["Damage", t.damage().toFixed(0)], ["Reach", t.range().toFixed(1)], ["Rate", `${t.rate().toFixed(2)}/s`], ["Aims", AIMS[t.kind] || "nearest"]],
-        tips, `${now}${next}${links ? "<br>" + links : ""}<br>Aims at ${esc(TARGETS[t.kind] || "the creature nearest the Heart Tree")}<br><span class="dim">${esc(this.matchupsOf(t.kind))}</span>`);
+        tips, `${now}${next}${links ? "<br>" + links : ""}${zone ? "<br>" + zone : ""}<br>Aims at ${esc(TARGETS[t.kind] || "the creature nearest the Heart Tree")}<br><span class="dim">${esc(this.matchupsOf(t.kind))}</span>`);
       const grow = $("grow");
       if (t.level >= D.MAX_LEVEL) { label(grow, "Fully grown"); grow.disabled = true; }
       else { label(grow, `Grow  (${t.upgradeCost()} dew)`); grow.disabled = !S.canAfford(t.upgradeCost()); }
@@ -25558,6 +25606,8 @@ function MG_SFX(L) {
         }
         // (and a cell where it links with its neighbours, Defs.LINKS)
         score += 4 * new Set(game.linksAt(kind, x, y).map((l) => l.link)).size;
+        // (and a little for a placement zone's plot, Defs.ZONES)
+        if (w.zone[y * w.W + x]) score += 3;
         best.push([score + this.rng.f() * 0.5, [x, y]]);
       }
       if (!best.length) return null;
