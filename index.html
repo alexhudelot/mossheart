@@ -167,9 +167,6 @@ body.alm-open #dewbar { visibility: hidden; } /* (the bulb stays, under the alma
 .bchip.r-rare { border-color: #3d5f9e; }
 .bchip.r-epic { border-color: #d6a32e; box-shadow: 0 0 8px #f2c45a88; }
 .bchip.r-fused { border: 3px double #b5486e; box-shadow: 0 0 8px #e2709a88; }
-#boontip { display: none; max-width: 300px; padding: 7px 10px; font-weight: 500; font-size: calc(13px * var(--ts)); border-width: 2px; border-radius: 12px; pointer-events: auto; }
-#boontip.show { display: block; }
-#boontip .rar { font-size: calc(11px * var(--ts)); text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.65; }
 
 /* the camera's turn buttons, the sky button, and the sky panel (mood and weather) beside them */
 /* the mood and weather panel drops down under the top row from its button (atmos.js places it under ☁) */
@@ -238,7 +235,34 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 #inspector { position: fixed; left: calc(12px + var(--sl)); top: 50%; transform: translateY(-50%); width: 280px; padding: 12px 14px; display: none; flex-direction: column; gap: 8px; }
 #inspector.panel { background: rgb(250, 242, 219); } /* (the paper, opaque: nothing shows through what it says) */
 #inspector.show { display: flex; }
-#insptitle { font-size: calc(21px * var(--ts)); }
+#insptitle { font-size: calc(21px * var(--ts)); display: flex; align-items: center; gap: 8px; }
+/* the card (hud.js card): head (icon, name, one figure), up to four chips, a tip or two, More */
+#insptitle .picon { display: inline-flex; flex: none; font-size: 1.05em; }
+#insptitle .picon svg { width: 1.1em; height: 1.1em; }
+#insptitle .cname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#insptitle .cfig { margin-left: auto; flex: none; font-size: 0.7em; font-weight: 800; color: #6a8a3a; white-space: nowrap; }
+#insptitle .cfig.short { color: #b0402a; }
+#insptitle .cfig.tier { text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.6em; }
+#insptitle .cfig.r-common { color: #6f9a4a; } #insptitle .cfig.r-rare { color: #3d5f9e; }
+#insptitle .cfig.r-epic { color: #b07f1a; } #insptitle .cfig.r-fused { color: #b5486e; }
+#inspbody .chips { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-bottom: 6px; }
+#inspbody .chip { display: flex; flex-direction: column; align-items: center; padding: 3px 2px; border-radius: 8px; background: #efe4c4; color: #38452e; min-width: 0; }
+#inspbody .chip small { font-size: 0.72em; color: #6b7560; text-transform: uppercase; letter-spacing: 0.04em; }
+#inspbody .chip b { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+#inspbody .tips > div { margin-top: 2px; }
+#inspbody .tips .ei { white-space: nowrap; margin-right: 4px; font-weight: 800; }
+#inspbody .tips .ei svg { width: 1em; height: 1em; vertical-align: -0.15em; }
+#inspbody .more { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #cdbf98; }
+#inspbody .tglyph { letter-spacing: 0.08em; font-weight: 800; color: #8a5a2a; }
+#inspector:not(.open) .more { display: none; }
+#inspector.foe, #inspector.gift { gap: 4px; }
+#inspector.foe .btn, #inspector.gift .btn { display: none; }
+/* (on a desktop the card stands beside what it tells of: hud.js frame sets left and top) */
+#inspector.anchored { transform: none; right: auto; bottom: auto; }
+/* a creature's trait glyphs beside its HP bar (hud.js foeTags) */
+.foetag { position: absolute; left: 0; top: 0; font: 800 12px/1 system-ui, sans-serif; color: #fff4d8; letter-spacing: 0.05em; white-space: nowrap;
+  text-shadow: 0 0 2px #2a1e10, 0 0 2px #2a1e10, 0 1px 1px #2a1e10; will-change: transform; }
+.foetag.on { color: #ffd36a; font-size: 14px; }
 #inspbody { font-weight: 500; font-size: calc(14.5px * var(--ts)); }
 #inspbody .dim { color: #6b7560; }
 #inspbody .lnk { font-weight: 800; color: #8a5a2a; }
@@ -249,14 +273,13 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 #inspector.seedinfo .btn { display: none; }
 #insptitle .short { color: #b0402a; }
 #inspbody .how { font-weight: 800; color: #8a5a2a; }
-#inspbody .tomore { display: none; font-weight: 800; color: #6a8a3a; }
+#inspbody .tomore { display: inline-block; margin-top: 4px; font-weight: 800; color: #6a8a3a; cursor: pointer; }
 #inspbody .tomore::after { content: " ▸"; }
 #inspector.open #inspbody .tomore::after { content: " ▾"; }
-/* (on a phone it sits above the garden, under the almanac, its levels and matchups folded until a tap) */
+#inspbody .tips .short { display: inline-block; }
+/* (on a phone the seed's card sits above the garden, under the almanac) */
 @media (max-width: 760px) {
   #inspector.seedinfo { top: calc(150px + var(--st)); bottom: auto; }
-  #inspector.seedinfo .tomore { display: inline; }
-  #inspector.seedinfo:not(.open) .more { display: none; }
 }
 
 .veil { position: fixed; inset: 0; display: none; place-items: center; background: rgba(20, 31, 15, 0.45); animation: fade 0.35s; padding: 16px; }
@@ -462,7 +485,6 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   .bchip { height: 28px; min-width: 28px; padding: 0 4px; border-radius: 9px; }
   .bchip .bicon { font-size: calc(15px * var(--ts)); }
   .bchip .bicon svg { width: 15px; height: 15px; }
-  #boontip { max-width: calc(100vw - 24px); font-size: calc(12.5px * var(--ts)); }
   body.alm-open #giftbox { display: none; } /* the open almanac lists the gifts */
   #musicbtn { width: 44px; }
   #musicbtn .lb { font-size: calc(14px * var(--ts)); }
@@ -503,6 +525,10 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   #inspector .btn { flex: none; height: 44px; font-size: calc(16px * var(--ts)); }
   #insptitle { font-size: calc(18px * var(--ts)); }
   #inspbody { font-size: calc(13px * var(--ts)); min-height: 0; overflow-y: auto; } /* (the text scrolls, Grow and Uproot stay in view) */
+  /* (More on a phone: the card grows into a sheet up to the top bar, its detail scrolling, Grow and Uproot in view; a big tap target) */
+  #inspector.open { max-height: calc(100vh - 85px - 128px * var(--ts) - var(--st) - var(--sb)); box-shadow: 0 -6px 24px #0006; }
+  #inspector.seedinfo.open { max-height: calc(100vh - 175px - 128px * var(--ts) - var(--st) - var(--sb)); }
+  #inspbody .tomore { display: block; padding: 9px 0 3px; margin-top: 0; }
   .boon { width: min(320px, calc(100vw - 32px)); min-height: 0; padding: 12px; gap: 6px; }
   .boon b { font-size: calc(18px * var(--ts)); }
   .boon span { font-size: calc(14px * var(--ts)); }
@@ -641,7 +667,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     <div id="wave">Wave 0</div>
   </div>
   <div id="topright"><span id="fps"><span id="fpsn"></span> · <span id="vox"></span></span><div id="viewctl"><button id="skybtn" class="btn small" title="mood and weather">☁</button><button id="turnl" class="btn small" title="turn left">↺</button><button id="turnr" class="btn small" title="turn right">↻</button></div><button id="sound" class="btn small" title="sound (M)"><span class="lb">♪</span></button><button id="musicbtn" class="btn small" title="music style"><span class="lb">♫</span><small id="musicname">Ambient</small></button><button id="speed" class="btn small" title="speed (F)"><span class="lb">1x</span></button><button id="pausebtn" class="btn small" title="menu (Esc)">☰</button></div>
-  <div id="giftbox"><div id="boonbar"></div><div id="boontip" class="panel"></div></div>
+  <div id="giftbox"><div id="boonbar"></div></div>
   <div id="almanac"><button id="almtog">Almanac ▸</button><div id="almbody"></div></div>
   <div id="sky" class="panel"><div class="skyrow"><b>Mood</b><div class="seg" id="moodseg"></div></div><div class="skyrow"><b>Weather</b><div class="seg" id="wxseg"></div></div></div>
   <div id="hint">Tap a seed, then tap the meadow twice to plant it</div>
@@ -7755,35 +7781,15 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // opts.capacity = instances beyond the static props
     // opts.route = the walkers' route, a polyline of tile corners ([[x, y], ...]); a generator map's
     //   default is its map.path[0]. No route: no walkers.
+    // opts.routes = several routes ([route, ...]), one road each in sim.roads (in place of opts.route); the walkers take the first
     // opts.walkers = how many walkers (default ?units=, else 36)
     constructor(T, st, MB, opts = {}) {
       this.T = T; this.MB = MB; this.VS = T.VS;
-      const map = st.map, route = opts.route ?? (map.path && map.path[0]), cells = route && route.length ? cellsOf(route) : [];
-      const TL = T.tiles, tz = (c) => TL.z[c[1] * TL.W + c[0]], isW = (c) => TL.recipe[c[1] * TL.W + c[0]] === "water" || (TL.wet && TL.wet[c[1] * TL.W + c[0]] === 1);
-      // nominal height per cell; water cells take the higher bank around their crossing plus the bridge rise
-      const zc = cells.map((c, i) => {
-        if (!isW(c)) return tz(c);
-        let a = i, b = i;
-        while (a > 0 && isW(cells[a])) a--;
-        while (b < cells.length - 1 && isW(cells[b])) b++;
-        return Math.max(tz(cells[a]), tz(cells[b])) + 0.45;
-      });
-      // dense polyline at voxel spacing, ground from the voxel grid, then smoothed
-      const pts = [];
-      for (let i = 0; i + 1 < cells.length; i++) {
-        const [x0, y0] = cells[i], [x1, y1] = cells[i + 1], n = this.VS;
-        for (let s = 0; s < n; s++) {
-          const u = s / n, X = x0 + 0.5 + (x1 - x0) * u, Y = y0 + 0.5 + (y1 - y0) * u;
-          pts.push([X, Y, T.groundAt(X, Y, Math.max(zc[i], zc[i + 1]) + 0.6)]);
-        }
-      }
-      const last = cells[cells.length - 1];
-      if (last) pts.push([last[0] + 0.5, last[1] + 0.5, T.groundAt(last[0] + 0.5, last[1] + 0.5, zc[zc.length - 1] + 0.6)]);
-      const sz = pts.map((_, i) => { let s = 0, w = 0; for (let k = -5; k <= 5; k++) { const p = pts[Math.min(pts.length - 1, Math.max(0, i + k))]; s += p[2]; w++; } return s / w; });
-      // never sink below the raw ground (stair noses)
-      this.route = pts.map((p, i) => [p[0], p[1], Math.max(p[2], sz[i])]);
-      this.len = Math.max(0, this.route.length - 1) / this.VS;
-      this.cells = cells;
+      const map = st.map, routes = opts.routes && opts.routes.length ? opts.routes : [opts.route ?? (map.path && map.path[0])];
+      this.roads = routes.map((r) => this.road(r));
+      // the first road is the sim's own: its route, length and tiles, and at()
+      const r0 = this.roads[0];
+      this.route = r0.route; this.len = r0.len; this.cells = r0.cells;
       this.walkers = [];
       this.setCount(opts.walkers ?? ME.qn("units", 36));
       const cap = (this.capacity = opts.capacity ?? 640);
@@ -7805,6 +7811,42 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       this.mx = { R: new Float64Array(9), P: new Float64Array(9), F: new Float64Array(9), S: new Float64Array(9), H: new Float64Array(9), A: new Float64Array(9), B: new Float64Array(9), C: new Float64Array(9), L: new Float64Array(9) };
       this.sh2 = [0, 0]; this.sc3 = [0, 0, 0]; this.at5 = [0, 0, 0, 0, 0]; this.dirty = [0, 0];
     }
+    // A road from a route (a polyline of tile corners) on this sim's terrain: { cells, route, len, at(s, o) }.
+    // cells: its tiles in walking order; route: the ground line at voxel spacing, smoothed; len: its length in
+    // tiles; at(s, o): the point s tiles along it, as sim.at. It reads the terrain and changes nothing.
+    road(route) {
+      const T = this.T, VS = this.VS, cells = route && route.length ? cellsOf(route) : [];
+      const TL = T.tiles, tz = (c) => TL.z[c[1] * TL.W + c[0]], isW = (c) => TL.recipe[c[1] * TL.W + c[0]] === "water" || (TL.wet && TL.wet[c[1] * TL.W + c[0]] === 1);
+      // nominal height per cell; water cells take the higher bank around their crossing plus the bridge rise
+      const zc = cells.map((c, i) => {
+        if (!isW(c)) return tz(c);
+        let a = i, b = i;
+        while (a > 0 && isW(cells[a])) a--;
+        while (b < cells.length - 1 && isW(cells[b])) b++;
+        return Math.max(tz(cells[a]), tz(cells[b])) + 0.45;
+      });
+      // dense polyline at voxel spacing, ground from the voxel grid, then smoothed
+      const pts = [];
+      for (let i = 0; i + 1 < cells.length; i++) {
+        const [x0, y0] = cells[i], [x1, y1] = cells[i + 1], n = VS;
+        for (let s = 0; s < n; s++) {
+          const u = s / n, X = x0 + 0.5 + (x1 - x0) * u, Y = y0 + 0.5 + (y1 - y0) * u;
+          pts.push([X, Y, T.groundAt(X, Y, Math.max(zc[i], zc[i + 1]) + 0.6)]);
+        }
+      }
+      const last = cells[cells.length - 1];
+      if (last) pts.push([last[0] + 0.5, last[1] + 0.5, T.groundAt(last[0] + 0.5, last[1] + 0.5, zc[zc.length - 1] + 0.6)]);
+      const sz = pts.map((_, i) => { let s = 0, w = 0; for (let k = -5; k <= 5; k++) { const p = pts[Math.min(pts.length - 1, Math.max(0, i + k))]; s += p[2]; w++; } return s / w; });
+      // never sink below the raw ground (stair noses)
+      const line = pts.map((p, i) => [p[0], p[1], Math.max(p[2], sz[i])]);
+      // the road at arc length s: [x, y, z, dx, dy], into o if given (no allocation)
+      const at = (s, o = [0, 0, 0, 0, 0]) => {
+        const f = Math.max(0, Math.min(line.length - 1.001, s * VS)), i = Math.floor(f), u = f - i, a = line[i], b = line[i + 1];
+        o[0] = a[0] + (b[0] - a[0]) * u; o[1] = a[1] + (b[1] - a[1]) * u; o[2] = a[2] + (b[2] - a[2]) * u; o[3] = b[0] - a[0]; o[4] = b[1] - a[1];
+        return o;
+      };
+      return { cells, route: line, len: Math.max(0, line.length - 1) / VS, at };
+    }
     // demo walkers, cycling through the content's walker kinds (ME.content.walkers)
     setCount(n) {
       n = Math.max(0, Math.min(500, n | 0));
@@ -7820,12 +7862,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     }
     // a point the critters shy away from this frame
     avoid(x, y) { if (this.wn >= this.capacity) return; this.wpos[this.wn * 2] = x; this.wpos[this.wn * 2 + 1] = y; this.wn++; }
-    // the route at arc length s: [x, y, z, dx, dy], into o if given (no allocation)
-    at(s, o = [0, 0, 0, 0, 0]) {
-      const f = Math.max(0, Math.min(this.route.length - 1.001, s * this.VS)), i = Math.floor(f), u = f - i, a = this.route[i], b = this.route[i + 1];
-      o[0] = a[0] + (b[0] - a[0]) * u; o[1] = a[1] + (b[1] - a[1]) * u; o[2] = a[2] + (b[2] - a[2]) * u; o[3] = b[0] - a[0]; o[4] = b[1] - a[1];
-      return o;
-    }
+    // the first road at arc length s: [x, y, z, dx, dy], into o if given (no allocation)
+    at(s, o) { return this.roads[0].at(s, o); }
 
     // Write one instance: model m, placement, yaw, flip, scale [sx,sy,sz], shear [hx,hy] (x += hx*z), flags,
     // and an optional pitch (raises the model's +x end; climbing squirrels, leaping koi).
@@ -11514,23 +11552,34 @@ fn boxOf(V: Vox) -> Box {
     writeOcc() {
       let n = 0;
       if (!this.occ0) {
-        // a brick at a time: a uniform solid brick's rows set as bit runs, a mixed brick's cells one by one
+        // a brick at a time, a row of 16 cells at a time: the row's solid cells as a 16-bit mask (all of them
+        // in a uniform solid brick; in a mixed one from its 4 pool words, a bit per nonzero byte) ORed into
+        // the one or two words it covers. The cells were tested one by one until 2026-11 (1.7 s at vs40)
         const g = this.T.grid, { NX, NY, NZ, PL } = g, P = g.pool, occ = (this.occ0 = new Uint32Array(this.occBuf.size / 4));
+        const P4 = (P.byteOffset & 3) === 0 ? new Uint32Array(P.buffer, P.byteOffset, P.length >> 2) : null;
+        // a word's 4 bytes as 4 bits, bit x set when byte x is nonzero
+        const nz = (w) => Math.imul(((w | ((w & 0x7f7f7f7f) + 0x7f7f7f7f)) & 0x80808080) >>> 7, 0x10204080) >>> 28;
         g.bricks((I, J, K, v, s) => {
           if (v === 0) return;
           const i0 = I << 4, j0 = J << 4, k0 = K << 4, i1 = Math.min(NX, i0 + 16), j1 = Math.min(NY, j0 + 16), k1 = Math.min(NZ, k0 + 16);
+          const len = i1 - i0, full = (1 << len) - 1; // (a brick past the grid's edge: its outside cells left out)
           for (let k = k0; k < k1; k++) for (let j = j0; j < j1; j++) {
-            let a = k * PL + j * NX + i0;
-            if (v > 0) {
-              const b = a + i1 - i0;
-              n += b - a;
-              while (a < b && (a & 31)) { occ[a >>> 5] |= 1 << (a & 31); a++; }
-              while (a + 32 <= b) { occ[a >>> 5] = 0xffffffff; a += 32; }
-              while (a < b) { occ[a >>> 5] |= 1 << (a & 31); a++; }
-            } else {
-              const o = s + ((k & 15) << 8) + ((j & 15) << 4) - i0;
-              for (let i = i0; i < i1; i++, a++) if (P[o + i]) { occ[a >>> 5] |= 1 << (a & 31); n++; }
+            let m = full;
+            if (v > 0) n += len;
+            else {
+              const o = s + ((k & 15) << 8) + ((j & 15) << 4);
+              if (P4) {
+                const q = o >> 2, w0 = P4[q], w1 = P4[q + 1], w2 = P4[q + 2], w3 = P4[q + 3];
+                if ((w0 | w1 | w2 | w3) === 0) continue;
+                m &= nz(w0) | (nz(w1) << 4) | (nz(w2) << 8) | (nz(w3) << 12);
+              } else { let b = 0; for (let x = 0; x < len; x++) if (P[o + x]) b |= 1 << x; m = b; }
+              if (m === 0) continue;
+              let c = m - ((m >>> 1) & 0x5555); c = (c & 0x3333) + ((c >>> 2) & 0x3333); c = (c + (c >>> 4)) & 0x0f0f;
+              n += (c + (c >>> 8)) & 0x1f;
             }
+            const a = k * PL + j * NX + i0, w = a >>> 5, sh = a & 31;
+            occ[w] |= m << sh;
+            if (sh > 16) occ[w + 1] |= m >>> (32 - sh);
           }
         });
       }
@@ -15154,7 +15203,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.37.0", name: "Mossheart", commit: "94956a5" };
+  G.VERSION = { v: "0.38.0", name: "Mossheart", commit: "8bf2323" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -20027,7 +20076,6 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
           return seen.size > 2 ? name : `${name} ${link.desc}`;
         });
         if (lines.length > 2) lines.splice(0, lines.length, `${lines.length} links: ${lines.join(", ")}`);
-        if (block === "dew") lines.push(`<i class="short">Need ${G.fmtDew(S.towerCost(D.TOWERS[kind].cost, kind))} dew</i>`);
         const a = this.armed;
         if (!block && a && a.kind === kind && a.x === c[0] && a.y === c[1]) lines.push(`<i>tap again to plant</i>`);
         html = lines.map((s) => `<div>${s}</div>`).join("");
@@ -20547,6 +20595,22 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     wisp: "the creature nearest the Heart Tree, then leaps on", briar: "the road beside it", toad: "the creature nearest the Heart Tree, beyond 1 tile",
     moon: "the toughest creature in reach", lily: "the creature nearest the Heart Tree, and holds it",
   };
+  // the same, in a word or two, for the card's Aims chip
+  const AIMS = { thorn: "nearest", sun: "toughest", puff: "all in reach", wisp: "leaps on", briar: "the road", toad: "nearest, 1+ out", moon: "toughest", lily: "holds one" };
+  // a creature's traits (D.ENEMIES), as tags beside its HP bar and on its card: [id, glyph, word, test, what it means]
+  const TRAITS = [
+    ["boss", "★", "boss", (e) => e.boss, "A boss: tough, and it harms the Heart Tree hard."],
+    ["shell", "◆", "shell", (e) => e.shell || e.halfShell, "Shelled: its shell takes the blows first."],
+    ["fast", "»", "fast", (e) => e.speed >= 1.4, "Fast: it slips past slow plants."],
+    ["fly", "˄", "flies", (e) => e.fly > 0, "Flies: over the road, out of the Briar's reach."],
+    ["heal", "✚", "heals", (e) => e.heal, "Heals the creatures around it."],
+    ["split", "⋔", "splits", (e) => e.split || e.brood, "Splits, or broods, into smaller ones."],
+    ["burrow", "▾", "burrows", (e) => e.burrow, "Burrows under the road, where nothing reaches it."],
+    ["adapt", "↻", "adapts", (e) => e.adapt, "Adapts: it learns to resist what hits it most."],
+  ];
+  const traitsOf = (kind) => TRAITS.filter((t) => t[3](D.ENEMIES[kind]));
+  // at most TAGS trait tags on the meadow at once (nearest the Heart Tree first)
+  const TAGS = 24;
   // a screen without hover (a phone): planting takes two taps (main.js)
   const TOUCH = window.matchMedia("(hover: none)");
 
@@ -20568,7 +20632,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const cols = Math.max(3, Math.ceil((S.plants.length + 1) / 2));
       document.body.style.setProperty("--seedcols", cols); document.body.dataset.seedcols = cols;
       $("wavebtn").addEventListener("click", () => this.act.startWave());
-      $("inspector").addEventListener("click", () => { if ($("inspector").classList.contains("seedinfo")) $("inspector").classList.toggle("open"); });
+      // the card's More (open or folded for the session, every card alike)
+      this.moreOpen = false; this.foe = null; this.gift = "";
+      $("inspector").addEventListener("click", (e) => { if (e.target.closest(".tomore")) { this.moreOpen = !this.moreOpen; $("inspector").classList.toggle("open", this.moreOpen); } });
       $("speed").addEventListener("click", () => this.act.speed());
       $("sound").addEventListener("click", () => { const on = this.act.sound(); label("sound", on ? "♪" : "♪̸"); $("sound").classList.toggle("off", !on); });
       // the almanac: folded unless the player left it open
@@ -20585,10 +20651,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("turnl").addEventListener("click", () => this.act.turn(-1));
       $("turnr").addEventListener("click", () => this.act.turn(1));
       $("skybtn").addEventListener("click", () => this.act.sky());
-      // a gift chip tapped: what it does, until tapped again or tapped elsewhere
-      this.boonArr = null; this.boonN = 0; this.chips = null; this.tipFor = "";
-      $("boonbar").addEventListener("click", (e) => { const c = e.target.closest("[data-boon]"); if (c) this.boonTip(c.dataset.boon === this.tipFor ? "" : c.dataset.boon); });
-      document.addEventListener("pointerdown", (e) => { if (this.tipFor && !e.target.closest("#boonbar")) this.boonTip(""); });
+      // a gift chip tapped: its card, until tapped again (or the meadow is); a creature of the almanac: its card
+      this.boonArr = null; this.boonN = 0; this.chips = null;
+      $("boonbar").addEventListener("click", (e) => { const c = e.target.closest("[data-boon]"); if (c) this.inspectGift(c.dataset.boon === this.gift ? "" : c.dataset.boon); });
+      $("almbody").addEventListener("click", (e) => { const c = e.target.closest("[data-foe]"); if (c) this.inspectFoe(-1, c.dataset.foe); });
       // The inspector's buttons ignore taps for a moment after it opens on a plant (the tap that opened it,
       // or a double tap, can land on a button that appears under the finger), and Uproot takes two taps:
       // the first asks, the second (within a few seconds) uproots.
@@ -20666,12 +20732,17 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("uproot").classList.toggle("armed", armed);
     }
     clearSeed() { this.selected = ""; this.refresh(); }
-    // a seed too dear (a pick or a tap where it could go, main.js): a toast with the dew it needs and has,
-    // and the counter shakes; one toast at a time, the last one's text, silent
+    // a seed too dear (a pick or a tap where it could go, main.js): the seed's card says so (its "Need N more
+    // dew" line nudges), or without the card a toast with the dew it needs and has; the counter shakes
     short(kind) {
       const cost = S.towerCost(D.TOWERS[kind].cost, kind), t = $("toast"), d = $("dew");
-      t.textContent = `Need ${fmtDew(cost)} dew (you have ${fmtDew(S.dew)})`;
-      t.classList.add("show"); clearTimeout(this.toastT); this.toastT = setTimeout(() => t.classList.remove("show"), 1800);
+      this.seedInfo();
+      const line = this.selected === kind && this.showing("seedinfo") && $("inspbody").querySelector(".tips .short");
+      if (line) line.animate([{ transform: "none" }, { transform: "translateX(-4px)" }, { transform: "translateX(4px)" }, { transform: "none" }], { duration: 320, easing: "ease-out" });
+      else {
+        t.textContent = `Need ${fmtDew(cost)} dew (you have ${fmtDew(S.dew)})`;
+        t.classList.add("show"); clearTimeout(this.toastT); this.toastT = setTimeout(() => t.classList.remove("show"), 1800);
+      }
       d.classList.remove("short"); void d.offsetWidth; d.classList.add("short"); // (restarts the shake)
     }
     // On a phone the open almanac folds while a plant is inspected (the two would overlap) and opens again
@@ -20712,15 +20783,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
       if (had) for (const [id, c] of had) if (!chips.has(id)) c.el.remove();
       this.chips = chips;
-      if (this.tipFor && !S.boonLevel(this.tipFor)) this.boonTip("");
-    }
-    boonTip(id) {
-      this.tipFor = id;
-      const tip = $("boontip"), b = id && D.boon(id);
-      tip.classList.toggle("show", !!b);
-      if (!b) return;
-      const lv = Math.min(b.levels.length, S.boonLevel(b.id));
-      tip.innerHTML = `<b>${esc(b.name)}${b.levels.length > 1 ? " " + ROMAN[lv] : ""}</b> <span class="rar">${b.needs ? "Fused" : D.RARITY[b.rarity].name}</span><br>${esc(b.levels[lv - 1].desc)}`;
+      if (this.gift) this.inspectGift(this.gift); // (its card follows its level, or shuts on a new run)
     }
     // the game's speed on its button (main.js steps it: 1x, 2x, 3x)
     showSpeed(s) { label("speed", `${s}x`); $("speed").classList.toggle("on", s > 1); }
@@ -20780,26 +20843,69 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
     hideGameOver() { $("over").classList.remove("show"); }
 
+    // ------------------------------------------------------------------ the card (#inspector)
+    // One card for a plant, the seed in hand, a creature and a gift (docs/designs/2026-11-04-hud-cards.md):
+    // a head (icon, name, one figure on the right), up to four stat chips, a tip or two, and the full detail
+    // under More (folded or open for the session, this.moreOpen). `kind` is its class: tower, seedinfo, foe or
+    // gift. The ids (#insptitle, #inspbody, #grow, #uproot) stay for the skin and tools/flows.js.
+    card(kind, head, chips, tips, more) {
+      const box = $("inspector");
+      box.classList.remove("tower", "seedinfo", "foe", "gift");
+      box.classList.add(kind); box.classList.toggle("open", this.moreOpen);
+      $("insptitle").innerHTML = head;
+      $("inspbody").innerHTML = `<div class="chips">${chips.map(([l, v]) => `<span class="chip"><small>${l}</small><b>${v}</b></span>`).join("")}</div>` +
+        (tips.length ? `<div class="tips">${tips.map((t) => `<div>${t}</div>`).join("")}</div>` : "") +
+        (more ? `<div class="more">${more}</div><span class="tomore" role="button">More</span>` : "");
+    }
+    head(pic, color, name, fig, figCls) {
+      return `${pic ? `<span class="picon" style="color:${color}">${pic}</span>` : ""}<span class="cname">${esc(name)}</span><span class="cfig${figCls ? " " + figCls : ""}">${fig}</span>`;
+    }
+    // the card is up, as `kind` (or as any)
+    showing(kind) { const box = $("inspector"); return box.classList.contains("show") && (!kind || box.classList.contains(kind)); }
+    // a creature's or a gift's card shut: the seed's comes back if one is in hand
+    closeCard() {
+      this.foe = null; this.gift = "";
+      $("inspector").classList.remove("show", "foe", "gift", "anchored");
+      this.showAlmanac(); this.seedInfo();
+    }
+    // a creature's element chips under the wave trait (D.affinity): what it is weak to and what it resists
+    affChips(kind, trait) {
+      const aff = D.affinity(kind, trait), weak = [], resist = [];
+      D.ELEMENTS.forEach((_, el) => {
+        const tw = D.TOWERS[D.ELEMENT_TOWER[el]], chip = `<span class="ei" style="color:${ink(tw.color)}">${icon("ELEMENT_ICONS", D.ELEMENTS[el])}${D.ELEMENT_NAMES[el]} ×${aff[el].toFixed(1)}</span>`;
+        if (aff[el] > D.WEAK_ABOVE) weak.push(chip); else if (aff[el] < D.RESIST_BELOW) resist.push(chip);
+      });
+      return { weak, resist };
+    }
+
+    // A plant's card: its level; damage, reach, rate and what it aims at; its links (or the plants it could
+    // link with) and what it is strong against; under More what each level does and what growing it would
+    // add, its links in full and its matchups. Grow and Uproot under it, with their grace and Uproot's second tap.
     inspect(t) {
       const box = $("inspector");
-      if (!t) { box.classList.remove("show"); this.inspected = null; this.arm(null); this.almOver = false; this.showAlmanac(); this.seedInfo(); return; }
-      if (t !== this.inspected || !box.classList.contains("show") || box.classList.contains("seedinfo")) { this.openedAt = performance.now(); this.arm(null); }
-      box.classList.remove("seedinfo", "open"); this.seedKey = "";
+      if (!t) {
+        box.classList.remove("show", "anchored"); this.inspected = null; this.foe = null; this.gift = "";
+        this.arm(null); this.almOver = false; this.showAlmanac(); this.seedInfo(); return;
+      }
+      if (t !== this.inspected || !this.showing("tower")) { this.openedAt = performance.now(); this.arm(null); }
+      this.seedKey = ""; this.foe = null; this.gift = "";
       const def = D.TOWERS[t.kind];
-      const pic = icon("PLANT_ICONS", t.kind);
-      $("insptitle").innerHTML = `${pic ? `<span class="picon" style="color:${ink(def.color)}">${pic}</span>` : ""}${esc(def.name)}  ·  Lv ${t.level}`;
       // what it does at its level, and what growing it would change
       const now = def.levels.slice(0, t.level).map((s, k) => `<span class="lvl">${ROMAN[k + 1]}</span> ${esc(s)}`).join("<br>");
       const next = t.level < D.MAX_LEVEL ? `<br><span class="dim"><span class="lvl">${ROMAN[t.level + 1]}</span> ${esc(def.levels[t.level])}</span>` : "";
       // its links (each once, with the plants that give it), or the plants it could link with
       const by = new Map();
       for (const l of t.links) { if (!by.has(l.link)) by.set(l.link, new Set()); by.get(l.link).add(D.TOWERS[l.other.kind].name); }
-      const partners = D.LINKS.filter((l) => l.kinds.includes(t.kind) && l.kinds.every((k) => S.plants.includes(k))).map((l) => D.TOWERS[l.kinds[0] === t.kind ? l.kinds[1] : l.kinds[0]].name);
-      const links = by.size
-        ? [...by].map(([l, names]) => `<span class="lnk">${G.linkIcon(l.id) || "⟡"} ${esc(l.name)}</span> <span class="dim">with ${esc([...names].join(", "))}</span>: ${esc(l.desc)}`).join("<br>")
-        : `<span class="dim">No links. Plant beside it: ${esc([...new Set(partners)].join(", "))}</span>`;
+      const partners = [...new Set(D.LINKS.filter((l) => l.kinds.includes(t.kind) && l.kinds.every((k) => S.plants.includes(k))).map((l) => D.TOWERS[l.kinds[0] === t.kind ? l.kinds[1] : l.kinds[0]].name))];
+      const links = [...by].map(([l, names]) => `<span class="lnk">${G.linkIcon(l.id) || "⟡"} ${esc(l.name)}</span> <span class="dim">with ${esc([...names].join(", "))}</span>: ${esc(l.desc)}`).join("<br>");
+      const el = D.elementOf(t.kind), strong = D.ENEMY_ORDER.filter((e) => D.affinity(e, null)[el] > D.WEAK_ABOVE).map((e) => D.ENEMIES[e].name);
+      const tips = [by.size ? [...by.keys()].map((l) => `<span class="lnk">${G.linkIcon(l.id) || "⟡"} ${esc(l.name)}</span>`).join(" ")
+        : `<span class="dim">${partners.length ? `Links with ${esc(partners.join(", "))}: plant beside it` : "No links"}</span>`];
+      if (strong.length) tips.push(`Strong vs <b>${esc(strong.slice(0, 3).join(", "))}</b>`);
       this.inspected = t;
-      $("inspbody").innerHTML = `${now}${next}<br>${links}<br>Damage <b>${t.damage().toFixed(0)}</b> · Reach <b>${t.range().toFixed(1)}</b><br>Attacks <b>${t.rate().toFixed(2)}</b> / s<br><span class="dim">${esc(this.matchupsOf(t.kind))}</span>`;
+      this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, `Lv ${ROMAN[t.level]}`),
+        [["Damage", t.damage().toFixed(0)], ["Reach", t.range().toFixed(1)], ["Rate", `${t.rate().toFixed(2)}/s`], ["Aims", AIMS[t.kind] || "nearest"]],
+        tips, `${now}${next}${links ? "<br>" + links : ""}<br>Aims at ${esc(TARGETS[t.kind] || "the creature nearest the Heart Tree")}<br><span class="dim">${esc(this.matchupsOf(t.kind))}</span>`);
       const grow = $("grow");
       if (t.level >= D.MAX_LEVEL) { label(grow, "Fully grown"); grow.disabled = true; }
       else { label(grow, `Grow  (${t.upgradeCost()} dew)`); grow.disabled = !S.canAfford(t.upgradeCost()); }
@@ -20808,30 +20914,132 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.showAlmanac();
     }
 
-    // The picked seed, in the inspector's panel while no plant is looked at (its buttons hidden): its cost,
-    // what it does, its damage, reach and attacks as it would be planted now (Tower.preview), what it aims
-    // at, its levels with the dew each costs to grow, and the creatures it suits. Built again only when
-    // what it says changes (refresh runs on every dew).
+    // The seed in hand, on the card while nothing else is on it (no buttons): its cost; damage, reach and rate
+    // as it would be planted now (Tower.preview) and what it aims at; what it does, and the dew it still lacks
+    // or how to plant it; under More what it aims at in full, its levels with the dew each costs to grow, and
+    // its matchups. Built again only when what it says changes (refresh runs on every dew).
     seedInfo() {
       const box = $("inspector"), kind = this.selected;
-      const on = !!kind && !this.inspected && (S.phase === G.Phase.BUILD || S.phase === G.Phase.WAVE);
+      const on = !!kind && !this.inspected && !this.foe && !this.gift && (S.phase === G.Phase.BUILD || S.phase === G.Phase.WAVE);
       if (!on) {
-        if (box.classList.contains("seedinfo")) { box.classList.remove("show", "seedinfo", "open"); this.seedKey = ""; this.showAlmanac(); }
+        if (box.classList.contains("seedinfo")) { box.classList.remove("show", "seedinfo", "anchored"); this.seedKey = ""; this.showAlmanac(); }
         return;
       }
-      const def = D.TOWERS[kind], cost = S.towerCost(def.cost, kind), p = G.Tower.preview(kind), pic = icon("PLANT_ICONS", kind);
+      const def = D.TOWERS[kind], cost = S.towerCost(def.cost, kind), p = G.Tower.preview(kind), can = S.canAfford(cost);
       const grow = [1, 2].map((lv) => G.Tower.preview(kind, lv).growCost);
-      const key = [kind, cost, S.canAfford(cost), p.damage, p.range, p.rate, ...grow, TOUCH.matches].join();
-      if (key !== this.seedKey) {
+      const key = [kind, cost, can, can || S.dew, p.damage, p.range, p.rate, ...grow, TOUCH.matches].join();
+      if (key !== this.seedKey || !box.classList.contains("seedinfo")) {
         this.seedKey = key;
-        $("insptitle").innerHTML = `${pic ? `<span class="picon" style="color:${ink(def.color)}">${pic}</span>` : ""}${esc(def.name)}  ·  <span class="${S.canAfford(cost) ? "" : "short"}">${cost} dew</span>`;
         const levels = def.levels.map((s, k) => `<span class="lvl">${ROMAN[k + 1]}</span> ${esc(s)}${k ? ` <span class="dim">· ${grow[k - 1]} dew</span>` : ""}`).join("<br>");
-        $("inspbody").innerHTML = `${esc(def.desc)}<br>Damage <b>${p.damage.toFixed(0)}</b> · Reach <b>${p.range.toFixed(1)}</b> · <b>${p.rate.toFixed(2)}</b> / s<br>` +
-          `Aims at <b>${esc(TARGETS[kind] || "the creature nearest the Heart Tree")}</b><span class="more"><br>${levels}<br><span class="dim">${esc(this.matchupsOf(kind))}</span></span>` +
-          `<span class="tomore"><br>Levels and matchups</span><br><span class="how">${TOUCH.matches ? "Tap a spot to see it there, tap it again to plant." : "Click a spot to plant it."}</span>`;
+        this.card("seedinfo", this.head(icon("PLANT_ICONS", kind), ink(def.color), def.name, `${fmtDew(cost)} dew`, can ? "" : "short"),
+          [["Damage", p.damage.toFixed(0)], ["Reach", p.range.toFixed(1)], ["Rate", `${p.rate.toFixed(2)}/s`], ["Aims", AIMS[kind] || "nearest"]],
+          [esc(def.desc), can ? `<span class="how">${TOUCH.matches ? "Tap a spot to see it there, tap it again to plant." : "Click a spot to plant it."}</span>` : `<span class="short">Need ${fmtDew(cost - S.dew)} more dew</span>`],
+          `Aims at <b>${esc(TARGETS[kind] || "the creature nearest the Heart Tree")}</b><br>${levels}<br><span class="dim">${esc(this.matchupsOf(kind))}</span>`);
       }
-      box.classList.add("seedinfo");
       if (!box.classList.contains("show")) { box.classList.add("show"); this.showAlmanac(); }
+    }
+
+    // A creature's card: creature i (its uid kept, so the card shuts when it dies or leaves) with its HP live,
+    // or (i < 0) a kind from the almanac. Speed, harm, the dew it gives and its trait glyphs; what it is weak
+    // to and what it resists; under More its lore and what each trait means.
+    inspectFoe(i, kind) {
+      const E = this.game.enemies;
+      if (i >= 0) kind = E.kindOf(i);
+      if (!kind || !D.ENEMIES[kind]) { this.closeCard(); return; }
+      if (this.act.deselect) this.act.deselect(); // (the plant looked at, and its ring, let go)
+      this.foe = i >= 0 ? { i, uid: E.uid[i], kind } : { i: -1, kind };
+      const e = D.ENEMIES[kind], tr = traitsOf(kind), { weak, resist } = this.affChips(kind, i >= 0 ? E.trait : null);
+      const tips = [];
+      if (weak.length) tips.push(`Weak to ${weak.join(" ")}`);
+      if (resist.length) tips.push(`Resists ${resist.join(" ")}`);
+      if (!tips.length) tips.push(`<span class="dim">No weak spot: anything hurts it</span>`);
+      this.card("foe", this.head(icon("ENEMY_ICONS", kind) || "●", ink(e.color), e.name, i >= 0 ? this.foeHp(i) : `HP ${e.hp}`),
+        [["Speed", e.speed.toFixed(2)], ["Harm", e.harm], ["Dew", e.reward], ["Traits", tr.length ? `<span class="tglyph">${tr.map((t) => t[1]).join("")}</span>` : "–"]],
+        tips, `${esc(e.lore || "")}${tr.map((t, k) => `${k || e.lore ? "<br>" : ""}<span class="tglyph">${t[1]}</span> ${esc(t[4])}`).join("")}`);
+      this.foeFig = $("insptitle").querySelector(".cfig");
+      $("inspector").classList.add("show");
+      this.showAlmanac();
+    }
+    foeHp(i) { const E = this.game.enemies; return `HP ${Math.max(0, Math.ceil(E.hp[i]))}/${Math.ceil(E.maxHp[i])}`; }
+
+    // A gift's card (a chip of the boon bar tapped; "" shuts it): its tier, its level and what it is for; what
+    // it does now and what its next level adds; under More all its levels and what it fuses (or could unlock).
+    inspectGift(id) {
+      const b = id && D.boon(id);
+      if (!b || !S.boonLevel(b.id)) { if (this.gift) this.closeCard(); return; }
+      if (this.gift !== id && this.act.deselect) this.act.deselect();
+      this.gift = id;
+      const top = b.levels.length, lv = Math.min(top, S.boonLevel(b.id)), tier = b.needs ? "fused" : b.rarity, tname = b.needs ? "Fused" : D.RARITY[b.rarity].name;
+      const forWhom = D.TOWERS[b.el] ? D.TOWERS[b.el].name : { all: "All plants", heart: "Heart Tree" }[b.el] || "Garden";
+      const tips = [esc(b.levels[lv - 1].desc)];
+      if (lv < top) tips.push(`<span class="dim">Next: ${esc(b.levels[lv].desc)}</span>`);
+      const more = b.levels.map((l, k) => `<span class="lvl">${ROMAN[k + 1]}</span> ${k < lv ? esc(l.desc) : `<span class="dim">${esc(l.desc)}</span>`}`).join("<br>") +
+        (b.needs ? `<br>Fuses ${this.recipe(b)}` : this.hints(b) ? `<br>${this.hints(b)}` : "");
+      this.card("gift", this.head(G.boonIcon(b.id) || icon("PLANT_ICONS", b.el) || GLYPH[b.el] || "❀", ink(G.boonLook(b.id).color), b.name, tname, `tier r-${tier}`),
+        [["Tier", tname], ["Level", top > 1 ? `${ROMAN[lv]} of ${ROMAN[top]}` : "–"], ["For", esc(forWhom)]], tips, more);
+      $("inspector").classList.add("show");
+      this.showAlmanac();
+    }
+
+    // Each frame (main.js, after the ghost's tag): a creature's card follows its HP and shuts when it is gone;
+    // the creatures' trait tags sit beside their HP bars; and on a desktop the card stands beside what it
+    // tells of (the plant, the creature, or the ghost under the mouse: `cell`), on the side away from the
+    // screen's middle, clear of the HUD. (A phone docks it above the seeds: game.css.)
+    frame(cam, canvas, cell) {
+      const E = this.game.enemies, box = $("inspector"), f = this.foe;
+      if (f && f.i >= 0) {
+        if (!E.isValid(f.i, f.uid)) this.closeCard();
+        else { const s = this.foeHp(f.i); if (this.foeFig && this.foeFig.textContent !== s) this.foeFig.textContent = s; }
+      }
+      const dpr = canvas.width / Math.max(1, canvas.clientWidth), scr = (p) => { const q = cam.toScreen(p, canvas.width, canvas.height); return [q[0] / dpr, q[1] / dpr]; };
+      this.foeTags(E, scr);
+      let at = null;
+      if (box.classList.contains("show") && !NARROW.matches && !TOUCH.matches) {
+        if (box.classList.contains("tower") && this.inspected) at = this.inspected.origin();
+        else if (this.foe && this.foe.i >= 0) at = E.centre(this.foe.i);
+        else if (box.classList.contains("seedinfo") && cell && this.game.world.inside(cell[0], cell[1])) at = this.game.world.cellCentre(cell[0], cell[1]);
+      }
+      if (!at) { if (box.classList.contains("anchored")) { box.classList.remove("anchored"); box.style.left = box.style.top = ""; } return; }
+      const [ax, ay] = scr(at), w = box.offsetWidth, h = box.offsetHeight, W = innerWidth, GAP = 40;
+      let low = innerHeight - 8, high = 8, right = W - 8;
+      for (const id of ["seeds", "wavebtn"]) { const e = $(id); if (e && e.offsetWidth) low = Math.min(low, e.getBoundingClientRect().top - 8); }
+      for (const id of ["top", "topright"]) { const e = $(id); if (e && e.offsetWidth) high = Math.max(high, e.getBoundingClientRect().bottom + 8); }
+      const bar = $("dewgauge"); if (bar && bar.offsetWidth) right = Math.min(right, bar.getBoundingClientRect().left - 8);
+      // (away from the middle; the other side if it does not fit there)
+      let x = ax < W / 2 ? ax - GAP - w : ax + GAP;
+      if (x < 8 || x + w > right) x = ax < W / 2 ? ax + GAP : ax - GAP - w;
+      x = Math.max(8, Math.min(x, right - w));
+      const y = Math.max(high, Math.min(ay - h / 2, low - h));
+      box.classList.add("anchored");
+      const l = `${x.toFixed(0)}px`, tp = `${y.toFixed(0)}px`;
+      if (box.style.left !== l) box.style.left = l;
+      if (box.style.top !== tp) box.style.top = tp;
+    }
+    // trait tags (★ ◆ » ˄ ✚ ⋔ ▾ ↻) beside the HP bars of the hurt creatures and of the one on the card,
+    // nearest the Heart Tree first, at most TAGS: pooled divs in #floats, the glyphs made once per kind
+    foeTags(E, scr) {
+      if (!this.tags) {
+        this.tags = []; this.tagN = 0;
+        this.glyphs = D.ENEMY_ORDER.map((k) => traitsOf(k).map((t) => t[1]).join(""));
+        for (let n = 0; n < TAGS; n++) { const d = document.createElement("div"); d.className = "foetag"; d.style.display = "none"; $("floats").appendChild(d); this.tags.push({ el: d, txt: "" }); }
+      }
+      const fi = this.foe && this.foe.i >= 0 ? this.foe.i : -1, list = [];
+      if (S.phase === G.Phase.WAVE) for (let k = 0; k < G.ENEMY_CAPACITY; k++) {
+        if (!E.alive[k] || E.hidden(k) || !this.glyphs[E.kind[k]] || (E.hp[k] >= E.maxHp[k] && k !== fi)) continue;
+        list.push(k);
+      }
+      list.sort((a, b) => E.dist[b] - E.dist[a]);
+      const n = Math.min(TAGS, list.length);
+      for (let m = 0; m < n; m++) {
+        const k = list[m], tag = this.tags[m], g = this.glyphs[E.kind[k]], sz = Math.min(1.6, Math.max(1, E.defOf(k).size));
+        if (tag.txt !== g) { tag.txt = g; tag.el.textContent = g; }
+        const [x, y] = scr([E.px[k], E.py[k], E.pz[k] + E.body.creatureH[E.kind[k]] + 0.12]);
+        tag.el.style.transform = `translate(${(x + 7.5 * sz + 3).toFixed(1)}px, ${y.toFixed(1)}px) translateY(-50%)`;
+        if (m >= this.tagN) tag.el.style.display = "";
+        tag.el.classList.toggle("on", k === fi);
+      }
+      for (let m = n; m < this.tagN; m++) this.tags[m].el.style.display = "none";
+      this.tagN = n;
     }
 
     // Two waves' plans: `first` is the running wave (with `left` its creatures still to come or on the
@@ -20896,8 +21104,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
           if (aff[el] > D.WEAK_ABOVE) weak.push(chip); else if (aff[el] < D.RESIST_BELOW) resist.push(chip);
         });
         const line = `<span class="sw" style="color:${hex(e.color)}">${icon("ENEMY_ICONS", g.kind) || "●"}</span> ${e.name} ×${count}`;
-        if (left && count === 0) t += `<div class="ln gone">${line}</div>`;
-        else t += `<div class="ln">${line}<div class="det">${weak.length ? "weak " + weak.join(", ") : ""}${weak.length && resist.length ? " &nbsp; " : ""}${resist.length ? "resists " + resist.join(", ") : ""}</div></div>`;
+        if (left && count === 0) t += `<div class="ln gone" data-foe="${g.kind}">${line}</div>`;
+        else t += `<div class="ln" data-foe="${g.kind}">${line}<div class="det">${weak.length ? "weak " + weak.join(", ") : ""}${weak.length && resist.length ? " &nbsp; " : ""}${resist.length ? "resists " + resist.join(", ") : ""}</div></div>`;
       }
       if (wt) t += `<div class="det tr">${esc(wt.desc)}</div>`;
       return t;
@@ -25091,6 +25299,7 @@ function MG_SFX(L) {
       restart: () => restart(),
       turn: (dir) => cam.snap(dir),
       sky: () => atmos.toggle(),
+      deselect: () => deselect(),
     });
     const refreshWaves = () => {
       if (S.phase === G.Phase.WAVE) hud.showWaves(game.plan(S.wave), game.remaining(), game.plan(S.wave + 1));
@@ -25153,8 +25362,23 @@ function MG_SFX(L) {
     // A touch plants in two taps: the first, on a spot the seed can take, shows its ghost and reach there
     // (scene.hover) and the second, on the same spot, plants it; a tap on another spot moves the ghost. A
     // mouse plants in one click, its hover being the preview.
+    // the creature whose body centre is nearest a tap on the screen, within FOE_PICK css px (-1 for none)
+    const FOE_PICK = 28;
+    const foeAt = (e) => {
+      const E = game.enemies, r = canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, dpr = canvas.width / Math.max(1, canvas.clientWidth);
+      let best = -1, bd = FOE_PICK * FOE_PICK;
+      for (let k = 0; k < G.ENEMY_CAPACITY; k++) {
+        if (!E.alive[k] || E.hidden(k)) continue;
+        const q = cam.toScreen(E.centre(k), canvas.width, canvas.height), dx = q[0] / dpr - x, dy = q[1] / dpr - y, d = dx * dx + dy * dy;
+        if (d < bd) { bd = d; best = k; }
+      }
+      return best;
+    };
     const tap = (e) => {
       if (S.phase === G.Phase.GAME_OVER || S.phase === G.Phase.CHOOSE_BOON) return;
+      // (no seed in hand: a creature under the tap opens its card)
+      const foe = hud.selected ? -1 : foeAt(e);
+      if (foe >= 0) { pending = null; hud.inspectFoe(foe); return; }
       const c = cellAt(e, { plants: byLeaves() }); // (a tap on a plant's leaves is that plant, as the mouse hover shows, unless a seed is held)
       if (!c) { pending = null; deselect(); return; }
       if (e.pointerType !== "mouse") { scene.hover = { cell: c }; mouseHover = false; }
@@ -25271,7 +25495,7 @@ function MG_SFX(L) {
       const cpu = ME.now() - c0;
       cam.pan[0] -= jx; cam.pan[1] -= jy;
       scene.fx.place(cam, canvas);
-      scene.armed = pending; scene.ghostTag(cam, canvas);
+      scene.armed = pending; scene.ghostTag(cam, canvas); hud.frame(cam, canvas, scene.hover && scene.hover.cell);
       if (audio) audio.update(rdt, listener());
       fpsMeter(rdt);
       // the frames of play, for the run's mean fps in the run log (not paused, hidden or over)
