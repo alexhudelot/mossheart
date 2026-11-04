@@ -159,6 +159,21 @@ body.alm-open #dewbar { visibility: hidden; } /* (the bulb stays, under the alma
 #giftbox { position: fixed; left: calc(12px + var(--sl)); top: calc(80px + var(--st)); max-width: min(46vw, 520px); display: flex; flex-direction: column; gap: 6px; align-items: flex-start; pointer-events: none; }
 #boonbar { display: flex; flex-wrap: wrap; gap: 5px; pointer-events: auto; }
 #boonbar:empty { display: none; }
+/* the wave's dew challenge (hud.js chalPill): what to do, for how much; gold once met, struck through once failed */
+#chal { display: none; align-items: center; gap: 7px; max-width: 100%; padding: 4px 9px 4px 6px; font-size: calc(12px * var(--ts)); line-height: 1.2; color: var(--ink); background: var(--paper);
+  border: 2px solid #8fa86a; border-radius: 10px; box-shadow: 0 2px 5px rgba(26, 38, 13, 0.25); pointer-events: auto; transition: border-color 0.3s, opacity 0.3s; }
+#chal.show { display: flex; }
+#chal .ci { flex: none; width: 22px; text-align: center; font-size: calc(16px * var(--ts)); color: #4f7a36; }
+#chal .ct { min-width: 0; }
+#chal .ct b { font-weight: 800; }
+#chal .ct small { font-size: 0.85em; opacity: 0.65; }
+#chal .ct span { display: block; opacity: 0.85; }
+#chal .cp { flex: none; display: flex; flex-direction: column; align-items: center; font-weight: 800; color: #2f6f9e; }
+#chal .cp small { font-size: 0.75em; font-weight: 600; opacity: 0.75; }
+#chal.met { border-color: #d4a52a; background: linear-gradient(160deg, var(--paper) 55%, #fbefc4); box-shadow: 0 2px 5px rgba(26, 38, 13, 0.25), 0 0 10px #f0c04a88; }
+#chal.met .ci, #chal.met .cp { color: #b07f1a; }
+#chal.failed { opacity: 0.6; border-color: #a99; }
+#chal.failed .ct span, #chal.failed .cp { text-decoration: line-through; }
 .bchip { display: inline-flex; align-items: center; gap: 2px; height: 32px; min-width: 32px; padding: 0 6px; font: inherit; font-size: calc(12px * var(--ts)); color: var(--ink); background: var(--paper);
   border: 2px solid #6f9a4a; border-radius: 10px; box-shadow: 0 2px 5px rgba(26, 38, 13, 0.25); cursor: pointer; touch-action: manipulation; }
 .bchip .bicon { font-size: calc(17px * var(--ts)); line-height: 1; color: var(--bc); }
@@ -508,6 +523,8 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   #almanac { top: calc(118px + var(--st)); right: calc(6px + var(--sr)); max-height: 40vh; font-size: calc(12.5px * var(--ts)); }
   #giftbox { left: calc(6px + var(--sl)); top: calc(52px + var(--st)); max-width: calc(100vw - 190px); }
   .bchip { height: 28px; min-width: 28px; padding: 0 4px; border-radius: 9px; }
+  #chal { gap: 5px; padding: 3px 7px 3px 4px; font-size: calc(11px * var(--ts)); border-radius: 9px; }
+  #chal .ci { width: 18px; font-size: calc(14px * var(--ts)); }
   .bchip .bicon { font-size: calc(15px * var(--ts)); }
   .bchip .bicon svg { width: 15px; height: 15px; }
   body.alm-open #giftbox { display: none; } /* the open almanac lists the gifts */
@@ -694,7 +711,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     <div id="wave">Wave 0</div>
   </div>
   <div id="topright"><span id="fps"><span id="fpsn"></span> · <span id="vox"></span></span><div id="viewctl"><button id="skybtn" class="btn small" title="mood and weather">☁</button><button id="turnl" class="btn small" title="turn left">↺</button><button id="turnr" class="btn small" title="turn right">↻</button></div><button id="sound" class="btn small" title="sound (M)"><span class="lb">♪</span></button><button id="musicbtn" class="btn small" title="music style"><span class="lb">♫</span><small id="musicname">Ambient</small></button><button id="speed" class="btn small" title="speed (F)"><span class="lb">1x</span></button><button id="pausebtn" class="btn small" title="menu (Esc)">☰</button></div>
-  <div id="giftbox"><div id="boonbar"></div></div>
+  <div id="giftbox"><div id="chal"></div><div id="boonbar"></div></div>
   <div id="almanac"><button id="almtog">Almanac ▸</button><div id="almbody"></div></div>
   <div id="sky" class="panel"><div class="skyrow"><b>Mood</b><div class="seg" id="moodseg"></div></div><div class="skyrow"><b>Weather</b><div class="seg" id="wxseg"></div></div></div>
   <div id="hint">Tap a seed, then tap the meadow twice to plant it</div>
@@ -15574,7 +15591,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.40.0", name: "Mossheart", commit: "8857c2f" };
+  G.VERSION = { v: "0.41.0", name: "Mossheart", commit: "b9be5ca" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -15894,6 +15911,28 @@ function MA_DSP() {
     return { f: next, i: (n) => Math.floor(next() * n), range: (a, b) => a + Math.floor(next() * (b - a + 1)), between: (a, b) => a + (b - a) * next(), state: (v) => (v === undefined ? s : (s = v | 0)) };
   };
   const mix = (a, b) => { let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x632be5ab, 0xc2b2ae35); h ^= h >>> 16; h = Math.imul(h, 0x7feb352d); h ^= h >>> 15; return h >>> 0; };
+
+  // Dew challenges (Game.chal): from wave 2 each wave sets one, known before it starts (by the run seed and
+  // the wave, like its plan, so the HUD shows the next one and a save needs none of it), paid in dew on the
+  // wave's clear if met. `pay` scales D.challengePay; `n` is the goal's figure for the wave. Untouched:
+  // nothing reaches the Heart Tree. Hold the line: nothing gets `n` of the way down the road (State.danger;
+  // not in a boss wave). Hands off: nothing sown or grown while the wave runs. Hoard: `n` dew banked at the
+  // clear. Daring: the next wave called early (not into or out of a boss wave, Game.earlyBlocked).
+  D.CHALLENGES = {
+    untouched: { name: "Untouched", icon: "♥", pay: 1.2, text: () => "No creature reaches the Heart Tree" },
+    hold: { name: "Hold the line", icon: "⛉", pay: 1, n: () => 0.75, text: () => "No creature gets three quarters of the way down the road" },
+    handsoff: { name: "Hands off", icon: "✋", pay: 0.8, text: () => "Sow and grow nothing while the wave runs" },
+    hoard: { name: "Hoard", icon: "💧", pay: 1, n: (w) => Math.min(700, 60 + 20 * w), text: (n) => `Hold ${n} dew when the wave clears` },
+    daring: { name: "Daring", icon: "»", pay: 0.6, text: () => "Call the next wave early" },
+  };
+  D.challengePay = (wave) => Math.round(6 + 1.5 * wave);
+  // the wave's challenge, { id, wave, n, pay, name, icon, text }, or null (wave 1)
+  D.challengeFor = (wave, runSeed) => {
+    if (wave < 2) return null;
+    const boss = (w) => w % 5 === 0, ids = Object.keys(D.CHALLENGES).filter((id) => !(id === "hold" && boss(wave)) && !(id === "daring" && (boss(wave) || boss(wave + 1))));
+    const id = ids[mix(runSeed ^ 0x5eed, wave) % ids.length], C = D.CHALLENGES[id], n = C.n ? C.n(wave) : 0;
+    return { id, wave, n, pay: Math.round(D.challengePay(wave) * C.pay), name: C.name, icon: C.icon, text: C.text(n) };
+  };
 
   // Everything known about a wave before it starts: its spawn list (pairs of [enemy, delay after the
   // previous]), the creatures it brings and its trait. Plans depend only on the run seed and the wave
@@ -16897,6 +16936,9 @@ function MA_DSP() {
       this.brambleT = 0; this.flyT = 0; this.pulseT = 0; this.flyK = 0; this.cloudT = 0; this.fireT = 0;
       // the gifts on offer while the phase is CHOOSE_BOON
       this.offer = null;
+      // the running wave's dew challenge (D.challengeFor, set when a wave starts from BUILD; its state "live",
+      // "met" or "failed"), or null
+      this.chal = null;
       // the run so far, for the end-of-run summary: kills per creature and per element of the killing
       // blow (Defs.ELEMENTS order), creatures that reached the Heart Tree, plants sown per kind, growths,
       // uprootings and dew gathered (kills and wave bonuses); and for the run log (view/leaderboard.js) the
@@ -16906,9 +16948,10 @@ function MA_DSP() {
         leakedBy: {}, lastLeak: "", grownBy: {}, soldBy: {}, spent: 0, peakDew: 0, frames: 0, frameT: 0 };
       const st = this.stats, add = (o, k) => { o[k] = (o[k] || 0) + 1; };
       this.unsub = [
-        G.on("leaked", (e) => { this.heartShock = Math.min(0.5, this.heartShock + 0.25); st.leaked++; add(st.leakedBy, e.kind); st.lastLeak = e.kind; }),
+        G.on("leaked", (e) => { this.chalFail("untouched"); this.heartShock = Math.min(0.5, this.heartShock + 0.25); st.leaked++; add(st.leakedBy, e.kind); st.lastLeak = e.kind; }),
         G.on("kill", (e) => { st.kills[e.kind] = (st.kills[e.kind] || 0) + 1; if (e.element >= 0) st.byElement[e.element]++; st.dew += Math.round(e.reward * S.mod("dew_gain")); }),
-        G.on("tower_upgraded", (e) => add(st.grownBy, e.kind)),
+        G.on("tower_placed", () => { if (S.phase === G.Phase.WAVE) this.chalFail("handsoff"); }),
+        G.on("tower_upgraded", (e) => { add(st.grownBy, e.kind); if (S.phase === G.Phase.WAVE && !e.free) this.chalFail("handsoff"); }),
         G.on("tower_sold", (e) => add(st.soldBy, e.tower.kind)),
         G.on("dew", () => { if (S.dew > st.peakDew) st.peakDew = S.dew; }),
       ];
@@ -16990,9 +17033,29 @@ function MA_DSP() {
       this.restPlants();
       this.running = 0;
       this.addWave();
+      this.chal = D.challengeFor(S.wave, S.seed);
+      if (this.chal) this.chal.state = "live";
       S.setPhase(G.Phase.WAVE);
       this.announce();
+      G.emit("challenge", { chal: this.chal });
       return true;
+    }
+    // --- dew challenges (D.CHALLENGES): the one the next wave will set, for the HUD; a live one failed now
+    // (on the first leak, sowing or growth, or a creature too far down the road), or met (Daring: on the call);
+    // the clear settles the rest and pays (chalSettle). Each change emits "challenge" { chal }.
+    nextChallenge() { return D.challengeFor(S.wave + 1, S.seed); }
+    chalFail(id) { const c = this.chal; if (c && c.state === "live" && c.id === id) { c.state = "failed"; G.emit("challenge", { chal: c }); } }
+    chalMeet(id) { const c = this.chal; if (c && c.state === "live" && c.id === id) { c.state = "met"; G.emit("challenge", { chal: c }); } }
+    chalSettle() {
+      const c = this.chal;
+      if (!c) return;
+      if (c.state === "live") c.state = c.id === "daring" || (c.id === "hoard" && S.dew < c.n) ? "failed" : "met";
+      if (c.state === "met") {
+        S.earnRaw(c.pay, "challenge"); this.stats.dew += c.pay;
+        this.stats.challenges = (this.stats.challenges || 0) + 1;
+      }
+      G.emit("challenge", { chal: c, settled: true });
+      this.chal = null;
     }
     // the next wave's spawns as a stream of their own (with its own vitality and trait)
     addWave() {
@@ -17038,6 +17101,7 @@ function MA_DSP() {
       S.earnRaw(bonus, "early"); this.stats.dew += bonus; this.stats.early = (this.stats.early || 0) + 1;
       this.addWave();
       G.emit("early", { wave: S.wave, dew: bonus });
+      this.chalMeet("daring");
       this.announce();
       return true;
     }
@@ -17057,6 +17121,8 @@ function MA_DSP() {
       // the wave is over: the seeds still in flight (nothing left to hit) and the puddles go, both pools start
       // over as new ones, and the wave's own timers and counts go back to a new game's, so the run goes on from
       // exactly what a save restores (core/save.js)
+      // (the challenge first: Hoard reads the dew before the clear's bonus)
+      this.chalSettle();
       this.shots.reset(); this.enemies.reset(); this.restPlants();
       this.brambleT = 0; this.flyT = 0; this.pulseT = 0; this.flyK = 0; this.cloudT = 0; this.fireT = 0;
       // (every wave run since the last clear is paid its bonus; the interest once)
@@ -17109,6 +17175,7 @@ function MA_DSP() {
       this.blight.update(dt, this.enemies);
       if (S.phase === G.Phase.WAVE && !this.streams.length && this.enemies.count === 0) this.waveCleared();
       this.readBattle(dt);
+      if (this.chal && this.chal.id === "hold" && S.danger > this.chal.n) this.chalFail("hold");
       this.updateIntensity(dt);
     }
     // The boons that act on their own while a wave runs: brambles at every Thornbloom's foot scratch the
@@ -21107,6 +21174,21 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.dewShown = S.dew; this.dewGain = false; this.dewRaf = 0; this.pulseAt = 0; this.sprayAt = 0;
       G.on("dew_gain", (e) => { this.dewGain = true; this.dewPulse(e.amount, e.rate); });
       for (const ev of ["dew", "heart", "wave", "phase", "mods", "waves"]) G.on(ev, () => this.refresh());
+      // the wave's dew challenge (Game.chal): met or failed it keeps that look a moment after the clear; met,
+      // a toast with what it paid
+      this.chalDone = null; this.chalT = 0;
+      G.on("challenge", (e) => {
+        if (e.settled) {
+          this.chalDone = e.chal; clearTimeout(this.chalT);
+          this.chalT = setTimeout(() => { this.chalDone = null; this.chalPill(); }, 2600);
+          if (e.chal.state === "met") {
+            const t = $("toast");
+            t.textContent = `Challenge met: +${fmtDew(e.chal.pay)} dew`;
+            t.classList.add("show"); clearTimeout(this.toastT); this.toastT = setTimeout(() => t.classList.remove("show"), 2200);
+          }
+        }
+        this.chalPill();
+      });
       // links change as plants come and go around the one in the inspector
       G.on("links", () => { if (this.inspected && $("inspector").classList.contains("show") && this.inspected.links) this.inspect(this.inspected); });
       this.refresh();
@@ -21275,6 +21357,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }).join("");
       return `<div class="srow"><b class="sh">Plants</b> ${planted} planted · ${st.grown} grown${st.uprooted ? ` · ${st.uprooted} uprooted` : ""}<div class="sd">${plants || `<span class="dim">none</span>`}</div></div>` +
         `<div class="srow"><b class="sh">Gifts</b><div class="sd">${gifts}</div></div>` +
+        (st.challenges ? `<div class="srow"><b class="sh">Challenges</b> ${st.challenges} met</div>` : "") +
         `<div class="srow"><b class="sh">Creatures</b> ${stopped} stopped${st.leaked ? ` · ${st.leaked} reached the Heart Tree` : ""}<div class="sd">${bars}</div></div>`;
     }
     hideGameOver() { $("over").classList.remove("show"); }
@@ -21607,6 +21690,19 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (S.phase === G.Phase.GAME_OVER && $("inspector").classList.contains("show")) this.inspect(null);
       this.seedInfo();
       this.boonBar();
+      this.chalPill();
+    }
+    // #chal: the running wave's challenge (live, met or failed), else between waves the next wave's; none
+    // before wave 2 or once the run is over
+    chalPill() {
+      const el = $("chal"), P = G.Phase;
+      let c = this.game.chal || this.chalDone, when = "This wave";
+      if (!c && (S.phase === P.BUILD || S.phase === P.CHOOSE_BOON)) { c = this.game.nextChallenge(); when = `Wave ${S.wave + 1}`; }
+      if (S.phase === P.GAME_OVER) c = null;
+      const cls = c ? (c.state === "met" ? "show met" : c.state === "failed" ? "show failed" : "show") : "";
+      const html = c ? `<span class="ci">${c.state === "met" ? "✓" : c.icon}</span><span class="ct"><b>${esc(c.name)}</b> <small>${when}</small><span>${esc(c.text)}</span></span><span class="cp">+${fmtDew(c.pay)}<small>dew</small></span>` : "";
+      if (el.className !== cls) el.className = cls;
+      if (el.innerHTML !== html) { el.innerHTML = html; el.title = c ? `Dew challenge: ${c.text}, for ${c.pay} dew when the wave clears` : ""; }
     }
   }
   G.Hud = Hud;
