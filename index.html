@@ -110,12 +110,12 @@ body.alm-open #dewbar { visibility: hidden; } /* (the bulb stays, under the alma
 #dewbar[data-hot="1"] { filter: brightness(1.12); }
 #dewbar[data-hot="2"] { filter: brightness(1.22) drop-shadow(0 0 5px rgba(140, 215, 255, 0.8)); }
 #dewbar[data-hot="3"] { filter: brightness(1.32) drop-shadow(0 0 9px rgba(160, 225, 255, 0.95)); }
-/* (the odds tag, beside the water's surface: rare+, rare++, rare+++) */
+/* (the odds tag, beside the water's surface: rare+, then the band that opens the legendary gifts, then the exquisite ones) */
 #dewbar .luck { position: absolute; right: calc(100% + 6px); bottom: calc(var(--fill, 0) * 100%); margin-bottom: -0.7em; padding: 1px 6px; border-radius: 8px; white-space: nowrap;
   font-size: calc(12px * var(--ts)); font-weight: 800; letter-spacing: 0.03em; color: #10303e; background: #bfefff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); transition: bottom 0.8s ease-out; }
 #dewbar .luck:empty { display: none; }
-#dewbar[data-tier="2"] .luck { background: #fff; color: #0d4a66; box-shadow: 0 0 6px rgba(160, 230, 255, 0.9); }
-#dewbar[data-tier="3"] .luck { background: #ffe08a; color: #5a3a00; box-shadow: 0 0 8px rgba(255, 210, 90, 0.95); }
+#dewbar[data-tier="2"] .luck { background: linear-gradient(180deg, #ffb070, #e0602a); color: #3a1204; box-shadow: 0 0 7px rgba(255, 140, 70, 0.9); }
+#dewbar[data-tier="3"] .luck { background: linear-gradient(90deg, #ffd6f0, #c9f3ff, #fff3b8, #d9c8ff); color: #3a2a5a; box-shadow: 0 0 9px rgba(220, 200, 255, 0.95); }
 /* (the droplets: they leap from the water's surface) */
 #dewbar .spray { position: absolute; left: 50%; bottom: calc(var(--fill, 0) * 100%); width: 8px; height: 10px; margin: 0 0 -2px -4px; border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%; background: #8fd2f5; box-shadow: 0 0 4px #c8ecff; opacity: 0; }
 #dewbar[data-tier="3"] .spray { background: #ffe38f; box-shadow: 0 0 4px #fff2c0; }
@@ -166,6 +166,8 @@ body.alm-open #dewbar { visibility: hidden; } /* (the bulb stays, under the alma
 .bchip em { font-style: normal; font-weight: 800; color: var(--bc); filter: brightness(0.7); }
 .bchip.r-rare { border-color: #3d5f9e; }
 .bchip.r-epic { border-color: #d6a32e; box-shadow: 0 0 8px #f2c45a88; }
+.bchip.r-legendary { border-color: #e0602a; box-shadow: 0 0 8px #ff8a4a99; }
+.bchip.r-exquisite { border-color: #9a7ad6; box-shadow: 0 0 6px #ffc8ee, 0 0 10px #a8e8ffaa; }
 .bchip.r-fused { border: 3px double #b5486e; box-shadow: 0 0 8px #e2709a88; }
 
 /* the camera's turn buttons, the sky button, and the sky panel (mood and weather) beside them */
@@ -245,7 +247,7 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 #insptitle .cfig.short { color: #b0402a; }
 #insptitle .cfig.tier { text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.6em; }
 #insptitle .cfig.r-common { color: #6f9a4a; } #insptitle .cfig.r-rare { color: #3d5f9e; }
-#insptitle .cfig.r-epic { color: #b07f1a; } #insptitle .cfig.r-fused { color: #b5486e; }
+#insptitle .cfig.r-epic { color: #b07f1a; } #insptitle .cfig.r-fused { color: #b5486e; } #insptitle .cfig.r-legendary { color: #c24a18; } #insptitle .cfig.r-exquisite { color: #7a5ab8; }
 #inspbody .chips { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-bottom: 6px; }
 #inspbody .chip { display: flex; flex-direction: column; align-items: center; padding: 3px 2px; border-radius: 8px; background: #efe4c4; color: #38452e; min-width: 0; }
 #inspbody .chip small { font-size: 0.72em; color: #6b7560; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -331,6 +333,26 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 .boon.r-epic .ribbon::after { content: " ★"; }
 .boon.r-fused .ribbon::before { content: "❀ "; }
 .boon.r-fused .ribbon::after { content: " ❀"; }
+/* the tiers a big dew bank opens (D.RARITY band): legendary in ember, its rays and glow hotter than an
+   epic's; exquisite in opal, its frame and ribbon slowly shifting hue, rays in every colour */
+.boon.r-legendary { border-color: #e0602a; background: linear-gradient(160deg, var(--paper) 55%, #fbe0cc); box-shadow: var(--shadow), 0 0 22px #ff8a4aaa;
+  --rg: 0 0 26px 6px #ff8a4add; --rs: #ffe0c0e0; --rr: #ff9a50; }
+.boon.r-exquisite { border: 4px solid #9a7ad6; background: linear-gradient(160deg, var(--paper) 45%, #f2e6ff 70%, #e0f6ff); box-shadow: var(--shadow), 0 0 26px #d0b8ffcc, 0 0 0 3px #a8e8ff66;
+  --rg: 0 0 30px 7px #e0c8ffee, 0 0 0 2px #ffd6f088; --rs: #ffffffe8; animation: flip 0.9s cubic-bezier(0.2, 0.8, 0.3, 1) var(--deal, 0s) backwards, opal 6s linear calc(var(--deal, 0s) + 0.9s) infinite; }
+.boon.r-legendary { animation: flip 0.8s cubic-bezier(0.2, 0.8, 0.3, 1) var(--deal, 0s) backwards; }
+.boon.r-legendary .aura, .boon.r-exquisite .aura { display: block; inset: -4px; animation: auraflash 0.9s ease-out var(--deal, 0s) backwards, aura 1.6s ease-in-out calc(var(--deal, 0s) + 0.9s) infinite; }
+.boon.r-legendary .shine::before, .boon.r-exquisite .shine::before { animation: shine 3.2s ease-in-out calc(var(--deal, 0s) + 0.5s) infinite; }
+.boon.r-legendary .rays { animation-duration: 1.6s; }
+.boon.r-exquisite .rays { animation-duration: 1.9s; background: repeating-conic-gradient(from 0deg, #ff9ad6 0deg 6deg, transparent 6deg 15deg, #9ae4ff 15deg 21deg, transparent 21deg 30deg, #fff09a 30deg 36deg, transparent 36deg 45deg); }
+.boon.r-legendary .ribbon { color: #fff; background: linear-gradient(180deg, #ffa060, #e0602a 55%, #a8380e); box-shadow: 0 2px 0 #0004, 0 0 12px #ff8a4add; }
+.boon.r-exquisite .ribbon { color: #3a2a5a; text-shadow: 0 1px 0 #fff8; background: linear-gradient(90deg, #ffd6f0, #c9f3ff, #fff3b8, #d9c8ff, #ffd6f0); background-size: 200% 100%;
+  box-shadow: 0 0 0 2px #fff, 0 2px 0 2px #0004, 0 0 14px #d0b8ffee; animation: opalband 4s linear infinite; }
+.boon.r-legendary .ribbon::before { content: "✦ "; }
+.boon.r-legendary .ribbon::after { content: " ✦"; }
+.boon.r-exquisite .ribbon::before { content: "✧✦ "; }
+.boon.r-exquisite .ribbon::after { content: " ✦✧"; }
+@keyframes opal { 0%, 100% { border-color: #9a7ad6; } 25% { border-color: #e07ab8; } 50% { border-color: #5ab8d6; } 75% { border-color: #d6b84a; } }
+@keyframes opalband { from { background-position: 0 0; } to { background-position: 200% 0; } }
 @keyframes deal { from { opacity: 0; transform: translateY(28px) scale(0.94); } to { opacity: 1; transform: none; } }
 @keyframes flip { 0% { opacity: 0; transform: perspective(800px) translateY(20px) rotateY(-95deg); } 35% { opacity: 1; }
   60% { transform: perspective(800px) rotateY(10deg) scale(1.05); filter: brightness(1.3); } 100% { opacity: 1; transform: none; filter: none; } }
@@ -348,6 +370,8 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 .gifts { margin: 6px 0 2px; line-height: 1.7; }
 .gift { display: inline-block; padding: 0 6px; border-radius: 8px; border: 1.5px solid var(--bc); font-size: calc(12px * var(--ts)); white-space: nowrap; }
 .gift.r-epic { box-shadow: 0 0 6px #f2c45a88; }
+.gift.r-legendary { box-shadow: 0 0 6px #ff8a4a99; }
+.gift.r-exquisite { box-shadow: 0 0 5px #ffc8ee, 0 0 8px #a8e8ffaa; }
 /* fused boons: a double frame in blossom and gold; the hints at fusions on the other cards; the
    almanac's recipes (the parts owned in full in the boon's ink) */
 .boon.r-fused { border: 4px double #b5486e; background: linear-gradient(160deg, var(--paper) 55%, #f7dfe6); box-shadow: var(--shadow), 0 0 22px #e2709a99, 0 0 0 3px #f2c45a66;
@@ -548,8 +572,8 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   #wave { font-size: calc(14px * var(--ts)); line-height: 1.1; }
   #giftbox { top: calc(74px + var(--st)); }
 }
-@media (prefers-reduced-motion: reduce) { #dew::after, #dewbar .fill, #dewbar .fill::before, #dewbar .fill::after, #dewbar .bub, #dewbar .luck, .veil, .seed, #heartfill, #bar, .boon, .boon .aura, .boon .shine::before, .boon .rays { animation: none !important; transition: none; } }
-body.calm #dew::after, body.calm #dewbar .fill, body.calm #dewbar .fill::before, body.calm #dewbar .fill::after, body.calm #dewbar .bub, body.calm #dewbar .luck, body.calm .veil, body.calm .seed, body.calm #heartfill, body.calm #bar, body.calm .boon, body.calm .boon .aura, body.calm .boon .shine::before, body.calm .boon .rays { animation: none !important; transition: none; } /* (the Motion setting) */
+@media (prefers-reduced-motion: reduce) { #dew::after, #dewbar .fill, #dewbar .fill::before, #dewbar .fill::after, #dewbar .bub, #dewbar .luck, .veil, .seed, #heartfill, #bar, .boon, .boon .aura, .boon .shine::before, .boon .rays, .boon .ribbon { animation: none !important; transition: none; } }
+body.calm #dew::after, body.calm #dewbar .fill, body.calm #dewbar .fill::before, body.calm #dewbar .fill::after, body.calm #dewbar .bub, body.calm #dewbar .luck, body.calm .veil, body.calm .seed, body.calm #heartfill, body.calm #bar, body.calm .boon, body.calm .boon .aura, body.calm .boon .shine::before, body.calm .boon .rays, body.calm .boon .ribbon { animation: none !important; transition: none; } /* (the Motion setting) */
 @media (prefers-reduced-motion: reduce) { #dewbar .bub { display: none; } }
 body.calm #dewbar .bub { display: none; } /* (still waves, no bubbles) */
 
@@ -15550,7 +15574,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.39.0", name: "Mossheart", commit: "22417d2" };
+  G.VERSION = { v: "0.40.0", name: "Mossheart", commit: "8857c2f" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -15737,12 +15761,19 @@ function MA_DSP() {
   // much stronger, 5 s, a puddle from every bomb), heat (a Ghost Lily heating faster) and lily_keep (the heat a beam keeps).
   const L = (desc, mods = {}, once = {}) => Object.assign({ desc, mods }, once);
   // (rares and epics were 30 and 10 against 60 until the user asked for them rarer, 2026-10-26: about half as often now)
-  D.RARITY = { common: { weight: 78, name: "Common" }, rare: { weight: 17, name: "Rare" }, epic: { weight: 5, name: "Epic" } };
+  // The two tiers above epic are gated by the dew bar's band (the user, 2026-11-04): legendary gifts are
+  // drawn only with D.DEW_TIERS[1] dew banked or more (the bar's third band) and from wave `from`, exquisite
+  // ones only in the last band. Spending the bank down shuts them out of the next draw again.
+  D.RARITY = { common: { weight: 78, name: "Common" }, rare: { weight: 17, name: "Rare" }, epic: { weight: 5, name: "Epic" },
+    legendary: { weight: 2.5, name: "Legendary", band: 2, from: 6 }, exquisite: { weight: 1.2, name: "Exquisite", band: 3, from: 8 } };
   // the dew bank's tiers (dew held when the gifts are drawn, after the wave's bonus; a run starts at 160): the
   // HUD's dew bar changes colour at each, and the rare and epic weights grow by tier (State.rollBoons), up to
-  // rare x1.8 and epic x2.5 at the last (the user asked for more rares and epics from a bigger bank, 2026-10-26)
+  // rare x1.8 and epic x2.5 at the last (the user asked for more rares and epics from a bigger bank, 2026-10-26);
+  // legendary ones grow too in the last band
   D.DEW_TIERS = [200, 400, 700];
-  D.DEW_LUCK = { rare: [1, 1.25, 1.5, 1.8], epic: [1, 1.4, 1.9, 2.5] };
+  D.DEW_LUCK = { rare: [1, 1.25, 1.5, 1.8], epic: [1, 1.4, 1.9, 2.5], legendary: [1, 1, 1, 1.4] };
+  // whether a rarity can be drawn with `dew` banked at `wave` (the plain rarities: always; epics from EPIC_FROM)
+  D.rarityOpen = (r, dew, wave) => { const R = D.RARITY[r]; return r === "epic" ? wave >= D.EPIC_FROM : !R.band || (D.dewTier(dew) >= R.band && wave >= R.from); };
   D.dewTier = (dew) => D.DEW_TIERS.reduce((n, x) => n + (dew >= x ? 1 : 0), 0);
   // the dew rate the sounds and the counter read (State.gained): dew per second of game time, decaying over DEW_TAU s
   D.DEW_TAU = 2;
@@ -15783,6 +15814,13 @@ function MA_DSP() {
     { id: "puffball", name: "Puffball", rarity: "epic", el: "puff", levels: [L("Puffcaps hit 30% harder, and a creature dying slowed pops, hurting and slowing its neighbours (40% of its vitality)", { dmg_puff: 0.3, puffball: 0.4 }), L("Puffcaps hit 50% harder; slowed creatures pop for 65% of their vitality", { dmg_puff: 0.5, puffball: 0.65 }), L("Puffcaps hit 80% harder; slowed creatures pop for their whole vitality", { dmg_puff: 0.8, puffball: 1 })] },
     { id: "verdant_pulse", name: "Verdant Pulse", rarity: "epic", el: "heart", levels: [L("Every 20 s of a wave the Heart Tree pulses: every creature loses 10% of the vitality it has left, and slows", { pulse: 0.1 }), L("The pulse takes 15% of what they have left", { pulse: 0.15 }), L("The pulse takes 20% of what they have left", { pulse: 0.2 })] },
     { id: "wild_growth", name: "Wild Growth", rarity: "epic", el: "garden", levels: [L("After each wave, a plant grows a level for free", { grow_free: 1 }), L("After each wave, 1 or 2 plants grow a level for free (3 every 2 waves)", { grow_free: 1.5 }), L("After each wave, 2 plants grow a level for free", { grow_free: 2 })] },
+    // legendary (a dew bank in the bar's third band, from wave 6): the garden's mechanics, two at a time
+    { id: "elder_canopy", name: "Elder Canopy", rarity: "legendary", el: "all", levels: [L("All plants deal 20% more damage, and cost 10% less", { dmg_all: 0.2, cost: -0.1 }), L("All plants deal 35% more damage, and cost 15% less", { dmg_all: 0.35, cost: -0.15 }), L("All plants deal 50% more damage, and cost 20% less", { dmg_all: 0.5, cost: -0.2 })] },
+    { id: "heart_of_oak", name: "Heart of the Oak", rarity: "legendary", el: "heart", levels: [L("The Heart Tree grows 3 stronger, and shrugs off the first 3 creatures to reach it each wave", { shield: 3 }, { maxHp: 3, heal: 3 }), L("3 stronger again; it shrugs off the first 4 each wave", { shield: 4 }, { maxHp: 3, heal: 3 }), L("3 stronger again; it shrugs off the first 6 each wave", { shield: 6 }, { maxHp: 3, heal: 3 })] },
+    { id: "firefly_court", name: "Firefly Court", rarity: "legendary", el: "heart", levels: [L("3 fireflies guard the Heart Tree, and 8% of all hits deal 2.5x damage", { fireflies: 3, crit: 0.08 }), L("4 fireflies, and 12% of hits are critical", { fireflies: 4, crit: 0.12 }), L("5 fireflies, and 16% of hits are critical", { fireflies: 5, crit: 0.16 })] },
+    // exquisite (a dew bank in the last band, from wave 8): one level, as strong as a fusion
+    { id: "mossheart_crown", name: "Mossheart Crown", rarity: "exquisite", el: "all", levels: [L("All plants deal 60% more damage, and 10% of hits are critical", { dmg_all: 0.6, crit: 0.1 })] },
+    { id: "first_spring", name: "First Spring", rarity: "exquisite", el: "garden", levels: [L("After each wave 2 plants grow a level for free, and you earn 4% of your dew, up to 60 more", { grow_free: 2, interest: 0.04, interest_cap: 60 })] },
     // Fused boons: owning every boon in `needs` (each at least at its level) unlocks one, and it then takes
     // the first card of every offer until it is taken. One level each; the boons fused stay owned. Their
     // modifiers switch on the overpowered mechanics: wildfire (brambles ignite, embers burn 3x and spread),
@@ -16001,12 +16039,13 @@ function MA_DSP() {
     try { localStorage.setItem(FOUND_KEY, JSON.stringify(S.found)); } catch (e) { /* storage blocked */ }
   };
   // Up to `count` different boons not yet at their top level, drawn by rarity weight (a boon already
-  // owned 1.5 times as likely, so levels come up), epics only from wave D.EPIC_FROM, and none tied to a
+  // owned 1.5 times as likely, so levels come up), epics only from wave D.EPIC_FROM, legendary and exquisite
+  // ones only with the dew bar in their band (D.rarityOpen), and none tied to a
   // plant this garden doesn't grow (S.fits). A fused boon unlocked takes the first card (the first one
   // unlocked, if several are). The dew banked raises the rares and epics by its tier (D.DEW_LUCK, S.luck).
-  S.luck = (dew = S.dew) => { const t = D.dewTier(dew); return { tier: t, rare: D.DEW_LUCK.rare[t], epic: D.DEW_LUCK.epic[t] }; };
+  S.luck = (dew = S.dew) => { const t = D.dewTier(dew); return { tier: t, rare: D.DEW_LUCK.rare[t], epic: D.DEW_LUCK.epic[t], legendary: D.DEW_LUCK.legendary[t] }; };
   S.rollBoons = (count) => {
-    const pool = D.BOONS.filter((b) => !b.needs && S.fits(b) && S.boonLevel(b.id) < b.levels.length && (b.rarity !== "epic" || S.wave >= D.EPIC_FROM)), picks = S.fusionsReady().slice(0, 1);
+    const pool = D.BOONS.filter((b) => !b.needs && S.fits(b) && S.boonLevel(b.id) < b.levels.length && D.rarityOpen(b.rarity, S.dew, S.wave)), picks = S.fusionsReady().slice(0, 1);
     const luck = S.luck(), weight = (b) => D.RARITY[b.rarity].weight * (luck[b.rarity] || 1) * (S.boonLevel(b.id) ? 1.5 : 1);
     while (picks.length < count && pool.length) {
       let r = S.rng.f() * pool.reduce((a, b) => a + weight(b), 0), k = 0;
@@ -19482,6 +19521,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     puffball: { color: [0.8, 0.5, 1.0], levels: grow("puff") },
     verdant_pulse: { color: [0.45, 1.0, 0.55], levels: grow("ring") },
     wild_growth: { color: [0.55, 1.0, 0.4], levels: grow("leaf") },
+    elder_canopy: { color: [1.0, 0.55, 0.25], levels: grow("leaf", [1.0, 0.85, 0.4]) },
+    heart_of_oak: { color: [0.85, 0.55, 0.3], levels: grow("ring", [1.0, 0.8, 0.45]) },
+    firefly_court: { color: [1.0, 0.7, 0.3], levels: grow("orb", [1.0, 0.95, 0.5]) },
+    mossheart_crown: { color: [0.85, 0.75, 1.0], levels: fused("petal", [0.6, 0.95, 1.0]) },
+    first_spring: { color: [0.75, 1.0, 0.85], levels: fused("leaf", [1.0, 0.75, 0.9]) },
     // fused boons: one level, big and bright
     wildfire: { color: [1.0, 0.42, 0.12], levels: fused("orb", [1.0, 0.85, 0.3]) },
     rainbow: { color: [1.0, 0.75, 0.95], levels: fused("beam") },
@@ -20977,7 +21021,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     return flo + (BAR_AT[k] - flo) * Math.max(0, d - lo) / (at[k] - lo);
   };
   // (the odds tag beside the bar's surface, by tier)
-  const LUCK_TAG = ["", "rare+", "rare++", "rare+++"];
+  const LUCK_TAG = ["", "rare+", "legendary", "exquisite"];
   // how many of the ascending thresholds v reaches
   const tier = (v, at) => at.reduce((n, x) => n + (v >= x ? 1 : 0), 0);
   // what each plant aims at (core/towers.js), for the seed info
@@ -21185,9 +21229,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // The gifts on offer: each card framed by its rarity, with its icon (Art's, or the element's glyph),
     // the level it would reach (I-III, pips for the levels) and that level's description. A fused boon
     // shows what it fuses; any other card hints at the fusions it would unlock or bring a step closer.
-    // The rarity reads at a glance (game.css): a ribbon on the frame names it (Common, Rare, Epic, Fused);
-    // a rare card glows blue, an epic one gold, a fused one blossom; light sweeps over rare and up; the
-    // cards are dealt one by one, rare and up turning over with a flash, epic and fused with a burst of rays.
+    // The rarity reads at a glance (game.css): a ribbon on the frame names it (Common, Rare, Epic, Legendary,
+    // Exquisite, Fused); a rare card glows blue, an epic one gold, a legendary one ember, an exquisite one opal,
+    // a fused one blossom; light sweeps over rare and up; the
+    // cards are dealt one by one, rare and up turning over with a flash, epic and up with a burst of rays.
     showBoons(boons, choose) {
       const row = $("boonrow");
       row.innerHTML = "";
@@ -21200,7 +21245,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         el.style.setProperty("--bc", ink(look.color));
         el.style.setProperty("--deal", `${0.12 + i * 0.16}s`);
         const rar = b.needs ? this.recipe(b) : lv > 1 ? `Grows to ${ROMAN[lv]}` : "";
-        el.innerHTML = `<span class="aura"></span><span class="shine"></span>${tier === "epic" || tier === "fused" ? `<span class="rays"></span>` : ""}<span class="ribbon">${tier === "fused" ? "Fused" : D.RARITY[b.rarity].name}</span>` +
+        el.innerHTML = `<span class="aura"></span><span class="shine"></span>${tier === "epic" || tier === "fused" || D.RARITY[tier].band ? `<span class="rays"></span>` : ""}<span class="ribbon">${tier === "fused" ? "Fused" : D.RARITY[b.rarity].name}</span>` +
           `<span class="bicon">${G.boonIcon(b.id) || icon("PLANT_ICONS", b.el) || GLYPH[b.el] || "❀"}</span><b>${esc(b.name)}${top > 1 ? ` <em>${ROMAN[lv]}</em>` : ""}</b>` +
           `${rar ? `<span class="rar">${rar}</span>` : ""}<span>${esc(b.levels[lv - 1].desc)}</span>${pips ? `<span class="pips">${pips}</span>` : ""}${b.needs ? "" : this.hints(b)}`;
         el.addEventListener("click", () => { $("boons").classList.remove("show"); choose(b); });
@@ -21532,7 +21577,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         bar.querySelector(".luck").textContent = LUCK_TAG[luck.tier];
       }
       bar.setAttribute("aria-valuenow", S.dew);
-      const tip = `Dew ${S.dew}: gifts ${luck.tier ? `rare ×${luck.rare}, epic ×${luck.epic}` : "at their usual odds"}` + (next ? ` (more from ${next} dew)` : "");
+      const tip = `Dew ${S.dew}: gifts ${luck.tier ? `rare ×${luck.rare}, epic ×${luck.epic}` + (luck.tier >= 3 ? ", legendary ×" + luck.legendary + " and exquisite ones" : luck.tier >= 2 ? ", and legendary ones" : "") : "at their usual odds"}` + (next ? ` (more from ${next} dew)` : "");
       if (bar.title !== tip) { bar.title = tip; bar.setAttribute("aria-valuetext", tip); }
       this.dewTo = S.dew;
       if (this.dewGain && S.dew > this.dewShown) this.dewRun(); else { this.dewShown = S.dew; $("dewn").textContent = fmtDew(S.dew); }
