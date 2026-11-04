@@ -11,11 +11,19 @@
   --ink: #38452e; --paper: rgba(250, 242, 219, 0.94); --paper2: #fffaf0; --moss: #6b9952; --blossom: #ed8ca8;
   --dewc: #2e7399; --bg: #0b0d09; --shadow: 0 3px 8px rgba(26, 38, 13, 0.28);
   --ts: 1; /* the text size setting (menu.js) */
+  --ui: 1; --vw: var(--vw); --vh: var(--vh); /* the UI scale setting and the screen in its px (menu.js applyUi) */
   --sl: env(safe-area-inset-left, 0px); --sr: env(safe-area-inset-right, 0px); --st: env(safe-area-inset-top, 0px); --sb: env(safe-area-inset-bottom, 0px);
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
+/* the UI scale (menu.js applyUi): a zoom on the HUD, the menus and the tips, not on the garden or the tags over
+   it (#floats). Sizes that follow the screen use --vw/--vh, its size in the zoomed px, and the safe-area insets
+   are divided back, so an edge stays an edge at any scale. The menu wisplings walk in screen px, so unzoomed. */
+#ui, #menus, .coach { zoom: var(--ui);
+  --sl: calc(env(safe-area-inset-left, 0px) / var(--ui)); --sr: calc(env(safe-area-inset-right, 0px) / var(--ui));
+  --st: calc(env(safe-area-inset-top, 0px) / var(--ui)); --sb: calc(env(safe-area-inset-bottom, 0px) / var(--ui)); }
+.wisps { zoom: calc(1 / var(--ui)); }
 body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "Segoe UI", system-ui, -apple-system, sans-serif; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
 #cv { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 #ui { position: fixed; inset: 0; pointer-events: none; }
@@ -132,10 +140,10 @@ body.alm-open #dewbar { visibility: hidden; } /* (the bulb stays, under the alma
 #fps { color: #fffd; font: calc(12px * var(--ts)) ui-monospace, Consolas, monospace; text-shadow: 0 0 4px #000; margin-right: 6px; pointer-events: none; }
 #vox.down { color: #ffc14d; font-weight: 700; } /* (the density came out under 40 or what was asked for) */
 
-#almanac { position: fixed; right: calc(12px + var(--sr)); top: calc(72px + var(--st)); width: min(340px, calc(100vw - 24px)); max-height: calc(100vh - 460px); display: flex; flex-direction: column; align-items: flex-start;
+#almanac { position: fixed; right: calc(12px + var(--sr)); top: calc(72px + var(--st)); width: min(340px, calc(var(--vw) - 24px)); max-height: calc(var(--vh) - 460px); display: flex; flex-direction: column; align-items: flex-start;
   background: rgba(26, 23, 18, 0.78); border: 2px solid #8c6b42; border-radius: 12px; color: #ede6d1; padding: 4px 10px 6px; font-weight: 500; font-size: calc(13px * var(--ts)); }
 /* folded: a small tab with the wave and the creatures it holds */
-#almanac.closed { width: auto; max-width: calc(100vw - 24px); padding: 2px 10px; background: rgba(26, 23, 18, 0.55); border-color: #8c6b4299; }
+#almanac.closed { width: auto; max-width: calc(var(--vw) - 24px); padding: 2px 10px; background: rgba(26, 23, 18, 0.55); border-color: #8c6b4299; }
 #almtog { background: none; border: 0; color: #fadb9e; font: 700 calc(13px * var(--ts))/1.7 inherit; font-family: inherit; padding: 0; cursor: pointer; white-space: nowrap; }
 #almanac.closed #almtog { color: #e9d6aa; font-weight: 600; }
 #almbody { align-self: stretch; min-height: 0; overflow: auto; } /* (the almanac scrolls inside, so the skin's moss on its edge is not clipped) */
@@ -156,7 +164,7 @@ body.alm-open #dewbar { visibility: hidden; } /* (the bulb stays, under the alma
 /* the weather overlay (view/atmos.js): over the scene, under the HUD */
 #wx { position: fixed; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
 /* the gifts in play: chips under the readouts, and what a tapped one does */
-#giftbox { position: fixed; left: calc(12px + var(--sl)); top: calc(80px + var(--st)); max-width: min(46vw, 520px); display: flex; flex-direction: column; gap: 6px; align-items: flex-start; pointer-events: none; }
+#giftbox { position: fixed; left: calc(12px + var(--sl)); top: calc(80px + var(--st)); max-width: min(calc(var(--vw) * 0.46), 520px); display: flex; flex-direction: column; gap: 6px; align-items: flex-start; pointer-events: none; }
 #boonbar { display: flex; flex-wrap: wrap; gap: 5px; pointer-events: auto; }
 #boonbar:empty { display: none; }
 /* the wave's dew challenge (hud.js chalPill): what to do, for how much; gold once met, struck through once failed */
@@ -187,17 +195,17 @@ body.alm-open #dewbar { visibility: hidden; } /* (the bulb stays, under the alma
 
 /* the camera's turn buttons, the sky button, and the sky panel (mood and weather) beside them */
 /* the mood and weather panel drops down under the top row from its button (atmos.js places it under ☁) */
-#sky { position: fixed; z-index: 2; right: calc(12px + var(--sr)); top: calc(68px + var(--st)); width: min(420px, calc(100vw - 24px - var(--sl) - var(--sr))); padding: 10px 12px; display: none; flex-direction: column; gap: 8px; }
+#sky { position: fixed; z-index: 2; right: calc(12px + var(--sr)); top: calc(68px + var(--st)); width: min(420px, calc(var(--vw) - 24px - var(--sl) - var(--sr))); padding: 10px 12px; display: none; flex-direction: column; gap: 8px; }
 #sky.show { display: flex; }
 #sky .skyrow { display: flex; flex-direction: column; gap: 4px; }
 #sky .skyrow > b { font-size: calc(13px * var(--ts)); color: var(--moss); text-transform: uppercase; letter-spacing: 0.06em; }
 #sky .seg button { font-size: calc(13px * var(--ts)); padding: 6px 9px; }
 
 #hint { position: fixed; left: 50%; top: calc(86px + var(--st)); transform: translateX(-50%); color: #fff; font-size: calc(21px * var(--ts)); text-align: center; pointer-events: none;
-  text-shadow: 0 0 3px #26401c, 0 0 6px #26401c, 0 2px 8px #26401c; width: min(600px, calc(100vw - 32px)); }
+  text-shadow: 0 0 3px #26401c, 0 0 6px #26401c, 0 2px 8px #26401c; width: min(600px, calc(var(--vw) - 32px)); }
 
 /* first-run tips (view/tutorial.js): a card where the hint was, and the control it means, lit */
-.coach { position: fixed; left: 50%; top: calc(86px + var(--st)); transform: translateX(-50%); width: min(460px, calc(100vw - 32px)); padding: 12px 14px 10px;
+.coach { position: fixed; left: 50%; top: calc(86px + var(--st)); transform: translateX(-50%); width: min(460px, calc(var(--vw) - 32px)); padding: 12px 14px 10px;
   color: var(--ink); font-size: calc(16px * var(--ts)); display: none; pointer-events: auto; }
 .coach.show { display: block; }
 .coach { z-index: 3; } /* (in front of the card, hud.js inspect: the tip is what to read first) */
@@ -230,7 +238,7 @@ body.calm .coach-spot { animation: none; }
    and shakes the counter); the toast sits over the cards */
 .seed.poor { filter: grayscale(0.85); opacity: 0.6; border-color: #a9a69c; }
 .seed.poor .cost { color: #c0304a; font-weight: 800; }
-#toast { position: fixed; left: 50%; bottom: calc(12px + 104px * var(--ts) + 22px + var(--sb)); transform: translate(-50%, 8px); z-index: 4; max-width: calc(100vw - 24px - var(--sl) - var(--sr));
+#toast { position: fixed; left: 50%; bottom: calc(12px + 104px * var(--ts) + 22px + var(--sb)); transform: translate(-50%, 8px); z-index: 4; max-width: calc(var(--vw) - 24px - var(--sl) - var(--sr));
   padding: 8px 14px; border-radius: 12px; background: rgba(40, 22, 30, 0.88); color: #ffd9e0; font-size: calc(17px * var(--ts)); font-weight: 800; text-align: center;
   pointer-events: none; opacity: 0; transition: opacity 0.18s, transform 0.18s; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
@@ -298,7 +306,7 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 /* (a touch screen wider than the phone layout, a phone on its side or a tablet: the card docks above the seeds on the
    left, its text scrolling, not in the middle of the field; hud.js frame anchors it only under a mouse) */
 @media (hover: none) and (min-width: 761px) {
-  #inspector { top: auto; bottom: calc(20px + 104px * var(--ts) + var(--sb)); transform: none; max-height: calc(100vh - 104px - 104px * var(--ts) - var(--st) - var(--sb)); }
+  #inspector { top: auto; bottom: calc(20px + 104px * var(--ts) + var(--sb)); transform: none; max-height: calc(var(--vh) - 104px - 104px * var(--ts) - var(--st) - var(--sb)); }
   #inspbody { min-height: 0; overflow-y: auto; }
 }
 
@@ -402,13 +410,13 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 .fu { margin-left: 10px; }
 .fu b { color: var(--bc); }
 .fu .have { text-decoration: underline; }
-.card { padding: 20px 24px; text-align: center; width: min(480px, calc(100vw - 32px)); }
+.card { padding: 20px 24px; text-align: center; width: min(480px, calc(var(--vw) - 32px)); }
 .card h2 { color: var(--ink); text-shadow: none; }
 .card p { font-size: calc(19px * var(--ts)); font-weight: 500; }
 .card .btn { width: 100%; height: 66px; font-size: calc(24px * var(--ts)); }
 /* the end-of-run summary on the game over card (hud.js summaryHtml) */
 /* a tall card scrolls inside (.cscroll), not itself: the skin grows its moss over the card's edge */
-.card.wide, #over .card { display: flex; flex-direction: column; max-height: calc(100vh - 32px); }
+.card.wide, #over .card { display: flex; flex-direction: column; max-height: calc(var(--vh) - 32px); }
 .card.wide > :not(.cscroll), #over .card > :not(.cscroll) { flex: none; }
 .cscroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .oversum { text-align: left; font-size: calc(15px * var(--ts)); margin: 0 0 16px; display: flex; flex-direction: column; gap: 10px; }
@@ -459,7 +467,7 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 .lblist li.r3 .rk { background: #b87a4b; }
 .lblist li.me { background: rgba(237, 140, 168, 0.3); box-shadow: inset 0 0 0 2px var(--blossom); }
 .lbtabs { flex: none; margin: 0 0 6px; }
-.lbcard { position: relative; z-index: 1; max-height: calc(100vh - 32px - 90px); }
+.lbcard { position: relative; z-index: 1; max-height: calc(var(--vh) - 32px - 90px); }
 .oversum .sbar { display: grid; grid-template-columns: 7.5em 1fr 3em; align-items: center; gap: 8px; width: 100%; }
 .oversum .sl { font-weight: 700; white-space: nowrap; }
 .oversum .st { height: 10px; border-radius: 5px; background: #0001; overflow: hidden; }
@@ -522,8 +530,8 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   #skybtn { grid-column: 2; } #turnl { grid-column: 3; } #turnr { grid-column: 4; }
   .btn.small { width: 44px; height: 42px; font-size: calc(17px * var(--ts)); }
   #fps { position: fixed; right: calc(8px + var(--sr)); top: calc(100px + var(--st)); margin: 0; font-size: calc(11px * var(--ts)); }
-  #almanac { top: calc(118px + var(--st)); right: calc(6px + var(--sr)); max-height: 40vh; font-size: calc(12.5px * var(--ts)); }
-  #giftbox { left: calc(6px + var(--sl)); top: calc(52px + var(--st)); max-width: calc(100vw - 190px); }
+  #almanac { top: calc(118px + var(--st)); right: calc(6px + var(--sr)); max-height: calc(var(--vh) * 0.4); font-size: calc(12.5px * var(--ts)); }
+  #giftbox { left: calc(6px + var(--sl)); top: calc(52px + var(--st)); max-width: calc(var(--vw) - 190px); }
   .bchip { height: 28px; min-width: 28px; padding: 0 4px; border-radius: 9px; }
   #chal { gap: 5px; padding: 3px 7px 3px 4px; font-size: calc(11px * var(--ts)); border-radius: 9px; }
   #chal .ci { width: 18px; font-size: calc(14px * var(--ts)); }
@@ -533,10 +541,10 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   #musicbtn { width: 44px; }
   #musicbtn .lb { font-size: calc(14px * var(--ts)); }
   #musicbtn small { font-size: calc(8.5px * var(--ts)); letter-spacing: 0; }
-  #sky { right: calc(6px + var(--sr)); top: calc(102px + var(--st)); width: calc(100vw - 12px - var(--sl) - var(--sr)); padding: 8px 10px; }
+  #sky { right: calc(6px + var(--sr)); top: calc(102px + var(--st)); width: calc(var(--vw) - 12px - var(--sl) - var(--sr)); padding: 8px 10px; }
   #sky .seg button { font-size: calc(12.5px * var(--ts)); padding: 5px 7px; }
   /* (as wide as the gap between the right-hand buttons, the music button and the turns, and their twin on the left) */
-  #hint { top: auto; bottom: calc(168px + 128px * var(--ts) + var(--sb)); font-size: calc(17px * var(--ts)); width: calc(100vw - 112px - 2 * max(var(--sl), var(--sr))); }
+  #hint { top: auto; bottom: calc(168px + 128px * var(--ts) + var(--sb)); font-size: calc(17px * var(--ts)); width: calc(var(--vw) - 112px - 2 * max(var(--sl), var(--sr))); }
   .coach { top: auto; bottom: calc(168px + 128px * var(--ts) + var(--sb)); font-size: calc(14.5px * var(--ts)); padding: 10px 12px 8px; }
   /* (the card, docked at the bottom, covers the tip's place: the tip goes to the top, under the readouts, over the field) */
   body:has(#inspector.show) .coach { top: calc(96px + var(--st)); bottom: auto; }
@@ -553,7 +561,7 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   .ghosttag { font-size: calc(12.5px * var(--ts)); }
   .seed .dot { width: 9px; height: 9px; right: 6px; top: 6px; }
   .seed .picon { width: 14px; height: 14px; right: 5px; top: 5px; }
-  #wavebtn { right: calc(6px + var(--sr)); bottom: calc(11px + var(--sb)); width: calc((100vw - 12px - var(--sl) - var(--sr) - (var(--seedcols, 3) - 1) * 6px) / var(--seedcols, 3)); height: calc(64px * var(--ts)); padding: 2px 4px; font-size: calc(16px * var(--ts)); line-height: 1.1; border-radius: 13px; }
+  #wavebtn { right: calc(6px + var(--sr)); bottom: calc(11px + var(--sb)); width: calc((var(--vw) - 12px - var(--sl) - var(--sr) - (var(--seedcols, 3) - 1) * 6px) / var(--seedcols, 3)); height: calc(64px * var(--ts)); padding: 2px 4px; font-size: calc(16px * var(--ts)); line-height: 1.1; border-radius: 13px; }
   #wavebtn.early { font-size: calc(14.5px * var(--ts)); }
   body[data-seedcols="4"] .seed b, body[data-seedcols="5"] .seed b { font-size: calc(11px * var(--ts)); max-width: calc(100% - 14px); }
   body[data-seedcols="4"] #wavebtn, body[data-seedcols="5"] #wavebtn { font-size: calc(13px * var(--ts)); }
@@ -568,14 +576,14 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   #dewbar .bub:nth-child(2) { left: 8px; }
   #dewbar .luck { font-size: calc(11px * var(--ts)); padding: 1px 5px; }
   /* (the card, a plant's or a seed's while placing, docks just above the two rows at their width: the field stays clear) */
-  #inspector { left: calc(6px + var(--sl)); right: calc(6px + var(--sr)); top: auto; bottom: calc(23px + 128px * var(--ts) + var(--sb)); max-height: calc(100vh - 55px - 204px * var(--ts) - var(--st) - var(--sb)); transform: none; width: auto; padding: 10px 12px; gap: 6px; }
+  #inspector { left: calc(6px + var(--sl)); right: calc(6px + var(--sr)); top: auto; bottom: calc(23px + 128px * var(--ts) + var(--sb)); max-height: calc(var(--vh) - 55px - 204px * var(--ts) - var(--st) - var(--sb)); transform: none; width: auto; padding: 10px 12px; gap: 6px; }
   #inspector .btn { flex: none; height: 44px; font-size: calc(16px * var(--ts)); }
   #insptitle { font-size: calc(18px * var(--ts)); }
   #inspbody { font-size: calc(13px * var(--ts)); min-height: 0; overflow-y: auto; } /* (the text scrolls, Grow and Uproot stay in view) */
   /* (More on a phone: the card grows into a sheet up to the top bar, its detail scrolling, Grow and Uproot in view; a big tap target) */
-  #inspector.open { max-height: calc(100vh - 85px - 128px * var(--ts) - var(--st) - var(--sb)); box-shadow: 0 -6px 24px #0006; }
+  #inspector.open { max-height: calc(var(--vh) - 85px - 128px * var(--ts) - var(--st) - var(--sb)); box-shadow: 0 -6px 24px #0006; }
   #inspbody .tomore { display: block; padding: 9px 0 3px; margin-top: 0; }
-  .boon { width: min(320px, calc(100vw - 32px)); min-height: 0; padding: 12px; gap: 6px; }
+  .boon { width: min(320px, calc(var(--vw) - 32px)); min-height: 0; padding: 12px; gap: 6px; }
   .boon b { font-size: calc(18px * var(--ts)); }
   .boon span { font-size: calc(14px * var(--ts)); }
   .boon { padding-top: 16px; }
@@ -600,11 +608,11 @@ body.calm #dewbar .bub { display: none; } /* (still waves, no bubbles) */
 .menu { z-index: 10; overflow: auto; }
 body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
 /* (the title is a .veil.void: opaque, the jar in a void; its old see-through gradient, an id rule, beat the void's and let the garden behind show) */
-#title h1 { font: 700 clamp(44px, 11vw, 76px)/1 "Trebuchet MS", system-ui, sans-serif; letter-spacing: 0.04em; color: #f6dca0; margin: 0; text-shadow: 0 3px 14px #1a260d, 0 0 2px #1a260d; }
+#title h1 { font: 700 clamp(44px, calc(var(--vw) * 0.11), 76px)/1 "Trebuchet MS", system-ui, sans-serif; letter-spacing: 0.04em; color: #f6dca0; margin: 0; text-shadow: 0 3px 14px #1a260d, 0 0 2px #1a260d; }
 #title .sub { color: #fffae6; margin: 8px 0 26px; font-weight: 500; text-align: center; text-shadow: 0 1px 6px #1a260d; }
-#title .btn.big { width: min(300px, calc(100vw - 48px)); }
+#title .btn.big { width: min(300px, calc(var(--vw) - 48px)); }
 .btn.big { display: block; width: 100%; height: 58px; font-size: calc(21px * var(--ts)); margin: 0 0 10px; }
-.card.wide { width: min(560px, calc(100vw - 32px)); text-align: left; }
+.card.wide { width: min(560px, calc(var(--vw) - 32px)); text-align: left; }
 .card.wide h2 { text-align: center; }
 #setbody h3 { font-size: calc(16px * var(--ts)); color: var(--moss); margin: 14px 0 6px; text-transform: uppercase; letter-spacing: 0.06em; }
 #setbody .row { display: flex; align-items: center; gap: 10px; min-height: 42px; }
@@ -629,6 +637,38 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
   #setbody .note { margin-left: 0; }
   .btn.big { height: 50px; font-size: calc(18px * var(--ts)); }
 }
+.settabs { display: none; }
+/* (compact pop-ups on a phone, the user's ask 2026-11-04: each fits a 360 x 740 screen without scrolling. Less
+   padding, tighter gaps and lines, Settings one section at a time under its tabs (menu.js renderSettings), the
+   key list of How to play gone on a touch screen) */
+@media (max-width: 760px) {
+  .veil { padding: 8px; }
+  .veil h2 { margin-bottom: 10px; line-height: 1.15; }
+  .card { padding: 14px 14px 12px; width: calc(var(--vw) - 16px); line-height: 1.3; }
+  .card p { font-size: calc(16px * var(--ts)); margin: 0 0 10px; }
+  .card .btn { height: 50px; font-size: calc(20px * var(--ts)); }
+  .card.wide, #over .card { max-height: calc(var(--vh) - 16px); }
+  .card.wide { width: calc(var(--vw) - 16px); }
+  .btn.big { height: 46px; margin-bottom: 8px; font-size: calc(17px * var(--ts)); }
+  .settabs { display: flex; flex: none; margin: 0 0 6px; }
+  .settabs button { flex: 1; padding: 6px 4px; }
+  #setbody > section:not(.cur), #setbody h3 { display: none; }
+  #setbody .row { min-height: 36px; gap: 8px; }
+  #setbody .row > span { width: calc(84px * var(--ts)); font-size: calc(13px * var(--ts)); line-height: 1.15; }
+  #setbody .seg button { font-size: calc(13px * var(--ts)); padding: 5px 7px; }
+  #setbody .note { font-size: calc(11.5px * var(--ts)); line-height: 1.25; margin: 0 0 4px; }
+  .howto p { font-size: calc(13.5px * var(--ts)); margin: 0 0 7px; line-height: 1.32; }
+  #boonrow { gap: 10px; }
+  .boon { padding: 13px 12px 10px; gap: 4px; }
+  .boon .hint { font-size: calc(12px * var(--ts)); }
+  .oversum { font-size: calc(14px * var(--ts)); gap: 6px; margin: 0 0 10px; }
+  .oversum .sbar { grid-template-columns: 6.2em 1fr 2.6em; gap: 6px; }
+  .lboard { font-size: calc(14px * var(--ts)); }
+  .lblist li { padding: 4px 8px; gap: 6px; }
+  .lbcard { max-height: calc(var(--vh) - 16px - 70px); }
+  #toast { padding: 8px 12px; line-height: 1.3; }
+}
+@media (max-width: 760px) and (hover: none) { .howto p.dim:last-child { display: none; } }
 /* the terrarium screen (view/terrariums.js) and the title over the same void: the jars on a slow ring, one
    in front, the card beside the jar (a sheet from the bottom on a phone). The card is a .panel and its
    buttons .btn, so a menu skin dresses them; the jars carry data-orn="none". Behind them, the star garden
@@ -700,6 +740,19 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
 @media (hover: none) and (pointer: coarse) { .help { display: none; } .cscroll { padding-right: 12px; } }
 body.calm .jar .bob, body.calm .chip i { animation: none; }
 body.calm .jar, body.calm .jar canvas { transition: none; }
+/* (easy close, dismiss.js: the ✕ on each dismissible pop-up, a 44px target on a phone, and the tab a minimised
+   choice waits in) */
+.x { position: absolute; top: 4px; right: 4px; z-index: 3; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: rgba(255, 250, 230, 0.14); color: inherit; font: 600 16px/1 system-ui, sans-serif; cursor: pointer; opacity: 0.8; }
+.x:hover { opacity: 1; background: rgba(255, 250, 230, 0.26); }
+#almanac.closed > .x { display: none; }
+#insptitle { padding-right: 34px; }
+#boons .col > .x { top: -6px; right: -6px; }
+#dztab { position: fixed; z-index: 30; left: 50%; transform: translateX(-50%); bottom: calc(var(--vh) * 0.32); height: 46px; padding: 0 20px; font-size: calc(17px * var(--ts)); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); animation: fade 0.3s; }
+@media (max-width: 760px) {
+  .x { width: 44px; height: 44px; top: 0; right: 0; font-size: 18px; background: transparent; }
+  #insptitle { padding-right: 40px; }
+  #boons .col > .x { top: -10px; right: -4px; background: rgba(20, 31, 15, 0.55); }
+}
 </style>
 </head>
 <body>
@@ -15620,7 +15673,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.44.0", name: "Mossheart", commit: "39b29bc" };
+  G.VERSION = { v: "0.45.0", name: "Mossheart", commit: "9921945" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -21076,8 +21129,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         const b = e.target.closest("button[data-k]");
         if (b) this.choose(b.dataset.k, b.dataset.v);
       });
-      // a tap outside the panel (and not on its button) closes it
-      document.addEventListener("pointerdown", (e) => { if (box.classList.contains("show") && !box.contains(e.target) && !e.target.closest("#skybtn")) this.toggle(false); });
+      // a tap outside the panel (and not on its button) closes it and stops there, its ✕ or a swipe too (dismiss.js)
+      G.Dismiss.add(box, { outside: true, dir: "any", open: () => box.classList.contains("show"), skip: (t) => !!t.closest("#skybtn"), close: () => this.toggle(false) });
       this.renderPanel();
     }
     toggle(open) {
@@ -21093,9 +21146,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const box = $("sky"), btn = $("skybtn");
       if (!box || !btn || !box.classList.contains("show")) return;
       if (!this._placeHook) { this._placeHook = true; addEventListener("resize", () => this.placePanel()); }
-      const r = btn.getBoundingClientRect(), w = box.offsetWidth;
-      box.style.top = `${Math.round(r.bottom + 8)}px`;
-      box.style.left = `${Math.round(Math.max(6, Math.min(r.left, innerWidth - w - 6)))}px`;
+      const r = btn.getBoundingClientRect(), w = box.getBoundingClientRect().width, k = G.uiScale || 1; // (screen px, set unzoomed: the UI scale)
+      box.style.top = `${Math.round((r.bottom + 8) / k)}px`;
+      box.style.left = `${Math.round(Math.max(6, Math.min(r.left, innerWidth - w - 6)) / k)}px`;
       box.style.right = "auto";
     }
     renderPanel() {
@@ -21115,6 +21168,141 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   }
   G.Atmos = Atmos;
   G.MOODS = MOODS; G.WEATHER = WEATHER;
+})();
+
+</script>
+<script>/* src/view/dismiss.js */
+/* Easy close for the pop-ups (the user's ask 2026-11-04): every dismissible pop-up closes three ways, a tap
+   outside it, its ✕ (a 44px target on a phone) or a swipe on a touch screen (down for sheets and cards, any
+   way for the modals; the panel follows the finger and snaps back short of the threshold). Esc stays with
+   its owners (menu.js, main.js). G.Dismiss.add(el, o) wires one:
+     o.close()   closes it (the owner's own close, so its state stays right)
+     o.panel     what carries the ✕ and follows the finger (default el)
+     o.hit       a selector: taps inside a match are not "outside" (default: inside o.panel)
+     o.veil      el is a backdrop over the game: a click on it outside o.panel closes
+     o.outside   el floats over the game: a tap anywhere outside it closes and is swallowed, so it never
+                 reaches the meadow; o.open() says whether it is showing, o.skip(target) spares its toggle
+     o.dir       "down" (default) or "any"
+     o.tab       a choice (the gifts, the run's end): it never closes, it minimises to a tab of that label
+                 at the bottom that brings it back; the owner drops the tab with G.Dismiss.untab(el)
+   G.Dismiss.drag(el, [{x, y, t}, ...]) runs a swipe from plain points, for the flows. The ✕ is .x and the
+   tab #dztab, in game.css. */
+(function () {
+  const G = window.MG;
+  const SCROLLERS = ".cscroll, #inspbody, #almbody";
+  const LOCK = 8, FAR = 60, FLICK = 0.5, FLICK_MIN = 20;
+  const wired = new Map();
+  let eatClick = 0, eatId = null, eatAt = null;
+
+  // a choice minimised: one tab at a time
+  let tab = null, tabFor = null;
+  const untab = (el) => { if (tab && (!el || tabFor === el)) { tab.remove(); tab = null; tabFor = null; } };
+  const minimise = (el, label) => {
+    el.classList.remove("show"); untab();
+    tab = document.createElement("button");
+    tab.id = "dztab"; tab.className = "btn"; tab.textContent = label + " ▴"; tabFor = el;
+    tab.addEventListener("click", () => { untab(); el.classList.add("show"); });
+    (document.getElementById("ui") || document.body).appendChild(tab);
+  };
+
+  // the swipe, from plain points: start, move (true once it is a swipe of ours), end
+  const swipe = {
+    start(w, p, target) { w.sw = { x: p.x, y: p.y, t: p.t, lx: p.x, ly: p.y, lt: p.t, on: false, off: false, target }; },
+    move(w, p) {
+      const s = w.sw;
+      if (!s || s.off) return false;
+      const dx = p.x - s.x, dy = p.y - s.y;
+      if (!s.on) {
+        if (Math.hypot(dx, dy) < LOCK) return false;
+        const vert = Math.abs(dy) >= Math.abs(dx);
+        if (w.o.dir !== "any" && !(vert && dy > 0)) { s.off = true; return false; }
+        // an inner list that can still scroll that way keeps the gesture
+        const sc = s.target && s.target.closest && s.target.closest(SCROLLERS);
+        if (sc && w.panel.contains(sc) && vert) {
+          const up = sc.scrollTop > 0, down = sc.scrollTop + sc.clientHeight < sc.scrollHeight - 1;
+          if ((dy > 0 && up) || (dy < 0 && down)) { s.off = true; return false; }
+        }
+        s.on = true; w.panel.style.transition = "none";
+      }
+      const tx = w.o.dir === "any" ? dx : 0, ty = w.o.dir === "any" ? dy : Math.max(0, dy);
+      w.panel.style.translate = `${tx}px ${ty}px`;
+      w.panel.style.opacity = String(Math.max(0.35, 1 - Math.hypot(tx, ty) / 400));
+      s.vx = (p.x - s.lx) / Math.max(1, p.t - s.lt); s.vy = (p.y - s.ly) / Math.max(1, p.t - s.lt);
+      s.lx = p.x; s.ly = p.y; s.lt = p.t; s.tx = tx; s.ty = ty;
+      return true;
+    },
+    end(w) {
+      const s = w.sw; w.sw = null;
+      if (!s || !s.on) return false;
+      const d = Math.hypot(s.tx, s.ty), v = w.o.dir === "any" ? Math.hypot(s.vx, s.vy) : s.vy;
+      eatClick = performance.now() + 400; eatId = null; eatAt = null;
+      if (d > FAR || (v > FLICK && d > FLICK_MIN)) { reset(w.panel, false); close(w); return true; }
+      reset(w.panel, true);
+      return false;
+    },
+  };
+  const reset = (panel, ease) => {
+    panel.style.transition = ease ? "translate 0.18s ease-out, opacity 0.18s" : "none";
+    panel.style.translate = ""; panel.style.opacity = "";
+    if (ease) setTimeout(() => { panel.style.transition = ""; }, 200); else panel.style.transition = "";
+  };
+  const close = (w) => { if (w.o.tab) minimise(w.el, w.o.tab); else w.o.close(); };
+
+  function add(el, o) {
+    if (!el) return;
+    const panel = o.panel || el, w = { el, o, panel, sw: null };
+    wired.set(el, w);
+    if (getComputedStyle(panel).position === "static") panel.style.position = "relative";
+    const x = document.createElement("button");
+    x.className = "x"; x.type = "button"; x.textContent = "✕"; x.setAttribute("aria-label", o.tab ? "Minimise" : "Close");
+    x.addEventListener("click", (e) => { e.stopPropagation(); close(w); });
+    panel.appendChild(x);
+    // (a target no longer in the page was inside: a click that re-renders what it hit, Settings' tabs and
+    // options, reaches the veil after its button is gone)
+    const inside = (t) => !t.isConnected || (o.hit ? !!t.closest(o.hit) : panel.contains(t)) || t === x;
+    if (o.veil) el.addEventListener("click", (e) => { if (performance.now() < eatClick) return; if (!inside(e.target)) close(w); });
+    if (o.outside) {
+      document.addEventListener("pointerdown", (e) => {
+        if (!o.open() || el.contains(e.target) || (o.skip && o.skip(e.target))) return;
+        e.preventDefault(); e.stopPropagation();
+        eatId = e.pointerId; eatAt = e.target; eatClick = performance.now() + 700;
+        close(w);
+      }, true);
+    }
+    // touch: the panel follows the finger
+    const pt = (e) => { const t = e.changedTouches[0]; return { x: t.clientX, y: t.clientY, t: performance.now() }; };
+    panel.addEventListener("touchstart", (e) => { if (e.touches.length === 1) swipe.start(w, pt(e), e.target); else w.sw = null; }, { passive: true });
+    panel.addEventListener("touchmove", (e) => { if (swipe.move(w, pt(e))) e.preventDefault(); }, { passive: false });
+    panel.addEventListener("touchend", () => swipe.end(w));
+    panel.addEventListener("touchcancel", () => { if (w.sw && w.sw.on) reset(panel, true); w.sw = null; });
+  }
+
+  // the tap that closed a panel (or ended a swipe) stops here: its pointerup and click never reach the game
+  const eat = (e) => {
+    if (performance.now() >= eatClick) return;
+    if (e.type === "pointerup" && e.pointerId !== eatId) return;
+    if (e.type === "click") {
+      if (e.target.closest && e.target.closest(".x, #dztab")) return;
+      // (one click only, on what the closing tap hit: a quick next tap elsewhere, the wave button right after
+      // closing the sky panel, goes through)
+      if (eatAt && e.target !== eatAt) return;
+      eatClick = 0;
+    }
+    e.preventDefault(); e.stopPropagation();
+  };
+  document.addEventListener("pointerup", eat, true);
+  document.addEventListener("click", eat, true);
+
+  // a swipe from plain points (the flows): true if it closed
+  function drag(el, pts) {
+    const w = wired.get(el);
+    if (!w || pts.length < 2) return false;
+    swipe.start(w, pts[0], w.panel);
+    for (const p of pts.slice(1)) swipe.move(w, p);
+    return swipe.end(w);
+  }
+
+  G.Dismiss = { add, drag, untab, tabbed: () => tabFor };
 })();
 
 </script>
@@ -21225,6 +21413,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       });
       this.showAlmanac();
       NARROW.addEventListener("change", () => this.showAlmanac());
+      // easy close (dismiss.js): the almanac on a phone closes on a tap outside it; the card by its ✕ or a swipe
+      // down (not by a tap outside: a meadow tap places or picks); the gifts and the run's end minimise to a tab
+      G.Dismiss.add($("almanac"), { outside: true, dir: "any", open: () => NARROW.matches && this.almOpen && !this.almFolded(), skip: (t) => !!t.closest("#almtog"),
+        close: () => { if (this.almOver) this.almOver = false; else { this.almOpen = false; try { localStorage.setItem(HUD_KEY, JSON.stringify({ almanac: false })); } catch (e) { /* storage blocked */ } } this.showAlmanac(); } });
+      G.Dismiss.add($("inspector"), { close: () => this.act.closeCard() });
+      G.Dismiss.add($("boons"), { veil: true, panel: $("boons").querySelector(".col"), hit: ".boon", dir: "any", tab: "Choose a gift" });
+      G.Dismiss.add($("over"), { veil: true, panel: $("over").querySelector(".card"), dir: "any", tab: "The Heart Tree sleeps" });
       $("turnl").addEventListener("click", () => this.act.turn(-1));
       $("turnr").addEventListener("click", () => this.act.turn(1));
       $("skybtn").addEventListener("click", () => this.act.sky());
@@ -21408,7 +21603,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         el.addEventListener("click", () => { $("boons").classList.remove("show"); choose(b); });
         row.appendChild(el);
       });
-      $("boons").classList.add("show");
+      G.Dismiss.untab(); $("boons").classList.add("show");
     }
     showGameOver(wave, best) {
       $("overtxt").innerHTML = `You tended the meadow for ${wave} waves.<br>Longest bloom: ${best}`;
@@ -21435,7 +21630,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         (st.challenges ? `<div class="srow"><b class="sh">Challenges</b> ${st.challenges} met</div>` : "") +
         `<div class="srow"><b class="sh">Creatures</b> ${stopped} stopped${st.leaked ? ` · ${st.leaked} reached the Heart Tree` : ""}<div class="sd">${bars}</div></div>`;
     }
-    hideGameOver() { $("over").classList.remove("show"); }
+    hideGameOver() { $("over").classList.remove("show"); G.Dismiss.untab($("over")); }
 
     // ------------------------------------------------------------------ the card (#inspector)
     // One card for a plant, the seed in hand, a creature and a gift (docs/designs/2026-11-04-hud-cards.md):
@@ -21597,7 +21792,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         else if (box.classList.contains("seedinfo") && cell && this.game.world.inside(cell[0], cell[1])) at = this.game.world.cellCentre(cell[0], cell[1]);
       }
       if (!at) { if (box.classList.contains("anchored")) { box.classList.remove("anchored"); box.style.left = box.style.top = ""; } return; }
-      const [ax, ay] = scr(at), w = box.offsetWidth, h = box.offsetHeight, W = innerWidth, GAP = 40;
+      // (in screen px: a UI scale zooms the card, so its size is its rect and its left and top are set unzoomed, G.uiScale)
+      const br = box.getBoundingClientRect(), [ax, ay] = scr(at), w = br.width, h = br.height, W = innerWidth, GAP = 40, k = G.uiScale || 1;
       let low = innerHeight - 8, high = 8, right = W - 8;
       for (const id of ["seeds", "wavebtn"]) { const e = $(id); if (e && e.offsetWidth) low = Math.min(low, e.getBoundingClientRect().top - 8); }
       for (const id of ["top", "topright"]) { const e = $(id); if (e && e.offsetWidth) high = Math.max(high, e.getBoundingClientRect().bottom + 8); }
@@ -21608,7 +21804,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       x = Math.max(8, Math.min(x, right - w));
       const y = Math.max(high, Math.min(ay - h / 2, low - h));
       box.classList.add("anchored");
-      const l = `${x.toFixed(0)}px`, tp = `${y.toFixed(0)}px`;
+      const l = `${(x / k).toFixed(0)}px`, tp = `${(y / k).toFixed(0)}px`;
       if (box.style.left !== l) box.style.left = l;
       if (box.style.top !== tp) box.style.top = tp;
     }
@@ -21754,7 +21950,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         b.classList.toggle("poor", !S.canAfford(cost));
       }
       const building = S.phase === G.Phase.BUILD;
-      if (S.phase !== G.Phase.CHOOSE_BOON) $("boons").classList.remove("show");
+      if (S.phase !== G.Phase.CHOOSE_BOON) { $("boons").classList.remove("show"); G.Dismiss.untab($("boons")); }
       // (while a wave runs: the next one called early, for the bonus it pays now, Game.callEarly; when it
       // can't be, the button stays, greyed, with the reason on it)
       const waving = S.phase === G.Phase.WAVE && S.wave > 0 && this.game.running > 0, early = this.game.canCallEarly();
@@ -22691,10 +22887,15 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // A phone draws at 2x, not its own 3x or so: Full there is over twice the pixels for little visible gain, and
   // the user found it slow on a flagship (2026-11-02: "low fps"). Full stays a choice.
   const PHONE_RES = "2";
+  // ui: the UI scale, a zoom on the HUD, the cards and the menus (game.css --ui), not on the garden. A phone
+  // starts smaller (PHONE_UI: the user 2026-11-04, the HUD and the pop-ups took too much of a phone's screen)
+  // unless the player picked one (uiPicked). ?ui= pins it, for a check or a screenshot.
+  const PHONE_UI = 0.85, UI_SCALES = [0.7, 0.85, 1, 1.15, 1.3];
+  const uiScale = (s) => { const q = +ME.params.get("ui"); return q >= 0.5 && q <= 2 ? q : s.ui; };
   const calmOS = !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
   const DEFAULTS = {
     master: 0.7, music: 0.5, sfx: 0.7, ambience: 0.45, musicStyle: "ambient",
-    quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, camera: true, vs: 40, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, weather: "subtle", glass: "auto", res: mobile ? PHONE_RES : "full", resPicked: false,
+    quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, camera: true, vs: 40, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, weather: "subtle", glass: "auto", res: mobile ? PHONE_RES : "full", resPicked: false, ui: mobile ? PHONE_UI : 1, uiPicked: false,
   };
   const MUSIC_STYLES = [["ambient", "Ambient"], ["drift", "Drift"], ["liquid", "Liquid"], ["mix", "Mix"]];
   const OLD_VOLUMES ={ master: 0.9, music: 0.8, sfx: 0.9, ambience: 0.8 };
@@ -22709,6 +22910,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     const s = Object.assign({}, DEFAULTS, raw);
     if (!("vsPicked" in raw)) s.vsPicked = raw.vs !== undefined && raw.vs !== 16;
     if (!s.vsPicked) s.vs = DEFAULTS.vs;
+    if (!s.uiPicked) s.ui = DEFAULTS.ui; // (the device's default until the player picks a scale)
     // res: "auto" (the screen's own up to 2x) was the default until then, so a save holding it never chose one
     if (raw.res === "auto") s.res = DEFAULTS.res;
     // and on a phone "full" was the default until PHONE_RES, so a save holding it moves once, unless the player
@@ -22857,6 +23059,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       ME.keys.onChange(() => { root.querySelector(".howto").innerHTML = HOWTO(); });
       root.addEventListener("click", (e) => { const b = e.target.closest("[data-a]"); if (b) this.action(b.dataset.a); });
       $("pausebtn").addEventListener("click", () => this.show("pause"));
+      // easy close (dismiss.js): a tap on the backdrop, the ✕ or a swipe resumes or steps back (not the title or the jars)
+      for (const id of ["pause", "settings", "howto", "board"]) G.Dismiss.add($(id), { veil: true, panel: $(id).querySelector(".card"), dir: "any", close: () => this.action(id === "pause" ? "resume" : "back") });
       // menus hold the game's keys back; Esc opens the pause menu or steps back out of a menu
       window.addEventListener("keydown", (e) => {
         if (e.target && e.target.tagName === "INPUT" && e.key !== "Escape") return;
@@ -22950,6 +23154,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       else this.s[k] = v;
       if (k === "vs") this.s.vsPicked = true;
       if (k === "res") this.s.resPicked = true;
+      if (k === "ui") this.s.uiPicked = true;
       save(this.s); this.apply();
     }
     apply() {
@@ -22973,6 +23178,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       document.body.classList.toggle("calm", calm);
       if (this.wisps) this.wisps.setCalm(calm);
       document.documentElement.style.setProperty("--ts", s.text);
+      this.applyUi();
       if (G.Skin) G.Skin.use((ME.params.get("skin") || s.theme) === "paper" ? null : "overgrown"); // (?skin=paper|overgrown pins it, as a check or a screenshot wants)
       if (a && a.mixer) {
         const bus = a.mixer.bus, set = (n, v) => { if (bus[n] && bus[n].gain) bus[n].gain.value = v * s.master; };
@@ -22981,6 +23187,17 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (a.music) { const st = ME.params.get("music") || s.musicStyle; a.music.setStyle(!G.Score || !G.Score.STYLES || G.Score.STYLES[st] || (st === "mix" && G.Score.MIX) ? st : "ambient"); }
       }
       this.showMusic();
+    }
+    // the UI scale: --ui zooms #ui, #menus and the tips (game.css), and --vw/--vh are the screen's size in
+    // the zoomed px, for the sizes that follow the screen (a zoomed 100vw would not fill it). G.uiScale for
+    // the code that places a card in screen px (hud.js frame, atmos.js placePanel).
+    applyUi() {
+      const st = document.documentElement.style;
+      G.uiScale = uiScale(this.s);
+      const fit = () => { st.setProperty("--vw", (innerWidth / G.uiScale).toFixed(2) + "px"); st.setProperty("--vh", (innerHeight / G.uiScale).toFixed(2) + "px"); };
+      st.setProperty("--ui", G.uiScale);
+      fit();
+      if (!this._uiHook) { this._uiHook = true; addEventListener("resize", fit); }
     }
     // the HUD's music button shows the style playing and the one a tap brings (disabled while ?music= pins it)
     showMusic() {
@@ -23023,12 +23240,29 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         choice("tips", "First-run tips", [[true, "On"], [false, "Off"]]) + `<div class="note dim">A few tips on a fresh run: planting, the almanac, the first wave. They turn off when done.</div>` +
         `<h3>Comfort</h3>` + choice("motion", "Motion", [["full", "Full"], ["reduced", "Reduced"]]) +
         `<div class="note dim">Reduced: no screen shake, camera moves or lightning, softer flashes, lighter rain and snow.</div>` +
-        choice("text", "Text size", [[1, "Normal"], [1.15, "Large"], [1.3, "Larger"]]);
+        choice("text", "Text size", [[1, "Normal"], [1.15, "Large"], [1.3, "Larger"]]) +
+        choice("ui", "UI scale", UI_SCALES.map((v) => [v, Math.round(v * 100) + "%"])) +
+        `<div class="note dim">The size of the buttons, cards and menus, not of the garden. ${mobile ? "A phone starts at " + Math.round(PHONE_UI * 100) + "%." : "100% is the default."}${ME.params.has("ui") ? " Pinned to " + Math.round(uiScale(s) * 100) + "% by the page address (?ui=)." : ""}</div>`;
       body.querySelectorAll("input[type=range]").forEach((el) => el.addEventListener("input", () => { this.set(el.dataset.k, +el.value); el.nextElementSibling.textContent = Math.round(el.value * 100) + "%"; }));
       body.querySelectorAll(".seg button").forEach((el) => el.addEventListener("click", () => {
-        const k = el.dataset.k, raw = el.dataset.v, v = raw === "true" ? true : raw === "false" ? false : k === "vs" || k === "text" ? +raw : raw;
+        const k = el.dataset.k, raw = el.dataset.v, v = raw === "true" ? true : raw === "false" ? false : k === "vs" || k === "text" || k === "ui" ? +raw : raw;
         this.set(k, v); this.renderSettings();
       }));
+      // (each heading's rows in a section, and the headings as tabs over them: on a phone one section shows at a
+      // time, so it fits the screen without scrolling; on a desktop the tabs hide and the sections stack)
+      const secs = []; let sec = null;
+      [...body.children].forEach((el) => {
+        if (el.tagName === "H3") { sec = document.createElement("section"); sec.dataset.sec = el.textContent; secs.push(sec); el.before(sec); }
+        if (sec) sec.appendChild(el);
+      });
+      if (!secs.length) return;
+      const tab = secs.some((x) => x.dataset.sec === this.setTab) ? this.setTab : secs[0].dataset.sec;
+      const bar = document.createElement("div");
+      bar.className = "seg settabs";
+      bar.innerHTML = secs.map((x) => `<button class="${x.dataset.sec === tab ? "on" : ""}" data-t="${x.dataset.sec}">${x.dataset.sec}</button>`).join("");
+      body.prepend(bar);
+      secs.forEach((x) => x.classList.toggle("cur", x.dataset.sec === tab));
+      bar.addEventListener("click", (e) => { const b = e.target.closest("[data-t]"); if (b) { this.setTab = b.dataset.t; this.renderSettings(); } });
     }
   }
   G.Menu = Menu;
@@ -25925,6 +26159,7 @@ function MG_SFX(L) {
       turn: (dir) => cam.snap(dir),
       sky: () => atmos.toggle(),
       deselect: () => deselect(),
+      closeCard: () => { pending = null; hud.clearSeed(); scene.seed = ""; deselect(); hud.closeCard(); },
     });
     const refreshWaves = () => {
       if (S.phase === G.Phase.WAVE) hud.showWaves(game.plan(S.wave), game.remaining(), game.plan(S.wave + 1));
@@ -25945,7 +26180,7 @@ function MG_SFX(L) {
       if (d && !G.Save.fits(next, d)) { next.dispose(); return false; }
       if (!d) logRun("quit"); // (the run given up, on the run log below)
       game.dispose();
-      deselect(); hud.clearSeed(); hud.hideGameOver(); document.getElementById("boons").classList.remove("show");
+      deselect(); hud.clearSeed(); hud.hideGameOver(); document.getElementById("boons").classList.remove("show"); G.Dismiss.untab();
       pending = null; game = next; hud.game = game; if (audio) audio.setGame(game); if (bot) bot.game = game;
       if (d) G.Save.restore(game, d); else S.newRun((Date.now() ^ (Math.random() * 1e9)) >>> 0);
       scene.setGame(game);
@@ -26069,7 +26304,7 @@ function MG_SFX(L) {
 
     const bot = G.Bot && ME.qn("autoplay", 0) ? new G.Bot(game, {
       maxWaves: ME.qn("waves", 8), early: ME.qn("early", -1) >= 0 ? ME.qn("early", -1) : null, now: () => ME.now(), log: (line) => ME.log("BOT", line),
-      deselect, hideBoons: () => document.getElementById("boons").classList.remove("show"), setSpeed,
+      deselect, hideBoons: () => { document.getElementById("boons").classList.remove("show"); G.Dismiss.untab(); }, setSpeed,
       finish: (r) => {
         const out = JSON.stringify(Object.assign({ ok: ME.errors.length === 0 }, r, { audio: audio ? audio.stats() : null, errors: ME.errors }));
         if (audio && audio.mixer && audio.mixer.rec) audio.stopRecording().then((b64) => { result.textContent = out + "\nFILE mix.webm " + b64; });
