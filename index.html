@@ -54,35 +54,43 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 @property --lc { syntax: "<color>"; inherits: true; initial-value: #5aa5d2; }
 #dewgauge { position: fixed; right: calc(4px + var(--sr)); width: 52px; top: calc(120px + var(--st)); bottom: calc(22px + 104px * var(--ts) + 12px + var(--sb));
   display: flex; flex-direction: column; align-items: center; pointer-events: none; }
-#dewbar, #dew { --la: #4f93c2; --lb: #8fd0f2; --lc: #5aa5d2; --lg: rgba(120, 200, 245, 0.5); }
-#dewbar[data-tier="1"], #dew[data-bank="1"] { --la: #1fb6e8; --lb: #8ff0ff; --lc: #2cc6f0; --lg: rgba(80, 225, 255, 0.75); }
-#dewbar[data-tier="2"], #dew[data-bank="2"] { --la: #9fe8ff; --lb: #ffffff; --lc: #b8f0ff; --lg: rgba(200, 245, 255, 0.95); }
-#dewbar[data-tier="3"], #dew[data-bank="3"] { --la: #e9a92a; --lb: #fff1a8; --lc: #f2bd3e; --lg: rgba(255, 215, 110, 1); }
+/* (the user, 2026-11-04: "have dew bar liquid match rarity level color and become increasingly agitée with higher
+   levels": the water is the colour of the gifts the tier opens, the cards' own (common moss, rare blue, legendary
+   ember, exquisite opal), and it stirs more at each: the waves' height (--dwh) and pace (--dwt, a duration factor),
+   the surface's slosh (--dsl, a skew, over --dst) and the bubbles' pace (--dbt; one bubble at the lowest). --dink is
+   the count's ink on the bulb) */
+#dewbar, #dew { --la: #6f9a4a; --lb: #c2df9c; --lc: #86b05e; --lg: rgba(150, 200, 110, 0.45); --dink: #15260a; --dwh: 0.6; --dwt: 1.5; --dsl: 0deg; --dst: 3s; --dbt: 1.5; }
+#dewbar[data-tier="1"], #dew[data-bank="1"] { --la: #5b80c4; --lb: #b4cdf6; --lc: #6f92d2; --lg: rgba(91, 134, 214, 0.75); --dink: #0d1f44; --dwh: 1; --dwt: 1; --dsl: 3deg; --dst: 2.4s; --dbt: 1; }
+#dewbar[data-tier="2"], #dew[data-bank="2"] { --la: #e0602a; --lb: #ffc08a; --lc: #f07a3a; --lg: rgba(255, 138, 74, 0.9); --dink: #3a1204; --dwh: 1.4; --dwt: 0.7; --dsl: 9deg; --dst: 1.5s; --dbt: 0.65; }
+#dewbar[data-tier="3"], #dew[data-bank="3"] { --la: #d9c8ff; --lb: #fff3fb; --lc: #c9f3ff; --lg: rgba(220, 200, 255, 1); --dink: #3a2a5a; --dwh: 1.9; --dwt: 0.45; --dsl: 16deg; --dst: 0.9s; --dbt: 0.4; }
 /* the dew bank, the bulb: full of the tube's water, the count in dark ink on it (it reads on every tier's
    water), the drop the dew flies to (fx.js) above it. Not a button: no pointer. Its rim goes gold at the top
    tier (data-bank 1-3; the tube shows the level); it glows with the rate the dew comes in (data-hot 1-3).
    hud.js counts it up and pulses it */
-#dew { position: relative; z-index: 1; flex: none; width: 100%; padding: 6px 2px 7px; border-radius: 24px / 22px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; isolation: isolate;
-  pointer-events: none; color: #0b2c3e; font-size: calc(20px * var(--ts)); font-weight: 800; line-height: 1; white-space: nowrap; letter-spacing: -0.02em; transform-origin: 50% 100%;
-  border: 2px solid rgba(26, 23, 18, 0.75); text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
-  background: radial-gradient(ellipse 60% 42% at 32% 26%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 70%), linear-gradient(90deg, var(--la), var(--lb) 45%, var(--lc));
-  box-shadow: inset 0 -6px 9px rgba(0, 30, 50, 0.3), inset 0 2px 3px rgba(255, 255, 255, 0.6), 0 0 8px var(--lg), 0 2px 4px rgba(0, 0, 0, 0.4);
+/* (the user, 2026-11-04: "change the bulb design at base, have it more streamlined": a drop, not a pill, slimmer
+   and with a finer rim, its shoulders curving in to the tube) */
+#dew { position: relative; z-index: 1; flex: none; width: 46px; padding: 8px 1px 7px; border-radius: 50% 50% 50% 50% / 36% 36% 64% 64%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; isolation: isolate;
+  pointer-events: none; color: var(--dink); font-size: calc(18px * var(--ts)); font-weight: 800; line-height: 1; white-space: nowrap; letter-spacing: -0.04em; transform-origin: 50% 100%;
+  border: 1.5px solid rgba(26, 23, 18, 0.7); text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+  background: radial-gradient(ellipse 34% 26% at 34% 30%, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0) 70%), linear-gradient(90deg, var(--la), var(--lb) 45%, var(--lc));
+  box-shadow: inset -3px -6px 8px rgba(0, 20, 40, 0.28), inset 2px 2px 3px rgba(255, 255, 255, 0.55), 0 0 8px var(--lg), 0 2px 3px rgba(0, 0, 0, 0.35);
   transition: --la 0.6s, --lb 0.6s, --lc 0.6s, filter 0.4s, border-color 0.6s, color 0.6s; }
-/* (the neck: the tube's water runs on into the bulb, over its rim) */
-#dew::before { content: ""; position: absolute; left: 50%; top: -2px; width: 18px; height: 5px; margin-left: -9px; background: linear-gradient(90deg, var(--la), var(--lb) 45%, var(--lc)); }
+/* (the neck: the tube's water flares on into the bulb, over its rim, in one curve) */
+#dew::before { content: ""; position: absolute; left: 50%; top: -3px; width: 30px; height: 9px; margin-left: -15px; background: linear-gradient(90deg, var(--la), var(--lb) 45%, var(--lc));
+  clip-path: path("M6 0H24C24 5 28 7 30 9H0C2 7 6 5 6 0Z"); }
 #dew svg { width: 0.55em; height: 0.73em; flex: none; fill: currentColor; fill-opacity: 0.8; transition: filter 0.4s; }
 #dew svg .glint { fill: none; stroke: #fff; stroke-opacity: 0.8; stroke-width: 1.2; stroke-linecap: round; }
-#dew[data-hot="1"] svg { filter: drop-shadow(0 0 3px #7fd0ff); }
-#dew[data-hot="2"] svg { filter: drop-shadow(0 0 5px #9fdcff) drop-shadow(0 0 2px #fff); }
-#dew[data-hot="2"] { filter: drop-shadow(0 0 8px rgba(127, 208, 255, 0.75)); }
-#dew[data-hot="3"] svg { filter: drop-shadow(0 0 7px #bfe8ff) drop-shadow(0 0 3px #fff); }
-#dew[data-hot="3"] { filter: drop-shadow(0 0 10px rgba(140, 215, 255, 0.95)) drop-shadow(0 0 22px rgba(140, 215, 255, 0.6)); }
-#dew[data-bank="3"] { border-color: #8a5e10; color: #4a2c00; }
+#dew[data-hot="1"] svg { filter: drop-shadow(0 0 3px var(--lg)); }
+#dew[data-hot="2"] svg { filter: drop-shadow(0 0 5px var(--lg)) drop-shadow(0 0 2px #fff); }
+#dew[data-hot="2"] { filter: drop-shadow(0 0 8px var(--lg)); }
+#dew[data-hot="3"] svg { filter: drop-shadow(0 0 7px var(--lg)) drop-shadow(0 0 3px #fff); }
+#dew[data-hot="3"] { filter: drop-shadow(0 0 10px var(--lg)) drop-shadow(0 0 20px var(--lg)); }
+#dew[data-bank="3"] { border-color: #6a4c9a; }
 #dew[data-bank="3"]::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
   background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.6) 50%, transparent 65%) -60px 0 / 120px 100% no-repeat; animation: dewshine 3.2s ease-in-out infinite; }
 @keyframes dewshine { 0%, 40% { background-position: -60px 0; } 100% { background-position: 60px 0; } }
 /* the dew bar, the thermometer's tube: it runs down into the bulb, its water rising with the bank (--fill, hud.js
-   barFill: the tiers at the ticks, 30/55/80%). At each tier (data-tier 1-3, Defs.DEW_TIERS) the water goes brighter and glows more: blue, cyan, white-hot, gold; the
+   barFill: the tiers at the ticks, 30/55/80%). At each tier (data-tier 1-3, Defs.DEW_TIERS) the water takes the colour of the gifts it opens and stirs more (above); the
    tag beside its surface says the gifts' odds are up (Defs.DEW_LUCK). The water's surface rolls (two waves,
    the bright one in front, its crest the meniscus) and bubbles rise through it. The rate's glow (data-hot) brightens it, and
    a fast gain bounces its surface and sprays droplets from it (hud.js dewPulse). The open almanac hides it */
@@ -97,36 +105,41 @@ body.alm-open #dewbar { visibility: hidden; } /* (the bulb stays, under the alma
 /* (the water: a column to the level, kept under the tube's rounded top; the waves ride on it) */
 #dewbar .fill { position: absolute; left: 1px; right: 1px; bottom: 0; height: min(calc(var(--fill, 0) * (100% - 2px)), calc(100% - 12px)); transform-origin: 50% 100%;
   background: linear-gradient(90deg, var(--la), var(--lb) 45%, var(--lc)); box-shadow: 0 0 7px var(--lg); transition: height 0.8s ease-out, box-shadow 0.6s; }
-#dewbar[data-tier="2"] .fill { box-shadow: 0 0 10px rgba(200, 245, 255, 0.95), 0 0 20px rgba(110, 220, 255, 0.6); }
-#dewbar[data-tier="3"] .fill { box-shadow: 0 0 12px rgba(255, 215, 110, 1), 0 0 26px rgba(255, 190, 60, 0.75); animation: dewbarglow 1.6s ease-in-out infinite alternate; }
-@keyframes dewbarglow { to { box-shadow: 0 0 16px rgba(255, 228, 140, 1), 0 0 34px rgba(255, 200, 70, 0.9); } }
+#dewbar[data-tier="2"] .fill { box-shadow: 0 0 10px rgba(255, 150, 80, 0.95), 0 0 20px rgba(224, 96, 42, 0.6); }
+/* (the exquisite water: the opal's colours drift up through it, and it glows in and out) */
+#dewbar[data-tier="3"] .fill { background: linear-gradient(180deg, rgba(255, 214, 240, 0.7), rgba(201, 243, 255, 0.7), rgba(255, 243, 184, 0.7), rgba(217, 200, 255, 0.7), rgba(255, 214, 240, 0.7)) 0 0 / 100% 120px repeat-y, linear-gradient(90deg, var(--la), var(--lb) 45%, var(--lc));
+  box-shadow: 0 0 12px rgba(220, 200, 255, 1), 0 0 26px rgba(255, 190, 240, 0.7); animation: dewbarglow 1.6s ease-in-out infinite alternate, dewopal 6s linear infinite; }
+@keyframes dewbarglow { to { box-shadow: 0 0 16px rgba(235, 220, 255, 1), 0 0 34px rgba(200, 240, 255, 0.9); } }
+@keyframes dewopal { to { background-position: 0 -120px, 0 0; } }
 /* (the waves: water above the column's top, cut to a wave by a mask that slides along; the back one paler,
-   higher, rolling the other way. The front one's bright top is the meniscus. They shrink away as the tube empties) */
-#dewbar .fill::before, #dewbar .fill::after { content: ""; position: absolute; left: 0; right: 0; bottom: calc(100% - 1px); height: calc(min(1, var(--fill, 0) * 40) * 7px);
+   higher, rolling the other way. The front one's bright top is the meniscus. They shrink away as the tube empties, and grow,
+   quicken and slosh (a skew to and fro, the two out of step) with the tier: transforms and masks only, no layout) */
+#dewbar .fill::before, #dewbar .fill::after { content: ""; position: absolute; left: 0; right: 0; bottom: calc(100% - 1px); height: calc(min(1, var(--fill, 0) * 40) * 7px * var(--dwh)); transform-origin: 50% 100%;
   --wave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 7' preserveAspectRatio='none'%3E%3Cpath d='M0 3.5C4 0.5 4 0.5 8 3.5S12 6.5 16 3.5V7H0z'/%3E%3C/svg%3E");
   -webkit-mask: var(--wave) 0 0 / 16px 100% repeat-x; mask: var(--wave) 0 0 / 16px 100% repeat-x; }
-#dewbar .fill::before { height: calc(min(1, var(--fill, 0) * 40) * 9px); opacity: 0.55; background: var(--lb); animation: dewwave 2.6s linear infinite reverse; }
-#dewbar .fill::after { background: linear-gradient(rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 4px) 0 1px / 100% 100% no-repeat, linear-gradient(90deg, var(--la), var(--lb) 45%, var(--lc)); animation: dewwave 1.7s linear infinite; }
+#dewbar .fill::before { height: calc(min(1, var(--fill, 0) * 40) * 9px * var(--dwh)); opacity: 0.55; background: var(--lb); animation: dewwave calc(2.6s * var(--dwt)) linear infinite reverse, dewslosh var(--dst) ease-in-out calc(var(--dst) * -0.5) infinite; }
+#dewbar .fill::after { background: linear-gradient(rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 4px) 0 1px / 100% 100% no-repeat, linear-gradient(90deg, var(--la), var(--lb) 45%, var(--lc)); animation: dewwave calc(1.7s * var(--dwt)) linear infinite, dewslosh var(--dst) ease-in-out infinite; }
 @keyframes dewwave { to { -webkit-mask-position: 16px 0; mask-position: 16px 0; } }
+@keyframes dewslosh { 0%, 100% { transform: skewY(calc(var(--dsl) * -1)); } 50% { transform: skewY(var(--dsl)) scaleY(1.12); } }
 /* (the bubbles: each a dot that rises the column's height, at its own pace) */
 #dewbar .bub { position: absolute; top: 2px; bottom: 0; width: 5px; background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0 1.1px, rgba(16, 60, 90, 0.4) 1.5px, transparent 2px) 50% 100% / 5px 5px no-repeat;
-  animation: dewbub 3.1s ease-in infinite; }
+  animation: dewbub calc(3.1s * var(--dbt)) ease-in infinite; }
 #dewbar .bub:nth-child(1) { left: 3px; }
-#dewbar .bub:nth-child(2) { left: 10px; animation-duration: 4.3s; animation-delay: -1.6s; }
-#dewbar .bub:nth-child(3) { left: 6px; animation-duration: 3.7s; animation-delay: -2.9s; }
+#dewbar .bub:nth-child(2) { left: 10px; animation-duration: calc(4.3s * var(--dbt)); animation-delay: -1.6s; }
+#dewbar .bub:nth-child(3) { left: 6px; animation-duration: calc(3.7s * var(--dbt)); animation-delay: -2.9s; }
+#dewbar:not([data-tier="1"], [data-tier="2"], [data-tier="3"]) .bub:nth-child(n+2) { display: none; } /* (one bubble in the calm water) */
 @keyframes dewbub { 0% { background-position-y: 100%; opacity: 0; } 15%, 85% { opacity: 1; } 100% { background-position-y: 0%; opacity: 0; } }
 #dewbar[data-hot="1"] { filter: brightness(1.12); }
-#dewbar[data-hot="2"] { filter: brightness(1.22) drop-shadow(0 0 5px rgba(140, 215, 255, 0.8)); }
-#dewbar[data-hot="3"] { filter: brightness(1.32) drop-shadow(0 0 9px rgba(160, 225, 255, 0.95)); }
+#dewbar[data-hot="2"] { filter: brightness(1.22) drop-shadow(0 0 5px var(--lg)); }
+#dewbar[data-hot="3"] { filter: brightness(1.32) drop-shadow(0 0 9px var(--lg)); }
 /* (the odds tag, beside the water's surface: rare+, then the band that opens the legendary gifts, then the exquisite ones) */
 #dewbar .luck { position: absolute; right: calc(100% + 6px); bottom: calc(var(--fill, 0) * 100%); margin-bottom: -0.7em; padding: 1px 6px; border-radius: 8px; white-space: nowrap;
-  font-size: calc(12px * var(--ts)); font-weight: 800; letter-spacing: 0.03em; color: #10303e; background: #bfefff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); transition: bottom 0.8s ease-out; }
+  font-size: calc(12px * var(--ts)); font-weight: 800; letter-spacing: 0.03em; color: #0d1f44; background: #c8dafc; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); transition: bottom 0.8s ease-out; }
 #dewbar .luck:empty { display: none; }
 #dewbar[data-tier="2"] .luck { background: linear-gradient(180deg, #ffb070, #e0602a); color: #3a1204; box-shadow: 0 0 7px rgba(255, 140, 70, 0.9); }
 #dewbar[data-tier="3"] .luck { background: linear-gradient(90deg, #ffd6f0, #c9f3ff, #fff3b8, #d9c8ff); color: #3a2a5a; box-shadow: 0 0 9px rgba(220, 200, 255, 0.95); }
 /* (the droplets: they leap from the water's surface) */
-#dewbar .spray { position: absolute; left: 50%; bottom: calc(var(--fill, 0) * 100%); width: 8px; height: 10px; margin: 0 0 -2px -4px; border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%; background: #8fd2f5; box-shadow: 0 0 4px #c8ecff; opacity: 0; }
-#dewbar[data-tier="3"] .spray { background: #ffe38f; box-shadow: 0 0 4px #fff2c0; }
+#dewbar .spray { position: absolute; left: 50%; bottom: calc(var(--fill, 0) * 100%); width: 8px; height: 10px; margin: 0 0 -2px -4px; border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%; background: var(--lb); box-shadow: 0 0 4px var(--lg); opacity: 0; }
 #wave { font-size: calc(22px * var(--ts)); }
 #topright { position: fixed; right: calc(12px + var(--sr)); top: calc(12px + var(--st)); display: flex; gap: 8px; align-items: center; pointer-events: none; }
 #topright > * { pointer-events: auto; }
@@ -581,8 +594,8 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
      clear of the hint on its left; the open almanac reaches down over it, so it hides) */
   #dewgauge { right: calc(3px + var(--sr)); width: 44px; top: calc(160px + var(--st)); bottom: calc(27px + 128px * var(--ts) + var(--sb)); }
   body.alm-open #dewgauge, body:has(#inspector.show) #dewgauge { visibility: hidden; } /* (and under the docked card, which spans its place) */
-  #dew { padding: 5px 1px 6px; border-radius: 20px / 18px; font-size: calc(15px * var(--ts)); gap: 1px; }
-  #dew::before { width: 14px; margin-left: -7px; }
+  #dew { width: 40px; padding: 7px 1px 6px; font-size: calc(15px * var(--ts)); gap: 1px; }
+  #dew::before { width: 24px; height: 8px; margin-left: -12px; clip-path: path("M5 0H19C19 4 22 6 24 8H0C2 6 5 4 5 0Z"); }
   #dewbar { width: 18px; margin-bottom: -6px; border-radius: 9px 9px 0 0; }
   #dewbar .bub:nth-child(2) { left: 8px; }
   #dewbar .luck { font-size: calc(11px * var(--ts)); padding: 1px 5px; }
@@ -757,11 +770,13 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 .x:hover { opacity: 1; background: rgba(255, 250, 230, 0.26); }
 #almanac.closed > .x { display: none; }
 #insptitle { padding-right: 34px; }
+.coachtxt { margin-right: 28px; }
 #boons .col > .x { top: -6px; right: -6px; }
 #dztab { position: fixed; z-index: 30; left: 50%; transform: translateX(-50%); bottom: calc(var(--vh) * 0.32); height: 46px; padding: 0 20px; font-size: calc(17px * var(--ts)); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); animation: fade 0.3s; }
 @media (max-width: 760px) {
   .x { width: 44px; height: 44px; top: 0; right: 0; font-size: 18px; background: transparent; }
   #insptitle { padding-right: 40px; }
+  .coachtxt { margin-right: 36px; }
   #boons .col > .x { top: -10px; right: -4px; background: rgba(20, 31, 15, 0.55); }
 }
 </style>
@@ -16024,7 +16039,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.51.0", name: "Mossheart", commit: "8565c8b" };
+  G.VERSION = { v: "0.52.0", name: "Mossheart", commit: "c1ed7b1" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -16370,13 +16385,24 @@ function MA_DSP() {
     hoard: { name: "Hoard", icon: "💧", pay: 1, n: (w) => Math.min(700, 60 + 20 * w), text: (n) => `Hold ${n} dew when the wave clears` },
     daring: { name: "Daring", icon: "»", pay: 0.6, text: () => "Call the next wave early" },
   };
-  D.challengePay = (wave) => Math.round(6 + 1.5 * wave);
-  // the wave's challenge, { id, wave, n, pay, name, icon, text }, or null (wave 1)
-  D.challengeFor = (wave, runSeed) => {
+  // The pay (the user, 2026-11-04: "an order of magnitude too low"): the larger of a floor by the wave and a
+  // share of the dew banked when the wave starts (CHAL_K of it, times the challenge's `pay`, its difficulty),
+  // so a challenge is worth taking at any balance; never more than that balance again (one challenge at most
+  // doubles the bank), unless the floor is higher. The HUD's card shows it before the wave, at today's dew.
+  D.CHAL_BASE = 3;
+  D.CHAL_K = 0.5;
+  D.challengePay = (wave) => Math.round(D.CHAL_BASE * (6 + 1.5 * wave));
+  D.chalPay = (wave, d, dew = 0) => {
+    const floor = D.challengePay(wave) * d;
+    return Math.round(Math.min(Math.max(floor, D.CHAL_K * d * dew), Math.max(floor, dew)));
+  };
+  // the wave's challenge, { id, wave, n, pay, name, icon, text }, or null (wave 1); `dew`, the bank its pay
+  // is reckoned on
+  D.challengeFor = (wave, runSeed, dew = 0) => {
     if (wave < 2) return null;
     const boss = (w) => w % 5 === 0, ids = Object.keys(D.CHALLENGES).filter((id) => !(id === "hold" && boss(wave)) && !(id === "daring" && (boss(wave) || boss(wave + 1))));
     const id = ids[mix(runSeed ^ 0x5eed, wave) % ids.length], C = D.CHALLENGES[id], n = C.n ? C.n(wave) : 0;
-    return { id, wave, n, pay: Math.round(D.challengePay(wave) * C.pay), name: C.name, icon: C.icon, text: C.text(n) };
+    return { id, wave, n, pay: D.chalPay(wave, C.pay, dew), name: C.name, icon: C.icon, text: C.text(n) };
   };
 
   // Everything known about a wave before it starts: its spawn list (pairs of [enemy, delay after the
@@ -17497,7 +17523,7 @@ function MA_DSP() {
       this.restPlants();
       this.running = 0;
       this.addWave();
-      this.chal = D.challengeFor(S.wave, S.seed);
+      this.chal = D.challengeFor(S.wave, S.seed, S.dew);
       if (this.chal) this.chal.state = "live";
       S.setPhase(G.Phase.WAVE);
       this.announce();
@@ -17507,7 +17533,7 @@ function MA_DSP() {
     // --- dew challenges (D.CHALLENGES): the one the next wave will set, for the HUD; a live one failed now
     // (on the first leak, sowing or growth, or a creature too far down the road), or met (Daring: on the call);
     // the clear settles the rest and pays (chalSettle). Each change emits "challenge" { chal }.
-    nextChallenge() { return D.challengeFor(S.wave + 1, S.seed); }
+    nextChallenge() { return D.challengeFor(S.wave + 1, S.seed, S.dew); }
     chalFail(id) { const c = this.chal; if (c && c.state === "live" && c.id === id) { c.state = "failed"; G.emit("challenge", { chal: c }); } }
     chalMeet(id) { const c = this.chal; if (c && c.state === "live" && c.id === id) { c.state = "met"; G.emit("challenge", { chal: c }); } }
     chalSettle() {
@@ -21271,8 +21297,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
   const pick = (odds) => { let r = Math.random() * Object.values(odds).reduce((a, b) => a + b, 0); for (const k in odds) if ((r -= odds[k]) < 0) return k; return "clear"; };
   // v1: Auto and Dynamic became everyone's default once. An older save (no v) is reset to them on its
-  // first load, and any pick made after that is kept.
-  const VERSION = 1;
+  // first load, and any pick made after that is kept. v2 (the user 2026-11-04, with the settings' reset, menu.js:
+  // "default lighting and weather (eg. cosy morning for momiji)"): everyone back to each garden's own mood and
+  // Dynamic once.
+  const VERSION = 2;
+  // each garden's mood until the player picks one (Auto elsewhere: Fernglass's and Corn Moon's own light)
+  const LEVEL_MOOD = { momiji: "morning" };
   const load = () => {
     try {
       const d = JSON.parse(localStorage.getItem(KEY) || "{}");
@@ -21290,7 +21320,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       // the page address first, then the saved choice, then Auto and Dynamic (a new player: weather on,
       // gently, at the settings' Subtle; the bot and the self-test run Clear)
       const first = (table, ...vs) => vs.find((v) => table[v] || v === "random" || (table === WEATHER && v === "dynamic"));
-      this.mood = first(MOODS, ME.q("mood", ""), saved.mood) || "auto";
+      this.mood = first(MOODS, ME.q("mood", ""), saved.mood, fixed ? "" : LEVEL_MOOD[G.levelId]) || "auto";
       this.weather = first(WEATHER, ME.q("weather", ""), saved.weather) || (fixed ? "clear" : "dynamic");
       this.setIntensity("subtle", true); // (menu.js sets the player's)
       this.moodNow = "auto"; this.weatherNow = "clear";
@@ -21548,10 +21578,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
      o.outside   el floats over the game: a tap anywhere outside it closes and is swallowed, so it never
                  reaches the meadow; o.open() says whether it is showing, o.skip(target) spares its toggle
      o.dir       "down" (default) or "any"
+     o.x         false: no ✕ of ours (the panel has its own, the game tip)
      o.tab       a choice (the gifts, the run's end): it never closes, it minimises to a tab of that label
                  at the bottom that brings it back; the owner drops the tab with G.Dismiss.untab(el)
    G.Dismiss.drag(el, [{x, y, t}, ...]) runs a swipe from plain points, for the flows. The ✕ is .x and the
-   tab #dztab, in game.css. */
+   tab #dztab, in game.css; a choice's ✕ is a – (it minimises). */
 (function () {
   const G = window.MG;
   const SCROLLERS = ".cscroll, #inspbody, #almbody";
@@ -21619,9 +21650,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     wired.set(el, w);
     if (getComputedStyle(panel).position === "static") panel.style.position = "relative";
     const x = document.createElement("button");
-    x.className = "x"; x.type = "button"; x.textContent = "✕"; x.setAttribute("aria-label", o.tab ? "Minimise" : "Close");
+    x.className = "x"; x.type = "button"; x.textContent = o.tab ? "–" : "✕"; x.setAttribute("aria-label", o.tab ? "Minimise" : "Close");
     x.addEventListener("click", (e) => { e.stopPropagation(); close(w); });
-    panel.appendChild(x);
+    if (o.x !== false) panel.appendChild(x);
     // (a target no longer in the page was inside: a click that re-renders what it hit, Settings' tabs and
     // options, reaches the veil after its button is gone)
     const inside = (t) => !t.isConnected || (o.hit ? !!t.closest(o.hit) : panel.contains(t)) || t === x;
@@ -22341,7 +22372,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const cls = c ? (c.state === "met" ? "show met" : c.state === "failed" ? "show failed" : "show") : "";
       const html = c ? `<span class="ci">${c.state === "met" ? "✓" : c.icon}</span><span class="ct"><b>${esc(c.name)}</b> <small>${when}</small><span>${esc(c.text)}</span></span><span class="cp">+${fmtDew(c.pay)}<small>dew</small></span>` : "";
       if (el.className !== cls) el.className = cls;
-      if (el.innerHTML !== html) { el.innerHTML = html; el.title = c ? `Dew challenge: ${c.text}, for ${c.pay} dew when the wave clears` : ""; }
+      if (el.innerHTML !== html) { el.innerHTML = html; el.title = c ? `Dew challenge: ${c.text}, for ${c.pay} dew when the wave clears${c.state ? "" : " (more with more dew banked when it starts)"}` : ""; }
     }
   }
   G.Hud = Hud;
@@ -23270,7 +23301,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
    ?menu=0 skips both; the bot, the self-test and the benchmark never see them. */
 (function () {
   const G = window.MG, ME = window.ME;
-  const KEY = "mossheart.settings";
+  // The key is versioned: a new version resets every player's settings to the new defaults once, on its first
+  // load (v2, the user 2026-11-04: "reset to defaults for next build to make sure player base benefits from latest
+  // updates"). Only the settings: the run, the best wave, the fusions found and the leaderboard keep their own keys.
+  // The tips already seen and the garden picked are not settings and carry over; a player with an older save is
+  // told once (G.settingsReset, Menu).
+  const KEY = "mossheart.settings.v2", OLD_KEYS = ["mossheart.settings"], CARRY = ["hintsSeen", "level"];
+  G.SETTINGS_KEY = KEY; // (for the flows)
   const $ = (id) => document.getElementById(id);
 
   // camera: the view eases to the rift when a boss comes (main.js); motion: "reduced" drops the screen shake, the camera moves and the lightning, softens the flashes and thins the weather
@@ -23291,31 +23328,29 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const uiScale = (s) => { const q = +ME.params.get("ui"); return q >= 0.5 && q <= 2 ? q : s.ui; };
   const calmOS = !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
   const DEFAULTS = {
-    master: 0.7, music: 0.5, sfx: 0.7, ambience: 0.45, musicStyle: "ambient",
-    quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, camera: true, vs: 40, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, hints: true, hintsSeen: [], weather: "subtle", glass: "auto", res: mobile ? PHONE_RES : "full", resPicked: false, ui: mobile ? PHONE_UI : 1, uiPicked: false,
+    master: 0.7, music: 0.5, sfx: 0.7, ambience: 0.45, musicStyle: "mix",
+    quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, camera: true, vs: 64, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, hints: true, hintsSeen: [], weather: "subtle", glass: "auto", res: mobile ? PHONE_RES : "full", resPicked: false, ui: mobile ? PHONE_UI : 1, uiPicked: false,
   };
   const MUSIC_STYLES = [["ambient", "Ambient"], ["drift", "Drift"], ["liquid", "Liquid"], ["mix", "Mix"]];
-  const OLD_VOLUMES ={ master: 0.9, music: 0.8, sfx: 0.9, ambience: 0.8 };
-  // vs: the voxel density, Ultimate (40) unless the player picked one (vsPicked; the device's cap still applies).
-  // Before 24 became the default every save held vs 16 unless picked, so only another value was a choice.
-  // (Extreme at full resolution is the default since 2026-10-24, the user: "default to extreme density and
-  // full resolution ... assume modern flagship phones and devices"; Ultimate since 2026-10-27, the user: "set
-  // default density to 40 for desktop and mobile". A save that never picked one moves to 40 by itself.)
+  // vs: the voxel density, Maximum (64) unless the player picked one (vsPicked; the device's cap still applies).
+  // (Extreme at full resolution was the default from 2026-10-24, Ultimate (40) from 2026-10-27, Maximum since
+  // 2026-11-04, the user: "make sure default settings are set to 64vox". A phone gets it too: VS_MAX is 64 there,
+  // with ME.phoneLike()'s pool budget, no progressive bake, and the crash guard below to step down a load that dies.)
   const load = () => {
-    let raw = {};
-    try { raw = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { /* storage blocked */ }
-    const s = Object.assign({}, DEFAULTS, raw);
-    if (!("vsPicked" in raw)) s.vsPicked = raw.vs !== undefined && raw.vs !== 16;
+    let raw = null, old = null;
+    try {
+      raw = JSON.parse(localStorage.getItem(KEY) || "null");
+      if (!raw) for (const k of OLD_KEYS) { const o = JSON.parse(localStorage.getItem(k) || "null"); if (o) old = Object.assign(old || {}, o); }
+    } catch (e) { /* storage blocked */ }
+    if (!raw && old) {
+      raw = {};
+      for (const k of CARRY) if (old[k] !== undefined) raw[k] = old[k];
+      try { localStorage.setItem(KEY, JSON.stringify(raw)); for (const k of OLD_KEYS) localStorage.removeItem(k); } catch (e) { /* storage blocked */ }
+      G.settingsReset = true;
+    }
+    const s = Object.assign({}, DEFAULTS, raw || {});
     if (!s.vsPicked) s.vs = DEFAULTS.vs;
     if (!s.uiPicked) s.ui = DEFAULTS.ui; // (the device's default until the player picks a scale)
-    // res: "auto" (the screen's own up to 2x) was the default until then, so a save holding it never chose one
-    if (raw.res === "auto") s.res = DEFAULTS.res;
-    // and on a phone "full" was the default until PHONE_RES, so a save holding it moves once, unless the player
-    // picked it since (resPicked: the Resolution row or a preset)
-    if (mobile && raw.res === "full" && !raw.resPicked) s.res = DEFAULTS.res;
-    // the volumes were louder until 2026-10-24 (the user: "default to lower volumes for more subtle
-    // atmosphere"); a saved volume still at its old default was never moved, so it takes the new one
-    for (const [k, v] of Object.entries(OLD_VOLUMES)) if (raw[k] === v) s[k] = DEFAULTS[k];
     return s;
   };
   const save = (s) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* storage blocked */ } };
@@ -23382,7 +23417,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     low: { vs: 16, res: "1", quality: "low", glass: false, weather: "subtle" },
     medium: { vs: 24, res: "1.5", quality: "medium", glass: "auto", weather: "subtle" },
     high: { vs: 32, res: "2", quality: "high", glass: "auto", weather: "subtle" },
-    ultra: { vs: 40, res: DEFAULTS.res, quality: "high", glass: "auto", weather: "subtle" },
+    ultra: { vs: 64, res: DEFAULTS.res, quality: "high", glass: "auto", weather: "subtle" },
   };
   const PRESET_KEYS = ["vs", "res", "quality", "glass", "weather"];
   const PRESET_NAMES = { low: "Low", medium: "Medium", high: "High", ultra: "Ultra" };
@@ -23423,6 +23458,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.app = app; this.act = act; this.s = load(); this.open = "";
       const vt = G.vsToast; // (the crash guard's notice: it fades a few seconds after the garden is up)
       if (vt) { vt.classList.add("fade"); setTimeout(() => vt.remove(), 9000); G.vsToast = null; }
+      // (and once, for a player whose settings the new key reset: load())
+      if (G.settingsReset && !vt) {
+        const t = document.createElement("div");
+        t.className = "toast fade"; t.id = "resettoast"; t.textContent = "Settings reset to the new defaults";
+        document.body.appendChild(t); setTimeout(() => t.remove(), 9000);
+      }
       app.paused = false;
       const root = document.createElement("div");
       root.id = "menus";
@@ -23727,6 +23768,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       el.id = "coach"; el.className = "coach panel";
       el.innerHTML = `<p class="coachtxt"></p><div class="coachrow"><span class="coachstep"></span><button class="btn coachok" data-c="ok">Got it</button><button class="btn coachskip" data-c="skip">Skip tips</button></div>`;
       el.addEventListener("click", (e) => { const b = e.target.closest("[data-c]"); if (b) b.dataset.c === "ok" ? this.next() : this.end(); });
+      // (a swipe or its ✕ tucks the tips away to a tab that brings them back, dismiss.js: the steps go on)
+      if (G.Dismiss) G.Dismiss.add(el, { dir: "any", tab: "Tips" });
       document.body.appendChild(el);
     }
     on() { const m = this.app.menu; return !m || m.s.tips !== false; }
@@ -23739,7 +23782,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
       const st = STEPS[this.step];
       if (st.done(this) || (st.secs && performance.now() - this.t0 > st.secs * 1000)) return this.next();
-      const hidden = (m && m.open) || S.phase === G.Phase.CHOOSE_BOON || S.phase === G.Phase.GAME_OVER;
+      const hidden = (m && m.open) || S.phase === G.Phase.CHOOSE_BOON || S.phase === G.Phase.GAME_OVER || (G.Dismiss && G.Dismiss.tabbed() === this.el);
       this.el.classList.toggle("show", !hidden);
       document.body.classList.toggle("coaching", !hidden);
       this.light(hidden ? null : st.spot);
@@ -23754,7 +23797,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     next() { if (this.step + 1 < STEPS.length) this.go(this.step + 1); else this.end(); }
     // the tips are done: off in Settings until the player turns them on again
     end() {
-      this.step = -1; this.light(null);
+      this.step = -1; this.light(null); if (G.Dismiss) G.Dismiss.untab(this.el);
       this.el.classList.remove("show"); document.body.classList.remove("coaching");
       if (this.app.menu) this.app.menu.set("tips", false);
     }
@@ -23821,6 +23864,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const stop = (e) => e.stopPropagation();
       el.addEventListener("pointerdown", stop);
       el.addEventListener("click", (e) => { e.stopPropagation(); this.hide(); });
+      // (and a swipe any way, dismiss.js: every pop-up swipes closed)
+      if (G.Dismiss) G.Dismiss.add(el, { dir: "any", x: false, close: () => this.hide() });
       document.body.appendChild(el);
     }
     on() { const m = this.app.menu; return !m || m.s.hints !== false; }
