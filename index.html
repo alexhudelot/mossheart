@@ -777,6 +777,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   .x { width: 44px; height: 44px; top: 0; right: 0; font-size: 18px; background: transparent; }
   #insptitle { padding-right: 40px; }
   .coachtxt { margin-right: 36px; }
+  /* (a minimised tip's tab waits where the tip was, and the hint steps up over it) */
+  #dztab { bottom: calc(168px + 128px * var(--ts) + var(--sb)); }
+  body:has(#dztab) #hint { bottom: calc(222px + 128px * var(--ts) + var(--sb)); }
   #boons .col > .x { top: -10px; right: -4px; background: rgba(20, 31, 15, 0.55); }
 }
 </style>
@@ -16039,7 +16042,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.52.0", name: "Mossheart", commit: "c1ed7b1" };
+  G.VERSION = { v: "0.53.0", name: "Mossheart", commit: "1a3330d" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
