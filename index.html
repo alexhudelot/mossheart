@@ -6480,16 +6480,17 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   ME.poolMaxDepth = (limits = ME.limits) => (limits && limits.maxTextureDimension3D) || 2048;
   ME.poolMaxBricks = (limits, S = ME.POOL_SLAB_MAX) => Math.floor(ME.poolMaxDepth(limits) / 8) * S * S;
   // The pool's budget on this device, under the ceiling: ME.POOL_PHONE (65,536 bricks, 128 MB, the ceiling before
-  // E6) on a phone-like device (ME.phone(), or navigator.deviceMemory <= 4 GB), else the ceiling. The LOD drop (no
-  // 2x copies when they don't fit), the bake's throw and MB.stats.fill read it, so a phone keeps the thresholds it
-  // had before E6. ME.poolBudget (or ?poolbudget=) sets it.
-  // ME.phone(): a phone or tablet, the engine's and the games' one test. A mobile UA; an iPad, whose Safari says
-  // Macintosh but has a touch screen; or a touch-only device (no mouse or trackpad) with a short screen side of
-  // 1024 or less: a phone whose browser asks for the desktop site, whose UA then says X11 Linux or Macintosh
-  // (the user's flagship, 2026-11-02). A touch laptop has a fine pointer, so it stays a desktop.
+  // E6) on a phone-like device (a mobile UA, an iPad, whose Safari says Macintosh but has a touch screen, or a
+  // touch-only screen (coarse pointer, no fine one) whose short side is 1024 CSS px or less, such as a phone on
+  // Chrome's Desktop site; or navigator.deviceMemory <= 4 GB), else the ceiling. The LOD drop (no 2x copies when
+  // they don't fit), the bake's throw and MB.stats.fill read it, so a phone keeps the thresholds it had before E6.
+  // ME.poolBudget (or ?poolbudget=) sets it.
+  // ME.phone(): the phone-or-tablet part, the engine's and the games' one test. A phone on the desktop site says
+  // X11 Linux or Macintosh (the user's flagship, 2026-11-02); a touch laptop has a fine pointer, so it stays a
+  // desktop. Safe in a bake worker (no matchMedia or screen there).
   ME.POOL_PHONE = 65536;
   ME.phone = () => {
-    const ua = navigator.userAgent || "", mq = (q) => !!(window.matchMedia && matchMedia(q).matches);
+    const ua = navigator.userAgent || "", mq = (q) => typeof matchMedia === "function" && matchMedia(q).matches;
     return /Android|iPhone|iPad|Mobile/.test(ua) || (navigator.maxTouchPoints > 1 && (/Macintosh/.test(ua) ||
       (mq("(pointer: coarse)") && !mq("(any-pointer: fine)") && Math.min(screen.width, screen.height) <= 1024)));
   };
@@ -15153,7 +15154,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.36.0", name: "Mossheart", commit: "1fbd227" };
+  G.VERSION = { v: "0.37.0", name: "Mossheart", commit: "94956a5" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -21898,8 +21899,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // moves: it is per pixel.
   const VS_MAX = ME.params.has("vsmax") && ME.vsCeiling ? ME.vsCeiling() : Math.max(32, ME.vsCeiling ? ME.vsCeiling() : 32);
   // and the densest a model may bake (its o.fine x the terrain's VS; docs/decisions/2026-10-20-hero-density.md):
-  // 32 on those devices, 64 elsewhere. main.js caps the bake list's fine to it.
-  G.HERO_MAX = ME.qn("heromax", mobile || mem <= 4 ? 32 : 64); // (?heromax=32: the phone cap, to test it on a desktop)
+  // 32 on those devices, 64 elsewhere, and above vs40 never below the terrain's own VS: a hero is never coarser than
+  // the ground at 48 and 64 (the user, 2026-11-04). At vs40 and below the cap stays (fine 0.8 at 40): phones default
+  // to 40 and load time is their one complaint, so the default phone load must not grow.
+  // A getter, as the density can change before a bake (ME.setVS); G.heroFine (src/art/models.js) reads it.
+  // ?heromax= sets the cap, under the same floor (?heromax=32: the phone cap, to test it on a desktop).
+  const HERO_CAP = ME.qn("heromax", mobile || mem <= 4 ? 32 : 64);
+  Object.defineProperty(G, "HERO_MAX", { configurable: true, get: () => ((ME.VS || 32) > 40 ? Math.max(HERO_CAP, ME.VS) : HERO_CAP) });
   const VS_NAMES = { 8: "Chunky (8)", 12: "Coarse (12)", 16: "Standard (16)", 20: "Fine (20)", 24: "Superfine (24)", 32: "Extreme (32)", 40: "Ultimate (40)", 48: "Epic (48)", 64: "Maximum (64)" };
   G.vsChoices = () => ME.VS_LEVELS.filter((v) => v <= VS_MAX);
   // before the bake: the saved density, unless ?vs= pins one
@@ -24937,8 +24943,6 @@ function MG_SFX(L) {
     // the bake, or the cached copy of it (the engine's IndexedDB bake cache; ?nocache=1 skips it)
     // (the wisps bake progressively too, E4: fine, so they'd add to READY; the small critters stay as they are)
     const bakeOpts = { walkers: false, models: G.bakeList(), progCritters: ["wispling"] };
-    // (no model finer than G.HERO_MAX voxels per tile edge, menu.js: 32 on phones)
-    for (const k in bakeOpts.models) { const o = bakeOpts.models[k][1]; if (o && o.fine && o.fine * ME.VS > G.HERO_MAX) o.fine = G.HERO_MAX / ME.VS; }
     // (and no progressive bake, E4, on a phone, the devices that cap at 32 (ME.phoneLike() is menu.js's test): at vs20
     // and vs24 the capped fine is still > 1, and the upgrade's higher peak would land on the phones the crash guard
     // has already stepped down to 24, the Architect's must-fix on #376. ?progressive=1 keeps it, for a check)
