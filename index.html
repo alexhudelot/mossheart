@@ -10234,6 +10234,7 @@ fn boxOf(V: Vox) -> Box {
         sunAz: 0, sunEl: 0, scale: 1, autoScale: true, dusk: 0, cycle: 0, // dusk, cycle: src/daycycle.js
         beamDrift: 1, moonK: 5, // the sun pools wander this far (units); the moon beams' gain at full night
       };
+      this.shaftMul = hd.shaftMul ?? 1; // a map's own shaft gain (style.hd.shaftMul): out of set, so presets and moods stay relative to it
       this.set0 = Object.assign({}, this.set);
       this.L0 = st.L.slice();
       // app extension points (see the header); all empty for the plain engine scene
@@ -11025,7 +11026,7 @@ fn boxOf(V: Vox) -> Box {
       // dimmed shaftK (the gain comes in late, so dusk itself stays soft)
       const dk = s.cycle > 0 ? 0.5 - 0.5 * Math.cos((time / s.cycle) * Math.PI * 2) : Math.max(0, Math.min(1, s.dusk));
       const mt = Math.max(0, Math.min(1, (dk - 0.55) / 0.45)), moon = mt * mt * (3 - 2 * mt);
-      set4(u, O.look3, s.debug, s.shafts ? s.shaftK * (1 + s.moonK * moon * moon * moon) : 0, s.bloomK, s.exposure);
+      set4(u, O.look3, s.debug, s.shafts ? s.shaftK * this.shaftMul * (1 + s.moonK * moon * moon * moon) : 0, s.bloomK, s.exposure);
       const fog = (st.hd && st.hd.fog) || [40, 32, 18];
       set4(u, O.fog, ME.lin(fog[0]), ME.lin(fog[1]), ME.lin(fog[2]), s.haze);
       const bc = (st.hd && st.hd.beamCol) || BEAM_COL;
@@ -15687,7 +15688,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.47.0", name: "Mossheart", commit: "69d5222" };
+  G.VERSION = { v: "0.48.0", name: "Mossheart", commit: "529521e" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
