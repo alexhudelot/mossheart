@@ -30,6 +30,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #moves { position: absolute; top: 60px; right: 10px; max-width: 220px; padding: 6px 10px; font: 12px/1.5 ui-monospace, Consolas, monospace; color: var(--dim); }
 #moves:empty { display: none; }
 #moves b { color: var(--ink); font-weight: 600; }
+#tag { position: absolute; display: none; transform: translate(-50%, -100%); padding: 4px 10px; font: 600 16px ui-monospace, Consolas, monospace; pointer-events: none; z-index: 5; }
+#tag.show { display: block; } #tag.go { color: var(--ok); border-color: var(--ok); }
 #bottom { position: absolute; bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; gap: 8px; }
 
 .veil { position: absolute; inset: 0; display: none; place-items: center; background: rgba(0, 0, 0, 0.35); }
@@ -70,6 +72,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 <div id="ui">
   <div id="top" class="panel"><span id="where"></span><span id="turn"></span><span id="fps"></span></div>
   <div id="moves" class="panel"></div>
+  <div id="tag" class="panel"></div>
   <div id="bottom">
     <button id="b-undo" class="btn">Undo</button>
     <button id="b-new" class="btn">New game</button>
@@ -3631,6 +3634,25 @@ window.addEventListener("error", (e) => {
     if (txt) txt.textContent = label;
   };
   ME.now = () => performance.now();
+  // The load's stages: ME.stage(name) logs one LOAD line with the seconds since the last stage (the first counts
+  // from the navigation, so it includes the scripts) and keeps them in ME.load.stages, in order; ME.stage(name,
+  // { at: true }) logs a stage that ran alongside the others (the pipelines) by the time it ended instead.
+  // ME.loadNote(text) puts a small line under the loading bar (the bake cache's status), which a phone can read.
+  ME.load = { stages: [], last: 0 };
+  ME.stage = (name, o = {}) => {
+    const now = performance.now(), s = +((o.at ? now : now - ME.load.last) / 1000).toFixed(2);
+    if (!o.at) ME.load.last = now;
+    ME.load.stages.push([name, s, !!o.at]);
+    ME.log("LOAD", name, o.at ? "at " + s + " s" : s + " s");
+    return s;
+  };
+  ME.loadNote = (text) => {
+    const box = document.querySelector("#loading .box");
+    if (!box) return;
+    let el = document.getElementById("loadnote");
+    if (!el) { el = document.createElement("div"); el.id = "loadnote"; el.style.cssText = "margin-top:6px;opacity:.7;font:11px ui-monospace,Consolas,monospace"; box.appendChild(el); }
+    el.textContent = text;
+  };
 
   // ------------------------------------------------------------------ mat4, column-major (WGSL layout)
   const M4 = (ME.m4 = {});
@@ -5024,11 +5046,13 @@ window.addEventListener("error", (e) => {
     // brick row J from band (the bake): 16 rows of j, NX x 16 x NZ cells, x fastest, then j - 16 J, then k.
     // The bricks sorted, then the mixed ones copied to slots (the pool grown once for the row). When NX is a
     // multiple of 4 (every density in use) a brick's rows are 4-byte aligned in band and in pool, so the
-    // uniform test and the copy go a word (4 cells) at a time
-    band(J, buf) {
+    // uniform test and the copy go a word (4 cells) at a time. pre (optional, a brick row's K * BX + I): a
+    // material the caller knows fills the brick (0: air), which is taken without looking at buf; -1 scans
+    band(J, buf, pre) {
       const { NX, NY, NZ, table: T } = this, BPL = NX * 16, j1 = Math.min(16, NY - J * 16), mix = [];
       const w = (NX & 3) === 0 && (buf.byteOffset & 3) === 0, B4 = w ? new Uint32Array(buf.buffer, buf.byteOffset, buf.length >> 2) : null;
       for (let K = 0; K < this.BZ; K++) for (let I = 0; I < this.BX; I++) {
+        if (pre && pre[K * this.BX + I] >= 0) { T[(K * this.BY + J) * this.BX + I] = pre[K * this.BX + I]; continue; }
         const k1 = Math.min(NZ, K * 16 + 16), i0 = I * 16, i1 = Math.min(NX, i0 + 16), v = buf[K * 16 * BPL + i0];
         let uni = true;
         if (w) {
@@ -5183,6 +5207,13 @@ window.addEventListener("error", (e) => {
     // the grid (T.grid) takes the columns a brick row (16 rows of j) at a time from band, so the bake never holds
     // the dense grid (433 MB at vs40; the band is 16 / NY of it)
     const g = new BrickGrid(NX, NY, NZ), BPL = NX * 16, band = new Uint8Array(BPL * NZ);
+    // Per band column: wLo..wHi bounds the cells written (other than air), and dLo..dHi (dLo -1: none) is the
+    // column's deep run of its kind's under material dM, which is left out of band: a brick that every one of
+    // its columns' runs fills is handed to g.band whole (pre), one that no column writes as air, and the runs'
+    // cells in the other bricks are written in at the brick row's end (or by roughen, before it carves)
+    const wLo = new Int32Array(BPL), wHi = new Int32Array(BPL), dLo = new Int32Array(BPL), dHi = new Int32Array(BPL), dM = new Uint8Array(BPL);
+    const pre = new Int32Array(g.BZ * g.BX);
+    const undefer = (bc) => { const a = dLo[bc]; if (a < 0) return; for (let k = a, b = dHi[bc], m = dM[bc]; k < b; k++) band[k * BPL + bc] = m; dLo[bc] = -1; };
     const top = new Int16Array(PLANE).fill(-1), lobe = new Uint8Array(PLANE); // lobe: the material a column hangs over lower neighbours
     const id = (n) => pal.id(n);
     // material ids of the roles (moss, moss2, gravel, stone, rock, earth, pebble, pebble2, wood, brass, litter), then of the kinds
@@ -5338,6 +5369,7 @@ window.addEventListener("error", (e) => {
       if (dx < RD && !wetAt(tx + sx, ty)) { const k = tileK(tx + sx, ty); if (kT - k >= drop) { kN = Math.min(kN, k); d = Math.min(d, dx); } }
       if (dy < RD && !wetAt(tx, ty + sy)) { const k = tileK(tx, ty + sy); if (kT - k >= drop) { kN = Math.min(kN, k); d = Math.min(d, dy); } }
       if (kN === Infinity) return 0;
+      undefer(bc);
       const cut = 0.4 + 0.6 * (d / RD);
       let n = 0;
       for (let k = Math.max(kN, kF); k < kEnd - EB_KEEP; k++) {
@@ -5388,7 +5420,7 @@ window.addEventListener("error", (e) => {
     for (let j = 0; j < NY; j++) {
       if ((j & 31) === 0) { ME.progress("terrain columns " + Math.round((j / NY) * 100) + "%", 0.05 + 0.15 * (j / NY)); await ME.tick(); }
       const Y = O[1] + (j + 0.5) / VS;
-      if ((j & 15) === 0) band.fill(0);
+      if ((j & 15) === 0) { band.fill(0); wLo.fill(NZ); wHi.fill(0); dLo.fill(-1); }
       for (let i = 0; i < NX; i++) {
         const X = O[0] + (i + 0.5) / VS, col = j * NX + i, bc = (j & 15) * NX + i;
         if (jar) {
@@ -5396,6 +5428,7 @@ window.addEventListener("error", (e) => {
           if (r > PL_R) continue;
           // wooden plinth with a brass trim on its upper outer edge
           for (let k = kPB; k < kPT; k++) band[k * BPL + bc] = k === kPT - 1 && r > PL_R - 0.09 ? M.brass : M.wood;
+          wLo[bc] = kPB; wHi[bc] = kPT;
           top[col] = kPT; lobe[col] = M.moss;
           if (r > RG - 0.06) continue;
           // drum: soil strata seen through the glass, a moss lip under the rim, a moss ring on top
@@ -5410,6 +5443,7 @@ window.addEventListener("error", (e) => {
             band[k * BPL + bc] = m;
           }
           if (r > RI - 0.12) band[(kN - 1) * BPL + bc] = P.fbm(X * 0.45, Y * 0.45, 0, 29) > 0.78 ? M.moss2 : M.moss;
+          if (kN > wHi[bc]) wHi[bc] = kN;
           top[col] = kN;
           if (r > RI) continue;
         }
@@ -5446,17 +5480,44 @@ window.addEventListener("error", (e) => {
         if (n1 > 0.52) dd += Math.round((n1 - 0.52) * 30);
         if (P.noise(X * 21, Y * 21, 0, 6) > 0.8) dd += 5;
         const kEnd = kT + extra - soften(kd, Xw, Yw, cx, cy);
+        const sk = skirt && (X < e1 || Y < e1 || X > G.W - e1 || Y > G.H - e1);
+        // the deep run: below the top voxels, the drape and a layer's top, and above what the jar wrote (the
+        // skirt overwrites the whole column, so it has none)
+        const uHi = Math.min(kEnd, kEnd - (layer ? layer + extra : 1 + Math.max(two ? 1 : 0, dr && !bed ? dd : 0))), uLo = Math.max(kF, wHi[bc]);
+        let a = -1;
+        if (!sk && uHi > uLo) { a = uLo; dLo[bc] = uLo; dHi[bc] = uHi; dM[bc] = kd.under; }
+        if (kF < wLo[bc]) wLo[bc] = kF;
+        if (kEnd > wHi[bc]) wHi[bc] = kEnd;
         for (let k = kF; k < kEnd; k++) {
+          if (k === a && (k = uHi) >= kEnd) break;
           const dz = kEnd - 1 - k;
           band[k * BPL + bc] = layer ? (dz < layer + extra ? mTop : kd.under) : dz === 0 || (two && dz === 1) ? mTop : dr && dz <= dd && !bed ? (n1 > 0.7 ? dr[1] : dr[0]) : kd.under;
         }
         if (EB) ebCarved += roughen(Xw, Yw, cx, cy, kd, kEnd, bc);
         if (jar) for (let k = kEnd; k < kD; k++) band[k * BPL + bc] = 0; // beds carved below the drum top
         // a box's skirt: the outer faces of the map's edge tiles, under their top voxel, in one material
-        if (skirt && (X < e1 || Y < e1 || X > G.W - e1 || Y > G.H - e1)) for (let k = kF; k < kEnd - 1; k++) band[k * BPL + bc] = skirt;
+        if (sk) for (let k = kF; k < kEnd - 1; k++) band[k * BPL + bc] = skirt;
         top[col] = kEnd;
       }
-      if ((j & 15) === 15 || j === NY - 1) g.band(j >> 4, band);
+      if ((j & 15) === 15 || j === NY - 1) {
+        const j1 = (j & 15) + 1, BX = g.BX;
+        for (let K = 0; K < g.BZ; K++) for (let I = 0; I < BX; I++) {
+          const k0 = K * 16, k1 = Math.min(NZ, k0 + 16), i0 = I * 16, i1 = Math.min(NX, i0 + 16);
+          let w = false, m = -1; // m: the runs' material while every column's run fills the brick, -2 once one doesn't
+          for (let r = 0; r < j1 && !(w && m === -2); r++) for (let bc = r * NX + i0, e = r * NX + i1; bc < e; bc++) {
+            if (wLo[bc] < k1 && wHi[bc] > k0) w = true;
+            if (m !== -2) m = dLo[bc] >= 0 && dLo[bc] <= k0 && dHi[bc] >= k1 && (m < 0 || dM[bc] === m) ? dM[bc] : -2;
+          }
+          pre[K * BX + I] = !w ? 0 : m >= 0 ? m : -1;
+        }
+        for (let bc = 0; bc < j1 * NX; bc++) {
+          const a = dLo[bc];
+          if (a < 0) continue;
+          const b = dHi[bc], m = dM[bc], I = (bc % NX) >> 4;
+          for (let K = a >> 4; K <= (b - 1) >> 4; K++) if (pre[K * BX + I] < 0) for (let k = Math.max(a, K * 16), k1 = Math.min(b, K * 16 + 16); k < k1; k++) band[k * BPL + bc] = m;
+        }
+        g.band(j >> 4, band, pre);
+      }
     }
 
     // Moss overhangs: where a column stands 4+ voxels above a neighbour, hang 0-3 voxels over the lip.
@@ -5799,6 +5860,25 @@ window.addEventListener("error", (e) => {
       }
     };
 
+    // Each brick's occupancy: 0 all air, 1 all solid (whatever the materials), 2 both. Between two bricks of
+    // class 0, or two of class 1, there is no face, so the masks below are only computed (and their rows only
+    // read) over the rest; outside the grid is air. A skipped stretch of a mask stays zero: merge clears what it takes
+    const { table, pool, BX, BY } = grid, cls = new Uint8Array(table.length);
+    for (let b = 0; b < table.length; b++) {
+      const e = table[b];
+      if (e < 256) { cls[b] = e ? 1 : 0; continue; }
+      const I = b % BX, J = Math.floor(b / BX) % BY, K = Math.floor(b / grid.BXY), s = (e - 256) * 4096;
+      const n0 = Math.min(16, NX - I * 16), n1 = Math.min(16, NY - J * 16), n2 = Math.min(16, NZ - K * 16);
+      let a = 0, f = 0;
+      for (let z = 0; z < n2 && !(a && f); z++) for (let y = 0; y < n1 && !(a && f); y++) {
+        const o = s + (z << 8) + (y << 4);
+        for (let x = 0; x < n0; x++) if (pool[o + x]) f = 1; else a = 1;
+      }
+      cls[b] = a && f ? 2 : f;
+    }
+    const clsAt = (I, J, K) => (J < 0 || J >= BY || K < 0 || K >= grid.BZ ? 0 : cls[(K * BY + J) * BX + I]);
+    const none = (a, b) => a === b && a !== 2; // no face between two bricks of these classes
+
     // +z faces: slice planes between z = s-1 and s
     let mask = new Int16Array(PLANE), below = pa, cur = pb;
     if (kLo > 0) grid.plane(kLo - 1, below); else below.fill(0);
@@ -5806,7 +5886,12 @@ window.addEventListener("error", (e) => {
       if ((s & 15) === 0) { ME.progress("meshing tops " + s, 0.36 + 0.04 * ((s - kLo) / ZN)); await ME.tick(); }
       if (s < NZ) grid.plane(s, cur); else cur.fill(0);
       let any = false;
-      for (let c = 0; c < PLANE; c++) { const va = below[c], vb = cur[c]; const m = va && !vb ? va : 0; mask[c] = m; any = any || m !== 0; }
+      const Ka = s > 0 ? (s - 1) >> 4 : -1, Kb = s < NZ ? s >> 4 : -1;
+      for (let J = 0; J < BY; J++) for (let I = 0; I < BX; I++) {
+        if (none(clsAt(I, J, Ka), clsAt(I, J, Kb))) continue;
+        const i0 = I * 16, i1 = Math.min(NX, i0 + 16), j1 = Math.min(NY, J * 16 + 16);
+        for (let j = J * 16; j < j1; j++) for (let c = j * NX + i0, c1 = j * NX + i1; c < c1; c++) { const va = below[c], vb = cur[c]; const m = va && !vb ? va : 0; mask[c] = m; any = any || m !== 0; }
+      }
       [below, cur] = [cur, below];
       if (any) merge(mask, NX, NY, (i, j, w, h, c) => emit(4, c, [i, j, s], [i + w, j, s], [i + w, j + h, s], [i, j + h, s]));
     }
@@ -5819,8 +5904,14 @@ window.addEventListener("error", (e) => {
       ME.progress("meshing x sides " + s0, 0.4 + 0.04 * (s0 / NX)); await ME.tick();
       const s1 = Math.min(NX, s0 + XS - 1), r0 = Math.max(0, s0 - 1), r1 = Math.min(NX, s1 + 1);
       xany.fill(0);
-      for (let z = 0; z < ZN; z++) {
-        for (let y = 0; y < NY; y++) {
+      // a row of bricks all air, or all solid away from the grid's x ends, has no x face in this slab
+      const I0 = r0 >> 4, I1 = (r1 - 1) >> 4, inner = s0 > 0 && s1 < NX;
+      for (let z = 0; z < ZN; z++) for (let J = 0; J < BY; J++) {
+        const b0 = (((z + kLo) >> 4) * BY + J) * BX;
+        let c0 = 0, c1 = 0;
+        for (let I = I0; I <= I1; I++) { const c = cls[b0 + I]; if (c === 0) c0++; else if (c === 1) c1++; }
+        if (c0 === I1 - I0 + 1 || (inner && c1 === I1 - I0 + 1)) continue;
+        for (let y = J * 16, y1 = Math.min(NY, y + 16); y < y1; y++) {
           const mo = y + z * NY;
           grid.row(y, z + kLo, r0, r1, rb);
           let va = s0 > 0 ? rb[s0 - 1 - r0] : 0;
@@ -5843,14 +5934,37 @@ window.addEventListener("error", (e) => {
     // y faces: mask over (x, z). Rows s - 1 and s of every z are kept (ya, yb) and swapped, so each row is read once
     mask = new Int16Array(NX * ZN);
     let ya = new Uint8Array(NX * ZN), yb = new Uint8Array(NX * ZN);
+    // a brick's stretch of row s is read where a face may lie on either side of it (sk: none between rows
+    // s - 1 and s, sn: none between s and s + 1), and the mask computed where sk allows; what isn't read isn't used
+    const KL = kLo >> 4, KN = (kHi >> 4) - KL + 1, sk = new Uint8Array(BX * KN), sn = new Uint8Array(BX * KN);
+    const skips = (s, out) => {
+      const Ja = s > 0 ? (s - 1) >> 4 : -1, Jb = s < NY ? s >> 4 : -1; // a row past the grid is air, even inside a brick
+      for (let K = 0; K < KN; K++) for (let I = 0; I < BX; I++) out[K * BX + I] = s > NY || none(clsAt(I, Ja, K + KL), clsAt(I, Jb, K + KL)) ? 1 : 0;
+    };
     for (let s = 0; s <= NY; s++) {
       if ((s & 31) === 0) { ME.progress("meshing y sides " + s, 0.44 + 0.04 * (s / NY)); await ME.tick(); }
       let any = false;
-      if (s < NY) for (let z = 0; z < ZN; z++) grid.row(s, z + kLo, 0, NX, yb, z * NX); else yb.fill(0);
-      for (let c = 0; c < NX * ZN; c++) {
-        const va = ya[c], vb = yb[c];
-        const m = va && !vb ? va : !va && vb ? -vb : 0;
-        mask[c] = m; any = any || m !== 0;
+      skips(s, sk); skips(s + 1, sn);
+      if (s < NY) for (let z = 0; z < ZN; z++) {
+        const q = (((z + kLo) >> 4) - KL) * BX;
+        for (let I = 0; I < BX; ) {
+          if (sk[q + I] && sn[q + I]) { I++; continue; }
+          let I1 = I + 1;
+          while (I1 < BX && !(sk[q + I1] && sn[q + I1])) I1++;
+          grid.row(s, z + kLo, I * 16, Math.min(NX, I1 * 16), yb, z * NX + I * 16);
+          I = I1;
+        }
+      } else yb.fill(0);
+      for (let z = 0; z < ZN; z++) {
+        const q = (((z + kLo) >> 4) - KL) * BX;
+        for (let I = 0; I < BX; I++) {
+          if (sk[q + I]) continue;
+          for (let c = z * NX + I * 16, c1 = z * NX + Math.min(NX, I * 16 + 16); c < c1; c++) {
+            const va = ya[c], vb = yb[c];
+            const m = va && !vb ? va : !va && vb ? -vb : 0;
+            mask[c] = m; any = any || m !== 0;
+          }
+        }
       }
       [ya, yb] = [yb, ya];
       if (any) merge(mask, NX, ZN, (i, j, w, h, c) => {
@@ -6192,8 +6306,9 @@ window.addEventListener("error", (e) => {
   // every job it held bakes here. startMs, idleMs, busyMs: the workers' summed time from the probe to their first
   // job, between jobs (waiting for a post; not after the last) and in them. add(jobs, front) queues more (E4: a
   // progressive bake's full bakes once its upgrade starts, its finishing jobs with front: before those waiting),
-  // each null at once when stopped or no worker is left. stop() ends it.
-  function runJobs(ws, jobs, depth = ME.bakeJobDepth || 4) {
+  // each null at once when stopped or no worker is left. stop() ends it. cache (E3: ME.bakeCache.modelCache's):
+  // a job it holds an answer for resolves to it and is never posted, and each worker's answer is kept by it
+  function runJobs(ws, jobs, depth = ME.bakeJobDepth || 4, cache = null) {
     const out = new Map(), queue = [], limit = ME.bakeJobMs || 30000, run = { out, depth, startMs: 0, idleMs: 0, busyMs: 0 };
     let alive = ws.length, stopped = false;
     const failed = (j, why) => { ME.log("WARN BAKE worker: " + j.name + ": " + why + "; " + (j.miss || "baked on the main thread")); j.res(null); };
@@ -6209,7 +6324,10 @@ window.addEventListener("error", (e) => {
     // the queue dealt round the workers, one each per round (the least busy first), so a flipbook's frames (next to
     // each other, the same cost) start on different workers
     const deal = () => { for (let k = 1; k <= run.depth && queue.length; k++) for (const w of ws) if (!w.dead && w.held.length < k && queue.length) give(w); for (const w of ws) if (!w.dead) arm(w); };
+    // a job the cache answers: out set, and not queued
+    const hit = (j) => { const r = cache && cache.hit(j.q); if (r) out.set(j.id, Promise.resolve(r)); return !r; };
     run.add = (more, front = false) => {
+      more = more.filter(hit);
       for (const j of more) out.set(j.id, new Promise((r) => { j.res = r; }));
       if (stopped || !alive) { for (const j of more) j.res(null); return; }
       if (front) queue.unshift(...more); else queue.push(...more);
@@ -6220,11 +6338,12 @@ window.addEventListener("error", (e) => {
       w.onmessage = (e) => {
         const d = e.data, k = w.held.findIndex((j) => j.id === d.id), j = k < 0 ? null : w.held.splice(k, 1)[0];
         run[d.first ? "startMs" : "idleMs"] += d.idle || 0; run.busyMs += d.ms || 0;
-        if (j) { if (d.error) failed(j, d.error); else j.res(d); }
+        if (j) { if (d.error) failed(j, d.error); else { if (cache) cache.keep(j.q, d); j.res(d); } }
         fill(w); arm(w);
       };
       w.onerror = (e) => { if (e.preventDefault) e.preventDefault(); lose(w, e.message || "worker error"); };
     }
+    jobs = jobs.filter(hit);
     for (const j of jobs) out.set(j.id, new Promise((r) => { j.res = r; }));
     queue.push(...jobs);
     deal();
@@ -6369,6 +6488,10 @@ window.addEventListener("error", (e) => {
   // each: id i its fine-1 copy, sized with the full bake's box (r.full), with the others; id nv + i the full bake, in
   // variant order, held back (h.full) till the upgrade starts them (once R's frames settle) or the fallback asks
   // for them, so the boot has the workers for its own jobs and the CPU to itself once they are done.
+  // opts.cache (E3): the workers' answers read from and kept in the bake cache (ME.bakeCache.modelCache), read while
+  // the workers start; a job it answers is not posted, and the workers end when it answers them all (and no
+  // progressive flipbook needs them). Without workers, a progressive frame's stored fine-1 answer is not taken (the
+  // frame then bakes here at full density).
   function launch(L, pal, opts) {
     const def = defOf(pal), mds = modelsOf(L.variants), offWorker = {}, jobs = [], on = workersOn(opts), nv = L.variants.length;
     const prog = progOf(L, mds, opts), pv = new Set(prog.flatMap((g) => g.vs)), full = [];
@@ -6383,10 +6506,14 @@ window.addEventListener("error", (e) => {
     jobs.sort((a, b) => b.cost - a.cost);
     const h = { sig: sigOf(L, def, opts), mds, offWorker, prog, nv, full, ws: [], res: new Map(), run: null, done: false };
     h.cancel = () => { if (h.done) return; h.done = true; if (h.run) h.run.stop(); };
-    h.ready = (jobs.length ? startWorkers(Math.min(Math.max(1, Math.floor(ME.bakeWorkerMax || ME.qn("bakeworkers", 0) || 4)), Math.max(1, (navigator.hardwareConcurrency || 2) - 1), jobs.length)) : Promise.resolve([])).then((ws) => {
+    const mc = opts.cache && jobs.length && ME.bakeCache && ME.bakeCache.modelCache ? ME.bakeCache.modelCache() : null;
+    const read = mc ? mc.load(jobs.concat(full).map((j) => j.q)) : Promise.resolve();
+    const start = jobs.length ? startWorkers(Math.min(Math.max(1, Math.floor(ME.bakeWorkerMax || ME.qn("bakeworkers", 0) || 4)), Math.max(1, (navigator.hardwareConcurrency || 2) - 1), jobs.length)) : Promise.resolve([]);
+    h.ready = Promise.all([start, read]).then(([ws]) => {
       if (h.done) { for (const w of ws) w.terminate(); return; }
-      if (!ws.length) for (const j of jobs) offWorker[j.name] = "no workers";
-      else { h.ws = ws; h.run = runJobs(ws, jobs); h.res = h.run.out; }
+      if (ws.length && mc && !full.length && jobs.every((j) => mc.has(j.q))) { for (const w of ws) w.terminate(); ws = []; }
+      if (ws.length) { h.ws = ws; h.run = runJobs(ws, jobs, undefined, mc); h.res = h.run.out; return; }
+      for (const j of jobs) { const r = mc && !pv.has(j.id) && mc.hit(j.q); if (r) h.res.set(j.id, Promise.resolve(r)); else offWorker[j.name] = "no workers"; }
     });
     return h;
   }
@@ -6935,13 +7062,19 @@ window.addEventListener("error", (e) => {
 
 </script>
 <script>/* ../MossheartEngine/src/cache.js */
-/* Bake cache: the whole bake (terrain arrays, mesh, model bricks, grass, palette order) kept in
-   IndexedDB, so a repeat launch skips the CPU bake. The newest bake is kept per app and map: a key starts
-   with its slot (the app id, then the map's id), and a put drops every other record of that slot (an
-   older density or version) and keeps the other slots, so two games or two levels on one origin don't
-   evict each other. The rest of the key holds the engine version, the density and a fingerprint of the
-   bake code, so a changed bake never loads a stale result. Any failure (no IndexedDB, quota, clone error)
-   falls back to baking. ?nocache=1 skips it. */
+/* Bake cache: the bake (terrain arrays, mesh, model bricks, grass, palette order) kept in IndexedDB, so a
+   repeat launch skips the CPU bake. Two ways to key it:
+   - key()/put(): the whole bake in one record. The newest bake is kept per app and map: a key starts with
+     its slot (the app id, then the map's id), and a put drops every other record of that slot (an older
+     density or version) and keeps the other slots, so two games or two levels on one origin don't evict
+     each other. The rest of the key holds the engine version, the density and a fingerprint of the bake
+     code, so a changed bake never loads a stale result.
+   - terrainKey()/later()/modelCache()/flush() (E3, Mossheart): the parts apart, each keyed on its own input
+     and a hand-raised revision (ME.BAKE_REV) in place of the code's fingerprint, so a release that leaves a
+     part alone keeps it: the terrain record per slot, a record per model per app (the slot's "#models" list
+     names the ones its map uses; a model no list names is dropped). tools\bake-rev.ps1 in Mossheart checks
+     that a changed bake raised its number.
+   Any failure (no IndexedDB, quota, clone error) falls back to baking. ?nocache=1 skips it. */
 (function () {
   const ME = window.ME, DB = "mossheart", STORE = "bake";
   let held = null; // the database get() opened, kept as a value so put() writes with no await before it
@@ -7001,24 +7134,36 @@ window.addEventListener("error", (e) => {
   // the record with its big typed arrays packed (plain objects and arrays walked; anything else kept as is,
   // and a part with nothing to pack kept as the same object). A small view into a bigger buffer is copied
   // (IndexedDB would clone the whole buffer); a ME.BrickGrid goes as its record(). st: the sizes, for checks
-  const pack = (x, st) => {
-    if (ME.BrickGrid && x instanceof ME.BrickGrid) return pack(x.record(), st);
+  // copy: every typed array copied, small ones too (a record kept while its source changes; packed arrays are copies)
+  const pack = (x, st, copy = false) => {
+    if (isPacked(x)) return x;
+    if (ME.BrickGrid && x instanceof ME.BrickGrid) return pack(x.record(), st, copy);
     if (ArrayBuffer.isView(x)) {
       if (x instanceof DataView) return x;
-      if (x.byteLength < BIG) return x.byteLength < x.buffer.byteLength ? x.slice() : x;
+      if (x.byteLength < BIG) return copy || x.byteLength < x.buffer.byteLength ? x.slice() : x;
       const t0 = performance.now(), chunks = packBytes(new Uint8Array(x.buffer, x.byteOffset, x.byteLength));
       st.raw += x.byteLength; st.packed += chunks.reduce((s, c) => s + (c.d || c.raw).byteLength, 0); st.ms += performance.now() - t0;
       return { packed: 1, type: x.constructor.name, length: x.length, chunks };
     }
-    if (Array.isArray(x)) { let same = true; const y = x.map((v) => { const p = pack(v, st); if (p !== v) same = false; return p; }); return same ? x : y; }
+    if (Array.isArray(x)) { let same = !copy; const y = x.map((v) => { const p = pack(v, st, copy); if (p !== v) same = false; return p; }); return same ? x : y; }
     if (x && typeof x === "object" && Object.getPrototypeOf(x) === Object.prototype) {
-      let y = null;
-      for (const k in x) { const v = x[k], p = pack(v, st); if (p !== v) (y || (y = Object.assign({}, x)))[k] = p; }
+      let y = copy ? Object.assign({}, x) : null;
+      for (const k in x) { const v = x[k], p = pack(v, st, copy); if (p !== v) (y || (y = Object.assign({}, x)))[k] = p; }
       return y || x;
     }
     return x;
   };
-  const isPacked = (x) => x && x.packed === 1 && Array.isArray(x.chunks) && typeof x.type === "string";
+  function isPacked(x) { return !!x && x.packed === 1 && Array.isArray(x.chunks) && typeof x.type === "string"; }
+  // a record's snapshot for a write later (ME.bakeCache.later): its plain objects, arrays and small typed arrays
+  // copied now; its big typed arrays and brick grids kept as they are, packed when written (the caller leaves
+  // them as they are till then)
+  const snap = (x) => {
+    if ((ME.BrickGrid && x instanceof ME.BrickGrid) || isPacked(x)) return x;
+    if (ArrayBuffer.isView(x)) return x instanceof DataView || x.byteLength >= BIG ? x : x.slice();
+    if (Array.isArray(x)) return x.map(snap);
+    if (x && typeof x === "object" && Object.getPrototypeOf(x) === Object.prototype) { const y = {}; for (const k in x) y[k] = snap(x[k]); return y; }
+    return x;
+  };
   const unpack = (x) => {
     if (isPacked(x)) { const a = new window[x.type](x.length); unpackBytes(x.chunks, new Uint8Array(a.buffer)); return a; }
     if (Array.isArray(x)) { for (let i = 0; i < x.length; i++) x[i] = unpack(x[i]); return x; }
@@ -7040,6 +7185,32 @@ window.addEventListener("error", (e) => {
   // the default app id: the page's folder (each game's pages and the engine's live in their own)
   const pageApp = () => location.pathname.replace(/[^/]*$/, "");
 
+  // What the cache did this load (ME.bakeCache.status), for the LOAD line, the loading screen and a game's info,
+  // so a phone can show why a load was cold:
+  //   read: "hit", "miss: key changed" (the slot holds another key: a new release or density), "miss: no record",
+  //     "miss: evicted" (the last write landed but the record is gone), "miss: read failed <error>", or "off"
+  //   last: the previous load's write for this slot: "ok", "failed <error>", "never finished" (started with no
+  //     result: the tab was closed or killed mid-write, as Android does at the memory peak) or "none"
+  //   write: this load's: "writing" until put() ends, then as `last`; "none" if nothing was put
+  //   persist: navigator.storage.persist()'s answer, "persisted", "not persisted" or "n/a"
+  //   models (E3): the model records, "<hits>/<jobs> hit" (then " · wrote <n>/<m>" once flushed), "off" or "none"
+  // Each write's state is kept per slot in localStorage (WRITES), before and after it, so the next load reads it.
+  // ME.bakeCache.onStatus(fn) calls fn on each change; statusText() is the one line.
+  const WRITES = "me.bakeCache.writes", status = { read: "off", last: "none", write: "none", persist: "n/a" }, subs = [];
+  const changed = () => subs.forEach((f) => { try { f(status); } catch (e) { ME.log("WARN bake cache status:", e.message); } });
+  const writes = () => { try { return JSON.parse(localStorage.getItem(WRITES) || "{}") || {}; } catch (e) { return {}; } };
+  const noteWrite = (key, state) => {
+    status.write = state === "started" ? "writing" : state; changed();
+    try { const w = writes(); w[slotOf(key)] = { key, state, at: Date.now() }; localStorage.setItem(WRITES, JSON.stringify(w)); } catch (e) { /* storage blocked */ }
+  };
+  // asked on every load the record isn't persisted yet: Chrome answers without a prompt, from the site's engagement,
+  // which grows as the game is played; Firefox asks the user once and keeps the answer
+  const persist = () => {
+    const s = navigator.storage;
+    if (!s || !s.persisted || !s.persist) return;
+    s.persisted().then((p) => p || s.persist()).then((p) => { status.persist = p ? "persisted" : "not persisted"; changed(); }, () => {});
+  };
+
   // The hand-authored models' sources this bake reads (assets/asset-kit.js, src/asset-format.js, a content
   // pack's own): each registration appends its source to ME.ASSET_SRC and records it by name in ME.ASSET_BY.
   // A key takes the sources of the models its map, content or extra names (as a quoted name), and of the
@@ -7054,12 +7225,9 @@ window.addEventListener("error", (e) => {
     return [...inc].sort().map((n) => by[n]).join("");
   };
 
-  ME.bakeCache = {
-    // extra: anything else the bake depends on (an app's own model list, as a string)
-    // o.app: the app's id (default: the page's folder); with the map's id it names the key's slot
-    // o.focus: the bake bakes the models' md.focus (ME.bakeModels' opts.focus), so focused and plain records never share a key
-    key(st, extra = "", o = {}) {
-      const code = [ME.bakeTerrain, ...(ME.bakeTerrain.parts || []), ME.coarseStep, ME.coarseFill, ME.greedyMesh, ME.bakeModels, ...(ME.bakeModels.parts || []), ME.voxelizeModel, ...(ME.voxelizeModel.parts || []), ME.reduce, ...((ME.reduce && ME.reduce.parts) || []), ME.stampModel, ME.bakeGrass, ME.modelOf].map(String).join("|");
+  // what a key hashes of the bake's input: its slot and the map's id, own (the content, the style or map and
+  // extra) and lists (see below)
+  const inputOf = (st, extra, o) => {
       // the content the bake reads: terrain roles (functions as their source), the kinds the map's legend
       // names (a generator map's letters are kinds made of the terrain roles), grass, critters, walkers and the
       // ground lamps' kinds. The lists that only name the models a placement may use (volumeDeco,
@@ -7076,22 +7244,189 @@ window.addEventListener("error", (e) => {
       const game = v1 && st.map.game ? { lane: st.map.game.lane } : undefined;
       const s = v1 ? Object.assign({}, st, { map: Object.assign({}, st.map, { game }) }) : st, id = v1 ? st.map.id : st.id;
       const slot = encodeURIComponent(o.app ?? pageApp()) + "/" + encodeURIComponent(id) + "/";
-      const own = content + JSON.stringify(s) + extra;
+      return { slot, id, own: content + JSON.stringify(s) + extra, lists };
+  };
+
+  // E3 (the vs64 load study's PR 2): the bake in parts that outlive a release. A terrain record per app and map
+  // (terrainKey: the grid, the coarse grid as the terrain bake left it, the mips, the mesh, the grass and the
+  // palette's names), and a record per worker job of the model bake (modelCache: the worker's answer, keyed by the
+  // job's input, so any map with the same model shares it). Neither key holds the engine's version or its code:
+  // BAKE_REV does, one number per part, raised by hand whenever the code changes what that part bakes.
+  // Mossheart's tools\bake-rev.ps1 bakes every map at vs12 and fails when a part's output changed and its
+  // number didn't (warns on a raise with no change). The parts are written after R.init (flush), one at a time.
+  ME.BAKE_REV = { terrain: 1, models: 1 };
+  // ?bakerev=1: hashes of what the parts would store (ME.bakeCache.trace: terrain, models by key), for bake-rev.ps1;
+  // with or without the cache. Timings (stats, ms, *Ms, a worker's idle and first) are left out; fields: each model record's top-level parts hashed, by key
+  const trace = ME.qn("bakerev", 0) ? { terrain: null, models: {}, fields: {} } : null, TIMING = /^(stats|ms|idle|first)$|Ms$/;
+  const hashOf = (x) => {
+    let h = 0x811c9dc5;
+    const str = (s) => { for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); };
+    const walk = (v) => {
+      if (ME.BrickGrid && v instanceof ME.BrickGrid) return walk(v.record());
+      if (ArrayBuffer.isView(v)) { const u = new Uint8Array(v.buffer, v.byteOffset, v.byteLength); str(v.constructor.name + v.length); for (let i = 0; i < u.length; i++) h = Math.imul(h ^ u[i], 16777619); return; }
+      if (Array.isArray(v)) { str("["); v.forEach(walk); str("]"); return; }
+      if (v && typeof v === "object") { str("{"); for (const k of Object.keys(v).sort()) if (!TIMING.test(k)) { str(k + ":"); walk(v[k]); } str("}"); return; }
+      str(String(v) + ",");
+    };
+    walk(x);
+    return (h >>> 0).toString(16).padStart(8, "0");
+  };
+  const off = () => !!ME.qn("nocache", 0) || !window.indexedDB;
+  const keyHash = (s) => fnv(s) + fnv("|" + s) + s.length.toString(36);
+  const MODELS = "~models/", REFS = "#models";
+  const appOf = (o) => encodeURIComponent(o.app ?? pageApp()) + "/";
+  // the parts waiting for flush: the terrain record ([key, snapshot]) and the model records ([key, packed copy]);
+  // a model's answer kept after the flush is written at once (chain: one write at a time). wanted: every model key
+  // this load's bakes asked for (stored by map at the flush, REFS, so a model no map wants is dropped)
+  let laterT = null, laterM = [], flushed = false, chain = Promise.resolve();
+  const wanted = new Set();
+  const req = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const done = (tx) => new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error); });
+  const db = async () => held || (held = await open());
+  const putOne = async (key, rec) => { const tx = (await db()).transaction(STORE, "readwrite"); tx.objectStore(STORE).put(rec, key); await done(tx); };
+  status.models = "none";
+
+  ME.bakeCache = {
+    // extra: anything else the bake depends on (an app's own model list, as a string)
+    // o.app: the app's id (default: the page's folder); with the map's id it names the key's slot
+    // o.focus: the bake bakes the models' md.focus (ME.bakeModels' opts.focus), so focused and plain records never share a key
+    // (the whole bake in one record, keyed on the engine's version and its code; Mossheart keeps its parts: terrainKey)
+    key(st, extra = "", o = {}) {
+      const code = [ME.bakeTerrain, ...(ME.bakeTerrain.parts || []), ME.coarseStep, ME.coarseFill, ME.greedyMesh, ME.bakeModels, ...(ME.bakeModels.parts || []), ME.voxelizeModel, ...(ME.voxelizeModel.parts || []), ME.reduce, ...((ME.reduce && ME.reduce.parts) || []), ME.stampModel, ME.bakeGrass, ME.modelOf].map(String).join("|");
+      const { slot, id, own, lists } = inputOf(st, extra, o);
       // the pool's check knobs (bake-models.js: ME.poolSlab / ?poolslab, ME.poolHollow / ?hollow), when set
       const slab = ME.poolSlab || ME.qn("poolslab", 0), knobs = (slab ? "|slab" + slab : "") + (ME.poolHollow === false || ME.qn("hollow", 1) === 0 ? "|solid" : "");
       return `${slot}${ME.VERSION}:${id}:vs${ME.VS}:${fnv(code + assetSrc(own) + own + lists + (o.focus ? "|focus" : "") + knobs)}`;
     },
+    // the terrain record's key: the map's content (as key() takes it, with the sources of the models the terrain
+    // bake stamps), BAKE_REV.terrain and the density. extra: anything else the terrain bake reads. Read with get()
+    terrainKey(st, extra = "", o = {}) {
+      const { slot, own, lists } = inputOf(st, extra, o);
+      return `${slot}T${ME.BAKE_REV.terrain}:vs${ME.VS}:${keyHash(assetSrc(own) + own + lists)}`;
+    },
+    // the terrain record, stored at the flush: its plain parts copied now (snap), its big arrays as they are then,
+    // so the caller copies any it changes before (the model bake splats into T.coarse; R.init drops T.mips)
+    later(key, rec) {
+      if (trace) trace.terrain = hashOf(rec);
+      if (!off()) laterT = [key, snap(rec)];
+    },
+    // the model bake's cache (ME.bakeModels with opts.cache): load(qs) reads the stored answers of the worker jobs
+    // qs (their inputs, q), then hit(q) is one (or undefined) and keep(q, r) stores a worker's answer (copied at once:
+    // the bake renumbers it in place). A finishing job (q.finish: its input is the bake's own) is not stored
+    modelCache(o = {}) {
+      const app = appOf(o), keys = new WeakMap(), hits = new Map();
+      const keyOf = (q) => {
+        if (q.finish) return null;
+        if (!keys.has(q)) { const { id, ...rest } = q; keys.set(q, `${app}${MODELS}m${ME.BAKE_REV.models}:vs${ME.VS}:${keyHash(JSON.stringify(rest))}`); }
+        return keys.get(q);
+      };
+      return {
+        async load(qs) {
+          const ks = qs.map(keyOf).filter(Boolean);
+          for (const k of ks) wanted.add(k);
+          if (off()) { status.models = "off"; return; }
+          try {
+            const s = (await db()).transaction(STORE).objectStore(STORE), got = await Promise.all(ks.map((k) => req(s.get(k))));
+            got.forEach((r, i) => { if (r) hits.set(ks[i], unpack(r)); });
+          } catch (e) { ME.log("WARN bake cache: model read failed:", e && e.message); }
+          status.models = `${hits.size}/${ks.length} hit`; changed();
+        },
+        has(q) { const k = keyOf(q); return !!k && hits.has(k); },
+        // (once: the bake takes the answer in in place)
+        hit(q) { const k = keyOf(q), r = k ? hits.get(k) : undefined; if (r) { hits.delete(k); r.id = q.id; } return r; }, // (its id: this bake's job)
+        keep(q, r) {
+          const k = keyOf(q);
+          if (!k || !r || r.error) return;
+          if (trace) { const { id, ...rec } = r; trace.models[k] = hashOf(rec); trace.fields[k] = Object.fromEntries(Object.keys(rec).filter((f) => !TIMING.test(f)).map((f) => [f, hashOf(rec[f])])); } // (not its id: the job's number, in the order the jobs went out)
+          if (off()) return;
+          let rec;
+          try { rec = pack(r, { raw: 0, packed: 0, ms: 0 }, true); } catch (e) { ME.log("WARN bake cache: model pack failed:", e && e.message); return; }
+          if (!flushed) laterM.push([k, rec]);
+          else chain = chain.then(() => putOne(k, rec)).catch((e) => ME.log("WARN bake cache: model write failed:", e && e.message));
+        },
+      };
+    },
+    // writes the parts waiting (later, keep), one at a time, once the app is past its memory peak (Mossheart: after
+    // R.init): the terrain record (replacing its slot's other records), the model records, then the models this
+    // map's bake asked for (key's slot + REFS); a model record no map of the app asks for is dropped. key: the
+    // terrain record's (on a hit too: it names the map). Its state is noted like put()'s (status.write, WRITES)
+    async flush(key) {
+      flushed = true;
+      if (off()) return;
+      const slot = slotOf(key), app = slot.replace(/[^/]*\/$/, ""), refs = slot + REFS, name = (e) => (e && e.name) || "error";
+      const t = laterT, ms = laterM, st = { raw: 0, packed: 0, ms: 0 };
+      laterT = null; laterM = [];
+      const run = async () => {
+        if (t) {
+          noteWrite(key, "started");
+          try {
+            const rec = pack(t[1], st), d = await db(), tx = d.transaction(STORE, "readwrite"), s = tx.objectStore(STORE);
+            s.put(rec, key);
+            const g = s.getAllKeys();
+            g.onsuccess = () => { for (const k of g.result) if (k !== key && k !== refs && (typeof k !== "string" || slotOf(k) === slot || slotOf(k) === null)) s.delete(k); };
+            await done(tx);
+            ME.bakeCache.packed = { rawMB: +(st.raw / 1048576).toFixed(1), packedMB: +(st.packed / 1048576).toFixed(1), ms: Math.round(st.ms) }; // (checks read it)
+            noteWrite(key, "ok");
+          } catch (e) {
+            ME.log("WARN bake cache write failed:", e && e.message);
+            noteWrite(key, "failed " + name(e));
+            // the store is full: drop every other app's and map's records but this app's models, for the next launch
+            if (e && e.name === "QuotaExceededError") try {
+              const tx = (await db()).transaction(STORE, "readwrite"), s = tx.objectStore(STORE), g = s.getAllKeys();
+              g.onsuccess = () => { for (const k of g.result) if (typeof k !== "string" || (slotOf(k) !== slot && !k.startsWith(app + MODELS))) s.delete(k); };
+              ME.bakeCache.evicted = true;
+            } catch (_) {}
+          }
+        }
+        let n = 0;
+        for (const [k, rec] of ms) try { await putOne(k, rec); n++; } catch (e) { ME.log("WARN bake cache: model write failed:", e && e.message); break; }
+        if (ms.length) { status.models += ` · wrote ${n}/${ms.length}`; changed(); }
+        // this map's models, then every model record of the app that no map's list names dropped
+        const mine = [...wanted].filter((k) => k.startsWith(app));
+        try {
+          const d = await db(), all = await req(d.transaction(STORE).objectStore(STORE).getAllKeys()), lists = all.filter((k) => typeof k === "string" && k.startsWith(app) && k.endsWith(REFS) && k !== refs);
+          const tx = d.transaction(STORE, "readwrite"), s = tx.objectStore(STORE), keep = new Set(mine);
+          for (const l of await Promise.all(lists.map((k) => req(s.get(k))))) for (const k of l || []) keep.add(k);
+          s.put(mine, refs);
+          for (const k of all) if (typeof k === "string" && k.startsWith(app + MODELS) && !keep.has(k)) s.delete(k);
+          await done(tx);
+        } catch (e) { ME.log("WARN bake cache: model list failed:", e && e.message); }
+      };
+      chain = chain.then(run, run);
+      return chain;
+    },
+    trace,
+    hashOf,
     async get(key) {
-      if (ME.qn("nocache", 0) || !window.indexedDB) return null;
+      if (ME.qn("nocache", 0) || !window.indexedDB) { status.read = "off"; changed(); return null; }
+      const was = writes()[slotOf(key)];
+      status.last = !was ? "none" : was.state === "started" ? "never finished" : was.state;
+      persist();
       try {
-        const db = (held = await open());
-        const rec = await new Promise((res, rej) => { const r = db.transaction(STORE).objectStore(STORE).get(key); r.onsuccess = () => res(r.result || null); r.onerror = () => rej(r.error); });
-        if (!rec) return null;
+        const db = (held = await open()), s = db.transaction(STORE).objectStore(STORE);
+        const rec = await new Promise((res, rej) => { const r = s.get(key); r.onsuccess = () => res(r.result || null); r.onerror = () => rej(r.error); });
+        if (!rec) {
+          // why: another key in this slot, or the last write landed and its record is gone
+          const keys = await new Promise((res) => { try { const r = db.transaction(STORE).objectStore(STORE).getAllKeys(); r.onsuccess = () => res(r.result); r.onerror = () => res([]); } catch (e) { res([]); } });
+          status.read = "miss: " + (keys.some((k) => typeof k === "string" && slotOf(k) === slotOf(key) && !k.endsWith(REFS)) ? "key changed" : was && was.state === "ok" ? "evicted" : "no record");
+          changed();
+          return null;
+        }
         const t0 = performance.now();
         unpack(rec); // (in place: the chunks go with the record's packed parts)
         ME.bakeCache.unpackMs = Math.round(performance.now() - t0);
+        status.read = "hit"; changed();
         return rec;
-      } catch (e) { ME.log("WARN bake cache read failed:", e.message); return null; }
+      } catch (e) { ME.log("WARN bake cache read failed:", e.message); status.read = "miss: read failed " + ((e && e.name) || "error"); changed(); return null; }
+    },
+    status,
+    onStatus(fn) { subs.push(fn); },
+    // "cache hit · last write ok · storage persisted"; "cache miss: key changed · write ok · ..." once this load's
+    // write is done. short: "hit · ok · persisted" (a corner label on a phone)
+    statusText(short) {
+      if (status.read === "off") return "cache off";
+      const mine = status.write !== "none", w = mine ? status.write : status.last, m = status.models === "none" ? "" : short ? ` · m ${status.models.replace(" hit", "")}` : ` · models ${status.models}`;
+      return short ? `${status.read.replace("miss: ", "miss ")} · ${w}${m} · ${status.persist}` : `cache ${status.read} · ${mine ? "write" : "last write"} ${w}${m} · storage ${status.persist}`;
     },
     // fire and forget: the record is copied here, before the first await (the caller goes on to R.init, the sim
     // and the critters, which write some of T and MB in place: a later copy would store a played scene), and
@@ -7106,10 +7441,12 @@ window.addEventListener("error", (e) => {
     async put(key, rec) {
       if (ME.qn("nocache", 0) || !window.indexedDB) return;
       const slot = slotOf(key), st = { raw: 0, packed: 0, ms: 0 }, prog = rec.MB && rec.MB.prog, names = rec.palNames;
-      try { rec = pack(prog ? Object.assign({}, rec, { palNames: null, MB: { statics: rec.MB.statics } }) : rec, st); if (prog) rec = structuredClone(rec); } catch (e) { ME.log("WARN bake cache pack failed:", e && e.message); return; }
+      const name = (e) => (e && e.name) || "error";
+      noteWrite(key, "started");
+      try { rec = pack(prog ? Object.assign({}, rec, { palNames: null, MB: { statics: rec.MB.statics } }) : rec, st); if (prog) rec = structuredClone(rec); } catch (e) { ME.log("WARN bake cache pack failed:", e && e.message); noteWrite(key, "failed pack " + name(e)); return; }
       if (prog) {
-        if (!(await prog.upgraded)) { ME.log("WARN bake cache: the progressive bake's upgrade did not finish, so it is not stored"); return; }
-        try { rec.MB = pack(Object.assign(prog.compact(), { statics: rec.MB.statics }), st); rec.palNames = names.slice(); } catch (e) { ME.log("WARN bake cache pack failed:", e && e.message); return; }
+        if (!(await prog.upgraded)) { ME.log("WARN bake cache: the progressive bake's upgrade did not finish, so it is not stored"); noteWrite(key, "failed upgrade"); return; }
+        try { rec.MB = pack(Object.assign(prog.compact(), { statics: rec.MB.statics }), st); rec.palNames = names.slice(); } catch (e) { ME.log("WARN bake cache pack failed:", e && e.message); noteWrite(key, "failed pack " + name(e)); return; }
       }
       ME.bakeCache.packed = { rawMB: +(st.raw / 1048576).toFixed(1), packedMB: +(st.packed / 1048576).toFixed(1), ms: Math.round(st.ms) }; // (checks read it)
       const write = (db, r) => {
@@ -7132,8 +7469,10 @@ window.addEventListener("error", (e) => {
           tx = write(db, copy);
         }
         await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error); });
+        noteWrite(key, "ok");
       } catch (e) {
         ME.log("WARN bake cache write failed:", e && e.message);
+        noteWrite(key, "failed " + name(e));
         // the store is full (one record per app and map adds up): drop every other slot, so the next launch's
         // put fits. Not retried now: the record has changed since the call (see above)
         if (e && e.name === "QuotaExceededError") {
@@ -9530,6 +9869,7 @@ fn boxOf(V: Vox) -> Box {
         sunAz: 0, sunEl: 0, scale: 1, autoScale: true, dusk: 0, cycle: 0, // dusk, cycle: src/daycycle.js
         beamDrift: 1, moonK: 5, // the sun pools wander this far (units); the moon beams' gain at full night
       };
+      this.shaftMul = hd.shaftMul ?? 1; // a map's own shaft gain (style.hd.shaftMul): out of set, so presets and moods stay relative to it
       this.set0 = Object.assign({}, this.set);
       this.L0 = st.L.slice();
       // app extension points (see the header); all empty for the plain engine scene
@@ -10321,7 +10661,7 @@ fn boxOf(V: Vox) -> Box {
       // dimmed shaftK (the gain comes in late, so dusk itself stays soft)
       const dk = s.cycle > 0 ? 0.5 - 0.5 * Math.cos((time / s.cycle) * Math.PI * 2) : Math.max(0, Math.min(1, s.dusk));
       const mt = Math.max(0, Math.min(1, (dk - 0.55) / 0.45)), moon = mt * mt * (3 - 2 * mt);
-      set4(u, O.look3, s.debug, s.shafts ? s.shaftK * (1 + s.moonK * moon * moon * moon) : 0, s.bloomK, s.exposure);
+      set4(u, O.look3, s.debug, s.shafts ? s.shaftK * this.shaftMul * (1 + s.moonK * moon * moon * moon) : 0, s.bloomK, s.exposure);
       const fog = (st.hd && st.hd.fog) || [40, 32, 18];
       set4(u, O.fog, ME.lin(fog[0]), ME.lin(fog[1]), ME.lin(fog[2]), s.haze);
       const bc = (st.hd && st.hd.beamCol) || BEAM_COL;
@@ -14381,6 +14721,67 @@ fn boxOf(V: Vox) -> Box {
 })();
 
 </script>
+<script>/* src/view/camera.js */
+/* The board's camera: the engine's ME.Camera (quarter turns, pan, pinch and wheel zoom, ray, toScreen) looking
+   square-on at the board and from higher up. The engine's view looks along a diagonal at about 35 degrees,
+   which shows the board as a diamond and lets each piece hide the square behind it; this one faces the
+   player's ranks (files a..h left to right) and looks down at `elev` degrees (60 by default, ?elev= to try
+   another), an orthographic view still, so the terrain's per-snap faces (up and the two sides facing the
+   engine's diagonal) cover it: it sees the up faces and one of those sides.
+     new DG.BoardCamera(cx, cy, elev)
+   In the rotated frame (X', Y': the world turned by theta about the centre, the player at +Y'):
+     screen x = X', screen y (up) = cos(e) Z - sin(e) Y', depth = sqrt(3) (cos(e) Y' + sin(e) Z)
+   (bigger = nearer; sqrt(3) per world unit along the view, the engine's own depth scale). */
+(function () {
+  const ME = window.ME, M4 = ME.m4, G = (window.DG = window.DG || {});
+  const R3 = Math.sqrt(3);
+
+  class BoardCamera extends ME.Camera {
+    constructor(cx, cy, elev = 60) {
+      super(cx, cy);
+      this.elev = Math.max(36, Math.min(89, elev));
+      const e = (this.elev * Math.PI) / 180;
+      this.ce = Math.cos(e); this.se = Math.sin(e);
+    }
+    // a world point in the rotated frame: [X', Y', Z]
+    rot(p) {
+      const c = Math.cos(this.theta), s = Math.sin(this.theta), x = p[0] - this.C[0], y = p[1] - this.C[1];
+      return [c * x - s * y, s * x + c * y, p[2]];
+    }
+    fitBox(min, max, w, h, margin = 0.92) {
+      this.foc = null;
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, r = 0;
+      for (let k = 0; k < 8; k++) {
+        const p = [(k & 1 ? max : min)[0], (k & 2 ? max : min)[1], (k & 4 ? max : min)[2]];
+        const [X, Y, Z] = this.rot(p), sy = this.ce * Z - this.se * Y;
+        x0 = Math.min(x0, X); x1 = Math.max(x1, X); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+        r = Math.max(r, Math.hypot(p[0] - this.C[0], p[1] - this.C[1]));
+      }
+      this.zoom = margin * Math.min(w / (x1 - x0), h / (y1 - y0));
+      this.pan = [(x0 + x1) / 2, -(y0 + y1) / 2];
+      // the depth range holds the box at any quarter turn (|Y'| <= r), with the engine's room above it
+      this.D0 = R3 * (-this.ce * r + this.se * min[2]) - 2; this.D1 = R3 * (this.ce * r + this.se * max[2]) + 6;
+    }
+    panOf(p) { const [X, Y, Z] = this.rot(p); return [X, this.se * Y - this.ce * Z]; }
+    matrices(w, h) {
+      const c = Math.cos(this.theta), s = Math.sin(this.theta), [Cx, Cy] = this.C, ce = this.ce, se = this.se;
+      const R = M4.fromRows([[c, -s, 0, -c * Cx + s * Cy], [s, c, 0, -s * Cx - c * Cy], [0, 0, 1, 0], [0, 0, 0, 1]]);
+      const kx = (this.zoom * 2) / w, ky = (this.zoom * 2) / h, [px, py] = this.pan, dz = 1 / (this.D1 - this.D0);
+      const P = M4.fromRows([
+        [kx, 0, 0, -px * kx],
+        [0, -se * ky, ce * ky, py * ky],
+        [0, R3 * ce * dz, R3 * se * dz, -this.D0 * dz],
+        [0, 0, 0, 1],
+      ]);
+      const vp = M4.mul(P, R);
+      // towards the scene: the rotated frame's -(0, cos e, sin e) back in the world
+      return { vp, ivp: M4.inv(vp), vdir: [-s * ce, -c * ce, -se] };
+    }
+  }
+  G.BoardCamera = BoardCamera;
+})();
+
+</script>
 <script>/* src/view/shaders.js */
 /* The board's look in the engine's shader hooks (ME.SHADER_HOOKS; spliced in by the Renderer), after the
    tactics game's:
@@ -14441,7 +14842,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     let ring = (1.0 - sstep(0.03, 0.06, abs(d - 0.4))) * 0.9;
     col = mix(col, vec3f(1.0, 0.4, 0.25), max(ring, (0.15 + 0.4 * line)) * top);
   }
-  if (all(cl == vec2i(u.user[0].zw))) { col = mix(col, u.user[3].rgb * 1.4, (0.14 + 0.6 * (1.0 - sstep(0.02, 0.07, edge))) * top); }
+  if (all(cl == vec2i(u.user[0].zw))) { col = mix(col, u.user[3].rgb * 1.4, (0.22 + 0.65 * (1.0 - sstep(0.02, 0.08, edge))) * top); }
   return col;
 }`,
   });
@@ -14455,6 +14856,8 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
      tile(sq)            square 0..63 -> its world tile [x, y]
      sqOf(X, Y)          a world point -> the square it is over, or -1
      sqOfHit(hit)        an R.pick hit -> the square it landed on, or -1
+     sqOfRay(ray)        a view ray (cam.ray) -> the square it crosses the board's top on, or -1: the
+                         input picks by the grid alone, so a piece never hides the square behind it
      centre(sq)          the world point at a square's centre on the board's top
      paint({ selected, check, dots, caps, last })   the overlay's ground map (Renderer.setCells): squares
                          0..63 (selected, check: one or -1; dots, caps: lists; last: [from, to] or null) */
@@ -14488,9 +14891,16 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     }
     // (the point steps a hair back into the surface, so a hit on a voxel's side face stays on its tile)
     sqOfHit(hit) { return hit ? this.sqOf(hit.p[0] - hit.n[0] * 0.01, hit.p[1] - hit.n[1] * 0.01) : -1; }
+    // the square a view ray (cam.ray) crosses the board's top on, whatever stands in front of it, or -1
+    sqOfRay(ray) {
+      if (Math.abs(ray.dir[2]) < 1e-6) return -1;
+      const t = (this.z - ray.a[2]) / ray.dir[2];
+      return t < 0 ? -1 : this.sqOf(ray.a[0] + ray.dir[0] * t, ray.a[1] + ray.dir[1] * t);
+    }
     centre(sq) { const [x, y] = this.tile(sq); return [x + 0.5, y + 0.5, this.z]; }
-    // the board's corners in the world, with room above for the pieces (the camera's framing)
-    box() { return [[this.x0 - 1, this.y0 - 1, this.z], [this.x0 + 9, this.y0 + 9, this.z + 1.1]]; }
+    // the board's corners in the world, with half a tile of its rim and room above for the back rank's
+    // pieces (the camera's framing)
+    box() { return [[this.x0 - 0.5, this.y0 - 0.5, this.z], [this.x0 + 8.5, this.y0 + 8.5, this.z + 1.4]]; }
     paint({ selected = -1, check = -1, dots = [], caps = [], last = null } = {}) {
       const c = this.cells;
       c.fill(0);
@@ -14522,8 +14932,8 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
 (function () {
   const G = (window.DG = window.DG || {});
   const lerp = (a, b, u) => a + (b - a) * u, ease = (u) => (u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2);
-  // facing: in profile to the default view, toward the other side (heads point +X)
-  const YAW = [-Math.PI / 4, (3 * Math.PI) / 4];
+  // facing: in profile to the board camera (view/camera.js), toward the other side (heads point +X)
+  const YAW = [0, Math.PI];
   const SLIDE = 0.32, PER_TILE = 0.05, SHRINK = 0.28, FPS = 5;
 
   class PiecesView {
@@ -14621,7 +15031,8 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
      hud.settings                      { board, side (0 white, 1 black), level, promo }
      hud.show({ game, status, thinking, you, canUndo })   the top bar, the move list and the buttons
      hud.askPromo(color) -> Promise<type (QUEEN..KNIGHT), or 0 when dismissed>
-     hud.showEnd(status, you), hud.hideEnd(), hud.openMenu() */
+     hud.showEnd(status, you), hud.hideEnd(), hud.openMenu()
+     hud.tag(text, x, y, go)           the square under a finger, named 48 px above it; tag(null) hides it */
 (function () {
   const G = (window.DG = window.DG || {});
   const $ = (id) => document.getElementById(id);
@@ -14735,6 +15146,14 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       $("end").classList.add("show");
     }
     hideEnd() { $("end").classList.remove("show"); }
+    // the square a finger will pick, named above it (the finger hides the square's own highlight); go when
+    // the selected piece can move there. tag(null) hides it
+    tag(text, x, y, go) {
+      const t = $("tag");
+      if (!text) { t.classList.remove("show"); return; }
+      t.textContent = text; t.classList.add("show"); t.classList.toggle("go", !!go);
+      t.style.left = Math.round(x) + "px"; t.style.top = Math.round(Math.max(40, y - 48)) + "px";
+    }
   }
   Hud.LEVELS = LEVELS;
   G.Hud = Hud;
@@ -14749,7 +15168,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.1.0", name: "DeckChess", commit: "69d5222" };
+  G.VERSION = { v: "0.2.0", name: "DeckChess", commit: "8df2b31" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -14770,8 +15189,10 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    URL options: ?board=momiji|fernglass|cornmoon, ?side=w|b, ?level=0..2, ?promo=queen|choose (view/hud.js),
    ?seed=N (the AI's; 1 under ?selftest and ?match, else random), ?depth=N (the AI's, over the level's),
    ?dpr=1, ?scale=0.8, ?nocache=1, ?vs=N (terrain), ?hero=N (pieces), ?small=1 (a phone's caps), ?preset=,
+   ?elev=36..89 (the camera's pitch in degrees, 60 by default: view/camera.js),
    ?hotseat=1 (both sides by hand), ?match=1 (the AI against itself to the end, JSON report into #result),
-   ?selftest=1 (picking, a scripted move, the AI's reply and an undo; timings and errors into #result). */
+   ?selftest=1 (picking by the grid, every square in view, a scripted move by touch and mouse, the AI's reply
+   and an undo; timings and errors into #result). */
 (async function () {
   const ME = window.ME, G = window.DG, C = window.DC;
   const canvas = document.getElementById("cv"), result = document.getElementById("result");
@@ -14943,7 +15364,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     // ------------------------------------------------------------------ camera
     let cam = null;
     const BC = [region.x0 + region.n / 2, region.y0 + region.n / 2];
-    cam = new ME.Camera(BC[0], BC[1]);
+    cam = new G.BoardCamera(BC[0], BC[1], ME.qn("elev", 60));
     const fitCanvas = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, ME.qn("dpr", 2));
       const w = Math.max(64, Math.round(canvas.clientWidth * dpr)), h = Math.max(64, Math.round(canvas.clientHeight * dpr));
@@ -14977,25 +15398,40 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
 
     // ------------------------------------------------------------------ pointer and keys
     const toCanvas = (e) => { const r = canvas.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * canvas.width, ((e.clientY - r.top) / r.height) * canvas.height]; };
-    // the square under a canvas pixel, by the engine's picking: a piece's voxels give its square, else the
-    // square the ray lands on
-    const pickPx = (px, py) => {
-      const hit = R.pick(px, py, cam, { accept: (L, i) => L === "static" || (L === pieces && !!pieces.drawn[i]) });
-      if (hit && hit.layer === pieces) return { sq: pieces.drawn[hit.index].sq, piece: pieces.drawn[hit.index], hit };
-      return { sq: board.sqOfHit(hit), piece: null, hit };
-    };
+    // the square under a canvas pixel, by the board's grid alone: the ray's crossing with the board's top, so a
+    // piece in front never takes the pick from the square behind it, and a piece is picked by its own square
+    const pickPx = (px, py) => board.sqOfRay(cam.ray(px, py, canvas.width, canvas.height));
+    // the square a tap will pick is always lit: under the mouse, and under a finger while it is down (named
+    // above it too, since the finger covers the square), until the touch turns into a pan or a pinch
     let down = null, hover = -1;
-    canvas.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY, t: ME.now(), id: e.pointerId }; });
+    const touchAt = (e) => {
+      hover = pickPx(...toCanvas(e));
+      const go = hover >= 0 && ctl.targets.some((m) => G.info(m).to === hover);
+      hud.tag(hover >= 0 ? G.squareName(hover) : null, e.clientX, e.clientY, go);
+    };
+    const touchOff = () => { hover = -1; hud.tag(null); };
+    canvas.addEventListener("pointerdown", (e) => {
+      if (down && down.id !== e.pointerId) { down = null; touchOff(); return; } // a second finger: a pinch
+      down = { x: e.clientX, y: e.clientY, t: ME.now(), id: e.pointerId, touch: e.pointerType !== "mouse" };
+      if (down.touch) touchAt(e);
+    });
     canvas.addEventListener("pointerup", (e) => {
       if (!down || down.id !== e.pointerId) return;
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y), dt = ME.now() - down.t;
+      if (down.touch) touchOff();
       down = null;
       if (moved >= 10 || dt >= 600 || e.button > 0) return;
-      ctl.tap(pickPx(...toCanvas(e)).sq);
+      ctl.tap(pickPx(...toCanvas(e)));
     });
+    canvas.addEventListener("pointercancel", (e) => { if (down && down.id === e.pointerId) { if (down.touch) touchOff(); down = null; } });
     canvas.addEventListener("contextmenu", (e) => { e.preventDefault(); ctl.cancel(); });
-    canvas.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse" && !e.buttons) hover = pickPx(...toCanvas(e)).sq; });
-    canvas.addEventListener("pointerleave", () => { hover = -1; });
+    canvas.addEventListener("pointermove", (e) => {
+      if (e.pointerType === "mouse" && !e.buttons) hover = pickPx(...toCanvas(e));
+      else if (down && down.touch && down.id === e.pointerId) {
+        if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < 10) touchAt(e); else touchOff();
+      }
+    });
+    canvas.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") hover = -1; });
     window.addEventListener("keydown", (e) => {
       if (e.key === "Escape") ctl.cancel();
       else if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); ctl.undo(); }
@@ -15026,7 +15462,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     G.app = { gpu, st, map, region, T, MB, sim, R, cam, hud, board, pieces, models, ctl, get game() { return ctl.game; } };
 
     if (selftest || match) {
-      // selftest: the picking over the 64 squares and the pieces, then a move by taps (e2, e4), the AI's
+      // selftest: the picking over the 64 squares, then a move by touch and mouse (e2, e4), the AI's
       // reply and an undo, as a player would; match: the AI against itself until the game ends (or ?maxs=
       // seconds pass), then the result
       const maxMs = ME.qn("maxs", 300) * 1000, cpus = [], ints = [];
@@ -15054,26 +15490,53 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         out.ok = ME.errors.length === 0 && st.over;
         ME.log("MATCH", JSON.stringify({ result: st.result, reason: st.reason, plies: g.history.length }));
       } else {
-        // the engine's picking as the pointer uses it: each square's centre pixel gives that square, each
-        // piece's middle gives its square. [right, tried, hidden]: hidden when the ray hit something more than
-        // 0.3 tiles in front of the point (a piece standing before it), so only the rest can be wrong
-        const W = canvas.width, H = canvas.height, on = ([x, y]) => x >= 0 && y >= 0 && x < W && y < H, vd = cam.matrices(W, H).vdir;
-        const pick = { squares: [0, 0, 0], pieces: [0, 0, 0] };
-        const tryPick = (n, P, sq) => {
-          const s = cam.toScreen(P, W, H);
-          if (!on(s)) return;
-          const r = pickPx(s[0], s[1]), h = r.hit;
-          n[1]++;
-          if (r.sq === sq) n[0]++;
-          else if (h && (P[0] - h.p[0]) * vd[0] + (P[1] - h.p[1]) * vd[1] + (P[2] - h.p[2]) * vd[2] > 0.3) n[2]++;
+        // the picking as the pointer uses it, by the grid: each square's centre and four points 0.3 tiles from
+        // it give that square, wherever the pieces stand (behind: the squares whose centre another piece's
+        // voxels cover on screen, which the engine's mesh picking gave to that piece); every square's centre
+        // and every piece's middle on the canvas between the HUD's bars (tops: the pieces' tops there too);
+        // the smallest square on screen in CSS px, [wide, high]
+        const W = canvas.width, H = canvas.height, [fy0, fy1] = freeRows(), css = canvas.getBoundingClientRect().width / W;
+        const inFree = ([x, y]) => x >= 0 && x < W && y >= fy0 && y <= fy1;
+        const pick = { right: 0, tried: 0, behind: 0, inView: 0, piecesInView: 0, topsInView: 0, minSquareCss: [1e9, 1e9] };
+        for (let s = 0; s < 64; s++) {
+          const P = board.centre(s);
+          for (const [dx, dy] of [[0, 0], [-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]]) {
+            const q = cam.toScreen([P[0] + dx, P[1] + dy, P[2]], W, H);
+            pick.tried++; if (pickPx(q[0], q[1]) === s) pick.right++;
+          }
+          const c = cam.toScreen(P, W, H);
+          if (inFree(c)) pick.inView++;
+          const h = R.pick(c[0], c[1], cam, { accept: (L, i) => L === pieces && !!pieces.drawn[i] });
+          if (h && h.layer === pieces && pieces.drawn[h.index] && pieces.drawn[h.index].sq !== s) pick.behind++;
+          const [x, y] = board.tile(s), k = [[x, y], [x + 1, y], [x, y + 1], [x + 1, y + 1]].map((p) => cam.toScreen([p[0], p[1], P[2]], W, H));
+          const xs = k.map((p) => p[0]), ys = k.map((p) => p[1]);
+          pick.minSquareCss[0] = Math.min(pick.minSquareCss[0], (Math.max(...xs) - Math.min(...xs)) * css);
+          pick.minSquareCss[1] = Math.min(pick.minSquareCss[1], (Math.max(...ys) - Math.min(...ys)) * css);
+        }
+        for (const p of pieces.list) {
+          const m = pieces.middle(p);
+          if (inFree(cam.toScreen(m, W, H))) pick.piecesInView++;
+          if (inFree(cam.toScreen([m[0], m[1], 2 * m[2] - p.P[2]], W, H))) pick.topsInView++;
+        }
+        pick.minSquareCss = pick.minSquareCss.map((v) => +v.toFixed(1));
+        const pickOk = pick.right === pick.tried && pick.inView === 64 && pick.piecesInView === pieces.list.length;
+        // the scripted move as the player (white) by the pointer: a finger down on e2 lights it and names it
+        // before the release that selects it, the mouse over e4 lights it and its click plays e2-e4; then the
+        // AI's reply and the undo of both
+        const sq = G.square, tagEl = document.getElementById("tag");
+        const script = { touchHover: false, tag: "", selected: false, targets: 0, mouseHover: false, played: "", reply: "", undone: false };
+        const ev = (type, s, o) => {
+          const r = canvas.getBoundingClientRect(), q = cam.toScreen(board.centre(s), W, H);
+          canvas.dispatchEvent(new PointerEvent(type, Object.assign({ bubbles: true, clientX: r.left + (q[0] / W) * r.width, clientY: r.top + (q[1] / H) * r.height, button: 0, isPrimary: true }, o)));
         };
-        for (let s = 0; s < 64; s++) tryPick(pick.squares, board.centre(s), s);
-        for (const p of pieces.list) tryPick(pick.pieces, pieces.middle(p), p.sq);
-        const wrong = (n) => n[1] - n[0] - n[2], pickOk = pick.squares[1] === 64 && wrong(pick.squares) === 0 && wrong(pick.pieces) === 0;
-        // the scripted move by taps as the player (white), the AI's reply, then the undo of both
-        const sq = G.square, script = { selected: false, targets: 0, played: "", reply: "", undone: false };
-        ctl.tap(sq("e2")); script.selected = ctl.sel === sq("e2"); script.targets = ctl.targets.length;
-        ctl.tap(sq("e4")); script.played = g.sans[0] || "";
+        const touch = { pointerId: 11, pointerType: "touch" }, mouse = { pointerId: 1, pointerType: "mouse" };
+        ev("pointerdown", sq("e2"), touch);
+        script.touchHover = hover === sq("e2"); script.tag = tagEl.classList.contains("show") ? tagEl.textContent : "";
+        ev("pointerup", sq("e2"), touch);
+        script.selected = ctl.sel === sq("e2") && hover === -1 && !tagEl.classList.contains("show"); script.targets = ctl.targets.length;
+        ev("pointermove", sq("e4"), Object.assign({ buttons: 0 }, mouse)); script.mouseHover = hover === sq("e4");
+        ev("pointerdown", sq("e4"), Object.assign({ buttons: 1 }, mouse)); ev("pointerup", sq("e4"), mouse);
+        script.played = g.sans[0] || "";
         nFrames += await frames(600, () => g.history.length >= 2 && !pieces.busy);
         script.reply = g.sans[1] || "";
         ctl.undo(); script.undone = g.history.length === 0;
@@ -15084,7 +15547,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         out.board = { id: boardId, region, z: +board.z.toFixed(3), zSpread: board.zSpread, pieces: sizes };
         ME.log("BOARD", JSON.stringify({ id: boardId, z: out.board.z, zSpread: board.zSpread, region }));
         out.pick = pick; out.script = script;
-        out.ok = ME.errors.length === 0 && pickOk && script.selected && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2;
+        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2;
       }
       Object.assign(out, { frames: nFrames, avgFrameIntervalMs: avg(ints.slice(5)), avgCpuMs: avg(cpus.slice(5)), gpuMs: R.gpuMs, errors: ME.errors });
       report(out);
