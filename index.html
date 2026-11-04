@@ -6915,8 +6915,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // every job it held bakes here. startMs, idleMs, busyMs: the workers' summed time from the probe to their first
   // job, between jobs (waiting for a post; not after the last) and in them. add(jobs, front) queues more (E4: a
   // progressive bake's full bakes once its upgrade starts, its finishing jobs with front: before those waiting),
-  // each null at once when stopped or no worker is left. stop() ends it.
-  function runJobs(ws, jobs, depth = ME.bakeJobDepth || 4) {
+  // each null at once when stopped or no worker is left. stop() ends it. cache (E3: ME.bakeCache.modelCache's):
+  // a job it holds an answer for resolves to it and is never posted, and each worker's answer is kept by it
+  function runJobs(ws, jobs, depth = ME.bakeJobDepth || 4, cache = null) {
     const out = new Map(), queue = [], limit = ME.bakeJobMs || 30000, run = { out, depth, startMs: 0, idleMs: 0, busyMs: 0 };
     let alive = ws.length, stopped = false;
     const failed = (j, why) => { ME.log("WARN BAKE worker: " + j.name + ": " + why + "; " + (j.miss || "baked on the main thread")); j.res(null); };
@@ -6932,7 +6933,10 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // the queue dealt round the workers, one each per round (the least busy first), so a flipbook's frames (next to
     // each other, the same cost) start on different workers
     const deal = () => { for (let k = 1; k <= run.depth && queue.length; k++) for (const w of ws) if (!w.dead && w.held.length < k && queue.length) give(w); for (const w of ws) if (!w.dead) arm(w); };
+    // a job the cache answers: out set, and not queued
+    const hit = (j) => { const r = cache && cache.hit(j.q); if (r) out.set(j.id, Promise.resolve(r)); return !r; };
     run.add = (more, front = false) => {
+      more = more.filter(hit);
       for (const j of more) out.set(j.id, new Promise((r) => { j.res = r; }));
       if (stopped || !alive) { for (const j of more) j.res(null); return; }
       if (front) queue.unshift(...more); else queue.push(...more);
@@ -6943,11 +6947,12 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       w.onmessage = (e) => {
         const d = e.data, k = w.held.findIndex((j) => j.id === d.id), j = k < 0 ? null : w.held.splice(k, 1)[0];
         run[d.first ? "startMs" : "idleMs"] += d.idle || 0; run.busyMs += d.ms || 0;
-        if (j) { if (d.error) failed(j, d.error); else j.res(d); }
+        if (j) { if (d.error) failed(j, d.error); else { if (cache) cache.keep(j.q, d); j.res(d); } }
         fill(w); arm(w);
       };
       w.onerror = (e) => { if (e.preventDefault) e.preventDefault(); lose(w, e.message || "worker error"); };
     }
+    jobs = jobs.filter(hit);
     for (const j of jobs) out.set(j.id, new Promise((r) => { j.res = r; }));
     queue.push(...jobs);
     deal();
@@ -7092,6 +7097,10 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // each: id i its fine-1 copy, sized with the full bake's box (r.full), with the others; id nv + i the full bake, in
   // variant order, held back (h.full) till the upgrade starts them (once R's frames settle) or the fallback asks
   // for them, so the boot has the workers for its own jobs and the CPU to itself once they are done.
+  // opts.cache (E3): the workers' answers read from and kept in the bake cache (ME.bakeCache.modelCache), read while
+  // the workers start; a job it answers is not posted, and the workers end when it answers them all (and no
+  // progressive flipbook needs them). Without workers, a progressive frame's stored fine-1 answer is not taken (the
+  // frame then bakes here at full density).
   function launch(L, pal, opts) {
     const def = defOf(pal), mds = modelsOf(L.variants), offWorker = {}, jobs = [], on = workersOn(opts), nv = L.variants.length;
     const prog = progOf(L, mds, opts), pv = new Set(prog.flatMap((g) => g.vs)), full = [];
@@ -7106,10 +7115,14 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     jobs.sort((a, b) => b.cost - a.cost);
     const h = { sig: sigOf(L, def, opts), mds, offWorker, prog, nv, full, ws: [], res: new Map(), run: null, done: false };
     h.cancel = () => { if (h.done) return; h.done = true; if (h.run) h.run.stop(); };
-    h.ready = (jobs.length ? startWorkers(Math.min(Math.max(1, Math.floor(ME.bakeWorkerMax || ME.qn("bakeworkers", 0) || 4)), Math.max(1, (navigator.hardwareConcurrency || 2) - 1), jobs.length)) : Promise.resolve([])).then((ws) => {
+    const mc = opts.cache && jobs.length && ME.bakeCache && ME.bakeCache.modelCache ? ME.bakeCache.modelCache() : null;
+    const read = mc ? mc.load(jobs.concat(full).map((j) => j.q)) : Promise.resolve();
+    const start = jobs.length ? startWorkers(Math.min(Math.max(1, Math.floor(ME.bakeWorkerMax || ME.qn("bakeworkers", 0) || 4)), Math.max(1, (navigator.hardwareConcurrency || 2) - 1), jobs.length)) : Promise.resolve([]);
+    h.ready = Promise.all([start, read]).then(([ws]) => {
       if (h.done) { for (const w of ws) w.terminate(); return; }
-      if (!ws.length) for (const j of jobs) offWorker[j.name] = "no workers";
-      else { h.ws = ws; h.run = runJobs(ws, jobs); h.res = h.run.out; }
+      if (ws.length && mc && !full.length && jobs.every((j) => mc.has(j.q))) { for (const w of ws) w.terminate(); ws = []; }
+      if (ws.length) { h.ws = ws; h.run = runJobs(ws, jobs, undefined, mc); h.res = h.run.out; return; }
+      for (const j of jobs) { const r = mc && !pv.has(j.id) && mc.hit(j.q); if (r) h.res.set(j.id, Promise.resolve(r)); else offWorker[j.name] = "no workers"; }
     });
     return h;
   }
@@ -7658,13 +7671,19 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 
 </script>
 <script>/* ../MossheartEngine/src/cache.js */
-/* Bake cache: the whole bake (terrain arrays, mesh, model bricks, grass, palette order) kept in
-   IndexedDB, so a repeat launch skips the CPU bake. The newest bake is kept per app and map: a key starts
-   with its slot (the app id, then the map's id), and a put drops every other record of that slot (an
-   older density or version) and keeps the other slots, so two games or two levels on one origin don't
-   evict each other. The rest of the key holds the engine version, the density and a fingerprint of the
-   bake code, so a changed bake never loads a stale result. Any failure (no IndexedDB, quota, clone error)
-   falls back to baking. ?nocache=1 skips it. */
+/* Bake cache: the bake (terrain arrays, mesh, model bricks, grass, palette order) kept in IndexedDB, so a
+   repeat launch skips the CPU bake. Two ways to key it:
+   - key()/put(): the whole bake in one record. The newest bake is kept per app and map: a key starts with
+     its slot (the app id, then the map's id), and a put drops every other record of that slot (an older
+     density or version) and keeps the other slots, so two games or two levels on one origin don't evict
+     each other. The rest of the key holds the engine version, the density and a fingerprint of the bake
+     code, so a changed bake never loads a stale result.
+   - terrainKey()/later()/modelCache()/flush() (E3, Mossheart): the parts apart, each keyed on its own input
+     and a hand-raised revision (ME.BAKE_REV) in place of the code's fingerprint, so a release that leaves a
+     part alone keeps it: the terrain record per slot, a record per model per app (the slot's "#models" list
+     names the ones its map uses; a model no list names is dropped). tools\bake-rev.ps1 in Mossheart checks
+     that a changed bake raised its number.
+   Any failure (no IndexedDB, quota, clone error) falls back to baking. ?nocache=1 skips it. */
 (function () {
   const ME = window.ME, DB = "mossheart", STORE = "bake";
   let held = null; // the database get() opened, kept as a value so put() writes with no await before it
@@ -7724,24 +7743,36 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // the record with its big typed arrays packed (plain objects and arrays walked; anything else kept as is,
   // and a part with nothing to pack kept as the same object). A small view into a bigger buffer is copied
   // (IndexedDB would clone the whole buffer); a ME.BrickGrid goes as its record(). st: the sizes, for checks
-  const pack = (x, st) => {
-    if (ME.BrickGrid && x instanceof ME.BrickGrid) return pack(x.record(), st);
+  // copy: every typed array copied, small ones too (a record kept while its source changes; packed arrays are copies)
+  const pack = (x, st, copy = false) => {
+    if (isPacked(x)) return x;
+    if (ME.BrickGrid && x instanceof ME.BrickGrid) return pack(x.record(), st, copy);
     if (ArrayBuffer.isView(x)) {
       if (x instanceof DataView) return x;
-      if (x.byteLength < BIG) return x.byteLength < x.buffer.byteLength ? x.slice() : x;
+      if (x.byteLength < BIG) return copy || x.byteLength < x.buffer.byteLength ? x.slice() : x;
       const t0 = performance.now(), chunks = packBytes(new Uint8Array(x.buffer, x.byteOffset, x.byteLength));
       st.raw += x.byteLength; st.packed += chunks.reduce((s, c) => s + (c.d || c.raw).byteLength, 0); st.ms += performance.now() - t0;
       return { packed: 1, type: x.constructor.name, length: x.length, chunks };
     }
-    if (Array.isArray(x)) { let same = true; const y = x.map((v) => { const p = pack(v, st); if (p !== v) same = false; return p; }); return same ? x : y; }
+    if (Array.isArray(x)) { let same = !copy; const y = x.map((v) => { const p = pack(v, st, copy); if (p !== v) same = false; return p; }); return same ? x : y; }
     if (x && typeof x === "object" && Object.getPrototypeOf(x) === Object.prototype) {
-      let y = null;
-      for (const k in x) { const v = x[k], p = pack(v, st); if (p !== v) (y || (y = Object.assign({}, x)))[k] = p; }
+      let y = copy ? Object.assign({}, x) : null;
+      for (const k in x) { const v = x[k], p = pack(v, st, copy); if (p !== v) (y || (y = Object.assign({}, x)))[k] = p; }
       return y || x;
     }
     return x;
   };
-  const isPacked = (x) => x && x.packed === 1 && Array.isArray(x.chunks) && typeof x.type === "string";
+  function isPacked(x) { return !!x && x.packed === 1 && Array.isArray(x.chunks) && typeof x.type === "string"; }
+  // a record's snapshot for a write later (ME.bakeCache.later): its plain objects, arrays and small typed arrays
+  // copied now; its big typed arrays and brick grids kept as they are, packed when written (the caller leaves
+  // them as they are till then)
+  const snap = (x) => {
+    if ((ME.BrickGrid && x instanceof ME.BrickGrid) || isPacked(x)) return x;
+    if (ArrayBuffer.isView(x)) return x instanceof DataView || x.byteLength >= BIG ? x : x.slice();
+    if (Array.isArray(x)) return x.map(snap);
+    if (x && typeof x === "object" && Object.getPrototypeOf(x) === Object.prototype) { const y = {}; for (const k in x) y[k] = snap(x[k]); return y; }
+    return x;
+  };
   const unpack = (x) => {
     if (isPacked(x)) { const a = new window[x.type](x.length); unpackBytes(x.chunks, new Uint8Array(a.buffer)); return a; }
     if (Array.isArray(x)) { for (let i = 0; i < x.length; i++) x[i] = unpack(x[i]); return x; }
@@ -7771,6 +7802,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   //     result: the tab was closed or killed mid-write, as Android does at the memory peak) or "none"
   //   write: this load's: "writing" until put() ends, then as `last`; "none" if nothing was put
   //   persist: navigator.storage.persist()'s answer, "persisted", "not persisted" or "n/a"
+  //   models (E3): the model records, "<hits>/<jobs> hit" (then " · wrote <n>/<m>" once flushed), "off" or "none"
   // Each write's state is kept per slot in localStorage (WRITES), before and after it, so the next load reads it.
   // ME.bakeCache.onStatus(fn) calls fn on each change; statusText() is the one line.
   const WRITES = "me.bakeCache.writes", status = { read: "off", last: "none", write: "none", persist: "n/a" }, subs = [];
@@ -7802,12 +7834,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     return [...inc].sort().map((n) => by[n]).join("");
   };
 
-  ME.bakeCache = {
-    // extra: anything else the bake depends on (an app's own model list, as a string)
-    // o.app: the app's id (default: the page's folder); with the map's id it names the key's slot
-    // o.focus: the bake bakes the models' md.focus (ME.bakeModels' opts.focus), so focused and plain records never share a key
-    key(st, extra = "", o = {}) {
-      const code = [ME.bakeTerrain, ...(ME.bakeTerrain.parts || []), ME.coarseStep, ME.coarseFill, ME.greedyMesh, ME.bakeModels, ...(ME.bakeModels.parts || []), ME.voxelizeModel, ...(ME.voxelizeModel.parts || []), ME.reduce, ...((ME.reduce && ME.reduce.parts) || []), ME.stampModel, ME.bakeGrass, ME.modelOf].map(String).join("|");
+  // what a key hashes of the bake's input: its slot and the map's id, own (the content, the style or map and
+  // extra) and lists (see below)
+  const inputOf = (st, extra, o) => {
       // the content the bake reads: terrain roles (functions as their source), the kinds the map's legend
       // names (a generator map's letters are kinds made of the terrain roles), grass, critters, walkers and the
       // ground lamps' kinds. The lists that only name the models a placement may use (volumeDeco,
@@ -7824,11 +7853,159 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       const game = v1 && st.map.game ? { lane: st.map.game.lane } : undefined;
       const s = v1 ? Object.assign({}, st, { map: Object.assign({}, st.map, { game }) }) : st, id = v1 ? st.map.id : st.id;
       const slot = encodeURIComponent(o.app ?? pageApp()) + "/" + encodeURIComponent(id) + "/";
-      const own = content + JSON.stringify(s) + extra;
+      return { slot, id, own: content + JSON.stringify(s) + extra, lists };
+  };
+
+  // E3 (the vs64 load study's PR 2): the bake in parts that outlive a release. A terrain record per app and map
+  // (terrainKey: the grid, the coarse grid as the terrain bake left it, the mips, the mesh, the grass and the
+  // palette's names), and a record per worker job of the model bake (modelCache: the worker's answer, keyed by the
+  // job's input, so any map with the same model shares it). Neither key holds the engine's version or its code:
+  // BAKE_REV does, one number per part, raised by hand whenever the code changes what that part bakes.
+  // Mossheart's tools\bake-rev.ps1 bakes every map at vs12 and fails when a part's output changed and its
+  // number didn't (warns on a raise with no change). The parts are written after R.init (flush), one at a time.
+  ME.BAKE_REV = { terrain: 1, models: 1 };
+  // ?bakerev=1: hashes of what the parts would store (ME.bakeCache.trace: terrain, models by key), for bake-rev.ps1;
+  // with or without the cache. Timings (stats, ms, *Ms, a worker's idle and first) are left out; fields: each model record's top-level parts hashed, by key
+  const trace = ME.qn("bakerev", 0) ? { terrain: null, models: {}, fields: {} } : null, TIMING = /^(stats|ms|idle|first)$|Ms$/;
+  const hashOf = (x) => {
+    let h = 0x811c9dc5;
+    const str = (s) => { for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); };
+    const walk = (v) => {
+      if (ME.BrickGrid && v instanceof ME.BrickGrid) return walk(v.record());
+      if (ArrayBuffer.isView(v)) { const u = new Uint8Array(v.buffer, v.byteOffset, v.byteLength); str(v.constructor.name + v.length); for (let i = 0; i < u.length; i++) h = Math.imul(h ^ u[i], 16777619); return; }
+      if (Array.isArray(v)) { str("["); v.forEach(walk); str("]"); return; }
+      if (v && typeof v === "object") { str("{"); for (const k of Object.keys(v).sort()) if (!TIMING.test(k)) { str(k + ":"); walk(v[k]); } str("}"); return; }
+      str(String(v) + ",");
+    };
+    walk(x);
+    return (h >>> 0).toString(16).padStart(8, "0");
+  };
+  const off = () => !!ME.qn("nocache", 0) || !window.indexedDB;
+  const keyHash = (s) => fnv(s) + fnv("|" + s) + s.length.toString(36);
+  const MODELS = "~models/", REFS = "#models";
+  const appOf = (o) => encodeURIComponent(o.app ?? pageApp()) + "/";
+  // the parts waiting for flush: the terrain record ([key, snapshot]) and the model records ([key, packed copy]);
+  // a model's answer kept after the flush is written at once (chain: one write at a time). wanted: every model key
+  // this load's bakes asked for (stored by map at the flush, REFS, so a model no map wants is dropped)
+  let laterT = null, laterM = [], flushed = false, chain = Promise.resolve();
+  const wanted = new Set();
+  const req = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const done = (tx) => new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error); });
+  const db = async () => held || (held = await open());
+  const putOne = async (key, rec) => { const tx = (await db()).transaction(STORE, "readwrite"); tx.objectStore(STORE).put(rec, key); await done(tx); };
+  status.models = "none";
+
+  ME.bakeCache = {
+    // extra: anything else the bake depends on (an app's own model list, as a string)
+    // o.app: the app's id (default: the page's folder); with the map's id it names the key's slot
+    // o.focus: the bake bakes the models' md.focus (ME.bakeModels' opts.focus), so focused and plain records never share a key
+    // (the whole bake in one record, keyed on the engine's version and its code; Mossheart keeps its parts: terrainKey)
+    key(st, extra = "", o = {}) {
+      const code = [ME.bakeTerrain, ...(ME.bakeTerrain.parts || []), ME.coarseStep, ME.coarseFill, ME.greedyMesh, ME.bakeModels, ...(ME.bakeModels.parts || []), ME.voxelizeModel, ...(ME.voxelizeModel.parts || []), ME.reduce, ...((ME.reduce && ME.reduce.parts) || []), ME.stampModel, ME.bakeGrass, ME.modelOf].map(String).join("|");
+      const { slot, id, own, lists } = inputOf(st, extra, o);
       // the pool's check knobs (bake-models.js: ME.poolSlab / ?poolslab, ME.poolHollow / ?hollow), when set
       const slab = ME.poolSlab || ME.qn("poolslab", 0), knobs = (slab ? "|slab" + slab : "") + (ME.poolHollow === false || ME.qn("hollow", 1) === 0 ? "|solid" : "");
       return `${slot}${ME.VERSION}:${id}:vs${ME.VS}:${fnv(code + assetSrc(own) + own + lists + (o.focus ? "|focus" : "") + knobs)}`;
     },
+    // the terrain record's key: the map's content (as key() takes it, with the sources of the models the terrain
+    // bake stamps), BAKE_REV.terrain and the density. extra: anything else the terrain bake reads. Read with get()
+    terrainKey(st, extra = "", o = {}) {
+      const { slot, own, lists } = inputOf(st, extra, o);
+      return `${slot}T${ME.BAKE_REV.terrain}:vs${ME.VS}:${keyHash(assetSrc(own) + own + lists)}`;
+    },
+    // the terrain record, stored at the flush: its plain parts copied now (snap), its big arrays as they are then,
+    // so the caller copies any it changes before (the model bake splats into T.coarse; R.init drops T.mips)
+    later(key, rec) {
+      if (trace) trace.terrain = hashOf(rec);
+      if (!off()) laterT = [key, snap(rec)];
+    },
+    // the model bake's cache (ME.bakeModels with opts.cache): load(qs) reads the stored answers of the worker jobs
+    // qs (their inputs, q), then hit(q) is one (or undefined) and keep(q, r) stores a worker's answer (copied at once:
+    // the bake renumbers it in place). A finishing job (q.finish: its input is the bake's own) is not stored
+    modelCache(o = {}) {
+      const app = appOf(o), keys = new WeakMap(), hits = new Map();
+      const keyOf = (q) => {
+        if (q.finish) return null;
+        if (!keys.has(q)) { const { id, ...rest } = q; keys.set(q, `${app}${MODELS}m${ME.BAKE_REV.models}:vs${ME.VS}:${keyHash(JSON.stringify(rest))}`); }
+        return keys.get(q);
+      };
+      return {
+        async load(qs) {
+          const ks = qs.map(keyOf).filter(Boolean);
+          for (const k of ks) wanted.add(k);
+          if (off()) { status.models = "off"; return; }
+          try {
+            const s = (await db()).transaction(STORE).objectStore(STORE), got = await Promise.all(ks.map((k) => req(s.get(k))));
+            got.forEach((r, i) => { if (r) hits.set(ks[i], unpack(r)); });
+          } catch (e) { ME.log("WARN bake cache: model read failed:", e && e.message); }
+          status.models = `${hits.size}/${ks.length} hit`; changed();
+        },
+        has(q) { const k = keyOf(q); return !!k && hits.has(k); },
+        // (once: the bake takes the answer in in place)
+        hit(q) { const k = keyOf(q), r = k ? hits.get(k) : undefined; if (r) { hits.delete(k); r.id = q.id; } return r; }, // (its id: this bake's job)
+        keep(q, r) {
+          const k = keyOf(q);
+          if (!k || !r || r.error) return;
+          if (trace) { const { id, ...rec } = r; trace.models[k] = hashOf(rec); trace.fields[k] = Object.fromEntries(Object.keys(rec).filter((f) => !TIMING.test(f)).map((f) => [f, hashOf(rec[f])])); } // (not its id: the job's number, in the order the jobs went out)
+          if (off()) return;
+          let rec;
+          try { rec = pack(r, { raw: 0, packed: 0, ms: 0 }, true); } catch (e) { ME.log("WARN bake cache: model pack failed:", e && e.message); return; }
+          if (!flushed) laterM.push([k, rec]);
+          else chain = chain.then(() => putOne(k, rec)).catch((e) => ME.log("WARN bake cache: model write failed:", e && e.message));
+        },
+      };
+    },
+    // writes the parts waiting (later, keep), one at a time, once the app is past its memory peak (Mossheart: after
+    // R.init): the terrain record (replacing its slot's other records), the model records, then the models this
+    // map's bake asked for (key's slot + REFS); a model record no map of the app asks for is dropped. key: the
+    // terrain record's (on a hit too: it names the map). Its state is noted like put()'s (status.write, WRITES)
+    async flush(key) {
+      flushed = true;
+      if (off()) return;
+      const slot = slotOf(key), app = slot.replace(/[^/]*\/$/, ""), refs = slot + REFS, name = (e) => (e && e.name) || "error";
+      const t = laterT, ms = laterM, st = { raw: 0, packed: 0, ms: 0 };
+      laterT = null; laterM = [];
+      const run = async () => {
+        if (t) {
+          noteWrite(key, "started");
+          try {
+            const rec = pack(t[1], st), d = await db(), tx = d.transaction(STORE, "readwrite"), s = tx.objectStore(STORE);
+            s.put(rec, key);
+            const g = s.getAllKeys();
+            g.onsuccess = () => { for (const k of g.result) if (k !== key && k !== refs && (typeof k !== "string" || slotOf(k) === slot || slotOf(k) === null)) s.delete(k); };
+            await done(tx);
+            ME.bakeCache.packed = { rawMB: +(st.raw / 1048576).toFixed(1), packedMB: +(st.packed / 1048576).toFixed(1), ms: Math.round(st.ms) }; // (checks read it)
+            noteWrite(key, "ok");
+          } catch (e) {
+            ME.log("WARN bake cache write failed:", e && e.message);
+            noteWrite(key, "failed " + name(e));
+            // the store is full: drop every other app's and map's records but this app's models, for the next launch
+            if (e && e.name === "QuotaExceededError") try {
+              const tx = (await db()).transaction(STORE, "readwrite"), s = tx.objectStore(STORE), g = s.getAllKeys();
+              g.onsuccess = () => { for (const k of g.result) if (typeof k !== "string" || (slotOf(k) !== slot && !k.startsWith(app + MODELS))) s.delete(k); };
+              ME.bakeCache.evicted = true;
+            } catch (_) {}
+          }
+        }
+        let n = 0;
+        for (const [k, rec] of ms) try { await putOne(k, rec); n++; } catch (e) { ME.log("WARN bake cache: model write failed:", e && e.message); break; }
+        if (ms.length) { status.models += ` · wrote ${n}/${ms.length}`; changed(); }
+        // this map's models, then every model record of the app that no map's list names dropped
+        const mine = [...wanted].filter((k) => k.startsWith(app));
+        try {
+          const d = await db(), all = await req(d.transaction(STORE).objectStore(STORE).getAllKeys()), lists = all.filter((k) => typeof k === "string" && k.startsWith(app) && k.endsWith(REFS) && k !== refs);
+          const tx = d.transaction(STORE, "readwrite"), s = tx.objectStore(STORE), keep = new Set(mine);
+          for (const l of await Promise.all(lists.map((k) => req(s.get(k))))) for (const k of l || []) keep.add(k);
+          s.put(mine, refs);
+          for (const k of all) if (typeof k === "string" && k.startsWith(app + MODELS) && !keep.has(k)) s.delete(k);
+          await done(tx);
+        } catch (e) { ME.log("WARN bake cache: model list failed:", e && e.message); }
+      };
+      chain = chain.then(run, run);
+      return chain;
+    },
+    trace,
+    hashOf,
     async get(key) {
       if (ME.qn("nocache", 0) || !window.indexedDB) { status.read = "off"; changed(); return null; }
       const was = writes()[slotOf(key)];
@@ -7840,7 +8017,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         if (!rec) {
           // why: another key in this slot, or the last write landed and its record is gone
           const keys = await new Promise((res) => { try { const r = db.transaction(STORE).objectStore(STORE).getAllKeys(); r.onsuccess = () => res(r.result); r.onerror = () => res([]); } catch (e) { res([]); } });
-          status.read = "miss: " + (keys.some((k) => typeof k === "string" && slotOf(k) === slotOf(key)) ? "key changed" : was && was.state === "ok" ? "evicted" : "no record");
+          status.read = "miss: " + (keys.some((k) => typeof k === "string" && slotOf(k) === slotOf(key) && !k.endsWith(REFS)) ? "key changed" : was && was.state === "ok" ? "evicted" : "no record");
           changed();
           return null;
         }
@@ -7857,8 +8034,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // write is done. short: "hit · ok · persisted" (a corner label on a phone)
     statusText(short) {
       if (status.read === "off") return "cache off";
-      const mine = status.write !== "none", w = mine ? status.write : status.last;
-      return short ? `${status.read.replace("miss: ", "miss ")} · ${w} · ${status.persist}` : `cache ${status.read} · ${mine ? "write" : "last write"} ${w} · storage ${status.persist}`;
+      const mine = status.write !== "none", w = mine ? status.write : status.last, m = status.models === "none" ? "" : short ? ` · m ${status.models.replace(" hit", "")}` : ` · models ${status.models}`;
+      return short ? `${status.read.replace("miss: ", "miss ")} · ${w}${m} · ${status.persist}` : `cache ${status.read} · ${mine ? "write" : "last write"} ${w}${m} · storage ${status.persist}`;
     },
     // fire and forget: the record is copied here, before the first await (the caller goes on to R.init, the sim
     // and the critters, which write some of T and MB in place: a later copy would store a played scene), and
@@ -15755,7 +15932,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.49.0", name: "Mossheart", commit: "626daae" };
+  G.VERSION = { v: "0.50.0", name: "Mossheart", commit: "f39a6a4" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -26235,7 +26412,7 @@ function MG_SFX(L) {
     G.addMaterials(st);
     const pal = new ME.Palette(st);
     const ids = { sky: pal.id("sky"), water: pal.id("water"), fall: pal.id("fall"), maple: pal.id("maple") };
-    // the bake, or the cached copy of it (the engine's IndexedDB bake cache; ?nocache=1 skips it)
+    // the bake options (the bake itself, or its cached parts, below)
     // (the wisps bake progressively too, E4: fine, so they'd add to READY; the small critters stay as they are)
     const bakeOpts = { walkers: false, models: G.bakeList(), progCritters: ["wispling"] };
     // (and no progressive bake, E4, on a phone, the devices that cap at 32 (ME.phoneLike() is menu.js's test): at vs20
@@ -26253,24 +26430,31 @@ function MG_SFX(L) {
     // version corner once in the garden (ME.bakeCache.statusText), so a phone shows why its load took the time it did
     ME.bakeCache.onStatus(() => ME.loadNote(ME.bakeCache.statusText()));
     ME.stage("boot");
-    const key = ME.bakeCache.key(st, JSON.stringify(bakeOpts)), hit = await ME.bakeCache.get(key);
+    // the bake in two parts that each survive a release that leaves them alone (the engine's IndexedDB bake cache,
+    // E3; ?nocache=1 skips it): the terrain (and its mesh and grass) in one record keyed on the map, the models one
+    // record per model keyed on its source (bakeModels' opts.cache). Both are written once the renderer is up (flush)
+    bakeOpts.cache = true;
+    const tkey = ME.bakeCache.terrainKey(st), hit = await ME.bakeCache.get(tkey);
     ME.stage("cache read");
-    let T, mesh, MB, grass;
+    let T, mesh, MB, grass, early;
     if (hit) {
       for (const n of hit.palNames.slice(1)) pal.id(n); // same material ids as the baked arrays
-      ({ T, mesh, MB, grass } = hit);
-      T.groundAt = ME.groundAt(T); MB.voxel = ME.brickVoxel(MB);
+      ({ T, mesh, grass } = hit);
+      T.groundAt = ME.groundAt(T);
       ME.log("CACHE", { hit: true });
+      early = ME.bakeModels.start(st, pal, bakeOpts);
     } else {
-      const early = ME.bakeModels.start(st, pal, bakeOpts); // the model workers run during the terrain bake (#185)
+      early = ME.bakeModels.start(st, pal, bakeOpts); // the model workers run during the terrain bake (#185)
       T = await ME.bakeTerrain(st, pal);
       ME.log("TERRAIN", T.stats); ME.stage("terrain");
       mesh = await ME.greedyMesh(T); ME.stage("mesh");
-      MB = await ME.bakeModels(T, st, pal, bakeOpts, early);
-      ME.log("MODELS", MB.stats); ME.stage("models");
+      // (the grass before the models, so its materials are numbered before theirs on a hit too)
       grass = ME.bakeGrass(T, st, pal); ME.stage("grass");
-      ME.bakeCache.put(key, { palNames: pal.names, T: Object.assign({}, T, { groundAt: null }), mesh, MB: Object.assign({}, MB, { voxel: null }), grass });
+      // (the coarse grid copied: the model bake splats into it, and adds its splat again on a hit)
+      ME.bakeCache.later(tkey, { palNames: pal.names.slice(), T: Object.assign({}, T, { groundAt: null, coarse: T.coarse.slice(), splat: undefined }), mesh, grass });
     }
+    MB = await ME.bakeModels(T, st, pal, bakeOpts, early);
+    ME.log("MODELS", MB.stats); ME.stage("models");
     // A creature Art has no model for yet (G.CREATURE_MODELS) wears the model of its Defs `standIn`, scaled
     // by its `look` and washed in its own colour (G.creatureMark); the rules get the scaled sizes.
     {
@@ -26305,6 +26489,7 @@ function MG_SFX(L) {
     R.applyPreset(ME.q("preset", "cosy"));
     ME.progress("compiling shaders", 0.9); await ME.tick(); ME.stage("setup");
     await R.init(); ME.stage("init");
+    ME.bakeCache.flush(tkey); // (not awaited: the parts go in one at a time, the status line counts them)
     const critters = new ME.Critters(T, st, MB, R.lightList, { beamAt: (i, t) => R.beamAt(i, t) }); // (the critters follow the drifting sun pools)
     // loose voxels: creatures burst into theirs, uprooted plants crumble, the fallen Heart Tree falls apart;
     // splashes on the water, digs and collapses in the sand banks
