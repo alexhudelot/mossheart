@@ -16042,7 +16042,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.53.0", name: "Mossheart", commit: "1a3330d" };
+  G.VERSION = { v: "0.54.0", name: "Mossheart", commit: "6d1233d" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -21199,10 +21199,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       return null;
     }
     // the map cell under a canvas pixel, or null
-    // (opt.plants, for a tap: through R.pick first, so a tap on a plant's leaves, above the ground behind
-    // it, is that plant's tile; the view's own instances only, so a creature or a ghost in the way takes
-    // nothing; leaves hanging over a neighbour tile are their plant's, within 1 tile)
+    // (the ground tile under the pixel comes first: a tile holding a plant is that plant, whatever stands
+    // in front, so a plant behind a taller one is a tap on its own tile. opt.plants, for a tap: then through
+    // R.pick, so a tap on a plant's leaves above an empty tile behind it is that plant's tile; the view's own
+    // instances only, so a creature or a ghost in the way takes nothing; leaves hanging over a neighbour tile
+    // are their plant's, within 1 tile)
     cellAt(px, py, cam, w, h, opt = {}) {
+      const p = this.pick(px, py, cam, w, h), g = p ? [Math.floor(p[0]), Math.floor(p[1])] : null;
+      if (g && this.game.towerAt(g[0], g[1])) return g;
       const R = this.R, o = opt.plants && R && R.pick && R.out;
       const hit = o && R.pick((px * o[0]) / w, (py * o[1]) / h, cam, { accept: (L) => L === this }); // (R.pick: in R.out's pixels; a hill in front hides the plant)
       if (hit && hit.kind === "instance") {
@@ -21211,8 +21215,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (t && this.game.towerAt(t.cx, t.cy) === t && Math.max(Math.abs(t.cx - hit.tile[0]), Math.abs(t.cy - hit.tile[1])) <= 1) return [t.cx, t.cy];
         if (this.game.towerAt(hit.tile[0], hit.tile[1])) return hit.tile;
       }
-      const p = this.pick(px, py, cam, w, h);
-      return p ? [Math.floor(p[0]), Math.floor(p[1])] : null;
+      return g;
     }
   }
   G.GameView = GameView;
@@ -26766,11 +26769,25 @@ function MG_SFX(L) {
     const toCanvas = (e) => { const r = canvas.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * canvas.width, ((e.clientY - r.top) / r.height) * canvas.height]; };
     const cellAt = (e, o) => { const [px, py] = toCanvas(e); return scene.cellAt(px, py, cam, canvas.width, canvas.height, o); };
     let down = null;
-    canvas.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY, t: ME.now(), id: e.pointerId }; audio && audio.unlock(); });
+    // a finger shows the tile it will take while it is down (the mouse's hover does it before the click);
+    // a drag or a second finger turns it into a pan and the tile shown before comes back
+    let pressShown = null; // (the hover from before the press, while the press's tile is shown)
+    const pressBack = () => { if (pressShown) { scene.hover = pressShown.hover; pressShown = null; } };
+    canvas.addEventListener("pointerdown", (e) => {
+      pressBack(); // (a second finger: a pinch)
+      down = { x: e.clientX, y: e.clientY, t: ME.now(), id: e.pointerId }; audio && audio.unlock();
+      if (e.pointerType !== "mouse" && S.phase !== G.Phase.GAME_OVER && S.phase !== G.Phase.CHOOSE_BOON) {
+        const c = cellAt(e, { plants: byLeaves() });
+        if (c) { pressShown = { hover: scene.hover }; scene.hover = { cell: c }; }
+      }
+    });
+    canvas.addEventListener("pointermove", (e) => { if (pressShown && down && down.id === e.pointerId && Math.hypot(e.clientX - down.x, e.clientY - down.y) >= 10) pressBack(); });
+    canvas.addEventListener("pointercancel", () => { pressBack(); down = null; });
     canvas.addEventListener("pointerup", (e) => {
       if (!down || down.id !== e.pointerId) return;
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y), dt = ME.now() - down.t;
       down = null;
+      pressBack(); // (a tap shows its own tile, as before)
       if (moved < 10 && dt < 600) tap(e);
     });
     // the mouse hover is the click's preview, so it picks as the click does (a plant's leaves are that plant,
