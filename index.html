@@ -15687,7 +15687,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.46.0", name: "Mossheart", commit: "b155791" };
+  G.VERSION = { v: "0.47.0", name: "Mossheart", commit: "69d5222" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -15708,10 +15708,12 @@ function MA_DSP() {
      add-and-read only. Never put the service_role or secret key here.
    proxy: the base URL of the small proxy in server/vercel (https://<name>.vercel.app), which keeps the board
      in a file of the Pages repo. Its GitHub token stays in the Vercel project: never put a token here.
+   pages: with the proxy, the board file on GitHub Pages (the proxy's GITHUB_BOARD_REPO, served from main): the
+     board is read from there, with no proxy call, and from the proxy while it is missing.
    All left empty, the game has no leaderboard and plays as it always has. */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.LEADERBOARD = { url: "", key: "", proxy: "https://lab-vercel-brown.vercel.app" };
+  G.LEADERBOARD = { url: "", key: "", proxy: "https://lab-vercel-brown.vercel.app", pages: "https://alexhudelot.github.io/mossheart-board/leaderboard.json" };
 })();
 
 </script>
@@ -22014,7 +22016,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
    one garden's, a tab each), on one of two backends the user set up (README.md, "Leaderboard"), through
    fetch, no client library: a Supabase project's REST API (the schema is server/leaderboard.sql, behind: no
    recap and no run log there), or else the small proxy in server/vercel, which keeps the board in a file of
-   the Pages repo. The backend is G.LEADERBOARD (src/leaderboard.config.js), Supabase first if its url and key
+   the Pages repo (or, with its board in a repo of its own, reads it straight from GitHub Pages:
+   prows below). The backend is G.LEADERBOARD (src/leaderboard.config.js), Supabase first if its url and key
    are set, else the proxy if set; with neither, or ?board=0, the board is off: no button shows it, the game
    over card has no form, and nothing is fetched. Offline, every call resolves to { ok: false, why:
    "offline" } after at most 8 s: nothing here throws.
@@ -22041,9 +22044,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
    (mossheart.nickname), and so is the best this device has on the board per garden (mossheart.board). */
 (function () {
   const G = (window.MG = window.MG || {});
-  const DEV_KEY = "mossheart.device", NICK_KEY = "mossheart.nickname", BEST_KEY = "mossheart.board";
+  const DEV_KEY = "mossheart.device", NICK_KEY = "mossheart.nickname", BEST_KEY = "mossheart.board", MINE_KEY = "mossheart.mine";
   const TIMEOUT = 8000, TOP = 10, BOARD_TOP = 20;
   const GARDEN = /^(momiji|fernglass|cornmoon)$/, KEY = /^(all|momiji|fernglass|cornmoon)$/; // (the gardens the schema knows)
+  const GARDENS = ["momiji", "fernglass", "cornmoon"];
   // the plants and creatures the proxy takes (server/vercel/lib/board.js: one not listed there fails the post)
   const TOWERS = ["thorn", "puff", "sun", "wisp", "briar", "toad", "moon", "lily"];
   const ENEMIES = ["grub", "beetle", "moth", "golem", "spirit", "snail", "bloat", "mite", "mender", "midge", "mole", "lichen", "mother", "crow"];
@@ -22053,13 +22057,15 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const put = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* storage blocked: kept for this page only */ } };
   const gardenName = (id) => (G.LEVELS && G.LEVELS[id] ? G.LEVELS[id].name : (G.LEVELS_SOON && G.LEVELS_SOON[id] ? G.LEVELS_SOON[id].name : id));
 
-  // the backend, or null (not ?board=0): { url, key } for Supabase (both set), else { proxy } (set)
+  // the backend, or null (not ?board=0): { url, key } for Supabase (both set), else { proxy, pages } (proxy
+  // set; pages the board file on GitHub Pages, an https URL or "")
   const cfg = () => {
     const c = G.LEADERBOARD || {}, base = (s) => String(s || "").trim().replace(/\/+$/, "");
     const url = base(c.url), key = String(c.key || "").trim(), proxy = base(c.proxy);
     if (new URLSearchParams(location.search).get("board") === "0") return null;
     if (url && key && /^https?:\/\//.test(url)) return { url, key };
-    if (proxy && /^https?:\/\//.test(proxy)) return { proxy };
+    const pages = String(c.pages || "").trim();
+    if (proxy && /^https?:\/\//.test(proxy)) return { proxy, pages: /^https:\/\//.test(pages) ? pages : "" };
     return null;
   };
 
@@ -22164,17 +22170,43 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   });
   // the proxy: a garden's rows, or every garden's (key "all"; the first 100 each, the GET cached 30 s at the
   // edge), kept here 5 s so that one fill asks once, and after a submit the rows its answer carries (fresher
-  // than the edge's) for 35 s
+  // than the edge's) for 35 s. With c.pages, the rows come from the board file on GitHub Pages instead (the
+  // proxy writes it to a repo of its own, GITHUB_BOARD_REPO), sorted and ranked here as the proxy does
+  // (server/vercel/lib/board.js, parse and publicRows), and the proxy is asked only when that fails (no file
+  // yet, a 404 before the setup, offline). Pages lags a write by a minute or more, so the row this device
+  // just put there is kept (mossheart.mine) and shown over the Pages rows until they have it, 30 min at most.
+  const order = (a, b) => b.wave - a.wave || (a.at < b.at ? -1 : a.at > b.at ? 1 : 0) || (a.tag < b.tag ? -1 : a.tag > b.tag ? 1 : 0);
+  const rowOk = (r) => r && typeof r === "object" && typeof r.nickname === "string" && r.wave >= 1 && r.wave <= 500 && r.wave === Math.floor(r.wave) && typeof r.tag === "string" && /^[a-f0-9]{12}$/.test(r.tag) && typeof r.at === "string";
+  const pageRows = (data, key) => {
+    const g = data && typeof data === "object" && data.gardens && typeof data.gardens === "object" ? data.gardens : null;
+    if (!g) return null;
+    const one = (id) => { const seen = new Set(); return (Array.isArray(g[id]) ? g[id] : []).filter(rowOk).sort(order).filter((r) => !seen.has(r.tag) && seen.add(r.tag)).slice(0, 100).map((r) => Object.assign({}, r, { garden: id })); };
+    return key === "all" ? [].concat(...GARDENS.map(one)).sort(order).slice(0, 100) : one(key);
+  };
+  const kept = () => { try { const k = JSON.parse(get(MINE_KEY) || "{}"); return k && typeof k === "object" ? k : {}; } catch (e) { return {}; } };
+  const keepMine = (garden, row) => { const k = kept(); k[garden] = { row, until: Date.now() + 30 * 60000 }; put(MINE_KEY, JSON.stringify(k)); };
+  const overlay = (rows, key) => {
+    const k = kept(), now = Date.now();
+    let out = rows, gone = false;
+    for (const id of Object.keys(k)) {
+      const r = k[id] && k[id].row;
+      if (!GARDEN.test(id) || !r || !rowOk(r) || !(now < k[id].until) || rows.some((x) => x.garden === id && x.tag === r.tag && x.wave >= r.wave)) { delete k[id]; gone = true; continue; }
+      if (key === "all" || key === id) out = out.filter((x) => !(x.garden === id && x.tag === r.tag)).concat([Object.assign({}, r, { garden: id })]);
+    }
+    if (gone) put(MINE_KEY, JSON.stringify(k));
+    return out === rows ? rows : out.sort(order).slice(0, 100);
+  };
   const proxyMem = {};
   const prows = (key) => {
-    const m = proxyMem[key], c = cfg();
-    if (m && m.base === c.proxy && Date.now() < m.until) return m.p;
-    const p = req(`${c.proxy}/api/scores?garden=${key}`, { headers: { Accept: "application/json" }, cache: "default" }).then((r) => {
+    const m = proxyMem[key], c = cfg(), base = c.proxy + " " + c.pages;
+    if (m && m.base === base && Date.now() < m.until) return m.p;
+    const viaPages = c.pages ? req(c.pages, { cache: "no-cache" }).then((r) => { const rows = r.ok ? pageRows(r.data, key) : null; return rows && { ok: true, rows: overlay(rows, key).map(norm) }; }) : Promise.resolve(null);
+    const p = viaPages.then((got) => got || req(`${c.proxy}/api/scores?garden=${key}`, { headers: { Accept: "application/json" }, cache: "default" }).then((r) => {
       if (r.ok && r.data && Array.isArray(r.data.rows)) return { ok: true, rows: r.data.rows.map(norm) };
       if (proxyMem[key] && proxyMem[key].p === p) delete proxyMem[key]; // (a failure is not kept)
       return { ok: false, why: r.ok ? "error" : r.why };
-    });
-    proxyMem[key] = { base: c.proxy, until: Date.now() + 5000, p };
+    }));
+    proxyMem[key] = { base, until: Date.now() + 5000, p };
     return p;
   };
   const viaProxy = () => { const c = cfg(); return !!(c && c.proxy); };
@@ -22232,11 +22264,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const r = await req(`${cfg().proxy}/api/score`, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: JSON.stringify(p) });
       const d = r.data || {};
       if (!r.ok || !d.ok) return { ok: false, why: r.ok ? "error" : r.why };
-      const kept = d.kept !== false, base = cfg().proxy, until = Date.now() + 35000;
-      if (kept) keepBest(run.garden, body.wave);
+      const c = cfg(), isKept = d.kept !== false, base = c.proxy + " " + c.pages, until = Date.now() + 35000;
+      if (isKept) keepBest(run.garden, body.wave);
+      const t = isKept && c.pages ? await tag() : null;
+      if (t) keepMine(run.garden, { nickname, wave: body.wave, tag: t, at: new Date().toISOString(), version: body.version, maxDew: p.maxDew, boons: levels(p.boons), towers: p.towers, diedTo: p.diedTo });
       if (Array.isArray(d.rows)) proxyMem[run.garden] = { base, until, p: Promise.resolve({ ok: true, rows: d.rows.map(norm) }) };
       if (Array.isArray(d.all)) proxyMem.all = { base, until, p: Promise.resolve({ ok: true, rows: d.all.map(norm) }) };
-      return { ok: true, why: "", rank: d.rank | 0, kept };
+      return { ok: true, why: "", rank: d.rank | 0, kept: isKept };
     }
     const r = await call("scores", { method: "POST", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(body) });
     if (r.ok) keepBest(run.garden, body.wave);
