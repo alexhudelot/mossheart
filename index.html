@@ -183,6 +183,7 @@ body.alm-open #dewbar { visibility: hidden; } /* (the bulb stays, under the alma
 .coach { position: fixed; left: 50%; top: calc(86px + var(--st)); transform: translateX(-50%); width: min(460px, calc(100vw - 32px)); padding: 12px 14px 10px;
   color: var(--ink); font-size: calc(16px * var(--ts)); display: none; pointer-events: auto; }
 .coach.show { display: block; }
+.coach { z-index: 3; } /* (in front of the card, hud.js inspect: the tip is what to read first) */
 body.coaching #hint { display: none !important; }
 .coachtxt { margin: 0 0 8px; line-height: 1.35; }
 .coachrow { display: flex; align-items: center; gap: 8px; }
@@ -494,6 +495,8 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   /* (as wide as the gap between the right-hand buttons, the music button and the turns, and their twin on the left) */
   #hint { top: auto; bottom: calc(168px + 128px * var(--ts) + var(--sb)); font-size: calc(17px * var(--ts)); width: calc(100vw - 112px - 2 * max(var(--sl), var(--sr))); }
   .coach { top: auto; bottom: calc(168px + 128px * var(--ts) + var(--sb)); font-size: calc(14.5px * var(--ts)); padding: 10px 12px 8px; }
+  /* (a card open at the bottom covers the tip's place: the tip goes to the top, under the readouts, over the field) */
+  body:has(#inspector.show:not(.seedinfo)) .coach { top: calc(96px + var(--st)); bottom: auto; }
   /* (the two bottom rows: the seeds in a grid, a garden's five three over two, eight five over three, and the
      wave button in the slot after them, hud.js's --seedcols; nothing floats over the field above them. They sit 11 px
      up, the build's tag, #version, under the wave button) */
@@ -13227,6 +13230,350 @@ fn boxOf(V: Vox) -> Box {
 })();
 
 </script>
+<script>/* ../MossheartEngine/content/cornmoon.js */
+/* Cornmoon, Mossheart's third garden (docs/decisions/2026-10-24-corn-moon.md): a walled field under the bell
+   jar at night. A cart track runs through tall grass and corn that lean in the wind, past a scarecrow with a
+   lantern on his arm, down to a drainage ditch with a timber footbridge and a pumpkin patch by the Heart Tree.
+   The creatures come in by the field gate at the top and by a second, east gate onto the same track. This
+   file holds the level's part of the Mossheart content pack:
+     ME.content.kinds       cmtrack (the cart track), cmwall (the field's turf bank over fieldstone), cmmeadow,
+                            cmstubble (build tiles), cmcorn (furrowed loam under the corn), cmtallgrass,
+                            cmpatch (the pumpkin patch's dark soil), cmditch (the ditch's still, dark water)
+     window.MODELS          stamps cm_gate (two stone pillars and a timber gate; o.swing, the side it opens to,
+                            o.open 0-1), cm_bridge, cm_fence, cm_hay; volumes cm_corn and cm_tallgrass (o.w 1 or
+                            2 tiles; they sway hard), cm_scarecrow, cm_lantern (a pole with a hung lantern),
+                            cm_pumpkin (o.carved: a face glowing on +x), cm_apple (a small apple tree)
+     ME.content.maps.cornmoon       the v1 map (plain data), with game: { route, spawn, heart, lane, build,
+                                    bridges }; route[1] and spawn2 are the east gate's way in
+     ME.content.mapLight.cornmoon   its light, { L, light, hd, look }: a low cold moon in the south-east, pale
+                                    beams on the track and the corn, a blue night fog instead of the valley's
+                                    warm haze; look is the night the design asks of Engine (E1, E2)
+   The ramps reach the palette through ME.content.addMaterials (critter-models.js, ME.content.ramps); earth
+   tones are explicit lists, dark to light, so no shade hue-shifts them. The map was generated once (a field
+   inside an octagon wall, terraced down from the gate to the ditch) and written out as rows, so its rows can
+   be edited by hand. game.route is the walkers' centre line, one tile of each 2-tile track. */
+(function () {
+  const ME = window.ME, P = window.PX, { S, E, C, B, Y } = P.prim, M = window.MODELS, CT = (ME.content = ME.content || {}), TAU = Math.PI * 2;
+  const WIND = ME.WIND_DIR || [0.85, -0.527];
+
+  // ---------------------------------------------------------------- materials
+  CT.ramps = Object.assign(CT.ramps || {}, {
+    // the ground: the track's loam and clods, the stubble, the patch's soil, the turf and the field stones
+    cmLoam: ["#2e2824", "#3a332d", "#463e36", "#534940", "#60554a", "#6d6155", "#7a6d60", "#877a6c"],
+    cmClod: ["#4e4538", "#5d5344", "#6c6150", "#7b6f5d", "#8a7d6a", "#998c78", "#a89a86"],
+    cmStubble: ["#5a5440", "#6c654c", "#7e7658", "#908765", "#a29872", "#b3a980", "#c3b98f", "#d2c89e"],
+    cmPatch: ["#2a2420", "#352d27", "#40372f", "#4b4137", "#574b40", "#625549"],
+    cmMeadow: ["#4a6a48", 7, 0.14, 0.7, 0.12], cmMeadow2: ["#3a5440", 6, 0.1, 0.6, 0.12], cmBank: ["#43603f", 6, 0.12, 0.65, 0.12],
+    cmFieldstone: ["#3e4248", "#4b5057", "#595e66", "#676c74", "#757a82", "#83888f", "#91969c", "#a0a4a9"],
+    // the corn and the grass, cool greens and pale straw under the moon
+    cmLeaf: ["#2e4436", "#3a5242", "#47604e", "#566e5a", "#667d68", "#779078", "#89a289", "#9cb39a"],
+    cmLeafDk: ["#233428", "#2c3f32", "#36493c", "#405446", "#4c6052", "#596c5e"],
+    cmTassel: ["#4a4532", "#5e583f", "#736c4d", "#88805c", "#9d956d", "#b1a97f", "#c5bd92", "#d8d0a4"],
+    cmHusk: ["#4c4a34", "#5f5d40", "#73714d", "#88855c", "#9c996c", "#b0ad7e", "#c2bf90"],
+    cmGrass: ["#3c5444", 7, 0.14, 0.72, 0.1], cmGrassTip: ["#8a9c8a", 5, 0.4, 0.92, 0.05], cmSeed: ["#a89e78", 4, 0.35, 0.85, 0.05],
+    // the pumpkins (and the candle in the carved ones), the weathered timber, the scarecrow's old coat, the apple tree
+    cmPumpkin: ["#7a3010", "#94401a", "#ae5222", "#c4652c", "#d67a38", "#e49048"], cmPumpkinDk: ["#5e2a12", "#723418", "#863f1e", "#9a4b26"],
+    cmPumpkinGlow: ["#f08020", "#f49a38", "#f8b458", "#fcd080"],
+    cmTimber: ["#4c4c48", "#5c5b56", "#6c6a64", "#7c7a72", "#8c8a81", "#9c9a90", "#acaa9f"],
+    cmCoat: ["#26324e", "#2e3c5c", "#38486a", "#435478", "#4f6186", "#5c6e92"],
+    cmAppleLeaf: ["#2c4834", 7, 0.1, 0.6, 0.25], cmApple: ["#6a1a1a", "#821f20", "#9a2a26", "#b03a30", "#c24c3a"],
+  });
+  CT.mats = Object.assign(CT.mats || {}, {
+    cmPumpkinGlow: { em: 1, flat: 1 },
+    cmLeaf: { wrap: 0.6 }, cmLeafDk: { wrap: 0.6 }, cmTassel: { wrap: 0.5 }, cmGrass: { wrap: 0.6 }, cmGrassTip: { wrap: 0.6 }, cmAppleLeaf: { wrap: 0.6 },
+  });
+  Object.assign(CT.materialClass = CT.materialClass || {}, {
+    cmMeadow: "MOSS", cmMeadow2: "MOSS", cmBank: "MOSS", cmFieldstone: "ROCK", cmClod: "ROCK", cmTimber: "BARK",
+    cmLeaf: "FOLIAGE", cmLeafDk: "FOLIAGE", cmTassel: "FOLIAGE", cmHusk: "FOLIAGE", cmGrass: "FOLIAGE", cmGrassTip: "FOLIAGE", cmSeed: "FOLIAGE", cmAppleLeaf: "FOLIAGE",
+  });
+  CT.sunShadeHalf = (CT.sunShadeHalf || []).concat(["cmLeaf", "cmAppleLeaf"]);
+  // grass tufts grow on the meadow too
+  if (CT.grass && CT.grass.ground) CT.grass.ground.push("cmMeadow", "cmMeadow2");
+
+  // ---------------------------------------------------------------- kinds
+  Object.assign(CT.kinds = CT.kinds || {}, {
+    // the cart track: rutted loam with clods, the meadow creeping in from the sides
+    cmtrack: { recipe: "lane", top: "cmLoam", stones: "cmClod", edge: "cmMeadow", drape: ["cmMeadow", "cmMeadow2"], overhang: "cmMeadow", under: "rock" },
+    // the field's wall: a turf bank over fieldstone
+    cmwall: { recipe: "layer", top: "cmBank", mottle: "cmFieldstone", mottleK: 0.35, depth: 0.1, under: "cmFieldstone" },
+    // the build tiles: the meadow (grass tufts) and the stubble of a cut strip
+    cmmeadow: { recipe: "carpet", top: "cmMeadow", mottle: "cmMeadow2", drape: ["cmMeadow", "cmMeadow2"], overhang: "cmMeadow", under: "rock", grass: true },
+    cmstubble: { recipe: "layer", top: "cmStubble", mottle: "cmClod", mottleK: 0.25, depth: 0.1, under: "rock" },
+    // under the corn: loam with a furrow of weeds down each tile (a stripe along x); under the tall grass, the
+    // darker meadow; the pumpkin patch's soil
+    cmcorn: { recipe: "layer", top: "cmLoam", stripe: { mat: "cmMeadow2", width: 0.2 }, depth: 0.1, under: "rock" },
+    cmtallgrass: { recipe: "carpet", top: "cmMeadow2", mottle: "cmMeadow", drape: ["cmMeadow", "cmMeadow2"], overhang: "cmMeadow", under: "rock", grass: true },
+    cmpatch: { recipe: "layer", top: "cmPatch", mottle: "cmLoam", mottleK: 0.3, depth: 0.15, under: "rock" },
+    // the ditch: still, dark water at its banks' foot, a bright moon glint and few caustics
+    cmditch: Object.assign({}, CT.kinds.water, {
+      surface: 0, clarity: 0.6, tint: [0.02, 0.06, 0.14], absorb: 1.2, calm: 0.9, glint: 1.6, caustics: 0.4,
+      bank: "cmMeadow", drape: ["cmMeadow", "cmMeadow2"], overhang: "cmMeadow",
+    }),
+  });
+  // the wall's banks are laid and keep straight lines; the meadow and the tall grass sprawl like the moss
+  CT.edgeRound = Object.assign(CT.edgeRound || {}, { kinds: Object.assign((CT.edgeRound && CT.edgeRound.kinds) || {}, { cmwall: 0.05 }) });
+  if (CT.edgeBreak) CT.edgeBreak.kinds = Object.assign(CT.edgeBreak.kinds || {}, { cmwall: 0, cmmeadow: 0.15, cmtallgrass: 0.15 });
+
+  // ---------------------------------------------------------------- models
+  // fernglass.js's conventions: tile units, the anchor at the ground centre, Z up; a stamp's source joins the
+  // bake cache key
+  const model = (name, fn) => { M[name] = fn; (ME.ASSET_BY = ME.ASSET_BY || {})[name] = name + String(fn); ME.ASSET_SRC = (ME.ASSET_SRC || "") + ME.ASSET_BY[name]; };
+
+  // The field gate: two fieldstone pillars on the wall either side of the track (model y ±1.15) with caps,
+  // and a gate of timber boards in two leaves hinged on them. o.swing (1 or -1) is the side of model x the
+  // leaves open to (into the field); o.open from 0 (shut) to 1 (open about 75°). Anchored on the track.
+  model("cm_gate", (o = {}) => {
+    const p = [], sw = o.swing || 1, th = (o.open == null ? 1 : o.open) * 1.3, W = 0.9;
+    for (const s of [-1, 1]) {
+      p.push(B([0, s * 1.15, 0.72], [0.2, 0.2, 0.72], 0.03, "cmFieldstone"), B([0, s * 1.15, 1.48], [0.24, 0.24, 0.05], 0.02, "cmFieldstone"));
+      const hx = 0, hy = s * 0.93, dx = Math.sin(th) * sw, dy = -s * Math.cos(th), at = (u, z) => [hx + dx * u, hy + dy * u, z];
+      for (let i = 0; i < 5; i++) { const u = 0.08 + i * 0.19, top = 1.0 + 0.06 * Math.sin((i / 4) * Math.PI); p.push(C(at(u, 0.12), at(u, top), 0.045, 0.045, "cmTimber")); }
+      for (const z of [0.3, 0.85]) p.push(C(at(0.02, z), at(W, z), 0.035, 0.035, "cmTimber"));
+      p.push(C(at(0.06, 0.32), at(W - 0.04, 0.83), 0.03, 0.03, "cmTimber"));
+      for (const z of [0.3, 0.85]) p.push(C([0, s * 0.96, z], [0, s * 0.9, z], 0.04, 0.04, "iron"));
+    }
+    return { prims: p, r: 1.4, h: 1.6, k: 1, detail: (x, y, z, m) => (m === "cmFieldstone" && z < 1.4 && P.hash(Math.floor(z * 7), Math.floor((x + y) * 5), 0, 9) < 0.12 ? "cmBank" : m) };
+  });
+
+  // The ditch's footbridge: weathered timber planks on two log stringers, a handrail on one side. Spans its
+  // model x (o.span the half length). Anchored at the middle, on the banks' height.
+  model("cm_bridge", (o = {}) => {
+    const p = [], X0 = o.span || 1.45, A = 0.18, zf = (x) => A * (1 - (x / X0) ** 2), N = Math.round((11 * X0) / 1.45), YW = 0.82;
+    for (let i = 0; i < N; i++) {
+      const x0 = -X0 + (i * 2 * X0) / N, x1 = x0 + (2 * X0) / N, xm = (x0 + x1) / 2, ph = Math.atan2(zf(x1) - zf(x0), x1 - x0), w = YW - 0.04 * P.hash(i, 1, 0, 5);
+      p.push(B([xm, 0.03 * (P.hash(i, 2, 0, 5) - 0.5), zf(xm) + 0.02], [X0 / N - 0.01, w, 0.03], 0.006, "cmTimber", { R: P.rot("y", -ph) }));
+      for (const y of [-0.55, 0.55]) p.push(C([x0, y, zf(x0) - 0.06], [x1, y, zf(x1) - 0.06], 0.06, 0.06, "bark"));
+      p.push(C([x0, YW, zf(x0) + 0.5], [x1, YW, zf(x1) + 0.5], 0.03, 0.03, "cmTimber"));
+    }
+    for (const x of [-X0, 0, X0]) p.push(C([x, YW, zf(x) - 0.05], [x, YW, zf(x) + 0.52], 0.035, 0.035, "cmTimber"));
+    return { prims: p, r: 1.0, h: 0.75, k: 1 };
+  });
+
+  // A split-rail fence panel along model x, a tile long, a little askew. Anchored on the ground.
+  model("cm_fence", (o = {}) => {
+    const h = (i) => P.hash(o.seed || 1, i, 0, 7), p = [];
+    for (const x of [-0.45, 0.45]) p.push(C([x, 0, 0], [x + 0.03 * (h(x > 0 ? 1 : 2) - 0.5), 0, 0.62], 0.05, 0.04, "cmTimber"));
+    p.push(C([-0.5, 0, 0.24 + 0.03 * h(3)], [0.5, 0, 0.22 + 0.03 * h(4)], 0.035, 0.035, "cmTimber"), C([-0.5, 0, 0.5], [0.5, 0, 0.47 + 0.05 * h(5)], 0.035, 0.035, "cmTimber"));
+    return { prims: p, r: 0.55, h: 0.65, k: 1 };
+  });
+
+  // A hay bale bound with two strings, a loose sheaf leaning on it. Anchored on the ground.
+  model("cm_hay", () => {
+    const p = [B([0, 0, 0.2], [0.36, 0.22, 0.2], 0.06, "cmTassel"), C([0.32, 0.3, 0.02], [0.24, 0.24, 0.42], 0.08, 0.05, "cmStubble")];
+    return { prims: p, r: 0.5, h: 0.45, k: 1, detail: (x, y, z, m) => (m === "cmTassel" && Math.abs(Math.abs(x) - 0.18) < 0.025 ? "cmTimber" : m === "cmTassel" && P.hash(Math.floor(x * 20), Math.floor(y * 20), Math.floor(z * 20), 3) < 0.3 ? "cmStubble" : m) };
+  });
+
+  // Corn: o.w 2 is a 2×2-tile stand of four rows of four stalks (the anchor on the corner the four tiles
+  // share), o.w 1 one tile of two by two. Each stalk stands 1.25-1.55 with three arching leaves, a tassel and
+  // most an ear in its husk. It sways (CT.sway), hard.
+  model("cm_corn", (o = {}) => {
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), w = o.w || 1, p = [], at = w > 1 ? [-0.75, -0.25, 0.25, 0.75] : [-0.25, 0.25];
+    let j = 0;
+    for (const y0 of at) for (const x0 of at) {
+      const i = j++, x = x0 + (h(i, 1) - 0.5) * 0.14, y = y0 + (h(i, 2) - 0.5) * 0.12, H = 1.25 + 0.3 * h(i, 3), tx = x + (h(i, 4) - 0.5) * 0.06, ty = y + (h(i, 5) - 0.5) * 0.06;
+      p.push(C([x, y, 0], [(x + tx) / 2, (y + ty) / 2, H * 0.55], 0.05, 0.045, "cmLeaf"), C([(x + tx) / 2, (y + ty) / 2, H * 0.55], [tx, ty, H], 0.045, 0.035, "cmLeaf"));
+      for (let k = 0; k < 3; k++) {
+        const a = TAU * h(i, 10 + k), c = Math.cos(a), s = Math.sin(a), z0 = H * (0.3 + 0.2 * k), L = 0.3 + 0.12 * h(i, 20 + k), u = (z0 / H), bx = x + (tx - x) * u, by = y + (ty - y) * u;
+        const mid = [bx + c * L * 0.55, by + s * L * 0.55, z0 + 0.16];
+        p.push(C([bx, by, z0], mid, 0.038, 0.032, "cmLeaf"), C(mid, [bx + c * L, by + s * L, z0 + 0.02], 0.032, 0.02, "cmLeafDk"));
+      }
+      p.push(C([tx, ty, H], [tx + 0.04 * WIND[0], ty + 0.04 * WIND[1], H + 0.17], 0.035, 0.02, "cmTassel"));
+      if (h(i, 6) < 0.7) { const a = TAU * h(i, 7), c = Math.cos(a), s = Math.sin(a), z = H * (0.45 + 0.1 * h(i, 8)); p.push(C([x + c * 0.04, y + s * 0.04, z], [x + c * 0.12, y + s * 0.12, z + 0.2], 0.045, 0.032, "cmHusk")); }
+    }
+    return { prims: p, r: w > 1 ? 1.25 : 0.75, h: 1.75, k: 1, detail: (x, y, z, m) => (m === "cmLeaf" && z < 0.08 ? "cmLeafDk" : m) };
+  });
+
+  // Tall grass: o.w 2 a 2×2-tile sweep of eight tufts (the anchor on the shared corner), o.w 1 three tufts in
+  // one tile; six blades a tuft, 0.5-0.8 tall, all leaning downwind (ME.WIND_DIR, so set it unturned), pale at
+  // the tips and some with a seed head. It sways (CT.sway), harder than the corn.
+  model("cm_tallgrass", (o = {}) => {
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), w = o.w || 1, p = [], n = w > 1 ? 8 : 3, nx = -WIND[1], ny = WIND[0];
+    for (let t = 0; t < n; t++) {
+      const cx = w > 1 ? ((t % 4) - 1.5) * 0.42 + (h(t, 1) - 0.5) * 0.2 : (t - 1) * 0.28 + (h(t, 1) - 0.5) * 0.1, cy = w > 1 ? (Math.floor(t / 4) - 0.5) * 0.8 + (h(t, 2) - 0.5) * 0.3 : (h(t, 2) - 0.5) * 0.4;
+      for (let b = 0; b < 6; b++) {
+        const i = t * 8 + b, a = TAU * (b / 6 + 0.2 * h(i, 3)), r0 = 0.03 + 0.05 * h(i, 4), Hb = 0.5 + 0.3 * h(i, 5), lean = 0.14 + 0.16 * h(i, 6), side = (h(i, 7) - 0.5) * 0.12;
+        let q = [cx + Math.cos(a) * r0, cy + Math.sin(a) * r0, 0];
+        for (let k = 1; k <= 3; k++) {
+          const u = k / 3, d = lean * u * u, nq = [q[0] + 0, q[1] + 0, 0];
+          nq[0] = cx + Math.cos(a) * r0 * (1 + u) + WIND[0] * d + nx * side * u; nq[1] = cy + Math.sin(a) * r0 * (1 + u) + WIND[1] * d + ny * side * u; nq[2] = Hb * (u - 0.25 * lean * u * u);
+          p.push(C(q, nq, 0.045 - 0.006 * k, 0.04 - 0.006 * k, k === 3 ? "cmGrassTip" : "cmGrass")); q = nq;
+        }
+        if (h(i, 8) < 0.35) p.push(E([q[0] + WIND[0] * 0.03, q[1] + WIND[1] * 0.03, q[2] + 0.03], [0.035, 0.035, 0.07], "cmSeed"));
+      }
+    }
+    return { prims: p, r: w > 1 ? 1.2 : 0.6, h: 0.9, k: 1 };
+  });
+
+  // The scarecrow: a post and a crossbar in an old blue coat, straw at the cuffs and the collar, a sacking
+  // head under a wide straw hat, and a lantern hung from his left arm (model +y; its light is in the map's
+  // lights). Anchored on the ground.
+  model("cm_scarecrow", () => {
+    const p = [C([0, 0, 0], [0, 0, 1.45], 0.05, 0.045, "cmTimber"), C([0, -0.62, 1.12], [0, 0.62, 1.14], 0.035, 0.035, "cmTimber")];
+    p.push(E([0, 0, 0.98], [0.16, 0.2, 0.26], "cmCoat"), C([0, -0.12, 0.72], [0, -0.16, 0.55], 0.1, 0.12, "cmCoat"), C([0, 0.12, 0.72], [0, 0.17, 0.55], 0.1, 0.12, "cmCoat"));
+    for (const s of [-1, 1]) {
+      p.push(C([0, s * 0.12, 1.14], [0.02, s * 0.5, 1.09], 0.09, 0.07, "cmCoat"));
+      for (let k = 0; k < 3; k++) p.push(C([0.02, s * 0.5, 1.09], [0.02 + 0.05 * (k - 1), s * 0.62, 1.0 - 0.04 * k], 0.025, 0.012, "cmTassel"));
+    }
+    for (let k = 0; k < 4; k++) { const a = (k / 4) * TAU; p.push(C([0, 0, 1.2], [Math.cos(a) * 0.13, Math.sin(a) * 0.13, 1.17], 0.025, 0.012, "cmTassel")); }
+    p.push(S([0, 0, 1.36], 0.13, "sacking"), Y([0, 0, 1.48], 0.26, 0.012, "cmTassel"), C([0, 0, 1.48], [0, 0, 1.62], 0.11, 0.08, "cmTassel"), Y([0, 0, 1.53], 0.115, 0.02, "cmCoat"));
+    // the lantern on a cord from the left wrist
+    p.push(C([0.02, 0.56, 1.09], [0.02, 0.56, 0.96], 0.01, 0.01, "iron"), Y([0.02, 0.56, 0.95], 0.06, 0.012, "iron"), B([0.02, 0.56, 0.86], [0.05, 0.05, 0.08], 0.008, "lampGlow"));
+    for (const x of [-0.035, 0.075]) for (const y of [0.505, 0.615]) p.push(C([x, y, 0.78], [x, y, 0.94], 0.01, 0.01, "iron"));
+    return { prims: p, r: 0.7, h: 1.65, k: 1, detail: (x, y, z, m) => (m === "cmCoat" && z < 1.3 && P.hash(Math.floor(x * 12), Math.floor(y * 12), Math.floor(z * 12), 4) < 0.08 ? "sacking" : m) };
+  });
+
+  // A lantern pole: a timber post with a crook, a lantern hung from it at model +x 0.22 (its glass at z 1.05;
+  // its light is in the map's lights). Anchored on the ground.
+  model("cm_lantern", () => {
+    const p = [C([0, 0, 0], [0, 0, 1.3], 0.045, 0.04, "cmTimber"), C([0, 0, 1.28], [0.24, 0, 1.3], 0.03, 0.03, "cmTimber"), C([0.22, 0, 1.29], [0.22, 0, 1.17], 0.01, 0.01, "iron")];
+    p.push(Y([0.22, 0, 1.16], 0.07, 0.015, "iron"), C([0.22, 0, 1.15], [0.22, 0, 1.2], 0.08, 0.02, "iron"), B([0.22, 0, 1.05], [0.055, 0.055, 0.085], 0.008, "lampGlow"), Y([0.22, 0, 0.955], 0.065, 0.012, "iron"));
+    for (const x of [0.16, 0.28]) for (const y of [-0.06, 0.06]) p.push(C([x, y, 0.96], [x, y, 1.15], 0.01, 0.01, "iron"));
+    return { prims: p, r: 0.35, h: 1.35, k: 1 };
+  });
+
+  // A pumpkin: a ribbed squat sphere (o.sz) and a curled stem; o.carved cuts a face on model +x that glows
+  // from the candle inside (its light is in the map's lights). Anchored on the ground.
+  model("cm_pumpkin", (o = {}) => {
+    const s = o.sz || 1, R = 0.22 * s, Z = 0.15 * s, p = [E([0, 0, Z], [R, R, Z], "cmPumpkin"), C([0, 0, Z * 1.8], [0.03 * s, 0.02 * s, Z * 2.45], 0.035 * s, 0.022 * s, "cmLeafDk")];
+    return {
+      prims: p, r: R + 0.04, h: Z * 2.5, k: 1,
+      detail: (x, y, z, m, nx) => {
+        if (m !== "cmPumpkin") return m;
+        if (o.carved && nx > 0.5) {
+          const dz = z - Z, ay = Math.abs(y);
+          if (dz > 0.02 * s && dz < 0.09 * s && Math.abs(ay - 0.08 * s) < (0.09 * s - dz) * 0.9) return "cmPumpkinGlow";
+          if (dz < -0.025 * s && dz > -0.085 * s && ay < 0.12 * s - (dz + 0.085 * s) * 0.6 && !(ay < 0.022 * s && dz > -0.055 * s)) return "cmPumpkinGlow";
+        }
+        return Math.cos(8 * Math.atan2(y, x)) > 0.72 ? "cmPumpkinDk" : m;
+      },
+    };
+  });
+
+  // A small apple tree: a crooked trunk, three limbs, a lumpy crown and red apples in it. It sways
+  // (CT.sway). Anchored on the ground.
+  model("cm_apple", (o = {}) => {
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), p = [C([0, 0, 0], [0.08, -0.04, 0.6], 0.1, 0.075, "bark"), C([0.08, -0.04, 0.6], [0.02, 0.02, 1.0], 0.075, 0.06, "bark")];
+    for (let k = 0; k < 3; k++) { const a = (k / 3) * TAU + 0.4; p.push(C([0.05, -0.01, 0.8], [Math.cos(a) * 0.42, Math.sin(a) * 0.42, 1.25], 0.05, 0.03, "bark")); }
+    for (let k = 0; k < 9; k++) {
+      const a = TAU * (k / 9 + 0.1 * h(k, 1)), r = k === 0 ? 0 : 0.3 + 0.15 * h(k, 2), c = [Math.cos(a) * r, Math.sin(a) * r, 1.35 + 0.25 * h(k, 3) + (k === 0 ? 0.2 : 0)];
+      p.push(E(c, [0.3, 0.3, 0.24], "cmAppleLeaf"));
+    }
+    for (let k = 0; k < 9; k++) { const a = TAU * h(k, 4), r = 0.48 + 0.08 * h(k, 5); p.push(S([Math.cos(a) * r, Math.sin(a) * r, 1.15 + 0.4 * h(k, 6)], 0.05, "cmApple")); }
+    return { prims: p, r: 0.85, h: 1.95, k: 1, detail: (x, y, z, m) => (m === "cmAppleLeaf" && P.hash(Math.floor(x * 14), Math.floor(y * 14), Math.floor(z * 14), 8) < 0.25 ? "cmLeafDk" : m) };
+  });
+
+  CT.volumeDeco = (CT.volumeDeco || []).concat(["cm_corn", "cm_tallgrass", "cm_scarecrow", "cm_lantern", "cm_pumpkin", "cm_apple"]);
+  CT.sway = Object.assign(CT.sway || {}, { cm_corn: [0.08, 0.03, 2.6], cm_tallgrass: [0.18, 0.07, 3.8], cm_scarecrow: [0.03, 0.01, 1.8], cm_apple: [0.04, 0.012, 2.1] });
+  // fireflies round the lanterns and the carved pumpkins (momiji.js's particles)
+  const ff = CT.particles && CT.particles.fireflies;
+  if (CT.particles) CT.particles.fireflies = (p) => (ff && ff(p)) || p.name === "cm_lantern" || (p.name === "cm_pumpkin" && !!p.o && !!p.o.carved);
+
+  // ---------------------------------------------------------------- the map
+  // The field inside an octagon wall (h 2.0 at the top, 1.0 down the sides), in four terraces down from the
+  // gate: the top field (1.5) with the corn and the scarecrow, the middle field (1.0), the low field (0.5)
+  // and, past the ditch (0) and its footbridge, the Heart Tree's meadow by the pumpkin patch (0.5). The track
+  // comes in at the north gate and zigzags down: west, south down the stairs, east along the middle field,
+  // south down the stairs to the low field, back west, round the west end, east along row 15 and south over
+  // the footbridge. The east gate lets onto the low field's track at row 11-12, which is
+  // the same track from x 18 on; route[1] is that way in.
+  //   _ outside   # wall   : track   . meadow (build tiles)   s stubble (build tiles)   c corn   g tall grass
+  //   p pumpkin patch   ~ ditch
+  CT.maps = CT.maps || {};
+  CT.maps.cornmoon = {
+    v: 1, id: "cornmoon", W: 24, H: 24, hStep: 0.5, floor: -3,
+    h: [
+      "000000044443344440000000", "000000443333333344000000", "000004433333333334400000", "000044333333333333440000",
+      "000443333333333333344000", "004433333333333333334400", "033222222222222222222330", "332222222222222222222233",
+      "322222222222222222222223", "322222222222222222222223", "322222222222222222222223", "211111111111111111111111",
+      "211111111111111111111111", "211111111111111111111112", "211111111111111111111112", "211111111111111111111112",
+      "221111111111111111111122", "022100000000000000001220", "002211111111111111112200", "000221111111111111122000",
+      "000022111111111111220000", "000002211111111112200000", "000000221111111122000000", "000000022222222220000000",
+    ],
+    kind: [
+      "_______####::####_______", "______##sss::...##______", "_____##.sss::..cc##_____", "____##:::::::..ccc##____",
+      "___##.:::::::..cccc##___", "__##..::.......cccc.##__", "_##...::.............##_", "##gg..:::::::::::::.cc##",
+      "#ggg..:::::::::::::.ccc#", "#ggg......cccc...::.ccc#", "#ggg......cccc...::.ccc#", "#...::::::::::::::::::::",
+      "#...::::::::::::::::::::", "#...::..............ggg#", "#...:::::::::..cccccggg#", "#...:::::::::..cccccggg#",
+      "##..sssssss::.......gg##", "_##.~~~~~~~~~~~~~~~~.##_", "__##.......::.......##__", "___##.ppp..........##___",
+      "____##ppp.........##____", "_____##..........##_____", "______##........##______", "_______##########_______",
+    ],
+    legend: { _: null, "#": "cmwall", ":": "cmtrack", ".": "cmmeadow", s: "cmstubble", c: "cmcorn", g: "cmtallgrass", p: "cmpatch", "~": "cmditch" },
+    // the ditch along row 17, wide enough to fill its tiles
+    water: [{ seg: [4.5, 17.5, 19.5, 17.5], r: 0.48 }],
+    props: [
+      // the two gates the creatures come in by, open: the north one and the east one
+      ["cm_gate", { swing: 1 }, 11, 0, { dx: 0.5, rot: 1 }],
+      ["cm_gate", { swing: -1 }, 23, 11, { dy: 0.5 }],
+      // the footbridge over the ditch where the track crosses it
+      ["cm_bridge", null, 11, 17, { dx: 0.5, dz: 0.5, rot: 1 }],
+      // the corn: 2×2 stands on their shared corners, single tiles to fill
+      ["cm_corn", { seed: 3, w: 2 }, 15, 2, { dx: 0.5, dy: 0.5, rot: 2 }], ["cm_corn", { seed: 1, w: 1 }, 17, 3, { rot: 0 }], ["cm_corn", { seed: 3, w: 2 }, 15, 4, { dx: 0.5, dy: 0.5, rot: 2 }],
+      ["cm_corn", { seed: 4, w: 2 }, 17, 4, { dx: 0.5, dy: 0.5, rot: 2 }], ["cm_corn", { seed: 3, w: 2 }, 20, 7, { dx: 0.5, dy: 0.5, rot: 2 }], ["cm_corn", { seed: 1, w: 1 }, 22, 8, { rot: 0 }],
+      ["cm_corn", { seed: 1, w: 2 }, 10, 9, { dx: 0.5, dy: 0.5, rot: 2 }], ["cm_corn", { seed: 2, w: 2 }, 12, 9, { dx: 0.5, dy: 0.5 }], ["cm_corn", { seed: 1, w: 2 }, 20, 9, { dx: 0.5, dy: 0.5, rot: 2 }],
+      ["cm_corn", { seed: 2, w: 1 }, 22, 9, { rot: 2 }], ["cm_corn", { seed: 2, w: 1 }, 22, 10, { rot: 0, flip: 1 }], ["cm_corn", { seed: 4, w: 2 }, 15, 14, { dx: 0.5, dy: 0.5, rot: 2 }],
+      ["cm_corn", { seed: 1, w: 2 }, 17, 14, { dx: 0.5, dy: 0.5 }], ["cm_corn", { seed: 2, w: 1 }, 19, 14, { rot: 2 }], ["cm_corn", { seed: 2, w: 1 }, 19, 15, { rot: 0 }],
+      // the tall grass, unturned so it all leans downwind
+      ["cm_tallgrass", { seed: 1, w: 2 }, 2, 7, { dx: 0.5, dy: 0.5 }], ["cm_tallgrass", { seed: 2, w: 1 }, 1, 8], ["cm_tallgrass", { seed: 2, w: 2 }, 1, 9, { dx: 0.5, dy: 0.5 }],
+      ["cm_tallgrass", { seed: 3, w: 1 }, 3, 9], ["cm_tallgrass", { seed: 3, w: 1 }, 3, 10], ["cm_tallgrass", { seed: 4, w: 2 }, 20, 13, { dx: 0.5, dy: 0.5 }],
+      ["cm_tallgrass", { seed: 1, w: 1 }, 22, 13], ["cm_tallgrass", { seed: 1, w: 1 }, 22, 14], ["cm_tallgrass", { seed: 3, w: 2 }, 20, 15, { dx: 0.5, dy: 0.5 }],
+      ["cm_tallgrass", { seed: 4, w: 1 }, 22, 15],
+      // the scarecrow by the top corn with the fence along it, the lantern poles by the track
+      ["cm_scarecrow", null, 14, 3], ["cm_fence", { seed: 1 }, 15, 3, { dx: -0.45, rot: 1 }], ["cm_fence", { seed: 2 }, 15, 4, { dx: -0.45, rot: 1 }], ["cm_fence", { seed: 3 }, 15, 5, { dx: -0.45, rot: 1 }],
+      ["cm_lantern", null, 13, 1], ["cm_lantern", null, 19, 13], ["cm_lantern", null, 13, 16], ["cm_lantern", null, 10, 18],
+      // the pumpkin patch, the hay and the apple tree by the Heart Tree's meadow
+      ["cm_pumpkin", { carved: true }, 6, 19], ["cm_pumpkin", { sz: 1.15 }, 8, 19], ["cm_pumpkin", { carved: true, sz: 0.9 }, 7, 20], ["cm_pumpkin", { sz: 0.8 }, 8, 20],
+      ["cm_hay", null, 8, 21], ["cm_apple", { seed: 1 }, 16, 19],
+      // stairs where the track steps down from the top field and to the low field
+      ["stairs", { H: 0.5, dir: "-y" }, 6, 6], ["stairs", { H: 0.5, dir: "-y" }, 7, 6], ["stairs", { H: 0.5, dir: "-y" }, 17, 11], ["stairs", { H: 0.5, dir: "-y" }, 18, 11],
+    ],
+    // the lights (in tiles): the lantern poles' glass, the scarecrow's lantern, the carved pumpkins' faces
+    lights: [
+      { p: [13.72, 1.5, 2.55], r: 2.2, col: [1.0, 0.74, 0.4], k: 1.9 }, { p: [19.72, 13.5, 1.55], r: 2.2, col: [1.0, 0.74, 0.4], k: 1.9 },
+      { p: [13.72, 16.5, 1.55], r: 2.2, col: [1.0, 0.74, 0.4], k: 1.9 }, { p: [10.72, 18.5, 1.55], r: 2.2, col: [1.0, 0.74, 0.4], k: 1.9 },
+      { p: [14.52, 4.06, 2.36], r: 1.8, col: [1.0, 0.74, 0.4], k: 1.6 },
+      { p: [6.78, 19.5, 0.68], r: 1.4, col: [1.0, 0.6, 0.25], k: 1.3 }, { p: [7.76, 20.5, 0.66], r: 1.3, col: [1.0, 0.6, 0.25], k: 1.2 },
+    ],
+    // Momiji's jar: the same island, drum, strata, glass and bake box
+    frame: {
+      type: "jar", c: [12, 12], r: 12, foot: 0.92, glassTop: 3.4,
+      strata: [{ top: -1.02, ramp: "pebble", ramp2: "pebble2", gap: "charcoal", tex: "pebbles", f: 6.5, wob: 0.08 }, { top: -0.9, ramp: "charcoal", tex: "grain", wob: 0.05 }, { top: -0.58, ramp: "sphag", tex: "fiber", wob: 0.12 }],
+    },
+    box: { o: [-1, -1, -2.5], size: [26, 26, 10] },
+    // The rules' data (the engine never reads it): the routes as polylines of tile corners (cells), route[0]
+    // from the north gate and route[1] from the east gate, joining it at (18, 12); the gates' points and the
+    // Heart Tree's centre in tiles; the walks; the build tiles (the corn, the tall grass and the patch are
+    // not); the wet cells the route crosses on the footbridge
+    game: {
+      route: [
+        [[12, 0], [12, 4], [7, 4], [7, 8], [18, 8], [18, 12], [5, 12], [5, 15], [12, 15], [12, 18]],
+        [[23, 12], [18, 12], [5, 12], [5, 15], [12, 15], [12, 18]],
+      ],
+      spawn: [12.0, 0.6], spawn2: [23.4, 12.0], heart: [12, 20], lane: ["cmtrack"], build: ["cmmeadow", "cmstubble"],
+      bridges: [[11, 17], [12, 17]],
+    },
+  };
+
+  // The light: a low cold moon in the south-east (shadows long across the rows), pale beams on the track and
+  // the corn, and a blue night fog, a darker vignette and cold beams over the valley's warm ones (style.hd).
+  // ME.content.mapLight[id] goes over the style's L, light and hd. Until Engine's night look (E1) lands, the
+  // scene keeps the style's dusk blend and backdrop.
+  const CANOPY = P.r4 && P.r4.CANOPY;
+  CT.mapLight = Object.assign(CT.mapLight || {}, {
+    cornmoon: {
+      L: [0.72, 0.4, 0.56],
+      light: CANOPY ? CANOPY({ shade: 0.52, pool: 0.42, beams: [
+        { x: 12.0, y: 2.5, r: 1.0, k: 0.85, len: 24 }, { x: 16.5, y: 3.5, r: 1.2, k: 0.9, len: 24 }, { x: 11.0, y: 8.0, r: 1.2, len: 24 },
+        { x: 21.0, y: 9.0, r: 1.1, k: 0.9, len: 24 }, { x: 10.0, y: 12.0, r: 1.2, k: 0.95, len: 24 }, { x: 16.5, y: 14.5, r: 1.1, k: 0.9, len: 24 },
+        { x: 12.0, y: 19.5, r: 1.0, k: 0.85, len: 24 },
+      ] }) : null,
+      hd: { bloom: 0.85, threshold: 0.84, radius: 6, haze: 0.08, fog: [12, 16, 30], vignette: 0.58, beamK: 0.66, beamW: 1.1, beamCol: [168, 196, 244], motes: 0 },
+      // the night look the design asks of Engine (E1, E2); nothing reads it yet
+      look: { sunCol: [0.62, 0.72, 1.0], backdrop: "night", windAz: -32, windK: 1.6 },
+    },
+  });
+})();
+
+</script>
 <script>/* ../MossheartEngine/content/critters.js */
 /* Ambient wildlife: butterflies, dragonflies, bees, songbirds, squirrels, frogs, koi, minnows, bunnies,
    snails, beetles and lantern moths. Each is a small state machine over the baked scene: ground heights from the
@@ -15203,7 +15550,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.38.0", name: "Mossheart", commit: "8bf2323" };
+  G.VERSION = { v: "0.39.0", name: "Mossheart", commit: "22417d2" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -15711,7 +16058,10 @@ function MA_DSP() {
        path: [[cx, cy], ...] in walking order, len, at(s) -> [X, Y, Z, dx, dy] (the road at distance s),
        lane: [[cx, cy], ...] the tiles across the lane (the path's included; the path when left out),
        sides, sideStep: the lane's reach each side of the road, a pair per sideStep (view/level.js; optional),
-       groundZ(X, Y), heart: [X, Y] } */
+       groundZ(X, Y), heart: [X, Y],
+       roads: [{ path, len, at, lane, sides, sideStep }, ...] one per entrance (optional; the fields above are
+       the first one's) }
+   A creature walks one road (Enemies.road); the roads meet before the Heart Tree. */
 (function () {
   const G = window.MG;
 
@@ -15719,24 +16069,34 @@ function MA_DSP() {
     constructor(level) {
       this.level = level;
       const W = (this.W = level.W), H = (this.H = level.H);
-      this.pathCells = level.path; this.laneCells = level.lane || level.path; this.len = level.len;
-      // the lane's widening, eased: each sample averaged over half a tile either way and read between
-      // samples, so a creature off the middle slides out where the lane widens instead of jumping (the user,
-      // 2026-10-24: twitchy movers; the step to a two-tile lane moved it sideways by up to 0.6 tile at once).
-      // The samples already narrow 0.75 tiles before the lane does (view/level.js), so half a tile stays inside.
-      const sides = level.sides, step = level.sideStep;
-      if (sides) {
+      this.pathCells = level.path; this.len = level.len;
+      // each road: its walk and the lane's widening, eased: each sample averaged over half a tile either way
+      // and read between samples, so a creature off the middle slides out where the lane widens instead of
+      // jumping (the user, 2026-10-24: twitchy movers; the step to a two-tile lane moved it sideways by up to
+      // 0.6 tile at once). The samples already narrow 0.75 tiles before the lane does (view/level.js), so half
+      // a tile stays inside.
+      const sideK = (sides, step) => {
+        if (!sides) return () => [1, 1];
         const n = sides.length / 2, r = Math.max(1, Math.round(0.5 / step)), sm = new Float32Array(n * 2);
         for (let k = 0; k < n; k++) for (let side = 0; side < 2; side++) {
           let a = 0, c = 0;
           for (let j = Math.max(0, k - r); j <= Math.min(n - 1, k + r); j++) { a += sides[j * 2 + side]; c++; }
           sm[k * 2 + side] = a / c;
         }
-        this.sideK = n < 2 ? () => [sm[0], sm[1]] : (s) => {
+        return n < 2 ? () => [sm[0], sm[1]] : (s) => {
           const f = Math.min(n - 1, Math.max(0, s / step)), i = Math.min(n - 2, Math.floor(f)), u = f - i, o = i * 2;
           return [sm[o] + (sm[o + 2] - sm[o]) * u, sm[o + 1] + (sm[o + 3] - sm[o + 1]) * u];
         };
-      } else this.sideK = () => [1, 1];
+      };
+      const roads = level.roads || [level];
+      this.roads = roads.map((r) => ({ path: r.path, len: r.len, at: r.at, sideK: sideK(r.sides, r.sideStep) }));
+      // (how much further the longest road walks than each: a creature's distance plus its road's is how near
+      // the Heart Tree it is, the same on every road; 0 on a level with one road)
+      const longest = Math.max(...this.roads.map((r) => r.len));
+      this.roadOff = this.roads.map((r) => longest - r.len);
+      // the tiles across every lane, once each
+      const seen = new Set(), laneCells = (this.laneCells = []);
+      for (const r of roads) for (const c of r.lane || r.path) if (!seen.has(c[0] + "," + c[1])) { seen.add(c[0] + "," + c[1]); laneCells.push(c); }
       this.heart = level.heart;
       this.heartZ = this.groundZ(this.heart[0], this.heart[1]);
       // no plant on the lane or under the Heart Tree's crown
@@ -15756,13 +16116,15 @@ function MA_DSP() {
     towerAt(cx, cy) { return this.inside(cx, cy) ? this.occupied.get(this.idx(cx, cy)) || null : null; }
     groundZ(X, Y) { return this.level.groundZ(X, Y); }
     cellCentre(cx, cy) { const X = cx + 0.5, Y = cy + 0.5; return [X, Y, this.groundZ(X, Y)]; }
+    // road r's length (r: a road index, the first road when left out, as below)
+    lenOf(r = 0) { return this.roads[r].len; }
     // the road at distance s: [X, Y, Z, dx, dy]
-    roadAt(s) { return this.level.at(s); }
+    roadAt(s, r = 0) { return this.roads[r].at(s); }
     // a creature's sideways offset at s from its own (within 0.2 of the road), widened where the lane is
-    latAt(s, lat) { const k = this.sideK(s); return lat * (lat >= 0 ? k[0] : k[1]); }
+    latAt(s, lat, r = 0) { const k = this.roads[r].sideK(s); return lat * (lat >= 0 ? k[0] : k[1]); }
     // the creatures' spread across the lane at s: its middle (a sideways offset, as latAt's) and how far it
     // reaches past a one-tile lane's 0.2 (both 0 on a one-tile lane)
-    laneAcross(s) { const k = this.sideK(s); return [0.1 * (k[0] - k[1]), 0.1 * (k[0] + k[1]) - 0.2]; }
+    laneAcross(s, r = 0) { const k = this.roads[r].sideK(s); return [0.1 * (k[0] - k[1]), 0.1 * (k[0] + k[1]) - 0.2]; }
   }
   G.World = World;
 
@@ -15888,6 +16250,8 @@ function MA_DSP() {
       // whether a boss has grown its half-vitality shell, and how long until a creature can be healed again
       this.shell = F(); this.shellMax = F(); this.hpK = F(); this.armour = F(N * 4); this.healT = F(); this.broodT = F(); this.mendT = F();
       this.under = new Uint8Array(N); this.half = new Uint8Array(N); this.trait = null;
+      // the road each one walks (World.roads: an entrance each; 0 on a garden with one road)
+      this.road = new Uint8Array(N);
       this.count = 0; this.kindCounts = new Int32Array(D.ENEMY_ORDER.length);
       this.lastHit = Hit.PLAIN; this.hitStats = [0, 0, 0];
       this.free = []; for (let i = N - 1; i >= 0; i--) this.free.push(i);
@@ -15899,7 +16263,8 @@ function MA_DSP() {
     reset() { this.clear(); this.free = []; for (let i = CAPACITY - 1; i >= 0; i--) this.free.push(i); this.nextUid = 1; this.pops = []; }
     forEachLive(fn) { for (let i = 0; i < CAPACITY; i++) if (this.alive[i]) fn(i); }
 
-    // A creature of `kindName` out of the rift, or (at: { dist, lat }) where another spilled it
+    // A creature of `kindName` out of a rift (where two roads start, one picked by the run's seed: a garden with
+    // one road draws nothing more from it), or (at: { dist, lat, road }) where another spilled it
     spawn(kindName, hpMult, trait, at = null) {
       if (!this.free.length) return -1;
       const def = D.ENEMIES[kindName], i = this.free.pop(), rng = G.state.rng;
@@ -15918,10 +16283,15 @@ function MA_DSP() {
       this.stunT[i] = 0; this.backT[i] = 0; this.markT[i] = 0; this.markAmt[i] = 0; this.poisonDps[i] = 0; this.poisonT[i] = 0; this.barbs[i] = 0; this.snareT[i] = 0; this.steadyT[i] = 0;
       this.shell[i] = this.shellMax[i] = def.shell ? this.maxHp[i] * def.shell : 0;
       this.healT[i] = HEAL_EVERY; this.mendT[i] = 0; this.broodT[i] = def.brood ? def.brood[1] : 0; this.under[i] = 0; this.half[i] = 0;
+      const roads = this.world.roads.length;
+      // (Corn Moon's second entrance, no RNG: waves 1 and 2 all come by road 0, then every third creature of a wave
+      // by road 1, never a boss; a split or a brood keeps its parent's road)
+      if (this.sentWave !== G.state.wave) { this.sentWave = G.state.wave; this.sent = 0; }
+      this.road[i] = at ? at.road || 0 : roads > 1 && !def.boss && G.state.wave >= 3 && this.sent++ % 3 === 2 ? 1 : 0;
       this.count++;
       this.place(i, 0);
       G.emit("spawn", { kind: kindName, pos: [this.px[i], this.py[i], this.pz[i]] });
-      if (def.boss) G.emit("boss", { kind: kindName });
+      if (def.boss) G.emit("boss", { kind: kindName, road: this.road[i] });
       return i;
     }
     kindOf(i) { return D.ENEMY_ORDER[this.kind[i]]; }
@@ -15965,12 +16335,12 @@ function MA_DSP() {
     // (element: what the killing blow dealt, -1 for none). A Bloat Mould spills its mites where it burst.
     kill(i, element) {
       const kind = this.kindOf(i), def = this.defOf(i), reward = def.reward, p = [this.px[i], this.py[i], this.pz[i]];
-      const dist = this.dist[i], lat = this.lat[i], hpK = this.hpK[i];
+      const dist = this.dist[i], lat = this.lat[i], hpK = this.hpK[i], road = this.road[i];
       if (this.slowT[i] > 0 && G.state.mod("puffball") > 0) this.pops.push([p[0], p[1], this.maxHp[i]]);
       this.release(i);
       G.state.earn(reward, "kill", p);
       G.emit("kill", { kind, pos: p, reward, element, boss: !!def.boss });
-      if (def.split) { for (let k = 0; k < def.split; k++) this.spawn(def.into, hpK, this.trait, { dist: Math.max(0, dist - 0.12 * k), lat }); G.emit("split", { kind, pos: p, count: def.split }); }
+      if (def.split) { for (let k = 0; k < def.split; k++) this.spawn(def.into, hpK, this.trait, { dist: Math.max(0, dist - 0.12 * k), lat, road }); G.emit("split", { kind, pos: p, count: def.split }); }
     }
     // Ember Seeds: the creature smoulders for `dps` (no element) over `secs`; a new spark keeps the hotter fire
     // (stack: the burn still to come carries into the new one, as Ember Seeds' smoulder adds up; else the
@@ -16012,7 +16382,7 @@ function MA_DSP() {
       this.slowT[i] = Math.max(this.slowT[i], duration);
     }
     // index of the best target in range (and not nearer than minR) or -1; mode "first" (closest to the
-    // Heart) or "strong"
+    // Heart, whichever road it walks: near) or "strong"
     pickTarget(x, y, radius, mode = "first", exclude = null, minR = 0) {
       let best = -1, bestScore = -Infinity;
       const r2 = radius * radius, m2 = minR * minR;
@@ -16020,7 +16390,7 @@ function MA_DSP() {
         if (!this.alive[i] || this.hidden(i)) continue;
         const dx = this.px[i] - x, dy = this.py[i] - y, d2 = dx * dx + dy * dy;
         if (d2 > r2 || d2 < m2 || (exclude && exclude.includes(i))) continue;
-        const score = mode === "first" ? this.dist[i] : (this.hp[i] + this.shell[i]) * 1000 + this.dist[i];
+        const score = mode === "first" ? this.near(i) : (this.hp[i] + this.shell[i]) * 1000 + this.near(i);
         if (score > bestScore) { bestScore = score; best = i; }
       }
       return best;
@@ -16033,7 +16403,7 @@ function MA_DSP() {
         if (!this.alive[i] || this.hidden(i)) continue;
         const dx = this.px[i] - x, dy = this.py[i] - y, d2 = dx * dx + dy * dy;
         if (d2 > r2 || d2 < m2 || (exclude && exclude.includes(i))) continue;
-        out.push(i); sc[i] = mode === "first" ? this.dist[i] : (this.hp[i] + this.shell[i]) * 1000 + this.dist[i];
+        out.push(i); sc[i] = mode === "first" ? this.near(i) : (this.hp[i] + this.shell[i]) * 1000 + this.near(i);
       }
       out.sort((a, b) => sc[b] - sc[a] || a - b);
       if (out.length > n) out.length = n;
@@ -16048,8 +16418,11 @@ function MA_DSP() {
       }
       return out;
     }
-    // 0..1 of how far the most advanced creature has walked
-    maxProgress() { let m = 0; for (let i = 0; i < CAPACITY; i++) if (this.alive[i]) m = Math.max(m, this.dist[i]); return m / Math.max(this.world.len, 1); }
+    // how near the Heart Tree creature i is: the distance it walked plus how much longer the longest road is than
+    // its own (its distance, on a garden with one road)
+    near(i) { return this.dist[i] + this.world.roadOff[this.road[i]]; }
+    // 0..1 of how far the most advanced creature has walked (of the longest road)
+    maxProgress() { let m = 0; for (let i = 0; i < CAPACITY; i++) if (this.alive[i]) m = Math.max(m, this.near(i)); return m / Math.max(this.world.lenOf(0) + this.world.roadOff[0], 1); }
     bossAlive() { for (let i = 0; i < CAPACITY; i++) if (this.alive[i] && BOSS[this.kind[i]]) return true; return false; }
     release(i) { this.alive[i] = 0; this.count--; this.free.push(i); }
 
@@ -16061,12 +16434,12 @@ function MA_DSP() {
     // (The user, 2026-10-24: twitchy movers. Before, the facing looked 0.35 ahead and the offset followed the
     // local step.)
     place(i, time) {
-      const W = this.world, s = Math.max(0, this.dist[i]), [X, Y, Z, sx, sy] = W.roadAt(s);
-      const [bx, by] = W.roadAt(Math.max(0, s - 0.65)), [ax, ay] = W.roadAt(s + 1.35);
+      const W = this.world, r = this.road[i], s = Math.max(0, this.dist[i]), [X, Y, Z, sx, sy] = W.roadAt(s, r);
+      const [bx, by] = W.roadAt(Math.max(0, s - 0.65), r), [ax, ay] = W.roadAt(s + 1.35, r);
       let dx = ax - bx, dy = ay - by, l = Math.hypot(dx, dy);
       if (l < 1e-3) { dx = sx; dy = sy; l = Math.hypot(dx, dy) || 1; }
       const def = this.defOf(i);
-      const lat = W.latAt(s, this.lat[i]);
+      const lat = W.latAt(s, this.lat[i], r);
       this.px[i] = X - (dy / l) * lat; this.py[i] = Y + (dx / l) * lat;
       const fly = def.fly - this.body.hover[this.kind[i]];
       this.pz[i] = Z + fly + (def.fly > 0 ? Math.sin(time * 3 + this.phase[i]) * 0.075 : 0);
@@ -16089,7 +16462,7 @@ function MA_DSP() {
       }
       if (def.brood && this.dist[i] > 0 && (this.broodT[i] -= dt) <= 0) {
         this.broodT[i] += def.brood[1];
-        for (let k = 0; k < def.brood[0]; k++) this.spawn("mite", this.hpK[i], this.trait, { dist: Math.max(0, this.dist[i] - 0.3 - 0.15 * k), lat: (k - 0.5) * 0.3 });
+        for (let k = 0; k < def.brood[0]; k++) this.spawn("mite", this.hpK[i], this.trait, { dist: Math.max(0, this.dist[i] - 0.3 - 0.15 * k), lat: (k - 0.5) * 0.3, road: this.road[i] });
         G.emit("brood", { kind: this.kindOf(i), pos: this.centre(i), count: def.brood[0] });
       }
       if (def.halfShell && !this.half[i] && this.hp[i] < this.maxHp[i] * 0.5) {
@@ -16097,7 +16470,7 @@ function MA_DSP() {
         G.emit("shell", { kind: this.kindOf(i), pos: this.centre(i) });
       }
       if (def.burrow) {
-        const f = this.dist[i] / Math.max(this.world.len, 1);
+        const f = this.dist[i] / Math.max(this.world.lenOf(this.road[i]), 1);
         if (this.under[i] === 0 && f >= def.burrow[0]) { this.under[i] = 1; this.slowAmt[i] = 0; this.slowT[i] = 0; G.emit("burrow", { pos: [this.px[i], this.py[i], this.pz[i]] }); }
         else if (this.under[i] === 1 && f >= def.burrow[1]) { this.under[i] = 2; G.emit("surface", { pos: [this.px[i], this.py[i], this.pz[i]] }); }
       }
@@ -16129,7 +16502,7 @@ function MA_DSP() {
         if (this.stunT[i] > 0) { this.stunT[i] -= dt; v = 0; }
         else if (this.backT[i] > 0) { this.backT[i] -= dt; v *= -0.6; }
         this.dist[i] = v < 0 ? Math.max(Math.min(0, this.dist[i]), this.dist[i] + v * dt) : this.dist[i] + v * dt;
-        if (this.dist[i] >= this.world.len) {
+        if (this.dist[i] >= this.world.lenOf(this.road[i])) {
           const harm = def.harm;
           this.release(i);
           // Heartwood: the first leaks of a wave bounce off the Heart Tree
@@ -16209,18 +16582,19 @@ function MA_DSP() {
     // where shots leave from: the plant's head
     origin() { const h = this.body.towerH(this.kind, this.level); return [this.X, this.Y, this.Z + h * 0.8]; }
 
-    // A Briar Vine's thorn patches: on the road point nearest the plant (within reach), and at level III a
-    // second one 1.6 tiles further along (or back, near the Heart Tree). None: it can't grow here. On a wide
-    // lane a patch sits in the middle of the creatures' spread and grows to cover it (World.laneAcross).
+    // A Briar Vine's thorn patches: on the road point nearest the plant (within reach; of every road, the first on a
+    // stretch two share), and at level III a second one 1.6 tiles further along its road (or back, near the
+    // Heart Tree). None: it can't grow here. On a wide lane a patch sits in the middle of the creatures' spread
+    // and grows to cover it (World.laneAcross).
     static patchesFor(world, X, Y, reach, level) {
-      let best = -1, bestD = reach * reach;
-      for (let s = 0; s <= world.len; s += 0.25) { const p = world.roadAt(s), d = (p[0] - X) ** 2 + (p[1] - Y) ** 2; if (d <= bestD) { bestD = d; best = s; } }
+      let best = -1, bestD = reach * reach, road = 0;
+      for (let r = 0; r < world.roads.length; r++) for (let s = 0; s <= world.lenOf(r); s += 0.25) { const p = world.roadAt(s, r), d = (p[0] - X) ** 2 + (p[1] - Y) ** 2; if (d < bestD || (d === bestD && r === 0)) { bestD = d; best = s; road = r; } }
       if (best < 0) return [];
       const at = (s) => {
-        const p = world.roadAt(s), [o, wide] = world.laneAcross(s), l = Math.hypot(p[3], p[4]) || 1;
+        const p = world.roadAt(s, road), [o, wide] = world.laneAcross(s, road), l = Math.hypot(p[3], p[4]) || 1;
         return { s, x: p[0] - (p[4] / l) * o, y: p[1] + (p[3] / l) * o, z: p[2], wide };
       }, out = [at(best)];
-      if (level >= 3) out.push(at(best + 1.6 <= world.len - 0.5 ? best + 1.6 : Math.max(0, best - 1.6)));
+      if (level >= 3) out.push(at(best + 1.6 <= world.lenOf(road) - 0.5 ? best + 1.6 : Math.max(0, best - 1.6)));
       return out;
     }
 
@@ -16814,10 +17188,15 @@ function MA_DSP() {
   const G = window.MG, D = G.Defs, S = G.state, P = G.Phase;
   // 2: boons with levels (the modifiers are rebuilt from them). A v1 save is migrated as it is read
   // (migrate): two boons were renamed, and a boon taken more than three times stays at III. A change to a
-  // save's shape (the exact block's included) bumps it.
-  const KEY = "mossheart.run", VERSION = 2;
+  // save's shape (the exact block's included) bumps it. 3: the level names how many roads it has (Corn Moon
+  // has two entrances); a v2 save was taken on a one-road garden and goes on as it is.
+  const KEY = "mossheart.run", VERSION = 3;
   const RENAMED_V1 = { thorn_split: "twin_seeds", wisp_chain: "kindred_wisps" };
   const migrate = (d) => {
+    d = migrate1(d);
+    return d && d.v === 2 && Array.isArray(d.level) ? Object.assign({}, d, { v: 3, level: [...d.level.slice(0, 3), 1] }) : d;
+  };
+  const migrate1 = (d) => {
     if (!d || d.v !== 1) return d;
     const boons = [], n = {};
     for (const old of d.boons || []) {
@@ -16836,7 +17215,7 @@ function MA_DSP() {
   const fitsOrThrow = (game, d) => {
     if (!d || d.v !== VERSION) return false;
     const w = game.world;
-    if (d.level[0] !== w.W || d.level[1] !== w.H || Math.abs(d.level[2] - w.len) > 0.01) return false;
+    if (d.level[0] !== w.W || d.level[1] !== w.H || Math.abs(d.level[2] - w.len) > 0.01 || d.level[3] !== w.roads.length) return false;
     const n = w.W * G.BLIGHT_RES * w.H * G.BLIGHT_RES;
     if (unb64(d.blight.level).length !== n || unb64(d.blight.scar).length !== n) return false;
     const x = d.exact;
@@ -16859,7 +17238,7 @@ function MA_DSP() {
       if (S.phase !== P.BUILD && S.phase !== P.CHOOSE_BOON) return null;
       const w = game.world, b = game.blight;
       return {
-        v: VERSION, level: [w.W, w.H, +w.len.toFixed(3)], saved: Date.now(),
+        v: VERSION, level: [w.W, w.H, +w.len.toFixed(3), w.roads.length], saved: Date.now(),
         seed: S.seed, rng: S.rng.state(), wave: S.wave, dew: S.dew, heart: [S.heartHp, S.heartMax],
         boons: S.boons.slice(), best: S.best,
         phase: S.phase, offer: S.phase === P.CHOOSE_BOON && game.offer ? game.offer.map((o) => o.id) : null,
@@ -16980,10 +17359,11 @@ function MA_DSP() {
     Object.assign(st.mats, AK.MATS);
     Object.assign(st.ramps, TOWERS.RAMPS); // the plants' own (stumpsAndStones, below)
     Object.assign(st.mats, TOWERS.MATS);
-    // the garden wisplings, six to a garden on Momiji and Fernglass (critters.js, kind wisp): eight designs of five
-    // frames at size 1.5 (a body ~0.5 tiles tall, ~15 px at the fit zoom: the user's pick), ~9.6 voxels across the
-    // body at the heroes' density (G.heroFine). ME.content outlives the level, so another map drops them
-    const CT = ME.content, id = st.map && st.map.id, on = id === "mf-valley" || id === "fernglass", fine = G.heroFine();
+    // the garden wisplings, six to a garden on Momiji, Fernglass and Corn Moon (critters.js, kind wisp): eight
+    // designs of five frames at size 1.5 (a body ~0.5 tiles tall, ~15 px at the fit zoom: the user's pick), ~9.6
+    // voxels across the body at the heroes' density (G.heroFine). ME.content outlives the level, so another map
+    // drops them
+    const CT = ME.content, id = st.map && st.map.id, on = id === "mf-valley" || id === "fernglass" || id === "cornmoon", fine = G.heroFine();
     for (let d = 0; d < 8; d++) if (on) CT.critters["wisp" + d] = ["wispling", { d, size: 1.5 }, 5, fine]; else delete CT.critters["wisp" + d];
     if (on) CT.critterExtra = Object.assign(CT.critterExtra || {}, { [id]: Object.assign({}, (CT.critterExtra || {})[id], { wisp: 6 }) });
   };
@@ -17581,9 +17961,10 @@ function MA_DSP() {
   // it), a blight rift opens where the road starts, and glowcaps grow on unbuildable cells beside the road.
   // Nothing here changes which cells can be planted (tools/level-momiji.js stays valid).
   // On a generator map it reads map.path and dresses st.deco. On a v1 map it reads game.route, game.heart
-  // and game.spawn (points in tiles) and dresses map.props: the Heart Tree takes the big maple's place
-  // where one stands on game.heart's tile (Momiji through mapFromGarden), else it is placed there
-  // (Fernglass). The glowcaps stand on the walk's outer edge, so they don't land in a 2-tile walk.
+  // and game.spawn (and game.spawn2, a second entrance's rift; points in tiles) and dresses map.props: the
+  // Heart Tree takes the big maple's place where one stands on game.heart's tile (Momiji through
+  // mapFromGarden), else it is placed there (Fernglass). The glowcaps stand on the walk's outer edge, so they
+  // don't land in a 2-tile walk.
   G.dressLevel = (st) => {
     const map = st.map, v1 = map.v === 1, deco = v1 ? (map.props = map.props || []) : st.deco, game = (v1 && map.game) || {};
     if (v1 && deco.some((d) => d && d[0] === "ms_rift")) return; // dressed already (a second bake of the same map)
@@ -17597,8 +17978,9 @@ function MA_DSP() {
     else if (game.heart) deco.push([G.HEART_MODEL.name, heartO(0), ...anchor(game.heart)]);
     const rift = ["ms_rift", { scale: k0("ms_rift") * 0.75 }];
     deco.push(game.spawn ? [...rift, ...anchor(game.spawn)] : [...rift, path[0][0], path[0][1]]);
+    if (game.spawn2) deco.push([...rift, ...anchor(game.spawn2)]); // a second entrance (Corn Moon's east gate)
     // glowcaps: every ~7 road cells, on the road's verge (its own cell, pushed to a side that isn't road
-    // or walk), so the build spots stay as they are; none on the bridge (water)
+    // or walk, on any of the routes), so the build spots stay as they are; none on the bridge (water)
     const kinds = (window.ME.content && window.ME.content.kinds) || {}, walks = new Set(game.lane || []);
     const name = (x, y) => (map.kind[y] ? map.legend[map.kind[y][x]] : undefined);
     // the map's floods (before the bake, so from the map): listed tiles, or tiles whose centre is in a
@@ -17613,12 +17995,16 @@ function MA_DSP() {
     }
     const wet = v1 ? (x, y) => (kinds[name(x, y)] || {}).recipe === "water" || flooded.has(x + "," + y) : (x, y) => map.typ[y][x] === "w";
     const walk = v1 ? (x, y) => walks.has(name(x, y)) : () => false;
-    const cells = [];
-    for (let i = 0; i + 1 < path.length; i++) {
-      let [x, y] = path[i]; const [x1, y1] = path[i + 1];
-      while (x !== x1 || y !== y1) { cells.push([x, y]); if (x !== x1) x += Math.sign(x1 - x); else y += Math.sign(y1 - y); }
-    }
-    const road = new Set(cells.map(([x, y]) => x + "," + y));
+    const cellsOf = (p) => {
+      const out = [];
+      for (let i = 0; i + 1 < p.length; i++) {
+        let [x, y] = p[i]; const [x1, y1] = p[i + 1];
+        while (x !== x1 || y !== y1) { out.push([x, y]); if (x !== x1) x += Math.sign(x1 - x); else y += Math.sign(y1 - y); }
+      }
+      return out;
+    };
+    const cells = cellsOf(path);
+    const road = new Set((v1 ? game.route : [path]).flatMap(cellsOf).map(([x, y]) => x + "," + y));
     for (let i = 5; i < cells.length - 5; i += 7) {
       const [x, y] = cells[i];
       if (wet(x, y)) continue;
@@ -17965,7 +18351,7 @@ function MA_DSP() {
     levels: {
       momiji: { yaw0: 0, pan: [0, 0], blurb: "Maples and waterfalls down an autumn valley to the Heart Tree." },
       fernglass: { yaw0: 0, pan: [0, 0], blurb: "A Victorian fernery under glass, round a lily pond." },
-      cornmoon: { yaw0: 0, pan: [0, 0], blurb: "A cornfield under the harvest moon, the farm track winding down to the apple tree.", soon: true },
+      cornmoon: { yaw0: 0, pan: [0, 0], blurb: "A cornfield under the harvest moon, the farm track winding down to the apple tree." },
     },
   };
 })();
@@ -18660,8 +19046,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
    (the engine sim's path along `game.route`, in walking order, with its length and heights); the lane round it; the voxel ground's height; and the Heart Tree
    (`game.heart`). The one place gameplay and the baked art meet. Before the bake, the game's retypes of
    the map's `kind` rows (docs/decisions/2026-10-21-map-format.md, section 3): the sand banks and the
-   wider lanes. A level's `game` block: { route: [[x, y], ...] tile corners (or a list of such lines, the
-   first one walked), heart: [X, Y] (tiles), lane: [kind names] (besides the "lane" recipe), build: [kind
+   wider lanes. A level's `game` block: { route: [[x, y], ...] tile corners (or a list of such lines, one
+   road per entrance), heart: [X, Y] (tiles), lane: [kind names] (besides the "lane" recipe), build: [kind
    names] (the build tiles; moss when left out), bridges: [[x, y], ...] (the wet cells the route crosses
    dry; the view already finds them decked over) }. */
 (function () {
@@ -18670,10 +19056,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // ---- the gardens: Momiji Valley (the generator's mf-valley, through ME.content.mapFromGarden) and the
   // content pack's v1 maps (ME.content.maps), by id. ?level= picks one, else the one picked on the terrarium screen
   // (settings "level", menu.js); the bot and the self-test take only ?level= (Momiji when left out)
-  G.LEVELS = { momiji: { name: "Momiji Valley" }, fernglass: { name: "Fernglass" } };
+  G.LEVELS = { momiji: { name: "Momiji Valley" }, fernglass: { name: "Fernglass" }, cornmoon: { name: "Corn Moon" } };
   // and the gardens still in the works: the terrarium screen shows them dimmed (their picture, if any, a
   // turntable sheet from Art), not playable yet
-  G.LEVELS_SOON = { cornmoon: { name: "Corn Moon" } };
+  G.LEVELS_SOON = {};
   G.hasLevel = (id) => !!G.LEVELS[id] && (id === "momiji" || !!((window.ME.content && window.ME.content.maps) || {})[id]);
   G.pickLevel = (saved) => {
     const ME = window.ME, fixed = ME.qn("selftest", 0) || ME.qn("autoplay", 0);
@@ -18691,8 +19077,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   };
   // the kinds whose tiles take a plant
   G.buildKinds = (map) => new Set((map.game && map.game.build) || ["moss"]);
-  // the route the creatures walk: one polyline of tile corners
-  G.routeOf = (map) => { const r = (map.game && map.game.route) || []; return r.length && Array.isArray(r[0][0]) ? r[0] : r; };
+  // the routes the creatures walk, one polyline of tile corners per entrance (an empty one left out: the
+  // engine's road has nothing to walk), and the first of them
+  G.routesOf = (map) => { const r = (map.game && map.game.route) || []; return r.length && Array.isArray(r[0][0]) ? r.filter((l) => l.length) : [r]; };
+  G.routeOf = (map) => G.routesOf(map)[0] || [];
   // the route's cells in walking order
   const routeCells = (pts) => {
     if (!pts.length) return [];
@@ -18735,8 +19123,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const ex = d[4] || {}, X = d[2] + 0.5 + (ex.dx || 0), Y = d[3] + 0.5 + (ex.dy || 0);
       blocked[at(Math.min(W - 1, Math.max(0, Math.floor(X))), Math.min(H - 1, Math.max(0, Math.floor(Y))))] = 1;
     }
-    const { lane, sides, sideStep } = G.laneFrom(T, sim, groundZ, (map.game && map.game.lane) || []);
-    return { W, H, blocked, path: sim.cells, lane, len: sim.len, at: (s) => sim.at(s), sides, sideStep, groundZ, heart: (map.game && map.game.heart) || [7.5, 5.5] };
+    // one road per entrance (the engine's sim.roads, the first the sim's own road), each with its lane
+    const roads = (sim.roads || [sim]).map((r) => Object.assign({ path: r.cells, len: r.len, at: (s) => r.at(s) }, G.laneFrom(T, r, groundZ, (map.game && map.game.lane) || [])));
+    return Object.assign({ W, H, blocked, groundZ, heart: (map.game && map.game.heart) || [7.5, 5.5], roads }, roads[0]);
   };
 
   // How wide the lane is around the route (docs/decisions/2026-10-21-map-format.md, "Wider lanes": a lane
@@ -19664,8 +20053,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       on("tower_sold", (e) => { this.crumble(e.tower); this.anim.delete(e.tower); if (this.selected === e.tower) this.selected = null; this.updateCells(); this.updateLights(); });
       on("kill", (e) => this.burst(e.kind, e.pos));
       on("hit", (e) => { if (!e.shot) return; const z = this.waterAt(e.pos[0], e.pos[1]); if (z !== null) this.phys.splash([e.pos[0], e.pos[1], z], 0.3); });
-      // the boss comes through the rift: the banks beside it give way
-      on("boss", () => { const c = this.game.world.level.path[0]; this.slam(c[0] + 0.5, c[1] + 0.5, 2.5, 0.3); });
+      // the boss comes through its rift: the banks beside it give way
+      on("boss", (e) => { const c = this.game.world.roads[(e && e.road) || 0].path[0]; this.slam(c[0] + 0.5, c[1] + 0.5, 2.5, 0.3); });
       // (creature uids start over each wave, so the last footfalls go with the last wave)
       on("wave_start", (e) => { this.bossWave = !!e.boss; this.footfall.clear(); this.burrow.clear(); });
       on("game_over", () => this.fellHeart());
@@ -20249,10 +20638,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     sunbreak: { name: "Sun break", hidden: true, f: { shaftK: 1.6, pool: 1.2, exposure: 1.04 }, engine: ["clear", 1] },
   };
   // Dynamic, per garden: the sky while building (calm), in a wave and in the waves from LATE on (Fernglass
-  // keeps its greenhouse mist; a boss, the hurt Heart Tree and a cleared wave are the same everywhere)
+  // keeps its greenhouse mist, Corn Moon its windy field; a boss, the hurt Heart Tree and a cleared wave are
+  // the same everywhere)
   const DYNAMIC = {
     momiji: { calm: "clear", wave: "overcast", late: "drizzle" },
     fernglass: { calm: "mist", wave: "mistcloud", late: "drizzle" },
+    cornmoon: { calm: "clear", wave: "wind", late: "wind" },
   };
   const LATE = 6;
   const HURT_IN = 1 / 3, HURT_OUT = 0.45; // the Heart Tree's share of its life where its rain starts, and stops
@@ -21028,7 +21419,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (!E.alive[k] || E.hidden(k) || !this.glyphs[E.kind[k]] || (E.hp[k] >= E.maxHp[k] && k !== fi)) continue;
         list.push(k);
       }
-      list.sort((a, b) => E.dist[b] - E.dist[a]);
+      list.sort((a, b) => E.near(b) - E.near(a));
       const n = Math.min(TAGS, list.length);
       for (let m = 0; m < n; m++) {
         const k = list[m], tag = this.tags[m], g = this.glyphs[E.kind[k]], sz = Math.min(1.6, Math.max(1, E.defOf(k).size));
@@ -25008,7 +25399,8 @@ function MG_SFX(L) {
     bestCell(kind) {
       const game = this.game, w = game.world;
       // (the middle of the creatures' spread: on a wide lane, off the road line)
-      if (!this.pathPts) { this.pathPts = []; for (let s = 0; s < w.len; s += 0.5) { const p = w.roadAt(s), o = w.laneAcross(s)[0], l = Math.hypot(p[3], p[4]) || 1; this.pathPts.push([p[0] - (p[4] / l) * o, p[1] + (p[3] / l) * o]); } }
+      // (every road's, where two entrances have one each)
+      if (!this.pathPts) { this.pathPts = []; for (let r = 0; r < w.roads.length; r++) for (let s = 0; s < w.lenOf(r); s += 0.5) { const p = w.roadAt(s, r), o = w.laneAcross(s, r)[0], l = Math.hypot(p[3], p[4]) || 1; this.pathPts.push([p[0] - (p[4] / l) * o, p[1] + (p[3] / l) * o]); } }
       const reach = D.TOWERS[kind].range, r2 = reach * reach, best = [];
       // (how much path a cell reaches never changes, so it is counted once per cell and reach: the warm-up's
       // burst of placements rescanned every cell against every path point each time)
@@ -25088,7 +25480,7 @@ function MG_SFX(L) {
    walkers, dressed with the asset set's Heart Tree, blight rift and glowcaps) plus the game's models,
    adds the engine's voxel physics, reads the level off it, then runs the rules (core/), the view
    (view/), the HUD, input, audio and camera every frame.
-   URL options: ?level=momiji|fernglass, ?seed=N fixes the run, ?speed=2, ?dpr=1, ?scale=0.8 (render scale), ?mute=1,
+   URL options: ?level=momiji|fernglass|cornmoon, ?seed=N fixes the run, ?speed=2, ?dpr=1, ?scale=0.8 (render scale), ?mute=1,
    ?autoplay=1&waves=8 (bot; see bot.js; &early=0.5 has it call waves early), ?selftest=1 (render N frames, report timings into #result),
    ?bench=1 (the engine's benchmark, src/bench.js, on a still build phase with the self-test's four plants:
    one BENCH line into #result; ?bench=2 the bake part only),
@@ -25207,7 +25599,7 @@ function MG_SFX(L) {
     const tables = pal.build();
     if (pal.missing.size) ME.log("WARN materials without ramps:", [...pal.missing].join(","));
     ME.progress("uploading", 0.85); await ME.tick();
-    const sim = new ME.Sim(T, st, MB, { capacity: 1200, route: G.routeOf(map) }); // (the first line of game.route)
+    const sim = new ME.Sim(T, st, MB, { capacity: 1200, routes: G.routesOf(map) }); // (a road per line of game.route: sim.roads; the sim's own road is the first)
     sim.setCount(0);
     const R = new ME.Renderer(gpu, { T, mesh, MB, pal, st, sim, tables, ids, grass, hooks, pipelines, fieldRes: G.BLIGHT_RES });
     R.applyPreset(ME.q("preset", "cosy"));
@@ -25417,13 +25809,13 @@ function MG_SFX(L) {
     // ------------------------------------------------------------------ juice: shake, heart flash
     let trauma = 0, flash = 0;
     G.on("heart_hit", () => { trauma = Math.min(1, trauma + 0.7); flash = 1; });
-    G.on("boss", () => { trauma = Math.min(1, trauma + 0.5); });
-    // a boss comes: the view eases to the rift (the Camera moves setting, off with reduced motion), and back
+    G.on("boss", (e) => { trauma = Math.min(1, trauma + 0.5); });
+    // a boss comes: the view eases to its rift (the Camera moves setting, off with reduced motion), and back
     // to where it looked a moment later, unless the player has moved it since
     let camBack = null;
-    G.on("boss", () => {
+    G.on("boss", (e) => {
       if (!(G.camMoves ?? 1)) return;
-      const w = canvas.width, h = canvas.height, here = ME.pickGround(app.T, cam.ray(w / 2, h / 2, w, h)), c = game.world.level.path[0];
+      const w = canvas.width, h = canvas.height, here = ME.pickGround(app.T, cam.ray(w / 2, h / 2, w, h)), c = game.world.roads[(e && e.road) || 0].path[0];
       const X = c[0] + 0.5, Y = c[1] + 0.5, rift = [X, Y, app.T.groundAt(X, Y, app.T.O[2] + app.T.NZ / app.T.VS)];
       cam.focus(rift, { s: 0.9 });
       camBack = here ? { p: here.p, rift, zoom: cam.zoom, at: ME.now() + 900 + 2200 } : null;
