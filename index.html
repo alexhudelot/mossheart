@@ -14954,16 +14954,16 @@ fn boxOf(V: Vox) -> Box {
   if (CT.edgeBreak) CT.edgeBreak.kinds = Object.assign(CT.edgeBreak.kinds || {}, { cmwall: 0, cmmeadown: 0.15, cmmeadow: 0.15, cmmeadowa: 0.15, cmmeadowr: 0.15, cmtallgrass: 0.15 });
 
   // ---------------------------------------------------------------- models
-  // fernglass.js's conventions: tile units, the anchor at the ground centre, Z up; a stamp's source joins the
-  // bake cache key
-  const model = (name, fn) => { M[name] = fn; (ME.ASSET_BY = ME.ASSET_BY || {})[name] = name + String(fn); ME.ASSET_SRC = (ME.ASSET_SRC || "") + ME.ASSET_BY[name]; };
   // a jack-o'-lantern's face on a surface facing +x (y across, dz up from the middle, s the pumpkin's size):
-  // two slanted eyes and a toothed grin; shared by cm_pumpkin and the scarecrow's head, so its source joins the
-  // cache key too
+  // two slanted eyes and a toothed grin; shared by cm_pumpkin and the scarecrow's head
   const jack = (y, dz, s) => { const ay = Math.abs(y); return (dz > 0.02 * s && dz < 0.09 * s && Math.abs(ay - 0.08 * s) < (0.09 * s - dz) * 0.9) || (dz < -0.025 * s && dz > -0.085 * s && ay < 0.12 * s - (dz + 0.085 * s) * 0.6 && !(ay < 0.022 * s && dz > -0.055 * s)); };
-  ME.ASSET_SRC = (ME.ASSET_SRC || "") + String(jack);
+  // the fallen leaves' colours, on the bridge's planks and the coop's roof
   const fallen = ["cmAppleLeaf", "cmAmber", "cmScarlet"];
-  ME.ASSET_SRC += String(fallen);
+  // fernglass.js's conventions: tile units, the anchor at the ground centre, Z up; a stamp's source joins the
+  // bake cache key by name (ME.ASSET_BY), with the shared jack and fallen above, so the key reads them only
+  // through this map's models and a change to them moves no other map's key
+  const SHARED = String(jack) + String(fallen);
+  const model = (name, fn) => { M[name] = fn; (ME.ASSET_BY = ME.ASSET_BY || {})[name] = name + String(fn) + SHARED; ME.ASSET_SRC = (ME.ASSET_SRC || "") + ME.ASSET_BY[name]; };
 
   // The field gate: two fieldstone pillars on the wall either side of the track (model y ±1.15) with caps,
   // and a gate of timber boards in two leaves hinged on them. o.swing (1 or -1) is the side of model x the
@@ -15387,6 +15387,8 @@ fn boxOf(V: Vox) -> Box {
       bridges: [[11, 17], [12, 17]],
     },
   };
+  // the legend's letters for some kinds: the placement passes below find the build tiles and the grass by kind
+  const chars = (kinds) => { const L = CT.maps.cornmoon.legend; return Object.keys(L).filter((ch) => kinds.includes(L[ch])).join(""); };
   // tall gold grass along the wall's foot: on every wall tile that touches the field, inside the jar's glass
   // and clear of the two gates
   (function () {
@@ -15411,7 +15413,7 @@ fn boxOf(V: Vox) -> Box {
   // walk the track's middle line, a tile away); clear of the gates, the stairs and any tile with a prop
   (function () {
     const m = CT.maps.cornmoon, K = m.kind, Hh = m.h, at = (x, y) => (K[y] && K[y][x]) || "_", stairs = ["6,6", "7,6", "17,11", "18,11"];
-    const chars = (kinds) => Object.keys(m.legend).filter((ch) => kinds.includes(m.legend[ch])).join(""), V = chars([...m.game.build, "cmtallgrass", "cmcorn"]);
+    const V = chars([...m.game.build, "cmtallgrass", "cmcorn"]);
     const used = new Set(m.props.map((p) => Math.floor(p[2] + 0.5 + ((p[4] && p[4].dx) || 0)) + "," + Math.floor(p[3] + 0.5 + ((p[4] && p[4].dy) || 0))));
     for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
       if (at(x, y) !== ":" || stairs.includes(x + "," + y) || Math.hypot(x + 0.5 - 12, y + 0.5 - 12) > 11.2) continue;
@@ -15424,12 +15426,13 @@ fn boxOf(V: Vox) -> Box {
   // the undergrowth (the user: "thin high and low grass ... more trees and bushes/shrubs"): seven more autumn
   // trees on the corner banks and the west grass (the option sets of the ones above, so no new bricks), shrubs
   // in rust, amber and scarlet on the corner wall tops, in the tall grass and at the trees' feet, and thin
-  // grass, a tall clump and a low tuft on every tall-grass tile and wall top by the field, a low tuft at each
-  // tree's foot and along most of the path's verges. Only on tiles that already take no plant (not a build
+  // grass, a tall clump on every tall-grass tile and wall top by the field and a low tuft on about half those wall
+  // tops (the tall grass's own ground has the map's blades, CT.mapGrass), a low tuft at each tree's foot and
+  // along most of the path's verges. Only on tiles that already take no plant (not a build
   // kind, or a prop's tile), so the placement zones stay as they were; clear of the gates and the stairs
   (function () {
     const m = CT.maps.cornmoon, K = m.kind, Hh = m.h, at = (x, y) => (K[y] && K[y][x]) || "_", stairs = ["6,6", "7,6", "17,11", "18,11"], N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-    const chars = (kinds) => Object.keys(m.legend).filter((ch) => kinds.includes(m.legend[ch])).join(""), B = chars(m.game.build), V = chars([...m.game.build, "cmtallgrass", "cmcorn"]);
+    const B = chars(m.game.build), V = chars([...m.game.build, "cmtallgrass", "cmcorn"]);
     const cell = (d) => Math.floor(d[2] + 0.5 + ((d[4] && d[4].dx) || 0)) + "," + Math.floor(d[3] + 0.5 + ((d[4] && d[4].dy) || 0));
     const used = new Set(m.props.map(cell)), put = (d) => { const c = cell(d), [x, y] = c.split(",").map(Number); if (!B.includes(at(x, y)) || used.has(c)) m.props.push(d); };
     const gate = (x, y) => (y <= 2 && Math.abs(x - 11.5) <= 2.5) || (x >= 21 && Math.abs(y - 11.5) <= 2.5) || stairs.includes(x + "," + y);
@@ -15446,7 +15449,7 @@ fn boxOf(V: Vox) -> Box {
       const k = at(x, y), hs = P.hash(x, y, 14, 3), s = 1 + (P.hash(x, y, 15, 3) < 0.5 ? 0 : 1), off = (i) => ({ dx: (P.hash(x, y, 16, i) - 0.5) * 0.6, dy: (P.hash(x, y, 17, i) - 0.5) * 0.6 });
       if (Math.hypot(x + 0.5 - 12, y + 0.5 - 12) > 11.2 || gate(x, y)) continue;
       if (k === "g" || (k === "#" && N4.some(([dx, dy]) => !"#_".includes(at(x + dx, y + dy))))) {
-        put(["cm_thingrass", { seed: s, tall: true }, x, y, off(1)]); put(["cm_thingrass", { seed: 3 - s }, x, y, off(2)]);
+        put(["cm_thingrass", { seed: s, tall: true }, x, y, off(1)]); if (k === "#" && hs < 0.5) put(["cm_thingrass", { seed: 3 - s }, x, y, off(2)]);
       } else if (k === ":" && hs < 0.75) {
         const side = N4.find(([dx, dy]) => V.includes(at(x + dx, y + dy)) && Hh[y + dy][x + dx] === Hh[y][x]);
         if (side) put(["cm_thingrass", { seed: s }, x, y, { dx: side[0] * 0.44 - side[1] * 0.2, dy: side[1] * 0.44 + side[0] * 0.2 }]);
@@ -17470,7 +17473,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.71.0", name: "Mossheart", commit: "66f20cc" };
+  G.VERSION = { v: "0.72.0", name: "Mossheart", commit: "e4d400a" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
