@@ -4,6 +4,44 @@
   "momiji": [
    {
     "nickname": "alexh",
+    "wave": 29,
+    "tag": "3f46b1074900",
+    "at": "2026-11-05T22:43:58.684Z",
+    "seed": 3072993109,
+    "density": 64,
+    "version": "0.74.0 7260e31",
+    "maxDew": 6098,
+    "boons": {
+     "spore_cloud": 3,
+     "haunting": 2,
+     "dew_collector": 1,
+     "wild_growth": 1,
+     "golden_dew": 1,
+     "crit_bloom": 3,
+     "puffball": 1,
+     "firefly_lanterns": 1,
+     "twin_seeds": 2,
+     "sticky_spores": 2,
+     "sporestorm": 1,
+     "solar_flare": 1,
+     "quick_sap": 1,
+     "deep_roots": 2,
+     "prism": 2,
+     "solar_focus": 1,
+     "grove": 1,
+     "seed_bank": 2
+    },
+    "towers": {
+     "thorn": 1,
+     "puff": 11,
+     "sun": 39,
+     "wisp": 13,
+     "briar": 3
+    },
+    "diedTo": "snail"
+   },
+   {
+    "nickname": "alexh",
     "wave": 18,
     "tag": "8f7949b2d7d8",
     "at": "2026-10-27T16:09:54.034Z",
@@ -14,37 +52,6 @@
     "boons": null,
     "towers": null,
     "diedTo": null
-   },
-   {
-    "nickname": "alexh",
-    "wave": 18,
-    "tag": "3f46b1074900",
-    "at": "2026-10-28T23:34:09.064Z",
-    "seed": 2865646653,
-    "density": 40,
-    "version": "0.31.0 c45b13c",
-    "maxDew": 970,
-    "boons": {
-     "sticky_spores": 2,
-     "firefly_lanterns": 1,
-     "dew_collector": 3,
-     "quick_sap": 1,
-     "solar_flare": 1,
-     "heartwood": 1,
-     "prism": 1,
-     "deep_roots": 2,
-     "haunting": 1,
-     "spore_cloud": 1,
-     "photosynthesis": 1
-    },
-    "towers": {
-     "thorn": 1,
-     "puff": 3,
-     "sun": 4,
-     "wisp": 7,
-     "briar": 6
-    },
-    "diedTo": "snail"
    }
   ],
   "fernglass": [
