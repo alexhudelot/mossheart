@@ -9738,6 +9738,8 @@ fn boxOf(V: Vox) -> Box {
      setCells(rgba8) one rgba texel per map tile (hooks: cellAt)
      setLights(list) point lights on top of the scene's own
      sprites         an ME.SpriteBatch drawn in the forward pass (orbs, beams, rings, gauge bars)
+     backdrop        fn(view), called in frame(): its additive sprites (view.sprites, a batch of its own) draw
+                     just in front of the far plane, behind the scene, e.g. a starfield (view.far(x, y))
      addLayer(L)     a GPU layer with its own resources (ME.VoxelPhysics): L.init(R) once, L.prepare(time,
                      dt) before encoding, L.compute(pass) in the "layers" compute pass, L.gbuffer(pass)
                      after the volumes (pipelines target R.gTargets with R.gDepth); L.ripples are rings
@@ -9789,6 +9791,7 @@ fn boxOf(V: Vox) -> Box {
     end() { this.nAdd = this.split < 0 ? this.n : this.split; this.nAlpha = this.n - this.nAdd; }
   }
   ME.SpriteBatch = SpriteBatch;
+  ME.BACKDROP_Z = 0.003; // the backdrop's sprites' NDC depth (R.backdrop; 0 is the far plane)
   // G-buffer targets: albedo + AO, normal + material + aux, emissive of marked volumes. Only the volumes
   // write the third (GV); everything else keeps it masked (G). App layers draw with R.gTargets / R.gDepth.
   ME.GBUFFER = {
@@ -9892,6 +9895,7 @@ fn boxOf(V: Vox) -> Box {
       this.fieldRes = S.fieldRes || 1;
       this.user = new Float32Array(4 * ME.USER_SLOTS);
       this.sprites = new SpriteBatch();
+      this.backdrop = null; this.backSprites = null; // (R.backdrop: the header)
       this.layers = [];
     }
 
@@ -10729,13 +10733,25 @@ fn boxOf(V: Vox) -> Box {
     // The sprite buffer stays from frame to frame; it doubles when the batch did (SpriteBatch.grow), and the
     // two sprite bind groups are rebuilt on it. A late wave (towers, effects, a bar per creature) passed the
     // old fixed 6144 and lost the sprites put last, the health bars.
-    growSprites() {
+    growSprites(n = this.sprites.max) {
       const old = this.spriteBuf, P = this.pl;
-      this.spriteBuf = this.dev.createBuffer({ label: "sprites", size: this.sprites.max * 48, usage: BU.STORAGE | BU.COPY_DST });
+      this.spriteBuf = this.dev.createBuffer({ label: "sprites", size: n * 48, usage: BU.STORAGE | BU.COPY_DST });
       this.g1.spriteAdd = this.bg(P.spriteAdd, 1, [{ buffer: this.spriteBuf }]);
       this.g1.spriteAlpha = this.bg(P.spriteAlpha, 1, [{ buffer: this.spriteBuf }]);
       old.destroy();
       this.spriteGrows = (this.spriteGrows || 0) + 1;
+    }
+
+    // The backdrop (R.backdrop = fn): its own batch, refilled every frame and drawn with the app's additive
+    // sprites. view.far(x, y) is the world point at NDC x, y just in front of the far plane (depth
+    // ME.BACKDROP_Z: reversed Z, so everything the scene draws is in front of it); view.w, h are the canvas's.
+    // Returns how many sprites it put.
+    drawBackdrop(cam, time, dt) {
+      const b = this.backSprites || (this.backSprites = new SpriteBatch(1024)), [w, h] = this.out, { ivp } = cam.matrices(w, h);
+      b.begin();
+      this.backdrop({ R: this, sprites: b, cam, time, dt, w, h, ivp, far: (x, y) => ME.m4.apply(ivp, [x, y, ME.BACKDROP_Z]) });
+      b.end();
+      return b.nAdd;
     }
 
     frame(cam, time, dt) {
@@ -10753,9 +10769,15 @@ fn boxOf(V: Vox) -> Box {
       if (b > a) d.queue.writeBuffer(this.instBuf, a * IF * 4, sim.inst, a * IF, (b - a) * IF);
       if (nInst > sim.staticCount) d.queue.writeBuffer(this.instBuf, sim.staticCount * IF * 4, sim.inst, sim.staticCount * IF, (nInst - sim.staticCount) * IF);
       this.instUp = true;
-      const sp = this.sprites, nSp = sp.nAdd + sp.nAlpha;
-      if (sp.max * 48 > this.spriteBuf.size) this.growSprites();
-      if (nSp) d.queue.writeBuffer(this.spriteBuf, 0, sp.data, 0, nSp * 12);
+      const sp = this.sprites, nBk = this.backdrop ? this.drawBackdrop(cam, time, dt) : 0, nAdd = sp.nAdd + nBk, nSp = nAdd + sp.nAlpha;
+      if (Math.max(sp.max, nSp) * 48 > this.spriteBuf.size) this.growSprites(Math.max(sp.max, nSp));
+      if (!nBk) { if (nSp) d.queue.writeBuffer(this.spriteBuf, 0, sp.data, 0, nSp * 12); }
+      else {
+        // the app's additive sprites, the backdrop's, then the app's bars (drawn from nAdd on)
+        if (sp.nAdd) d.queue.writeBuffer(this.spriteBuf, 0, sp.data, 0, sp.nAdd * 12);
+        d.queue.writeBuffer(this.spriteBuf, sp.nAdd * 48, this.backSprites.data, 0, nBk * 12);
+        if (sp.nAlpha) d.queue.writeBuffer(this.spriteBuf, nAdd * 48, sp.data, sp.nAdd * 12, sp.nAlpha * 12);
+      }
       for (const L of this.layers) L.prepare(time, dt);
       const enc = d.createCommandEncoder();
 
@@ -10832,9 +10854,9 @@ fn boxOf(V: Vox) -> Box {
       if (s.water && s.particles && this.pcount.spray) { r.setPipeline(P.spray); r.setBindGroup(0, g0.spray); r.setBindGroup(1, g1.spray); r.draw(36, this.pcount.spray, 0, this.pcount.leaf + this.pcount.fly + this.pcount.mist); }
       if (s.water && this.bubbleN) { r.setPipeline(P.spriteAdd); r.setBindGroup(0, g0.spriteAdd); r.setBindGroup(1, g1.bubbles); r.draw(6, this.bubbleN); }
       if (s.particles && this.pcount.fly + this.pcount.mist) { r.setPipeline(P.sparks); r.setBindGroup(0, g0.sparks); r.setBindGroup(1, g1.sparks); r.draw(6, this.pcount.fly + this.pcount.mist, 0, this.pcount.leaf); }
-      if (sp.nAdd) { r.setPipeline(P.spriteAdd); r.setBindGroup(0, g0.spriteAdd); r.setBindGroup(1, g1.spriteAdd); r.draw(6, sp.nAdd); }
+      if (nAdd) { r.setPipeline(P.spriteAdd); r.setBindGroup(0, g0.spriteAdd); r.setBindGroup(1, g1.spriteAdd); r.draw(6, nAdd); }
       if (s.glass && this.glass) { r.setPipeline(P.glass); r.setBindGroup(0, g0.glass); r.setVertexBuffer(0, this.glass.vb); r.setIndexBuffer(this.glass.ib, "uint32"); r.drawIndexed(this.glass.n); }
-      if (sp.nAlpha) { r.setPipeline(P.spriteAlpha); r.setBindGroup(0, g0.spriteAlpha); r.setBindGroup(1, g1.spriteAlpha); r.draw(6, sp.nAlpha, 0, sp.nAdd); }
+      if (sp.nAlpha) { r.setPipeline(P.spriteAlpha); r.setBindGroup(0, g0.spriteAlpha); r.setBindGroup(1, g1.spriteAlpha); r.draw(6, sp.nAlpha, 0, nAdd); }
       r.end();
       // bloom
       const B = this.views.bloom;
@@ -16603,6 +16625,9 @@ function MG_SFX(L) {
     arp() { return this.chordNotes.map((n) => n + 12).sort((a, b) => a - b); }
 
     // --- event gestures (single notes on the grid, in the current chord)
+    // cue(name, p): a gesture by name, without the rules' events (a game other than the tower defence, DeckChess):
+    // one of onEvent's names with its data, or "phase" with p.phase
+    cue(name, p = {}) { if (name === "phase") this.onPhase(p.phase); else this.onEvent(name, p); }
     onEvent(name, data) {
       if (!this.ready || this.gameOver) return;
       const q = this.seq, clock = q.clock, g = clock + q.toGrid(), arp = () => this.arp(), now = this.mixer.ctx.currentTime;
@@ -16878,11 +16903,12 @@ function MG_SFX(L) {
 })();
 
 </script>
-<script>/* ../Mossheart/src/view/dismiss.js */
-/* Easy close for the pop-ups (the user's ask 2026-11-04): every dismissible pop-up closes three ways, a tap
+<script>/* ../MossheartEngine/src/dismiss.js */
+/* Easy close for a game's pop-ups (moved here from Mossheart's view/dismiss.js, 2026-11-05, so DeckChess
+   shares it): every dismissible pop-up closes three ways, a tap
    outside it, its ✕ (a 44px target on a phone) or a swipe on a touch screen (down for sheets and cards, any
    way for the modals; the panel follows the finger and snaps back short of the threshold). Esc stays with
-   its owners (menu.js, main.js). G.Dismiss.add(el, o) wires one:
+   its owners (a game's menu and main). ME.Dismiss.add(el, o) wires one:
      o.close()   closes it (the owner's own close, so its state stays right)
      o.panel     what carries the ✕ and follows the finger (default el)
      o.hit       a selector: taps inside a match are not "outside" (default: inside o.panel)
@@ -16892,12 +16918,12 @@ function MG_SFX(L) {
      o.dir       "down" (default) or "any"
      o.x         false: no ✕ of ours (the panel has its own, the game tip)
      o.tab       a choice (the gifts, the run's end): it never closes, it minimises to a tab of that label
-                 at the bottom that brings it back; the owner drops the tab with G.Dismiss.untab(el)
-   G.Dismiss.drag(el, [{x, y, t}, ...]) runs a swipe from plain points, for the flows. The ✕ is .x and the
-   tab #dztab, in game.css; a choice's ✕ is a – (it minimises). */
+                 at the bottom that brings it back; the owner drops the tab with ME.Dismiss.untab(el)
+   ME.Dismiss.drag(el, [{x, y, t}, ...]) runs a swipe from plain points, for the flows. The ✕ is .x and the
+   tab #dztab, styled by the game (Mossheart: game.css); a choice's ✕ is a – (it minimises). */
 (function () {
-  const G = window.MG;
-  const SCROLLERS = ".cscroll, #inspbody, #almbody";
+  const ME = window.ME;
+  // (ME.Dismiss.scrollers: a selector of the inner lists that scroll, which keep a swipe while they can)
   const LOCK = 8, FAR = 60, FLICK = 0.5, FLICK_MIN = 20;
   const wired = new Map();
   let eatClick = 0, eatId = null, eatAt = null;
@@ -16925,7 +16951,7 @@ function MG_SFX(L) {
         const vert = Math.abs(dy) >= Math.abs(dx);
         if (w.o.dir !== "any" && !(vert && dy > 0)) { s.off = true; return false; }
         // an inner list that can still scroll that way keeps the gesture
-        const sc = s.target && s.target.closest && s.target.closest(SCROLLERS);
+        const sc = s.target && s.target.closest && D.scrollers && s.target.closest(D.scrollers);
         if (sc && w.panel.contains(sc) && vert) {
           const up = sc.scrollTop > 0, down = sc.scrollTop + sc.clientHeight < sc.scrollHeight - 1;
           if ((dy > 0 && up) || (dy < 0 && down)) { s.off = true; return false; }
@@ -17010,7 +17036,17 @@ function MG_SFX(L) {
     return swipe.end(w);
   }
 
-  G.Dismiss = { add, drag, untab, tabbed: () => tabFor };
+  const D = ME.Dismiss = { add, drag, untab, tabbed: () => tabFor, scrollers: "" };
+})();
+
+</script>
+<script>/* ../Mossheart/src/view/dismiss.js */
+/* Easy close for the pop-ups now lives in the engine (MossheartEngine/src/dismiss.js, ME.Dismiss, 2026-11-05):
+   this keeps the game's name for it, G.Dismiss, and the game's inner lists that keep a swipe while they scroll. */
+(function () {
+  const G = window.MG;
+  G.Dismiss = ME.Dismiss;
+  ME.Dismiss.scrollers = ".cscroll, #inspbody, #almbody";
 })();
 
 </script>
@@ -17021,7 +17057,9 @@ function MG_SFX(L) {
    G.WEATHER_LOOKS.fronts[id] = { name, heavy?, rare?, <layer>: [low, high] }, merged over weather.js's FRONTS.
      The layers: cloud, rain, snow, fog, fogLow, wind, gust, petals, leaves, flash, each k from 0 to 1. Each
      k walks inside its range (and starts in the middle); a layer left out is 0. heavy counts toward the
-     escalation; rare is the chance per front change, at most once a session.
+     escalation; rare is the chance per front change, at most once a run.
+     The walk's spread is Game's, about the half-range, so a layer sits on an edge about a third of the time:
+     each range is drawn so both its edges are a look we want (the spread stays; the ranges are the knob).
      The k steps by layer: rain 0.2 drizzle, 0.5 rain, 1 downpour; wind 0.2 breeze, 0.5 wind, 1 gale; fog
      0.2 haze, 0.5 mist, 1 fog; cloud 0.2 scattered, 0.5 broken, 1 overcast.
      Every range sits inside resolve()'s rules, so a front settles where it is drawn and is never clamped:
@@ -17033,6 +17071,15 @@ function MG_SFX(L) {
      calm     the lighter fronts the build phase drifts toward
      boss     the front a boss wave forces
      rare     optional, a factor on a rare front's chance in this garden (0: never there)
+   G.WEATHER_LOOKS.layers: the per-layer looks in atmos.js, each part merged over its defaults (every part
+     optional; a light entry replaces that layer's whole entry):
+     light    { <layer>: { f: { <setting>: factor per k }, add: { <setting>: amount per k } } }
+     sunbreak { shaftK, pool, exposure }, the factors when the sun breaks through
+     fx       { rain, snow, petals, leaves }, each overlay's strength per k; rings, budget (numbers)
+     colours  { rain, snow, petals, flash, leaves: [a, b] } as "r,g,b" strings, not #hex (unlike the
+              rainbow): a hex is ignored. leaves are two colours, half the leaves each.
+     atmos.js caches layers until the object changes, so to tune it live, assign a new one
+     (G.WEATHER_LOOKS.layers = { ... }), not a change in place.
    G.WEATHER_LOOKS.rainbow: the bow's colours and strength for atmos.js, and a pale moonbow in a night garden. */
 (function () {
   const G = (window.MG = window.MG || {});
@@ -17077,6 +17124,7 @@ function MG_SFX(L) {
         weights: { mistmorn: 3, fog: 1.8, drizzlemist: 2.5, showers: 2, rain: 1, storm: 0.5, overcast: 1.5, clear: 1, gale: 0.2, petals: 0.4 },
         calm: ["mistmorn", "clear"],
         boss: "storm",
+        rare: { thundersnow: 0 }, // (a mild, wet glasshouse garden: it never snows, so no thundersnow)
       },
       cornmoon: {
         weights: { clear: 2.5, wind: 3, gale: 1.2, overcast: 1, showers: 1, rain: 0.5, storm: 0.6, mistmorn: 0.8, fog: 0.5, snow: 0.3, blizzard: 0.2 },
@@ -17084,6 +17132,12 @@ function MG_SFX(L) {
         boss: "gale",
         rare: { petalstorm: 0 },
       },
+    },
+
+    // The per-layer looks: atmos.js's defaults hold, but the windborne leaves are autumn's. Momiji's maples and
+    // Corn Moon's autumn trees shed amber and maple red, never green (spring has the petals).
+    layers: {
+      colours: { leaves: ["214,150,62", "188,70,42"] }, // amber, maple red
     },
 
     // The bow when the rain ends under a clearing sky (weather.js starts it, atmos.js draws it). A soft,
@@ -17117,7 +17171,7 @@ function MG_SFX(L) {
   const G = window.MG, ME = window.ME;
   const LAYERS = ["cloud", "rain", "snow", "fog", "fogLow", "wind", "gust", "petals", "leaves", "flash"];
   // layer: [low, high], the range its walk stays in (absent: 0); name: the panel's and the sky button's;
-  // heavy: counts toward the escalation's share; rare: its chance at a front change (once a session)
+  // heavy: counts toward the escalation's share; rare: its chance at a front change (once a run: newRun clears what it has seen)
   const FRONTS = {
     clear: { name: "Clear", cloud: [0, 0.15], wind: [0.05, 0.3], gust: [0.3, 0.6] },
     overcast: { name: "Overcast", cloud: [0.7, 0.95], wind: [0.15, 0.4], gust: [0.4, 0.6] },
@@ -17356,8 +17410,8 @@ function MG_SFX(L) {
    This file is the adapter: it turns the model's resolved vector into what draws today, factors on the
    lighting (fewer shafts and sun pools, more haze, a dimmer exposure), the wind (R.set.windK) and its gusts
    (R.set.gust, E-W0), screen-space rain, snow, petals or leaves on a 2D canvas over the scene (#wx), rain
-   rings on the open water, lightning and a rainbow arc; it hands the vector to R.weather.mix() once the
-   engine has it. */
+   rings on the open water, lightning and a rainbow arc; it hands the vector, at the settings' intensity, to
+   R.weather.mix() once the engine has it. Art tunes the per-layer looks in G.WEATHER_LOOKS.layers (A-W1). */
 (function () {
   const G = window.MG, ME = window.ME;
   const KEY = "mossheart.atmos";
@@ -17387,6 +17441,8 @@ function MG_SFX(L) {
   // the overlay's strengths per unit of k (1 is a storm's rain, BUDGET particles), and the rain rings
   const FXK = { rain: 1, snow: 1, petals: 0.65, leaves: 1.1 };
   const RINGS = 1.8;
+  // the overlay's colours ("r,g,b"; the drops' alpha varies per drop): leaves are two, autumn and green
+  const COLOURS = { rain: "205,220,235", snow: "250,252,255", petals: "246,176,198", leaves: ["214,150,62", "138,170,74"], flash: "235,240,255" };
   const MOOD_ROLL = ["cosy", "morning", "clear", "golden", "dusk", "night"];
   const EASE = 1.5, EASE_DYN = 4; // s: the blend toward the weather (slower when it follows the run)
   // the lit settings the weather and the moods' "after" scale, at rest
@@ -17401,6 +17457,19 @@ function MG_SFX(L) {
   // drift over their mean fall speed). The upwind side spawns that much wider, or the wind sweeps the
   // particles off it and leaves it bare (the left of the screen, in rain or snow)
   const DRIFT = { rain: 0.12, snow: 14 / 50, petals: 26 / 55, leaves: 0 };
+  // the per-layer looks Art tunes (A-W1): G.WEATHER_LOOKS.layers = { light: { <layer>: { f, add } },
+  // sunbreak, fx, rings, budget, colours }, each part merged over the defaults above (a light entry replaces
+  // that layer's whole entry); cached until G.WEATHER_LOOKS.layers changes
+  let layersOf, layersAll;
+  const layers = () => {
+    const l = (G.WEATHER_LOOKS || {}).layers;
+    if (l !== layersOf || !layersAll) {
+      layersOf = l; const o = l || {};
+      layersAll = { light: Object.assign({}, LIGHT, o.light), sunbreak: Object.assign({}, SUNBREAK, o.sunbreak), fx: Object.assign({}, FXK, o.fx),
+        rings: o.rings ?? RINGS, budget: o.budget ?? BUDGET, colours: Object.assign({}, COLOURS, o.colours) };
+    }
+    return layersAll;
+  };
   // the bow, outside to inside, its strength and band width (x the default), and the pale moonbow of a night
   // garden or the Night mood; G.WEATHER_LOOKS.rainbow (A-W1) replaces each one it has
   const RAINBOW = ["#ff5a4e", "#ff9a3c", "#ffe25a", "#7ee06a", "#5ab8ff", "#7a72ff", "#b46cff"], BOW_ALPHA = 0.16, BOW_WIDTH = 1;
@@ -17528,22 +17597,26 @@ function MG_SFX(L) {
       this.v = this.level > 0 ? r.v : G.WX.zero(); this.sun = this.level > 0 && r.sun;
       md.tick(dt, life, over, this.v);
       if (md.front !== this.lastFront) { this.lastFront = md.front; this.renderPanel(); }
-      if (this.R.weather && this.R.weather.mix) this.R.weather.mix(this.v);
       // the settings' intensity: L on the particles, rings and lightning, Ll on the light, the wind and the gusts
       const v = this.v, t = Object.assign({ rain: 0, snow: 0, petals: 0, leaves: 0, rings: 0 }, ONE), L = this.level, Ll = Math.min(1.3, L);
+      const gust = Math.max(0, Math.min(1, 0.5 + (v.gust - 0.5) * Ll)), lk = layers();
+      // the engine's path gets the vector after the intensity (the study's knob scales k after the rules), the
+      // gust included, so the gusts are written there and not in apply() too
+      this.mixed = !!(this.R.weather && this.R.weather.mix);
+      if (this.mixed) this.R.weather.mix(this.scaled(L, Ll, gust));
       for (const k in m.after || {}) t[k] *= m.after[k];
-      for (const l in LIGHT) {
-        const e = LIGHT[l], k = v[l] * Ll;
-        for (const p in e.f) t[p] *= Math.max(0, 1 - e.f[p] * k);
-        for (const p in e.add) t[p] += e.add[p] * k;
+      for (const l in lk.light) {
+        const e = lk.light[l], k = (v[l] || 0) * Ll;
+        for (const p in e.f || {}) t[p] *= Math.max(0, 1 - e.f[p] * k);
+        for (const p in e.add || {}) t[p] += e.add[p] * k;
       }
       if (v.rain > 0.6) t.vignette += 0.15 * (v.rain - 0.6) / 0.4 * Ll; // (a downpour closes in)
-      if (this.sun) for (const p in SUNBREAK) t[p] *= 1 + (SUNBREAK[p] - 1) * Ll;
+      if (this.sun) for (const p in lk.sunbreak) t[p] *= 1 + (lk.sunbreak[p] - 1) * Ll;
       // (wind: about today's 1 under a clear sky's breeze, 2.5 when windy, 3.3 in a gale)
       t.wind = 1 + (Math.max(0.3, 1 + 3 * (v.wind - 0.15)) - 1) * Ll;
-      t.gust = Math.max(0, Math.min(1, 0.5 + (v.gust - 0.5) * Ll));
-      for (const k of FX) t[k] = v[k] * FXK[k] * L;
-      t.rings = v.rain * RINGS * L;
+      t.gust = gust;
+      for (const k of FX) t[k] = v[k] * (lk.fx[k] ?? 1) * L;
+      t.rings = v.rain * lk.rings * L;
       const k = 1 - Math.exp(-dt / (dyn ? EASE_DYN : EASE));
       for (const key in t) this.cur[key] += (t[key] - this.cur[key]) * k;
       // lightning: more often and brighter with the flash layer
@@ -17555,6 +17628,14 @@ function MG_SFX(L) {
       this.rings(dt);
       this.draw(dt);
     }
+    // the resolved vector at the settings' intensity, for R.weather.mix(): the light layers (cloud, fog, wind) at
+    // Ll, the rest at L, each capped at 1; fogLow stays a flag, and gust is the mapped one (0.5 at rest)
+    scaled(L, Ll, gust) {
+      const v = this.v, o = {};
+      for (const l of G.WX.LAYERS) o[l] = Math.min(1, v[l] * (l === "cloud" || l === "fog" || l === "wind" ? Ll : L));
+      o.fogLow = L > 0 ? v.fogLow : 0; o.gust = gust;
+      return o;
+    }
     // at the end of the view's mood(): the preset's other settings (sun, glass, mottle), then the weather's
     // and the mood's factors on what the dusk blend wrote
     apply(s) {
@@ -17563,7 +17644,7 @@ function MG_SFX(L) {
       for (const key of ["shaftK", "pool", "exposure", "bloomK", "amb"]) s[key] *= c[key];
       s.haze += c.haze; s.vignette += c.vignette;
       s.windK = (this.R.set0.windK ?? 1) * c.wind;
-      s.gust = c.gust;
+      if (!this.mixed) s.gust = c.gust; // (one writer: the mix carries it once the engine has one)
       if (this.flash > 0) s.exposure *= 1 + 1.6 * this.flash * this.flash;
     }
     // raindrops on the open water: rings at random spots of the map, about 14 a second in rain
@@ -17593,7 +17674,7 @@ function MG_SFX(L) {
     draw(dt) {
       const ctx = this.ctx;
       if (!ctx) return;
-      const w = this.cv.width, h = this.cv.height, c = this.cur, scale = this.reduced ? 0.4 : 1, wind = c.wind;
+      const w = this.cv.width, h = this.cv.height, c = this.cur, scale = this.reduced ? 0.4 : 1, wind = c.wind, lk = layers(), col = lk.colours, lv = [].concat(col.leaves);
       // the zoom (1 at the default framing): closer in, bigger and faster drops and fewer of them, so the screen
       // reads as the same weather nearer; farther out, smaller and more
       const z = Math.min(3, Math.max(0.5, this.scene.zoomIn || 1)), sk = z ** 0.75, ck = Math.min(1.6, Math.max(0.6, 1 / z));
@@ -17603,7 +17684,7 @@ function MG_SFX(L) {
       let all = 0;
       for (const k of FX) {
         pad[k] = h * DRIFT[k] * Math.max(0, wind) + 30;
-        want[k] = BUDGET * c[k] * scale * (k === "rain" ? 1 : 0.6) * ck * (w + pad[k]) / w; all += want[k];
+        want[k] = lk.budget * c[k] * scale * (k === "rain" ? 1 : 0.6) * ck * (w + pad[k]) / w; all += want[k];
       }
       for (const k of FX) want[k] = Math.round(want[k] * Math.min(1, CAP / Math.max(1, all)));
       for (const p of this.parts) have[p.kind]++;
@@ -17633,20 +17714,20 @@ function MG_SFX(L) {
         if (p.x < -40 * sk) continue; // (still upwind of the screen)
         if (p.kind === "rain") {
           const len = p.len * sk;
-          ctx.strokeStyle = `rgba(205,220,235,${0.22 + 0.2 * p.r})`; ctx.lineWidth = (1 + p.r * 0.6) * Math.min(2, sk);
+          ctx.strokeStyle = `rgba(${col.rain},${0.22 + 0.2 * p.r})`; ctx.lineWidth = (1 + p.r * 0.6) * Math.min(2, sk);
           ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - len * slant, p.y - len); ctx.stroke();
         } else if (p.kind === "snow") {
-          ctx.fillStyle = `rgba(250,252,255,${0.55 + 0.35 * p.r})`;
+          ctx.fillStyle = `rgba(${col.snow},${0.55 + 0.35 * p.r})`;
           ctx.beginPath(); ctx.arc(p.x, p.y, p.size * sk, 0, 6.283); ctx.fill();
         } else {
           const s = p.size * sk;
-          ctx.fillStyle = p.kind === "petals" ? `rgba(246,176,198,${0.7 + 0.25 * p.r})` : p.r < 0.5 ? "rgba(214,150,62,0.85)" : "rgba(138,170,74,0.85)";
+          ctx.fillStyle = p.kind === "petals" ? `rgba(${col.petals},${0.7 + 0.25 * p.r})` : `rgba(${lv[p.r < 0.5 ? 0 : lv.length - 1]},0.85)`;
           ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.a); ctx.scale(1, 0.35 + 0.65 * Math.abs(Math.sin(p.a * 1.3)));
           ctx.beginPath(); ctx.ellipse(0, 0, s, s * 0.6, 0, 0, 6.283); ctx.fill(); ctx.restore();
         }
       }
       this.parts = keep;
-      if (this.flash > 0) { ctx.fillStyle = `rgba(235,240,255,${(0.28 * this.flash).toFixed(3)})`; ctx.fillRect(0, 0, w, h); }
+      if (this.flash > 0) { ctx.fillStyle = `rgba(${col.flash},${(0.28 * this.flash).toFixed(3)})`; ctx.fillRect(0, 0, w, h); }
     }
 
     // ------------------------------------------------------------------ the sky panel
@@ -19143,7 +19224,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.3.0", name: "DeckChess", commit: "cb6b4f4" };
+  G.VERSION = { v: "0.4.0", name: "DeckChess", commit: "d3b4321" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
