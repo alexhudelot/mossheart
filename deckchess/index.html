@@ -9268,7 +9268,10 @@ fn rain(uv: vec2f, sd: f32) -> vec3f {
     let a = ax * ay * k;
     if (a <= 0.002) { continue; }
     let sv = textureSampleLevel(sunV, lin, sunUVW(P), 0.0);
-    acc += (u.fog.rgb * (0.35 + 0.65 * sv.g) * 0.5 + pow(u.beamCol.rgb, vec3f(1.6)) * sv.r * 0.35 + 0.03) * a;
+    // (out of the sky's reach the haze colour goes to a blue-grey of its brightness: a warm haze tinted the
+    // streaks under the canopy tan)
+    let hz = mix(vec3f(dot(u.fog.rgb, vec3f(0.3, 0.5, 0.2))) * vec3f(0.86, 0.96, 1.16), u.fog.rgb, sv.g);
+    acc += (hz * (0.35 + 0.65 * sv.g) * 0.5 + pow(u.beamCol.rgb, vec3f(1.6)) * sv.r * 0.35 + vec3f(0.027, 0.03, 0.034)) * a;
   }
   return acc * 0.7;
 }
@@ -10099,7 +10102,7 @@ fn boxOf(V: Vox) -> Box {
   // the rain's, per unit of rain (ME.Sky's rain entry, which it skips once the engine draws the rain); shaftK
   // keeps a thin cloud's drizzle from showing full sun shafts (Game's Subtle Showers eyeball, #455)
   WeatherMix.LIGHT_RAIN = { shaftK: 0.6, exposure: 0.1, haze: 0.02 };
-  WeatherMix.DRIFT_MIN = 0.04; // the clouds' drift with the wind off or still (a quarter of 0.15 at rest), so they never stop
+  WeatherMix.DRIFT_MIN = 0.25; // the least cloud drift, as a share of the calm drift (windE[0] is 1 at calm): the clouds still creep with the wind off
   ME.WeatherMix = WeatherMix;
 
   class Renderer {
@@ -13052,22 +13055,26 @@ fn boxOf(V: Vox) -> Box {
    drainage ditch with a timber footbridge, a lit hen coop and a patch of carved pumpkins by the Heart Tree.
    Broad moon shafts slant in from a low moon. The creatures come in by the field gate at the top and by a
    second, lit east gate onto the same path. This file holds the level's part of the Mossheart content pack:
-     ME.content.kinds       cmtrack (the dirt path), cmwall (the field's turf bank over fieldstone), cmmeadow
-                            (pasture) and cmstubble (hay rows), the build tiles; cmcorn (furrowed loam under
+     ME.content.kinds       cmtrack (the dirt path), cmwall (the field's turf bank over fieldstone), the build
+                            tiles cmmeadown, cmmeadow, cmmeadowa, cmmeadowr (the pasture in four autumn bands,
+                            olive by the gate, gold, amber, then rust down by the ditch) and cmstubble (hay
+                            rows); cmcorn (furrowed loam under
                             the corn), cmtallgrass, cmpatch (the pumpkin patch's dark soil), cmpen (the pen's
                             straw), cmgarden (the garden's rows), cmditch (the ditch's still, dark water)
      window.MODELS          stamps cm_gate (two stone pillars and a timber gate; o.swing, the side it opens to,
                             o.open 0-1), cm_bridge, cm_fence, cm_hay, cm_leaves (fallen leaves; o.n); volumes
-                            cm_corn and cm_tallgrass (o.w 1 or 2 tiles; they sway hard), cm_scarecrow (a carved
+                            cm_corn and cm_tallgrass (o.w 1 or 2 tiles; they sway hard), cm_thingrass (fine
+                            blades in green, tan and rust; o.tall a high clump, else a low tuft; o.seed),
+                            cm_shrub (a low autumn bush; o.leaf its colour), cm_scarecrow (a carved
                             pumpkin head), cm_lantern (a pole with a hung lantern),
                             cm_pumpkin (o.carved: a face glowing on +x; o.vines), cm_apple (a small tree; o.leaf
                             its crown, o.fruit false for no apples), cm_sheep (o.a its yaw, o.lamb), cm_trough,
                             cm_coop (a lit window on +x), cm_hen (o.n hens), cm_cabbage (o.kale), cm_sunflower
      ME.content.maps.cornmoon       the v1 map (plain data), with game: { route, spawn, heart, lane, build,
                                     bridges }; route[1] and spawn2 are the east gate's way in
-     ME.content.mapLight.cornmoon   its light, { L, light, hd, look }: a low cold moon in the south-east, pale
-                                    beams on the track and the corn, a blue night fog instead of the valley's
-                                    warm haze; look is the night the design asks of Engine (E1, E2)
+     ME.content.mapLight.cornmoon   its light, { L, light, hd, look }: a low harvest moon in the south-east,
+                                    warm beams on the track and the corn, a dusky plum fog instead of the
+                                    valley's haze; look is the night the design asks of Engine (E1, E2)
    The ramps reach the palette through ME.content.addMaterials (critter-models.js, ME.content.ramps); earth
    tones are explicit lists, dark to light, so no shade hue-shifts them. The map was generated once (a field
    inside an octagon wall, terraced down from the gate to the ditch) and written out as rows, so its rows can
@@ -13082,15 +13089,20 @@ fn boxOf(V: Vox) -> Box {
     // and their darker windrows, the patch's soil, the turf and the field stones
     cmLoam: ["#3a2a1a", "#4a3620", "#5a4228", "#6a4e30", "#7a5a38", "#8a6842", "#99764c", "#a88456"],
     cmClod: ["#5a4a38", "#6a5844", "#7a6650", "#8a745c", "#9a8268", "#aa9074"],
-    cmStubble: ["#4a5228", "#58602e", "#676e34", "#767c3a", "#858a42", "#94984a", "#a3a654", "#b2b360"],
-    cmWindrow: ["#5a4c20", "#6c5c26", "#7e6c2c", "#907c34", "#a28c3c", "#b29c46"],
+    cmStubble: ["#5a4e24", "#6a5c2a", "#7a6a30", "#8a7836", "#9a863e", "#aa9446", "#baa250", "#c8b05c"],
+    cmWindrow: ["#5a3e1c", "#6c4a20", "#7e5826", "#90662c", "#a27434", "#b2823c"],
     cmPatch: ["#2a2420", "#352d27", "#40372f", "#4b4137", "#574b40", "#625549"],
-    // lush farmland at night: the pasture a deep green under the moon, its mottle a dry autumn tan, the wall's turf
-    // a green bank, the pen's trodden straw bedding (explicit lists: a generated ramp hue-shifts its shade,
-    // the red band of #275)
-    cmMeadow: ["#20362a", "#274130", "#2e4c36", "#36573c", "#3e6242", "#476d48", "#50784e", "#5a8354"],
-    cmMeadow2: ["#3e3a22", "#4a4428", "#574e2e", "#645834", "#71623a", "#7e6c41", "#8b7648"],
-    cmBank: ["#24352a", "#2b3f31", "#334a38", "#3b5540", "#446048", "#4d6b50"],
+    // the pasture in an autumn gradient down the field (the user: "the cosy beauty of momiji"): olive on the top
+    // field, gold-olive in the middle one (cmMeadow, also every edge and drape), amber on the low field and
+    // russet by the Heart Tree, one band a terrace so no band edge crosses flat ground; their mottle a dry tan,
+    // the wall's turf an olive bank, the pen's trodden straw bedding (explicit lists: a generated ramp
+    // hue-shifts its shade, the red band of #275)
+    cmMeadowN: ["#2a3a1c", "#33461f", "#3d5223", "#485e27", "#536a2c", "#5f7631", "#6b8237", "#788e3e"],
+    cmMeadow: ["#3a3a18", "#47461b", "#55531f", "#636023", "#726d28", "#827a2e", "#928735", "#a2943c"],
+    cmMeadowA: ["#45301a", "#553b1c", "#66471f", "#775322", "#885f26", "#996b2b", "#aa7831", "#ba8538"],
+    cmMeadowR: ["#45221a", "#55291c", "#66311f", "#773a22", "#884326", "#984c2a", "#a8562f", "#b66135"],
+    cmMeadow2: ["#463c22", "#544828", "#62542e", "#706034", "#7e6c3a", "#8c7841", "#9a8448"],
+    cmBank: ["#2e3020", "#383a24", "#424428", "#4c4e2c", "#565830", "#606234"],
     cmStraw: ["#5e5030", "#706038", "#827040", "#948048", "#a69052", "#b8a05c"],
     cmFieldstone: ["#3e4248", "#4b5057", "#595e66", "#676c74", "#757a82", "#83888f", "#91969c", "#a0a4a9"],
     // fallen autumn leaves in the pasture, thick under the trees, brown to orange-gold
@@ -13101,6 +13113,9 @@ fn boxOf(V: Vox) -> Box {
     cmTassel: ["#4a4532", "#5e583f", "#736c4d", "#88805c", "#9d956d", "#b1a97f", "#c5bd92", "#d8d0a4"],
     cmHusk: ["#4c4a34", "#5f5d40", "#73714d", "#88855c", "#9c996c", "#b0ad7e", "#c2bf90"],
     cmGrass: ["#5a4a1c", "#6e5b20", "#836c26", "#987e2c", "#ad9134", "#c1a33e", "#d3b54a", "#e2c55a"],
+    // the thin grass's blades mixed in with the gold: tan and rust
+    cmGrassTan: ["#4e4630", "#605638", "#726642", "#84764c", "#968658", "#a69664", "#b6a672"],
+    cmGrassRust: ["#4a2814", "#5c3218", "#703e1e", "#844a24", "#98582c", "#aa6634", "#ba743e"],
     cmGrassTip: ["#c8b060", "#d8c272", "#e6d286", "#f0e09c", "#f8ecb4"], cmSeed: ["#9a7a30", "#b08c3a", "#c49e46", "#d6b054", "#e6c266"],
     // the kitchen garden: cabbages, blue kale, the sunflowers' petals and dark seed faces
     cmCabbage: ["#1e3a2e", "#25483a", "#2d5646", "#356452", "#3e725e", "#48806a", "#538e76"],
@@ -13123,11 +13138,11 @@ fn boxOf(V: Vox) -> Box {
   CT.mats = Object.assign(CT.mats || {}, {
     cmPumpkinGlow: { em: 1, flat: 1 }, cmWool: { wrap: 0.5 },
     cmCabbage: { wrap: 0.5 }, cmKale: { wrap: 0.5 }, cmPetal: { wrap: 0.5 },
-    cmLeaf: { wrap: 0.6 }, cmLeafDk: { wrap: 0.6 }, cmTassel: { wrap: 0.5 }, cmGrass: { wrap: 0.6 }, cmGrassTip: { wrap: 0.6 }, cmAppleLeaf: { wrap: 0.6 }, cmAmber: { wrap: 0.6 }, cmScarlet: { wrap: 0.6 },
+    cmLeaf: { wrap: 0.6 }, cmLeafDk: { wrap: 0.6 }, cmTassel: { wrap: 0.5 }, cmGrass: { wrap: 0.6 }, cmGrassTan: { wrap: 0.6 }, cmGrassRust: { wrap: 0.6 }, cmGrassTip: { wrap: 0.6 }, cmAppleLeaf: { wrap: 0.6 }, cmAmber: { wrap: 0.6 }, cmScarlet: { wrap: 0.6 },
   });
   Object.assign(CT.materialClass = CT.materialClass || {}, {
-    cmMeadow: "MOSS", cmMeadow2: "MOSS", cmBank: "MOSS", cmLitter: "MOSS", cmStraw: "MOSS", cmWindrow: "MOSS", cmFieldstone: "ROCK", cmClod: "ROCK", cmTimber: "BARK",
-    cmLeaf: "FOLIAGE", cmLeafDk: "FOLIAGE", cmTassel: "FOLIAGE", cmHusk: "FOLIAGE", cmGrass: "FOLIAGE", cmGrassTip: "FOLIAGE", cmSeed: "FOLIAGE", cmAppleLeaf: "FOLIAGE", cmAmber: "FOLIAGE", cmScarlet: "FOLIAGE",
+    cmMeadowN: "MOSS", cmMeadow: "MOSS", cmMeadowA: "MOSS", cmMeadowR: "MOSS", cmMeadow2: "MOSS", cmBank: "MOSS", cmLitter: "MOSS", cmStraw: "MOSS", cmWindrow: "MOSS", cmFieldstone: "ROCK", cmClod: "ROCK", cmTimber: "BARK",
+    cmLeaf: "FOLIAGE", cmLeafDk: "FOLIAGE", cmTassel: "FOLIAGE", cmHusk: "FOLIAGE", cmGrass: "FOLIAGE", cmGrassTan: "FOLIAGE", cmGrassRust: "FOLIAGE", cmGrassTip: "FOLIAGE", cmSeed: "FOLIAGE", cmAppleLeaf: "FOLIAGE", cmAmber: "FOLIAGE", cmScarlet: "FOLIAGE",
     cmCabbage: "FOLIAGE", cmKale: "FOLIAGE", cmPetal: "FOLIAGE",
   });
   CT.sunShadeHalf = (CT.sunShadeHalf || []).concat(["cmLeaf", "cmAppleLeaf", "cmAmber", "cmScarlet"]);
@@ -13141,9 +13156,13 @@ fn boxOf(V: Vox) -> Box {
     cmtrack: { recipe: "lane", top: "cmLoam", edge: "cmMeadow", drape: ["cmMeadow", "cmMeadow2"], overhang: "cmMeadow", under: "rock" },
     // the field's wall: a turf bank over fieldstone
     cmwall: { recipe: "layer", top: "cmBank", mottle: "cmFieldstone", mottleK: 0.35, depth: 0.1, under: "cmFieldstone" },
-    // the build tiles: the pasture, cushioned turf with clover and wildflowers thick under the trees, and the
-    // mown hay strips, their windrows a darker stripe along x
+    // the build tiles: the pasture, cushioned turf with fallen leaves thick under the trees, in its four autumn
+    // bands (cmmeadown the top field, cmmeadow the middle, cmmeadowa the low field, cmmeadowr past the ditch),
+    // and the mown hay strips, their windrows a darker stripe along x
+    cmmeadown: { recipe: "carpet", top: "cmMeadowN", mottle: "cmMeadow", cushions: true, litter: "cmLitter", drape: ["cmMeadowN", "cmMeadow"], overhang: "cmMeadowN", under: "rock" },
     cmmeadow: { recipe: "carpet", top: "cmMeadow", mottle: "cmMeadow2", cushions: true, litter: "cmLitter", drape: ["cmMeadow", "cmMeadow2"], overhang: "cmMeadow", under: "rock" },
+    cmmeadowa: { recipe: "carpet", top: "cmMeadowA", mottle: "cmMeadow", cushions: true, litter: "cmLitter", drape: ["cmMeadowA", "cmMeadow"], overhang: "cmMeadowA", under: "rock" },
+    cmmeadowr: { recipe: "carpet", top: "cmMeadowR", mottle: "cmMeadowA", cushions: true, litter: "cmLitter", drape: ["cmMeadowR", "cmMeadowA"], overhang: "cmMeadowR", under: "rock" },
     cmstubble: { recipe: "layer", top: "cmStubble", mottle: "cmMeadow", mottleK: 0.2, stripe: { mat: "cmWindrow", width: 0.24 }, depth: 0.1, under: "rock" },
     // under the corn: loam with a furrow of dead weeds down each tile (a stripe along x); under the tall grass,
     // the browner straw; the pumpkin patch's soil
@@ -13161,7 +13180,7 @@ fn boxOf(V: Vox) -> Box {
   });
   // the wall's banks are laid and keep straight lines; the meadow and the tall grass sprawl like the moss
   CT.edgeRound = Object.assign(CT.edgeRound || {}, { kinds: Object.assign((CT.edgeRound && CT.edgeRound.kinds) || {}, { cmwall: 0.05 }) });
-  if (CT.edgeBreak) CT.edgeBreak.kinds = Object.assign(CT.edgeBreak.kinds || {}, { cmwall: 0, cmmeadow: 0.15, cmtallgrass: 0.15 });
+  if (CT.edgeBreak) CT.edgeBreak.kinds = Object.assign(CT.edgeBreak.kinds || {}, { cmwall: 0, cmmeadown: 0.15, cmmeadow: 0.15, cmmeadowa: 0.15, cmmeadowr: 0.15, cmtallgrass: 0.15 });
 
   // ---------------------------------------------------------------- models
   // fernglass.js's conventions: tile units, the anchor at the ground centre, Z up; a stamp's source joins the
@@ -13228,20 +13247,20 @@ fn boxOf(V: Vox) -> Box {
     let j = 0;
     for (const y0 of at) for (const x0 of at) {
       const i = j++, x = x0 + (h(i, 1) - 0.5) * 0.14, y = y0 + (h(i, 2) - 0.5) * 0.12, H = 1.25 + 0.3 * h(i, 3), tx = x + (h(i, 4) - 0.5) * 0.06, ty = y + (h(i, 5) - 0.5) * 0.06;
-      p.push(C([x, y, 0], [(x + tx) / 2, (y + ty) / 2, H * 0.55], 0.05, 0.045, "cmLeaf"), C([(x + tx) / 2, (y + ty) / 2, H * 0.55], [tx, ty, H], 0.045, 0.035, "cmLeaf"));
+      p.push(C([x, y, 0], [(x + tx) / 2, (y + ty) / 2, H * 0.55], 0.034, 0.03, "cmLeaf"), C([(x + tx) / 2, (y + ty) / 2, H * 0.55], [tx, ty, H], 0.03, 0.026, "cmLeaf"));
       for (let k = 0; k < 3; k++) {
         const a = TAU * h(i, 10 + k), c = Math.cos(a), s = Math.sin(a), z0 = H * (0.3 + 0.2 * k), L = 0.3 + 0.12 * h(i, 20 + k), u = (z0 / H), bx = x + (tx - x) * u, by = y + (ty - y) * u;
         const mid = [bx + c * L * 0.55, by + s * L * 0.55, z0 + 0.16];
-        p.push(C([bx, by, z0], mid, 0.038, 0.032, "cmLeaf"), C(mid, [bx + c * L, by + s * L, z0 + 0.02], 0.032, 0.02, "cmLeafDk"));
+        p.push(C([bx, by, z0], mid, 0.028, 0.024, "cmLeaf"), C(mid, [bx + c * L, by + s * L, z0 + 0.02], 0.024, 0.016, "cmLeafDk"));
       }
-      p.push(C([tx, ty, H], [tx + 0.04 * WIND[0], ty + 0.04 * WIND[1], H + 0.17], 0.035, 0.02, "cmTassel"));
-      if (h(i, 6) < 0.7) { const a = TAU * h(i, 7), c = Math.cos(a), s = Math.sin(a), z = H * (0.45 + 0.1 * h(i, 8)); p.push(C([x + c * 0.04, y + s * 0.04, z], [x + c * 0.12, y + s * 0.12, z + 0.2], 0.045, 0.032, "cmHusk")); }
+      p.push(C([tx, ty, H], [tx + 0.04 * WIND[0], ty + 0.04 * WIND[1], H + 0.17], 0.026, 0.016, "cmTassel"));
+      if (h(i, 6) < 0.7) { const a = TAU * h(i, 7), c = Math.cos(a), s = Math.sin(a), z = H * (0.45 + 0.1 * h(i, 8)); p.push(C([x + c * 0.04, y + s * 0.04, z], [x + c * 0.12, y + s * 0.12, z + 0.2], 0.036, 0.026, "cmHusk")); }
     }
     return { prims: p, r: w > 1 ? 1.25 : 0.75, h: 1.75, k: 1, detail: (x, y, z, m) => (m === "cmLeaf" && z < 0.08 ? "cmLeafDk" : m) };
   });
 
   // Tall grass, ripe and gold: o.w 2 a 2×2-tile sweep of twelve tufts (the anchor on the shared corner), o.w
-  // 1 five tufts in one tile; seven thick blades a tuft, 0.8-1.15 tall, all leaning downwind (ME.WIND_DIR, so
+  // 1 five tufts in one tile; nine thin blades a tuft, 0.8-1.15 tall, all leaning downwind (ME.WIND_DIR, so
   // set it unturned), pale at the tips and many with a seed head. It sways (CT.sway), harder than the corn,
   // and one tile at a time, so the gusts ripple across it.
   model("cm_tallgrass", (o = {}) => {
@@ -13249,18 +13268,51 @@ fn boxOf(V: Vox) -> Box {
     const one = [[-0.24, -0.22], [0.24, -0.24], [0, 0], [-0.22, 0.24], [0.25, 0.22]];
     for (let t = 0; t < n; t++) {
       const cx = w > 1 ? ((t % 4) - 1.5) * 0.42 + (h(t, 1) - 0.5) * 0.18 : one[t][0] + (h(t, 1) - 0.5) * 0.1, cy = w > 1 ? (Math.floor(t / 4) - 1) * 0.55 + (h(t, 2) - 0.5) * 0.2 : one[t][1] + (h(t, 2) - 0.5) * 0.1;
-      for (let b = 0; b < 7; b++) {
-        const i = t * 8 + b, a = TAU * (b / 7 + 0.2 * h(i, 3)), r0 = 0.03 + 0.05 * h(i, 4), Hb = 0.8 + 0.35 * h(i, 5), lean = 0.16 + 0.18 * h(i, 6), side = (h(i, 7) - 0.5) * 0.14;
+      for (let b = 0; b < 9; b++) {
+        const i = t * 10 + b, a = TAU * (b / 9 + 0.2 * h(i, 3)), r0 = 0.03 + 0.05 * h(i, 4), Hb = 0.8 + 0.35 * h(i, 5), lean = 0.16 + 0.18 * h(i, 6), side = (h(i, 7) - 0.5) * 0.14;
         let q = [cx + Math.cos(a) * r0, cy + Math.sin(a) * r0, 0];
         for (let k = 1; k <= 3; k++) {
           const u = k / 3, d = lean * u * u, nq = [q[0] + 0, q[1] + 0, 0];
           nq[0] = cx + Math.cos(a) * r0 * (1 + u) + WIND[0] * d + nx * side * u; nq[1] = cy + Math.sin(a) * r0 * (1 + u) + WIND[1] * d + ny * side * u; nq[2] = Hb * (u - 0.25 * lean * u * u);
-          p.push(C(q, nq, 0.062 - 0.006 * k, 0.056 - 0.006 * k, k === 3 ? "cmGrassTip" : "cmGrass")); q = nq;
+          p.push(C(q, nq, 0.036 - 0.004 * k, 0.032 - 0.004 * k, k === 3 ? "cmGrassTip" : "cmGrass")); q = nq;
         }
-        if (h(i, 8) < 0.5) p.push(E([q[0] + WIND[0] * 0.03, q[1] + WIND[1] * 0.03, q[2] + 0.04], [0.045, 0.045, 0.09], "cmSeed"));
+        if (h(i, 8) < 0.5) p.push(E([q[0] + WIND[0] * 0.03, q[1] + WIND[1] * 0.03, q[2] + 0.04], [0.03, 0.03, 0.07], "cmSeed"));
       }
     }
     return { prims: p, r: w > 1 ? 1.25 : 0.65, h: 1.3, k: 1 };
+  });
+
+  // Thin grass, one tile: o.tall a clump of fourteen fine blades 0.6-1.0 tall with pale tips, or else a low tuft
+  // of twenty-two 0.2-0.38 tall; gold, tan and rust mixed, all leaning downwind like the tall grass (so set it
+  // unturned). It sways (CT.sway).
+  model("cm_thingrass", (o = {}) => {
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), tall = !!o.tall, n = tall ? 14 : 22, p = [], nx = -WIND[1], ny = WIND[0], mix = ["cmGrass", "cmGrassTan", "cmGrassRust"];
+    for (let b = 0; b < n; b++) {
+      const a = TAU * h(b, 1), r0 = 0.34 * Math.sqrt(h(b, 2)), cx = Math.cos(a) * r0, cy = Math.sin(a) * r0, m = mix[Math.floor(h(b, 6) * 3)];
+      const Hb = tall ? 0.6 + 0.4 * h(b, 3) : 0.2 + 0.18 * h(b, 3), lean = (tall ? 0.14 : 0.06) + 0.12 * h(b, 4), side = (h(b, 5) - 0.5) * 0.12;
+      let q = [cx, cy, 0];
+      for (let k = 1; k <= 3; k++) {
+        const u = k / 3, d = lean * u * u, nq = [cx + WIND[0] * d + nx * side * u, cy + WIND[1] * d + ny * side * u, Hb * (u - 0.2 * lean * u * u)];
+        p.push(C(q, nq, 0.026 - 0.003 * k, 0.023 - 0.003 * k, tall && k === 3 ? "cmGrassTip" : m)); q = nq;
+      }
+    }
+    return { prims: p, r: 0.6, h: tall ? 1.1 : 0.45, k: 1 };
+  });
+
+  // A shrub in its autumn leaves, one tile: a lumpy low bush 0.45-0.6 tall of o.leaf (cmAppleLeaf rust, cmAmber,
+  // cmScarlet) flecked with a second autumn colour, on a few bare twigs. It sways a little (CT.sway). Anchored
+  // on the ground.
+  model("cm_shrub", (o = {}) => {
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), leaf = o.leaf || "cmAppleLeaf", leaf2 = leaf === "cmAmber" ? "cmAppleLeaf" : "cmAmber", p = [];
+    for (let k = 0; k < 3; k++) { const a = TAU * (k / 3 + 0.1 * h(k, 1)); p.push(C([0, 0, 0], [Math.cos(a) * 0.16, Math.sin(a) * 0.16, 0.22], 0.03, 0.02, "bark")); }
+    for (let k = 0; k < 6; k++) {
+      const a = TAU * (k / 6 + 0.12 * h(k, 2)), r = k === 0 ? 0 : 0.17 + 0.08 * h(k, 3), z = (k === 0 ? 0.34 : 0.24) + 0.1 * h(k, 4) + 0.08 * h(9, 5);
+      p.push(E([Math.cos(a) * r, Math.sin(a) * r, z], [0.2 + 0.05 * h(k, 6), 0.2 + 0.05 * h(k, 7), 0.17], leaf));
+    }
+    return {
+      prims: p, r: 0.5, h: 0.62, k: 1,
+      detail: (x, y, z, m) => (m === leaf && P.hash(Math.floor(x * 14), Math.floor(y * 14), Math.floor(z * 14), 8) < 0.3 ? leaf2 : m),
+    };
   });
 
   // The scarecrow: a post and a crossbar in an old blue coat, straw at the cuffs and the collar, a carved
@@ -13422,9 +13474,9 @@ fn boxOf(V: Vox) -> Box {
     return { prims: p, r: 0.6, h: 0.08, k: 1 };
   });
 
-  CT.volumeDeco = (CT.volumeDeco || []).concat(["cm_corn", "cm_tallgrass", "cm_scarecrow", "cm_lantern", "cm_pumpkin", "cm_apple", "cm_sheep", "cm_trough", "cm_coop", "cm_hen", "cm_cabbage", "cm_sunflower"]);
+  CT.volumeDeco = (CT.volumeDeco || []).concat(["cm_corn", "cm_tallgrass", "cm_thingrass", "cm_shrub", "cm_scarecrow", "cm_lantern", "cm_pumpkin", "cm_apple", "cm_sheep", "cm_trough", "cm_coop", "cm_hen", "cm_cabbage", "cm_sunflower"]);
   // a windy night: the sway 1.4 times the calm farm's
-  CT.sway = Object.assign(CT.sway || {}, { cm_corn: [0.11, 0.04, 2.6], cm_tallgrass: [0.3, 0.12, 3.4], cm_scarecrow: [0.04, 0.014, 1.8], cm_apple: [0.06, 0.018, 2.1], cm_sunflower: [0.085, 0.028, 2.2], cm_cabbage: [0.02, 0.01, 2.6] });
+  CT.sway = Object.assign(CT.sway || {}, { cm_corn: [0.11, 0.04, 2.6], cm_tallgrass: [0.3, 0.12, 3.4], cm_thingrass: [0.3, 0.12, 3.6], cm_shrub: [0.04, 0.014, 2.0], cm_scarecrow: [0.04, 0.014, 1.8], cm_apple: [0.06, 0.018, 2.1], cm_sunflower: [0.085, 0.028, 2.2], cm_cabbage: [0.02, 0.01, 2.6] });
   // fireflies round the lanterns, the carved pumpkins, the coop's window and the sunflowers (momiji.js's
   // particles)
   const ff = CT.particles && CT.particles.fireflies;
@@ -13446,7 +13498,8 @@ fn boxOf(V: Vox) -> Box {
   // (2.0), the west rise with the amber tree, the middle corn and the east corn by the gate (1.5), the low
   // corn and grass in the south-east (1.0) and the apple tree's knoll (1.0).
   // The NE corn block on the top rise is now the sheep pen, the low corn in the south-east the kitchen garden.
-  //   _ outside   # wall   : track   . pasture (build tiles)   s hay rows (build tiles)   c corn   g tall grass
+  //   _ outside   # wall   : track   o . a r pasture, olive on the top field, gold-olive in the middle, amber on
+  //   the low field, russet past the ditch (build tiles)   s hay rows (build tiles)   c corn   g tall grass
   //   p pumpkin patch   ~ ditch   n sheep pen   k kitchen garden
   CT.maps = CT.maps || {};
   CT.maps.cornmoon = {
@@ -13460,14 +13513,14 @@ fn boxOf(V: Vox) -> Box {
       "000022111111111222220000", "000002211111111112200000", "000000221111111122000000", "000000022222222220000000",
     ],
     kind: [
-      "_______####::####_______", "______##sss::...##______", "_____##.sss::..nn##_____", "____##:::::::..nnn##____",
-      "___##.:::::::..nnnn##___", "__##..::.......nnnn.##__", "_##...::.............##_", "##gg..:::::::::::::.cc##",
-      "#ggg..:::::::::::::.ccc#", "#gggsssssscccc...::.ccc#", "#gggsssssscccc...::.ccc#", "#...::::::::::::::::::::",
-      "#...::::::::::::::::::::", "#...::sssssssss.....ggg#", "#...:::::::::..kkkkkggg#", "#...:::::::::..kkkkkggg#",
-      "##..sssssss::...gggggg##", "_##.~~~~~~~~~~~~~~~~g##_", "__##.......::...gg.g##__", "___##gppp........gg##___",
-      "____##ppp.......gg##____", "_____##g........g##_____", "______##........##______", "_______##########_______",
+      "_______####::####_______", "______##sss::ooo##______", "_____##osss::oonn##_____", "____##:::::::oonnn##____",
+      "___##o:::::::oonnnn##___", "__##oo::ooooooonnnno##__", "_##...::.............##_", "##gg..:::::::::::::.cc##",
+      "#ggg..:::::::::::::.ccc#", "#gggsssssscccc...::.ccc#", "#gggsssssscccc...::.ccc#", "#aaa::::::::::::::::::::",
+      "#aaa::::::::::::::::::::", "#aaa::sssssssssaaaaaggg#", "#aaa:::::::::aakkkkkggg#", "#aaa:::::::::aakkkkkggg#",
+      "##aasssssss::aaagggggg##", "_##a~~~~~~~~~~~~~~~~g##_", "__##rrrrrrr::rrrggrg##__", "___##gppprrrrrrrrgg##___",
+      "____##ppprrrrrrrgg##____", "_____##grrrrrrrrg##_____", "______##rrrrrrrr##______", "_______##########_______",
     ],
-    legend: { _: null, "#": "cmwall", ":": "cmtrack", ".": "cmmeadow", s: "cmstubble", c: "cmcorn", g: "cmtallgrass", p: "cmpatch", "~": "cmditch", n: "cmpen", k: "cmgarden" },
+    legend: { _: null, "#": "cmwall", ":": "cmtrack", o: "cmmeadown", ".": "cmmeadow", a: "cmmeadowa", r: "cmmeadowr", s: "cmstubble", c: "cmcorn", g: "cmtallgrass", p: "cmpatch", "~": "cmditch", n: "cmpen", k: "cmgarden" },
     // the ditch along row 17, wide enough to fill its tiles
     water: [{ seg: [4.5, 17.5, 19.5, 17.5], r: 0.48 }],
     props: [
@@ -13559,7 +13612,7 @@ fn boxOf(V: Vox) -> Box {
         [[12, 0], [12, 4], [7, 4], [7, 8], [18, 8], [18, 12], [5, 12], [5, 15], [12, 15], [12, 18]],
         [[23, 12], [18, 12], [5, 12], [5, 15], [12, 15], [12, 18]],
       ],
-      spawn: [12.0, 0.6], spawn2: [23.4, 12.0], heart: [12, 20], lane: ["cmtrack"], build: ["cmmeadow", "cmstubble"],
+      spawn: [12.0, 0.6], spawn2: [23.4, 12.0], heart: [12, 20], lane: ["cmtrack"], build: ["cmmeadown", "cmmeadow", "cmmeadowa", "cmmeadowr", "cmstubble"],
       bridges: [[11, 17], [12, 17]],
     },
   };
@@ -13592,8 +13645,39 @@ fn boxOf(V: Vox) -> Box {
       if (at(x, y) !== ":" || stairs.includes(x + "," + y) || Math.hypot(x + 0.5 - 12, y + 0.5 - 12) > 11.2) continue;
       if ((y <= 2 && Math.abs(x - 11.5) <= 2.5) || (x >= 21 && Math.abs(y - 11.5) <= 2.5)) continue;
       if (P.hash(x, y, 12, 3) >= 0.7) continue;
-      const side = [[1, 0], [-1, 0], [0, 1], [0, -1]].find(([dx, dy]) => ".sgc".includes(at(x + dx, y + dy)) && Hh[y + dy][x + dx] === Hh[y][x] && !used.has(x + dx + "," + (y + dy)));
+      const side = [[1, 0], [-1, 0], [0, 1], [0, -1]].find(([dx, dy]) => ".oarsgc".includes(at(x + dx, y + dy)) && Hh[y + dy][x + dx] === Hh[y][x] && !used.has(x + dx + "," + (y + dy)));
       if (side) m.props.push(["cm_tallgrass", { seed: 1 + ((x + y * 3) % 4), w: 1 }, x, y, { dx: side[0] * 0.38, dy: side[1] * 0.38 }]);
+    }
+  })();
+  // the undergrowth (the user: "thin high and low grass ... more trees and bushes/shrubs"): seven more autumn
+  // trees on the corner banks and the west grass (the option sets of the ones above, so no new bricks), shrubs
+  // in rust, amber and scarlet on the corner wall tops, in the tall grass and at the trees' feet, and thin
+  // grass, a tall clump and a low tuft on every tall-grass tile and wall top by the field, a low tuft at each
+  // tree's foot and along most of the path's verges. Only on tiles that already take no plant (not a build
+  // kind, or a prop's tile), so the placement zones stay as they were; clear of the gates and the stairs
+  (function () {
+    const m = CT.maps.cornmoon, K = m.kind, Hh = m.h, at = (x, y) => (K[y] && K[y][x]) || "_", stairs = ["6,6", "7,6", "17,11", "18,11"], N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    const cell = (d) => Math.floor(d[2] + 0.5 + ((d[4] && d[4].dx) || 0)) + "," + Math.floor(d[3] + 0.5 + ((d[4] && d[4].dy) || 0));
+    const used = new Set(m.props.map(cell)), put = (d) => { const c = cell(d), [x, y] = c.split(",").map(Number); if (!".oars".includes(at(x, y)) || used.has(c)) m.props.push(d); };
+    const gate = (x, y) => (y <= 2 && Math.abs(x - 11.5) <= 2.5) || (x >= 21 && Math.abs(y - 11.5) <= 2.5) || stairs.includes(x + "," + y);
+    const SH = [{ seed: 1, leaf: "cmAppleLeaf" }, { seed: 2, leaf: "cmAmber" }, { seed: 3, leaf: "cmScarlet" }], shrub = (x, y, dx, dy) => put(["cm_shrub", SH[(x * 2 + y) % 3], x, y, { dx, dy }]);
+    [[{ seed: 8, leaf: "cmAmber", fruit: false }, 6, 2, 0.25, 0.25], [{ seed: 3, fruit: false }, 17, 2, -0.25, 0.25], [{ seed: 6, fruit: false }, 2, 6, 0.25, 0.25],
+      [{ seed: 4, leaf: "cmScarlet", fruit: false }, 21, 6, -0.25, 0.25], [{ seed: 7, leaf: "cmScarlet", fruit: false }, 3, 8, 0, 0],
+      [{ seed: 10, fruit: false }, 3, 18, 0.25, -0.25], [{ seed: 9, leaf: "cmScarlet", fruit: false }, 5, 20, 0.2, -0.2]].forEach(([o, x, y, dx, dy]) => put(["cm_apple", o, x, y, { dx, dy }]));
+    // the corner banks, nudged toward the field; the tall grass; the trees' feet
+    [[5, 3], [4, 4], [3, 5], [18, 3], [19, 4], [20, 5], [20, 18], [19, 19], [18, 20], [17, 21], [4, 19], [6, 21], [2, 17]].forEach(([x, y]) => shrub(x, y, Math.sign(11.5 - x) * 0.2, Math.sign(11.5 - y) * 0.2));
+    [[2, 8], [21, 15], [21, 16], [18, 16], [19, 18], [7, 21]].forEach(([x, y]) => shrub(x, y, 0.2, -0.2));
+    [[19, 5, -0.3, 0.28], [2, 15, 0.3, -0.28], [15, 21, -0.3, -0.25], [16, 19, 0.3, 0.28], [9, 22, -0.3, -0.25]].forEach(([x, y, dx, dy]) => shrub(x, y, dx, dy));
+    m.props.filter((d) => d[0] === "cm_apple").map(cell).forEach((c) => { const [x, y] = c.split(",").map(Number); put(["cm_thingrass", { seed: 1 + ((x + y) % 2) }, x, y, { dx: -0.3, dy: 0.3 }]); });
+    for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
+      const k = at(x, y), hs = P.hash(x, y, 14, 3), s = 1 + (P.hash(x, y, 15, 3) < 0.5 ? 0 : 1), off = (i) => ({ dx: (P.hash(x, y, 16, i) - 0.5) * 0.6, dy: (P.hash(x, y, 17, i) - 0.5) * 0.6 });
+      if (Math.hypot(x + 0.5 - 12, y + 0.5 - 12) > 11.2 || gate(x, y)) continue;
+      if (k === "g" || (k === "#" && N4.some(([dx, dy]) => !"#_".includes(at(x + dx, y + dy))))) {
+        put(["cm_thingrass", { seed: s, tall: true }, x, y, off(1)]); put(["cm_thingrass", { seed: 3 - s }, x, y, off(2)]);
+      } else if (k === ":" && hs < 0.75) {
+        const side = N4.find(([dx, dy]) => ".oarsgc".includes(at(x + dx, y + dy)) && Hh[y + dy][x + dx] === Hh[y][x]);
+        if (side) put(["cm_thingrass", { seed: s }, x, y, { dx: side[0] * 0.44 - side[1] * 0.2, dy: side[1] * 0.44 + side[0] * 0.2 }]);
+      }
     }
   })();
   // fallen leaves strewn everywhere that is not a build tile (the pasture has its litter): on most of the path,
@@ -13611,10 +13695,11 @@ fn boxOf(V: Vox) -> Box {
     }
   })();
 
-  // The light: a low cold moon in the south-east (shadows long across the rows), a few broad moon shafts
+  // The light: a low harvest moon in the south-east (shadows long across the rows), a few broad moon shafts
   // slanting in on the track, the corn and the east gate (the lower the moon, the longer they lean; each
-  // pool lands on its tile's ground), and a blue night fog, a darker vignette and cold beams over the
-  // valley's warm ones (style.hd; shaftMul 1.4 brightens the shafts a little, 2.2 hid the fallen leaves).
+  // pool lands on its tile's ground), and a dusky plum fog, a darker vignette and honey beams over the
+  // valley's (style.hd; shaftMul 1.4 brightens the shafts a little, 2.2 hid the fallen leaves). The fog and
+  // beams were a cold blue until the redesign; warm ones carry Momiji's cosiness into the night.
   // ME.content.mapLight[id] goes over the style's L, light and hd. Until Engine's night look (E1) lands, the
   // scene keeps the style's dusk blend and backdrop.
   const CANOPY = P.r4 && P.r4.CANOPY;
@@ -13625,7 +13710,7 @@ fn boxOf(V: Vox) -> Box {
         { x: 12.0, y: 3.0, r: 1.8, k: 1, len: 24 }, { x: 16.5, y: 8.5, r: 2.2, k: 1, len: 24 }, { x: 8.0, y: 12.0, r: 2.0, k: 1, len: 24 },
         { x: 20.5, y: 12.0, r: 1.8, k: 1, len: 24 }, { x: 13.0, y: 16.5, r: 2.0, k: 1, len: 24 }, { x: 12.5, y: 20.0, r: 1.6, k: 0.9, len: 24 },
       ] }) : null,
-      hd: { bloom: 0.95, haze: 0.1, fog: [16, 22, 38], vignette: 0.45, beamCol: [176, 204, 255], shaftMul: 1.4 },
+      hd: { bloom: 0.95, haze: 0.1, fog: [28, 22, 30], vignette: 0.45, beamCol: [255, 226, 184], shaftMul: 1.4 },
       // the night look the design asks of Engine (E1, E2); nothing reads it yet
       look: { sunCol: [0.62, 0.72, 1.0], backdrop: "night", windAz: -32, windK: 1.6 },
     },
@@ -17257,12 +17342,24 @@ function MG_SFX(L) {
         close(w);
       }, true);
     }
-    // touch: the panel follows the finger
+    // touch: the panel follows the finger. The rest of the touch is heard on what it began on, not the panel: a
+    // card that re-renders mid-swipe (the docked plant card on each dew tick) drops that node from the page, and
+    // a touch's later events go to it alone, never bubbling up to the panel
     const pt = (e) => { const t = e.changedTouches[0]; return { x: t.clientX, y: t.clientY, t: performance.now() }; };
-    panel.addEventListener("touchstart", (e) => { if (e.touches.length === 1) swipe.start(w, pt(e), e.target); else w.sw = null; }, { passive: true });
-    panel.addEventListener("touchmove", (e) => { if (swipe.move(w, pt(e))) e.preventDefault(); }, { passive: false });
-    panel.addEventListener("touchend", () => swipe.end(w));
-    panel.addEventListener("touchcancel", () => { if (w.sw && w.sw.on) reset(panel, true); w.sw = null; });
+    // Chrome picks at touchstart whether a touch may block scrolling, from the listeners already there: this one
+    // keeps the target's touchmoves cancelable, so a swipe-close never pulls to refresh or scrolls the card
+    panel.addEventListener("touchmove", () => {}, { passive: false });
+    panel.addEventListener("touchstart", (e) => {
+      if (w.off) w.off();
+      if (e.touches.length !== 1) { w.sw = null; return; }
+      const t = e.target;
+      swipe.start(w, pt(e), t);
+      const move = (e) => { if (swipe.move(w, pt(e))) e.preventDefault(); };
+      const end = () => { w.off(); swipe.end(w); };
+      const cancel = () => { w.off(); if (w.sw && w.sw.on) reset(panel, true); w.sw = null; };
+      t.addEventListener("touchmove", move, { passive: false }); t.addEventListener("touchend", end); t.addEventListener("touchcancel", cancel);
+      w.off = () => { w.off = null; t.removeEventListener("touchmove", move); t.removeEventListener("touchend", end); t.removeEventListener("touchcancel", cancel); };
+    }, { passive: true });
   }
 
   // the tap that closed a panel (or ended a swipe) stops here: its pointerup and click never reach the game
@@ -17485,7 +17582,7 @@ function MG_SFX(L) {
         v.snow = Math.min(v.snow, 0.15); v.flash = 0;
       }
       if (this.front === "sunshower") shower = true;
-      return { v: resolve(v, Object.assign({ sunshower: shower, sleet: this.front === "sleet" }, o)), sun: this.sun > 0 };
+      return { v: resolve(v, Object.assign({ sunshower: shower, sleet: this.front === "sleet" }, o)), sun: this.sun > 0, shower };
     }
     // every frame: the sun break's clock, the hurt rain, the rainbow when rain ends under a clear sky
     tick(dt, life, over, shown) {
@@ -17602,6 +17699,7 @@ function MG_SFX(L) {
   const COLOURS = { rain: "205,220,235", snow: "250,252,255", petals: "246,176,198", leaves: ["214,150,62", "138,170,74"], flash: "235,240,255" };
   const MOOD_ROLL = ["cosy", "morning", "clear", "golden", "dusk", "night"];
   const EASE = 1.5, EASE_DYN = 4; // s: the blend toward the weather (slower when it follows the run)
+  const CLOUD_RAIN = 0.6; // the least cloud the engine gets while it rains (scaled(); Art: 0.5 the softest)
   // the lit settings the weather and the moods' "after" scale, at rest
   const ONE = { shaftK: 1, pool: 1, exposure: 1, bloomK: 1, amb: 1, haze: 0, vignette: 0, wind: 1, gust: 0.5 };
   const FX = ["rain", "snow", "petals", "leaves"];
@@ -17757,7 +17855,7 @@ function MG_SFX(L) {
       if (!dyn) { md.sun = 0; md.hurt = false; }
       const life = dyn ? run.life ?? 1 : 1;
       const r = md.target({ over: dyn && over }, { reduced: this.reduced });
-      this.v = this.level > 0 ? r.v : ME.WX.zero(); this.sun = this.level > 0 && r.sun;
+      this.v = this.level > 0 ? r.v : ME.WX.zero(); this.sun = this.level > 0 && r.sun; this.shower = r.shower;
       md.tick(dt, life, over, this.v);
       if (md.front !== this.lastFront) { this.lastFront = md.front; this.renderPanel(); }
       // the settings' intensity: L on the particles, rings and lightning, Ll on the light, the wind and the gusts
@@ -17795,11 +17893,14 @@ function MG_SFX(L) {
       this.draw(dt);
     }
     // the resolved vector at the settings' intensity, for R.weather.mix(): the light layers (cloud, fog, wind) at
-    // Ll, the rest at L, each capped at 1; fogLow stays a flag, and gust is the mapped one (0.5 at rest)
+    // Ll, the rest at L, each capped at 1; fogLow stays a flag, and gust is the mapped one (0.5 at rest). Rain
+    // keeps the cloud at CLOUD_RAIN or more at any intensity (Subtle's Ll 0.4 left the shafts and pools of a
+    // clear day under a drizzle), except in a sun shower or a sun break in rain (target()'s shower)
     // (one object, rewritten each call)
     scaled(L, Ll, gust) {
       const v = this.v, o = this.mixV || (this.mixV = {});
       for (const l of ME.WX.LAYERS) o[l] = Math.min(1, v[l] * (l === "cloud" || l === "fog" || l === "wind" ? Ll : L));
+      if (L > 0 && v.rain > 0.02 && !this.shower) o.cloud = Math.max(o.cloud, CLOUD_RAIN);
       o.fogLow = L > 0 ? v.fogLow : 0; o.gust = gust;
       o.wind = Math.min(1, 0.15 + (v.wind - 0.15) * Ll); // (around its rest, not from 0: equal at Normal)
       return o;
@@ -19571,7 +19672,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.9.0", name: "DeckChess", commit: "478b1f6" };
+  G.VERSION = { v: "0.10.0", name: "DeckChess", commit: "1dae698" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
