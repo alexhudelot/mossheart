@@ -79,6 +79,39 @@
     },
     "diedTo": "crow"
    }
+  ],
+  "cornmoon": [
+   {
+    "nickname": "alexh",
+    "wave": 18,
+    "tag": "3f46b1074900",
+    "at": "2026-11-05T21:33:59.975Z",
+    "seed": 2631178401,
+    "density": 64,
+    "version": "0.73.0 0307ae2",
+    "maxDew": 1006,
+    "boons": {
+     "spirit_lantern": 3,
+     "ember_seeds": 1,
+     "quick_sap": 2,
+     "overgrowth": 3,
+     "haunting": 1,
+     "firefly_lanterns": 1,
+     "lingering": 1,
+     "deep_roots": 2,
+     "dew_collector": 1
+    },
+    "towers": {
+     "thorn": 1,
+     "sun": 4,
+     "wisp": 2,
+     "briar": 7,
+     "toad": 4,
+     "moon": 1,
+     "lily": 5
+    },
+    "diedTo": "crow"
+   }
   ]
  }
 }
