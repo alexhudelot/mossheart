@@ -8374,9 +8374,11 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       return w && w.z > p.Z + 0.02 ? w : null;
     }
 
-    update(time, opts) {
-      const MB = this.MB, wk = opts.wind ? opts.windK ?? 1 : 0, gs = ME.gustOf(opts), [wx, wy] = ME.WIND_DIR, SWAY = content().sway || NONE;
+    // wind: this frame's [strength, gust share] (R.windNow: the weather's on R.set's), else read from opts
+    update(time, opts, wind = null) {
+      const MB = this.MB, wk = wind ? wind[0] : opts.wind ? opts.windK ?? 1 : 0, gs = wind ? wind[1] : ME.gustOf(opts), [wx, wy] = ME.WIND_DIR, SWAY = content().sway || NONE;
       let i = 0, si = -1, lo = Infinity, hi = -1;
+      const we = this.windE || (this.windE = [0, 0.5]); we[0] = wk; we[1] = gs; // (sim.windE: the layers' wind this frame)
       this.stillN = 0;
       const sh = this.sh2, sc = this.sc3;
       for (const s of MB.statics) {
@@ -8503,7 +8505,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   ME.wgsl = ME.wgsl || {};
 
   // float offsets into the uniform buffer (vec4 aligned)
-  ME.UOFF = { vp: 0, ivp: 16, vdir: 32, sun: 36, res: 40, grid: 44, dims: 48, cgrid: 52, cdims: 56, look: 60, look2: 64, look3: 68, fog: 72, beamCol: 76, canopy: 80, canopy2: 84, shadow: 88, shadow2: 92, beams: 96, beamK: 128, ids: 136, misc: 140, outres: 144, part: 148, psrc: 152, geo: 156, misc2: 160, look4: 164, wind: 168, canopy3: 172, water2: 176, lgrid: 180, field: 184, user: 188 };
+  ME.UOFF = { vp: 0, ivp: 16, vdir: 32, sun: 36, res: 40, grid: 44, dims: 48, cgrid: 52, cdims: 56, look: 60, look2: 64, look3: 68, fog: 72, beamCol: 76, canopy: 80, canopy2: 84, shadow: 88, shadow2: 92, beams: 96, beamK: 128, ids: 136, misc: 140, outres: 144, part: 148, psrc: 152, geo: 156, misc2: 160, look4: 164, wind: 168, canopy3: 172, water2: 176, lgrid: 180, field: 184, weather: 188, weather2: 192, weather3: 196, wclear: 200, user: 216 };
   // vec4 slots of app data at the end of the block (u.user[k], Renderer.user) for the shader hooks
   ME.USER_SLOTS = 6;
   ME.USIZE = ME.UOFF.user + 4 * ME.USER_SLOTS;
@@ -8513,7 +8515,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // gs (R.set.gust, 0..1) is how much of the wind comes in fronts: a breeze of 0.6*(1 - gs) under fronts of
   // 0.9*(0.5 + gs), so 0.5 is the original mix. ME.gustOf reads it from a settings object (0.5 if unset).
   ME.WIND_DIR = [0.85, -0.527];
-  ME.gustOf = (s) => { const v = +s.gust; return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.5; };
+  ME.gustOf = (s) => { const v = s.gust == null ? 0.5 : +s.gust; return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.5; };
   ME.gust = (x, y, t, k, gs = 0.5) => {
     const [wx, wy] = ME.WIND_DIR, a = x * wx + y * wy, c = -x * wy + y * wx, ph = a * 0.45 - t * 1.1;
     const g = Math.pow(0.5 + 0.5 * Math.sin(ph + 1.7 * Math.sin(ph * 0.37 + t * 0.13)), 3);
@@ -8555,6 +8557,10 @@ struct U {
   water2: vec4f,  // ripple count, caustics strength, water-level grid size, -
   lgrid: vec4f,   // light grid origin xy, size wh
   field: vec4f,   // app ground maps: map size wh (tiles), field texels per tile, -
+  weather: vec4f, // R.weather: rain, snow, fog, flash (0 without weather)
+  weather2: vec4f, // wet, cover, cloud, fog height
+  weather3: vec4f, // fog base z, low fog, petals, wind channel
+  wclear: array<vec4f, 4>, // fog clearings: x, y, radius, softness (radius 0 = unused)
   user: array<vec4f, ${ME.USER_SLOTS}>, // app data for the shader hooks (Renderer.user)
 };
 @group(0) @binding(0) var<uniform> u: U;
@@ -8698,7 +8704,14 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   let t = u.vdir.w;
   let streak = 0.35 + 0.65 * sstep(0.28, 0.72, vnoise(q * 2.3)) * (0.7 + 0.3 * vnoise(q * 6.1));
   let shim = 0.86 + 0.14 * sin(t * 0.45 + q.x * 0.31 + 1.3 * sin(t * 0.23 + q.y * 0.27));
-  textureStore(outT, id.xy, vec4f(canopyAt(q, t), mix(streak, 0.75, 0.5 * u.canopy3.w) * shim, 1.0));
+  var c = canopyAt(q, t);
+  // R.weather's clouds: soft banks drifting with the wind dim both the sun and the shafts (none at 0)
+  let cl = u.weather2.z;
+  if (cl > 0.0) {
+    let th = 1.0 - 1.3 * cl;
+    c *= 1.0 - 0.85 * sstep(th - 0.15, th + 0.15, fbm2(q * 0.09 + u.wind.xy * t * 0.3));
+  }
+  textureStore(outT, id.xy, vec4f(c, mix(streak, 0.75, 0.5 * u.canopy3.w) * shim, 1.0));
 }
 `;
 
@@ -9227,7 +9240,7 @@ fn forest(uv: vec2f) -> f32 {
     // into travelling bands of sheen
     if (cls == 1u) {
       s += ((fbm2(p.xy * 1.6) - 0.5) * 0.3 + (vnoise(p.xy * 46.0) - 0.5) * 0.09) * u.look4.y * topW;
-      s += (gust(p.xy, u.vdir.w) - 0.55 * u.wind.z) * 0.09 * topW * (0.55 + 0.45 * vnoise(p.xy * 5.0));
+      s += (gust(p.xy, u.vdir.w) - (0.55 + 0.42 * (0.5 - u.wind.w)) * u.wind.z) * 0.09 * topW * (0.55 + 0.45 * vnoise(p.xy * 5.0));
     }
   }
   s -= u.look.w * (1.0 - ao);
@@ -10465,6 +10478,8 @@ fn boxOf(V: Vox) -> Box {
      pick(px, py, cam, o)  the terrain voxel or instance under a canvas pixel, on the CPU (o: terrain,
                         instances: false to skip one; accept(layer, index) to skip some instances)
      addTask(gen)    CPU work spread over the frames, a few ms each (a progressive bake's upgrade runs on it)
+     weather         an ME.WeatherMix: setWeather(kind, k, s) or weather.mix(vector, s) eases clouds, wind and
+                     gusts (Weather 1; rain, snow, fog reach the uniforms) on top of R.set, never writing it
      swapModel(o)    models replaced in place under the same ids, dissolved in over a fade (onSwap(key, ids)
                      tells the app; a progressive bake's upgrade calls it: ME.bakeModels, MB.prog)
    Instances come from the Sim (sim.layers). */
@@ -10589,6 +10604,84 @@ fn boxOf(V: Vox) -> Box {
     return Object.fromEntries(names.map((n, i) => [n, done[i]]));
   };
 
+  // The renderer's weather (R.weather; ME.Weather is the game-side model, src/weather.js): channels eased toward
+  // a target vector, the wet and snow-cover integrators, and the factors writeUniforms puts on top of R.set (it
+  // never writes R.set). Until the first set() or mix() it is inactive: every factor is 1 and the gust is
+  // R.set.gust's, so a scene without weather draws as before. Once active the gust is the mix's (R.set.gust
+  // stays at its base 0.5). Weather 1 draws the clouds (canopy texture and light), the wind and the gusts:
+  // the layers in draws, which ME.Sky leaves to it; rain, snow and fog reach the uniforms for later steps.
+  const WX_CH = ["rain", "snow", "fog", "fogHeight", "cloud", "wind", "gust", "petals", "fogLow"];
+  const WX_REST = { rain: 0, snow: 0, fog: 0, fogHeight: 3, cloud: 0, wind: 0.15, gust: 0.5, petals: 0, fogLow: 0 };
+  class WeatherMix {
+    constructor(R) {
+      this.R = R; this.active = false; this.flashK = 1; this.auto = true;
+      this.draws = new Set(["cloud", "wind", "gust"]);
+      this.cur = Object.assign({}, WX_REST); this.to = Object.assign({}, WX_REST);
+      this.tau = 8 / 3; this.wet = 0; this.cover = 0; this.flashV = 0; this.fogBase = null;
+      this.clear = new Float32Array(16);
+      this.state = { kind: "clear", rain: 0, snow: 0, fog: 0, cloud: 0, wind: 0.15, wet: 0, cover: 0, flash: 0 };
+      this.onFlash = null; this.onSplash = null;
+    }
+    // a preset at intensity k (0..1 of its full vector; the rest blends toward calm), over seconds
+    set(kind, intensity = 1, seconds = 8) {
+      const p = WeatherMix.PRESETS[kind];
+      if (!p) throw new Error("R.setWeather: unknown kind " + kind);
+      const o = this.presetV || (this.presetV = {}), k = Math.max(0, Math.min(1, +intensity || 0));
+      for (const c of WX_CH) o[c] = WX_REST[c] + ((p[c] ?? WX_REST[c]) - WX_REST[c]) * k;
+      o.fogBase = p.fogBase ?? null;
+      this.mix(o, seconds);
+      this.state.kind = kind;
+    }
+    // a vector of its own: missing channels go back to calm; seconds 0 jumps there
+    mix(o, seconds = 8) {
+      for (const c of WX_CH) { const v = o[c]; this.to[c] = v == null ? WX_REST[c] : +v; }
+      if (o.fogBase !== undefined) this.fogBase = o.fogBase;
+      this.tau = Math.max(0, seconds) / 3;
+      if (!this.active || seconds <= 0) { this.active = true; if (seconds <= 0) Object.assign(this.cur, this.to); }
+      this.state.kind = "mix";
+    }
+    // fog clearing i (0..3): a hole of radius r around x, y (r 0 removes it)
+    setFogClear(i, x, y, r, soft = 0.5) { this.clear.set([x, y, r, soft], (i & 3) * 4); }
+    // (Weather 4: lightning, the auto strikes and the splashes; flash() only lights the uniform today)
+    flash(k = 1) { this.flashV = Math.max(this.flashV, k * this.flashK); if (this.onFlash) this.onFlash(k); }
+    splash() {}
+    // once a frame, before the sim: ease the channels (clouds and wind lead, rain and snow 30 % behind) and
+    // integrate wet (~20 s of rain, ~90 s to dry) and cover (~40 s of snow, ~120 s to melt, faster in rain)
+    update(time, dt) {
+      if (!this.active) return;
+      const c = this.cur, to = this.to, d = Math.max(0, Math.min(0.25, dt || 0));
+      const a = this.tau > 0 ? 1 - Math.exp(-d / this.tau) : 1, aL = this.tau > 0 ? 1 - Math.exp(-d / (1.3 * this.tau)) : 1;
+      for (const ch of WX_CH) c[ch] += (to[ch] - c[ch]) * (ch === "rain" || ch === "snow" ? aL : a);
+      this.wet = c.rain > 0.02 ? Math.min(1, this.wet + d * c.rain / 20) : Math.max(0, this.wet - d / 90);
+      this.cover = c.snow > 0.02 ? Math.min(1, this.cover + d * c.snow / 40) : Math.max(0, this.cover - d * (1 + 3 * c.rain) / 120);
+      this.flashV = Math.max(0, this.flashV - d * 2.2);
+      const s = this.state;
+      s.rain = c.rain; s.snow = c.snow; s.fog = c.fog; s.cloud = c.cloud; s.wind = c.wind; s.wet = this.wet; s.cover = this.cover; s.flash = this.flashV;
+    }
+    // the wind's factor on R.set.windK: 1 at the calm 0.15, 2.5 when windy, 3.3 in a gale (ME.Sky's mapping)
+    windF() { return this.active ? Math.max(0.3, 1 + 3 * (this.cur.wind - 0.15)) : 1; }
+    gust(s) { return this.active ? Math.max(0, Math.min(1, this.cur.gust)) : ME.gustOf(s); }
+    // the fog's floor: fogBase, else the lowest water, else the island's base
+    base() {
+      if (this.fogBase != null) return this.fogBase;
+      if (this.base0 == null) { const W = this.R.S.T.water || []; let z = Infinity; for (const w of W) z = Math.min(z, w.z); this.base0 = Number.isFinite(z) ? z : this.R.ext ? this.R.ext.base : 0; }
+      return this.base0;
+    }
+  }
+  // the presets, as mix vectors (missing channels are calm)
+  WeatherMix.PRESETS = {
+    clear: {},
+    overcast: { cloud: 0.75, wind: 0.25, gust: 0.55 },
+    rain: { cloud: 0.85, rain: 0.6, fog: 0.15, wind: 0.3, gust: 0.6 },
+    storm: { cloud: 1, rain: 1, fog: 0.2, wind: 0.75, gust: 0.8 },
+    snow: { cloud: 0.7, snow: 0.8, fog: 0.15, wind: 0.08, gust: 0.35 },
+    fog: { cloud: 0.4, fog: 0.85, fogHeight: 4, wind: 0.05, gust: 0.3 },
+    mist: { fog: 0.45, fogHeight: 1.5, fogLow: 1, wind: 0.1, gust: 0.4 },
+  };
+  // the clouds' factors on the light per unit of cloud (the canopy texture dims the sun and the pools itself)
+  WeatherMix.LIGHT = { shaftK: 0.2, exposure: 0.09, bloomK: 0.18, haze: 0.045 };
+  ME.WeatherMix = WeatherMix;
+
   class Renderer {
     constructor(gpu, S) {
       this.gpu = gpu; this.dev = gpu.device; this.S = S;
@@ -10613,9 +10706,14 @@ fn boxOf(V: Vox) -> Box {
       this.sprites = new SpriteBatch();
       this.backdrop = null; this.backSprites = null; // (R.backdrop: the header)
       this.layers = [];
+      this.weather = new WeatherMix(this); // (R.weather, R.setWeather: WeatherMix above)
+      this.windE = [1, 0.5]; // this frame's wind strength and gust share, the weather's on R.set's (windNow)
     }
 
     addLayer(L) { this.layers.push(L); if (this.pl) L.init(this); return L; }
+    setWeather(kind, intensity = 1, seconds = 8) { this.weather.set(kind, intensity, seconds); }
+    // the wind the sim, the critters and the shaders see this frame: R.set's, times the weather's (gust: the mix's once active)
+    windNow() { const s = this.set, w = this.windE, W = this.weather; w[0] = s.wind ? s.windK * W.windF() : 0; w[1] = W.gust(s); return w; }
 
     // resets every preset-controlled value to the style default, then applies the preset's overrides
     applyPreset(name) {
@@ -11396,15 +11494,17 @@ fn boxOf(V: Vox) -> Box {
       // dimmed shaftK (the gain comes in late, so dusk itself stays soft)
       const dk = s.cycle > 0 ? 0.5 - 0.5 * Math.cos((time / s.cycle) * Math.PI * 2) : Math.max(0, Math.min(1, s.dusk));
       const mt = Math.max(0, Math.min(1, (dk - 0.55) / 0.45)), moon = mt * mt * (3 - 2 * mt);
-      set4(u, O.look3, s.debug, s.shafts ? s.shaftK * this.shaftMul * (1 + s.moonK * moon * moon * moon) : 0, s.bloomK, s.exposure);
+      // the weather's clouds on top of R.set (factors of exactly 1 and + 0 without weather: WeatherMix)
+      const Wx = this.weather, wc = Wx.active ? Wx.cur.cloud : 0, WL = WeatherMix.LIGHT;
+      set4(u, O.look3, s.debug, s.shafts ? s.shaftK * this.shaftMul * (1 + s.moonK * moon * moon * moon) * (1 - WL.shaftK * wc) : 0, s.bloomK * (1 - WL.bloomK * wc), s.exposure * (1 - WL.exposure * wc));
       const fog = (st.hd && st.hd.fog) || [40, 32, 18];
-      set4(u, O.fog, ME.lin(fog[0]), ME.lin(fog[1]), ME.lin(fog[2]), s.haze);
+      set4(u, O.fog, ME.lin(fog[0]), ME.lin(fog[1]), ME.lin(fog[2]), s.haze + WL.haze * wc);
       const bc = (st.hd && st.hd.beamCol) || BEAM_COL;
       set4(u, O.beamCol, lerpN(bc[0], MOON_COL[0], moon) / 255, lerpN(bc[1], MOON_COL[1], moon) / 255, lerpN(bc[2], MOON_COL[2], moon) / 255, s.vignette);
       const g = st.light;
       set4(u, O.canopy, 0.62, 0.38, 1.7, 3.1);
       set4(u, O.canopy2, 0.68, 0, 0.4, Math.min(0.6, (g.soft ?? 0.16) * 2.2));
-      u.set(ME.WIND_DIR, O.wind); u[O.wind + ME.WIND_DIR.length] = s.wind ? s.windK : 0; u[O.wind + ME.WIND_DIR.length + 1] = ME.gustOf(s);
+      u.set(ME.WIND_DIR, O.wind); u[O.wind + ME.WIND_DIR.length] = this.windE[0]; u[O.wind + ME.WIND_DIR.length + 1] = this.windE[1];
       set4(u, O.canopy3, 15, 4.5, 1.0, moon);
       set4(u, O.water2, this.ripples ? this.ripples.n : 0, s.water ? 1 : 0, this.wl ? this.wl.W : 0, this.wl ? this.wl.H : 0);
       u.set(this.lgrid, O.lgrid);
@@ -11433,6 +11533,12 @@ fn boxOf(V: Vox) -> Box {
       set4(u, O.misc2, fno % 64, 18, E.base, BLOOM_THRESHOLD);
       set4(u, O.look4, st.light.spriteK ?? 1, s.mottle, this.pcount.spray, this.sprayAt);
       set4(u, O.field, st.map.W, st.map.H, this.fieldRes, 0);
+      // the weather (zeros without one): the channels, wet and cover, the fog's floor and the clearings
+      const wv = Wx.cur, on = Wx.active;
+      set4(u, O.weather, on ? wv.rain : 0, on ? wv.snow : 0, on ? wv.fog : 0, Wx.flashV);
+      set4(u, O.weather2, Wx.wet, Wx.cover, wc, on ? wv.fogHeight : 0);
+      set4(u, O.weather3, on ? Wx.base() : 0, on ? wv.fogLow : 0, on ? wv.petals : 0, on ? wv.wind : 0);
+      u.set(Wx.clear, O.wclear);
       u.set(this.user, O.user);
       this.dev.queue.writeBuffer(this.ubuf, 0, u);
     }
@@ -11478,7 +11584,8 @@ fn boxOf(V: Vox) -> Box {
       const d = this.dev, P = this.pl, S = this.S, sim = S.sim, s = this.set, g0 = this.g0, g1 = this.g1;
       if (this.tasks) this.runTasks(); // (R.addTask: a swap here writes the instances below)
       if (this.fading) this.fadeStep();
-      const nInst = sim.update(time, s);
+      this.weather.update(time, dt);
+      const nInst = sim.update(time, s, this.windNow());
       this.time = time;
       this.updateRings(time);
       if (this.bubbleN) d.queue.writeBuffer(this.bubbleBuf, 0, this.bubbleData, 0, this.bubbleN * 12);
@@ -13039,7 +13146,9 @@ fn boxOf(V: Vox) -> Box {
    pools, more haze, a dimmer exposure), the wind (R.set.windK) and its gusts (R.set.gust), screen-space rain,
    snow, petals or leaves on a 2D canvas over the scene (#wx), rain rings on the open water, lightning and a
    rainbow arc. Once the renderer has R.weather.mix() it hands it the vector at the settings' intensity, the
-   gust included: then the gust is the mix vector's, and apply() leaves R.set.gust at its base. The game tunes
+   gust included: then the gust is the mix vector's, and apply() leaves R.set.gust at its base. The layers the
+   engine draws itself (R.weather.draws: the clouds, the wind and the gusts since Weather 1) lose their LIGHT
+   entry here, and R.set.windK stays at its base (the engine scales it by its wind channel). The game tunes
    the per-layer looks in ME.WX.looks().layers. */
 (function () {
   const ME = window.ME;
@@ -13087,7 +13196,12 @@ fn boxOf(V: Vox) -> Box {
   const DRIFT = { rain: 0.12, snow: 14 / 50, petals: 26 / 55, leaves: 0 };
   // the per-layer looks the game tunes: ME.WX.looks().layers = { light: { <layer>: { f, add } }, sunbreak, fx,
   // rings, budget, colours }, each part merged over the defaults above (a light entry replaces that layer's
-  // whole entry); cached until the looks' layers change
+  // whole entry; colours are "r,g,b" or "#rgb" / "#rrggbb"); cached until the looks' layers change
+  const rgbOf = (c) => {
+    if (typeof c !== "string" || c[0] !== "#") return c;
+    const h = c.length === 4 ? c.slice(1).replace(/./g, "$&$&") : c.slice(1, 7), n = parseInt(h, 16);
+    return ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255);
+  };
   let layersOf, layersAll;
   const layers = () => {
     const l = ME.WX.looks().layers;
@@ -13095,6 +13209,9 @@ fn boxOf(V: Vox) -> Box {
       layersOf = l; const o = l || {};
       layersAll = { light: Object.assign({}, LIGHT, o.light), sunbreak: Object.assign({}, SUNBREAK, o.sunbreak), fx: Object.assign({}, FXK, o.fx),
         rings: o.rings ?? RINGS, budget: o.budget ?? BUDGET, colours: Object.assign({}, COLOURS, o.colours) };
+      const col = layersAll.colours;
+      for (const k in col) col[k] = Array.isArray(col[k]) ? col[k].map(rgbOf) : rgbOf(col[k]);
+      layersAll.leaves = [].concat(col.leaves); // (draw() picks from it; hoisted out of the frame)
     }
     return layersAll;
   };
@@ -13229,9 +13346,12 @@ fn boxOf(V: Vox) -> Box {
       // the engine's path gets the vector after the intensity (the study's knob scales k after the rules), the
       // gust included, so the gusts are written there and not in apply() too
       this.mixed = !!(this.R.weather && this.R.weather.mix);
-      if (this.mixed) this.R.weather.mix(this.scaled(L, Ll, gust));
+      // (at the same easing as cur: tau = seconds / 3); the layers it draws itself (R.weather.draws) skip LIGHT
+      const dr = this.mixed && this.R.weather.draws;
+      if (this.mixed) this.R.weather.mix(this.scaled(L, Ll, gust), 3 * (dyn ? EASE_DYN : EASE));
       for (const k in m.after || {}) t[k] *= m.after[k];
       for (const l in lk.light) {
+        if (dr && dr.has(l)) continue;
         const e = lk.light[l], k = (v[l] || 0) * Ll;
         for (const p in e.f || {}) t[p] *= Math.max(0, 1 - e.f[p] * k);
         for (const p in e.add || {}) t[p] += e.add[p] * k;
@@ -13256,10 +13376,12 @@ fn boxOf(V: Vox) -> Box {
     }
     // the resolved vector at the settings' intensity, for R.weather.mix(): the light layers (cloud, fog, wind) at
     // Ll, the rest at L, each capped at 1; fogLow stays a flag, and gust is the mapped one (0.5 at rest)
+    // (one object, rewritten each call)
     scaled(L, Ll, gust) {
-      const v = this.v, o = {};
+      const v = this.v, o = this.mixV || (this.mixV = {});
       for (const l of ME.WX.LAYERS) o[l] = Math.min(1, v[l] * (l === "cloud" || l === "fog" || l === "wind" ? Ll : L));
       o.fogLow = L > 0 ? v.fogLow : 0; o.gust = gust;
+      o.wind = Math.min(1, 0.15 + (v.wind - 0.15) * Ll); // (around its rest, not from 0: equal at Normal)
       return o;
     }
     // at the end of the view's mood(): the preset's other settings (sun, glass, mottle), then the weather's
@@ -13269,7 +13391,9 @@ fn boxOf(V: Vox) -> Box {
       for (const p of Object.values(ME.PRESETS)) for (const key in p) if (!(key in ME.DUSK) && key !== "haze") s[key] = b[key];
       for (const key of ["shaftK", "pool", "exposure", "bloomK", "amb"]) s[key] *= c[key];
       s.haze += c.haze; s.vignette += c.vignette;
-      s.windK = (this.R.set0.windK ?? 1) * c.wind;
+      // (the wind: the engine scales R.set.windK by its own wind channel once it draws the wind, R.windNow)
+      const dw = this.mixed && this.R.weather.draws && this.R.weather.draws.has("wind");
+      s.windK = (this.R.set0.windK ?? 1) * (dw ? 1 : c.wind);
       if (!this.mixed) s.gust = c.gust; // (one writer: the mix carries it once the engine has one)
       if (this.flash > 0) s.exposure *= 1 + 1.6 * this.flash * this.flash;
     }
@@ -13300,7 +13424,7 @@ fn boxOf(V: Vox) -> Box {
     draw(dt) {
       const ctx = this.ctx;
       if (!ctx) return;
-      const w = this.cv.width, h = this.cv.height, c = this.cur, scale = this.reduced ? 0.4 : 1, wind = c.wind, lk = layers(), col = lk.colours, lv = [].concat(col.leaves);
+      const w = this.cv.width, h = this.cv.height, c = this.cur, scale = this.reduced ? 0.4 : 1, wind = c.wind, lk = layers(), col = lk.colours, lv = lk.leaves;
       // the zoom (1 at the default framing): closer in, bigger and faster drops and fewer of them, so the screen
       // reads as the same weather nearer; farther out, smaller and more
       const z = Math.min(3, Math.max(0.5, this.scene.zoomIn || 1)), sk = z ** 0.75, ck = Math.min(1.6, Math.max(0.6, 1 / z));
@@ -15631,7 +15755,7 @@ fn boxOf(V: Vox) -> Box {
     }
 
     // the sim's instance layer hook (off with the renderer's critters setting)
-    writeInstances(t, sim, i, opts) { return opts.critters ? this.update(t, sim, i, opts.wind ? opts.windK ?? 1 : 0, ME.gustOf(opts)) : i; }
+    writeInstances(t, sim, i, opts) { const w = sim.windE; return opts.critters ? this.update(t, sim, i, w ? w[0] : opts.wind ? opts.windK ?? 1 : 0, w ? w[1] : ME.gustOf(opts)) : i; }
     // Advance every critter to time t and append its instance to the sim.
     update(t, sim, i, windK, gust = 0.5) {
       const dt = this.lastT === null ? 0 : Math.max(0, Math.min(0.1, t - this.lastT));
@@ -17080,7 +17204,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.64.0", name: "Mossheart", commit: "9a36a84" };
+  G.VERSION = { v: "0.65.0", name: "Mossheart", commit: "221c6bf" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
