@@ -10096,8 +10096,10 @@ fn boxOf(V: Vox) -> Box {
   };
   // the clouds' factors on the light per unit of cloud (the canopy texture dims the sun and the pools itself)
   WeatherMix.LIGHT = { shaftK: 0.2, exposure: 0.09, bloomK: 0.18, haze: 0.045 };
-  // the rain's, per unit of rain (ME.Sky's rain entry, which it skips once the engine draws the rain)
-  WeatherMix.LIGHT_RAIN = { exposure: 0.1, haze: 0.02 };
+  // the rain's, per unit of rain (ME.Sky's rain entry, which it skips once the engine draws the rain); shaftK
+  // keeps a thin cloud's drizzle from showing full sun shafts (Game's Subtle Showers eyeball, #455)
+  WeatherMix.LIGHT_RAIN = { shaftK: 0.6, exposure: 0.1, haze: 0.02 };
+  WeatherMix.DRIFT_MIN = 0.04; // the clouds' drift with the wind off or still (a quarter of 0.15 at rest), so they never stop
   ME.WeatherMix = WeatherMix;
 
   class Renderer {
@@ -10915,7 +10917,7 @@ fn boxOf(V: Vox) -> Box {
       const mt = Math.max(0, Math.min(1, (dk - 0.55) / 0.45)), moon = mt * mt * (3 - 2 * mt);
       // the weather's clouds on top of R.set (factors of exactly 1 and + 0 without weather: WeatherMix)
       const Wx = this.weather, wc = Wx.active ? Wx.cur.cloud : 0, wr = Wx.active ? Wx.cur.rain : 0, WL = WeatherMix.LIGHT, WR = WeatherMix.LIGHT_RAIN;
-      set4(u, O.look3, s.debug, s.shafts ? s.shaftK * this.shaftMul * (1 + s.moonK * moon * moon * moon) * (1 - WL.shaftK * wc) : 0, s.bloomK * (1 - WL.bloomK * wc), s.exposure * (1 - WL.exposure * wc) * (1 - WR.exposure * wr));
+      set4(u, O.look3, s.debug, s.shafts ? s.shaftK * this.shaftMul * (1 + s.moonK * moon * moon * moon) * (1 - WL.shaftK * wc) * (1 - WR.shaftK * wr) : 0, s.bloomK * (1 - WL.bloomK * wc), s.exposure * (1 - WL.exposure * wc) * (1 - WR.exposure * wr));
       const fog = (st.hd && st.hd.fog) || [40, 32, 18];
       set4(u, O.fog, ME.lin(fog[0]), ME.lin(fog[1]), ME.lin(fog[2]), s.haze + WL.haze * wc + WR.haze * wr);
       const bc = (st.hd && st.hd.beamCol) || BEAM_COL;
@@ -11009,7 +11011,7 @@ fn boxOf(V: Vox) -> Box {
       const nInst = sim.update(time, s, this.windNow());
       // the drift follows the wind's strength without a jump when it changes (time * wind would leap); it starts,
       // and restarts when time goes back, at time * wind, so a steady wind and a pinned ?t= give the same phase
-      const wk = this.windE[0];
+      const wk = Math.max(WeatherMix.DRIFT_MIN, this.windE[0]);
       this.drift = this.driftT == null || time < this.driftT ? time * wk : this.drift + (time - this.driftT) * wk;
       this.driftT = time;
       this.time = time;
@@ -19569,7 +19571,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.8.0", name: "DeckChess", commit: "7262450" };
+  G.VERSION = { v: "0.9.0", name: "DeckChess", commit: "478b1f6" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
