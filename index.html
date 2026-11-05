@@ -14916,9 +14916,10 @@ fn boxOf(V: Vox) -> Box {
     cmCabbage: "FOLIAGE", cmKale: "FOLIAGE", cmPetal: "FOLIAGE",
   });
   CT.sunShadeHalf = (CT.sunShadeHalf || []).concat(["cmLeaf", "cmAppleLeaf", "cmAmber", "cmScarlet"]);
-  // the terrain blades on the pasture and under the tall grass: gold, tan and rust (the thin grass's mix), dark
+  // the terrain blades on the pasture, under the tall grass and on the wall tops (cmBank: the cheap way to keep
+  // the walls grassy, as a prop on each is ray-marched): gold, tan and rust (the thin grass's mix), dark
   // corn-leaf reeds on the ditch banks; this map's own set (ME.grassFor), so Momiji keeps its greens
-  CT.mapGrass = Object.assign(CT.mapGrass || {}, { cornmoon: { ground: ["cmMeadowN", "cmMeadow", "cmMeadowA", "cmMeadowR", "cmMeadow2", "cmLitter"], blade: "cmGrass", blade2: "cmGrassTan", dry: "cmGrassRust", reed: "cmLeafDk" } });
+  CT.mapGrass = Object.assign(CT.mapGrass || {}, { cornmoon: { ground: ["cmMeadowN", "cmMeadow", "cmMeadowA", "cmMeadowR", "cmMeadow2", "cmLitter", "cmBank"], blade: "cmGrass", blade2: "cmGrassTan", dry: "cmGrassRust", reed: "cmLeafDk" } });
 
   // ---------------------------------------------------------------- kinds
   Object.assign(CT.kinds = CT.kinds || {}, {
@@ -14926,7 +14927,7 @@ fn boxOf(V: Vox) -> Box {
     // in from the sides; its fallen leaves are cm_leaves stamps (below the map)
     cmtrack: { recipe: "lane", top: "cmLoam", edge: "cmMeadow", drape: ["cmMeadow", "cmMeadow2"], overhang: "cmMeadow", under: "rock" },
     // the field's wall: a turf bank over fieldstone
-    cmwall: { recipe: "layer", top: "cmBank", mottle: "cmFieldstone", mottleK: 0.35, depth: 0.1, under: "cmFieldstone" },
+    cmwall: { recipe: "layer", grass: true, top: "cmBank", mottle: "cmFieldstone", mottleK: 0.35, depth: 0.1, under: "cmFieldstone" },
     // the build tiles: the pasture, cushioned turf with fallen leaves thick under the trees, in its four autumn
     // bands (cmmeadown the top field, cmmeadow the middle, cmmeadowa the low field, cmmeadowr past the ditch),
     // and the mown hay strips, their windrows a darker stripe along x
@@ -15030,22 +15031,23 @@ fn boxOf(V: Vox) -> Box {
     return { prims: p, r: w > 1 ? 1.25 : 0.75, h: 1.75, k: 1, detail: (x, y, z, m) => (m === "cmLeaf" && z < 0.08 ? "cmLeafDk" : m) };
   });
 
-  // Tall grass, ripe and gold: o.w 2 a 2×2-tile sweep of twelve tufts (the anchor on the shared corner), o.w
-  // 1 five tufts in one tile; nine thin blades a tuft, 0.8-1.15 tall, all leaning downwind (ME.WIND_DIR, so
+  // Tall grass, ripe and gold: o.w 2 a 2×2-tile sweep of nine tufts (the anchor on the shared corner), o.w
+  // 1 four tufts in one tile; five thin blades a tuft, 0.8-1.15 tall, all leaning downwind (ME.WIND_DIR, so
   // set it unturned), pale at the tips and many with a seed head. It sways (CT.sway), harder than the corn,
-  // and one tile at a time, so the gusts ripple across it.
+  // and one tile at a time, so the gusts ripple across it. The blade count is the phone's frame cost: each
+  // tuft is ray-marched over its box, so fewer blades in tufts set close and leaning less (the Corn Moon perf pass)
   model("cm_tallgrass", (o = {}) => {
-    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), w = o.w || 1, p = [], n = w > 1 ? 12 : 5, nx = -WIND[1], ny = WIND[0];
-    const one = [[-0.24, -0.22], [0.24, -0.24], [0, 0], [-0.22, 0.24], [0.25, 0.22]];
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), w = o.w || 1, p = [], n = w > 1 ? 9 : 4, nb = 5, nx = -WIND[1], ny = WIND[0];
+    const one = [[-0.15, -0.14], [0.16, -0.15], [-0.14, 0.16], [0.16, 0.14]];
     for (let t = 0; t < n; t++) {
-      const cx = w > 1 ? ((t % 4) - 1.5) * 0.42 + (h(t, 1) - 0.5) * 0.18 : one[t][0] + (h(t, 1) - 0.5) * 0.1, cy = w > 1 ? (Math.floor(t / 4) - 1) * 0.55 + (h(t, 2) - 0.5) * 0.2 : one[t][1] + (h(t, 2) - 0.5) * 0.1;
-      for (let b = 0; b < 9; b++) {
-        const i = t * 10 + b, a = TAU * (b / 9 + 0.2 * h(i, 3)), r0 = 0.03 + 0.05 * h(i, 4), Hb = 0.8 + 0.35 * h(i, 5), lean = 0.16 + 0.18 * h(i, 6), side = (h(i, 7) - 0.5) * 0.14;
+      const cx = w > 1 ? ((t % 3) - 1) * 0.45 + (h(t, 1) - 0.5) * 0.14 : one[t][0] + (h(t, 1) - 0.5) * 0.1, cy = w > 1 ? (Math.floor(t / 3) - 1) * 0.45 + (h(t, 2) - 0.5) * 0.14 : one[t][1] + (h(t, 2) - 0.5) * 0.1;
+      for (let b = 0; b < nb; b++) {
+        const i = t * 10 + b, a = TAU * (b / nb + 0.2 * h(i, 3)), r0 = 0.02 + 0.04 * h(i, 4), Hb = 0.8 + 0.35 * h(i, 5), lean = 0.12 + 0.12 * h(i, 6), side = (h(i, 7) - 0.5) * 0.1;
         let q = [cx + Math.cos(a) * r0, cy + Math.sin(a) * r0, 0];
         for (let k = 1; k <= 3; k++) {
           const u = k / 3, d = lean * u * u, nq = [q[0] + 0, q[1] + 0, 0];
           nq[0] = cx + Math.cos(a) * r0 * (1 + u) + WIND[0] * d + nx * side * u; nq[1] = cy + Math.sin(a) * r0 * (1 + u) + WIND[1] * d + ny * side * u; nq[2] = Hb * (u - 0.25 * lean * u * u);
-          p.push(C(q, nq, 0.036 - 0.004 * k, 0.032 - 0.004 * k, k === 3 ? "cmGrassTip" : "cmGrass")); q = nq;
+          p.push(C(q, nq, 0.042 - 0.005 * k, 0.037 - 0.005 * k, k === 3 ? "cmGrassTip" : "cmGrass")); q = nq;
         }
         if (h(i, 8) < 0.5) p.push(E([q[0] + WIND[0] * 0.03, q[1] + WIND[1] * 0.03, q[2] + 0.04], [0.03, 0.03, 0.07], "cmSeed"));
       }
@@ -15053,11 +15055,11 @@ fn boxOf(V: Vox) -> Box {
     return { prims: p, r: w > 1 ? 1.25 : 0.65, h: 1.3, k: 1 };
   });
 
-  // Thin grass, one tile: o.tall a clump of fourteen fine blades 0.6-1.0 tall with pale tips, or else a low tuft
-  // of twenty-two 0.2-0.38 tall; gold, tan and rust mixed, all leaning downwind like the tall grass (so set it
+  // Thin grass, one tile: o.tall a clump of eight fine blades 0.6-1.0 tall with pale tips, or else a low tuft
+  // of ten 0.2-0.38 tall; gold, tan and rust mixed, all leaning downwind like the tall grass (so set it
   // unturned). It sways (CT.sway).
   model("cm_thingrass", (o = {}) => {
-    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), tall = !!o.tall, n = tall ? 14 : 22, p = [], nx = -WIND[1], ny = WIND[0], mix = ["cmGrass", "cmGrassTan", "cmGrassRust"];
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), tall = !!o.tall, n = tall ? 8 : 10, p = [], nx = -WIND[1], ny = WIND[0], mix = ["cmGrass", "cmGrassTan", "cmGrassRust"];
     for (let b = 0; b < n; b++) {
       const a = TAU * h(b, 1), r0 = 0.34 * Math.sqrt(h(b, 2)), cx = Math.cos(a) * r0, cy = Math.sin(a) * r0, m = mix[Math.floor(h(b, 6) * 3)];
       const Hb = tall ? 0.6 + 0.4 * h(b, 3) : 0.2 + 0.18 * h(b, 3), lean = (tall ? 0.14 : 0.06) + 0.12 * h(b, 4), side = (h(b, 5) - 0.5) * 0.12;
@@ -15389,15 +15391,15 @@ fn boxOf(V: Vox) -> Box {
   };
   // the legend's letters for some kinds: the placement passes below find the build tiles and the grass by kind
   const chars = (kinds) => { const L = CT.maps.cornmoon.legend; return Object.keys(L).filter((ch) => kinds.includes(L[ch])).join(""); };
-  // tall gold grass along the wall's foot: on every wall tile that touches the field, inside the jar's glass
-  // and clear of the two gates
+  // tall gold grass along the wall's foot: on about a fifth of the wall tiles that touch the field (the rest have the
+  // map's blades on their cmBank top: a tall tuft is the dearer to draw), inside the jar's glass and clear of the two gates
   (function () {
     const m = CT.maps.cornmoon, K = m.kind, at = (x, y) => (K[y] && K[y][x]) || "_";
     for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
       if (at(x, y) !== "#" || Math.hypot(x + 0.5 - 12, y + 0.5 - 12) > 11.2) continue;
       if ((y <= 2 && Math.abs(x - 11.5) <= 2.5) || (x >= 21 && Math.abs(y - 11.5) <= 2.5)) continue;
       if (![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !"#_".includes(at(x + dx, y + dy)))) continue;
-      m.props.push(["cm_tallgrass", { seed: 1 + ((x * 3 + y) % 4), w: 1 }, x, y]);
+      if (P.hash(x, y, 13, 3) < 0.2) m.props.push(["cm_tallgrass", { seed: 1 + ((x * 3 + y) % 4), w: 1 }, x, y]);
     }
   })();
   // the yellow grass meadows (the user: "a lot of yellow grass that waves in wind"): the pasture tiles out of
@@ -15408,7 +15410,7 @@ fn boxOf(V: Vox) -> Box {
     [[16, 16], [17, 16], [18, 16], [19, 16], [20, 17], [16, 18], [17, 18], [19, 18], [5, 19], [17, 19], [18, 19],
       [16, 20], [17, 20], [7, 21], [16, 21]].forEach(([x, y]) => m.props.push(["cm_tallgrass", { seed: 1 + ((x * 3 + y) % 4), w: 1 }, x, y]));
   })();
-  // grass verges along the path: on most track tiles beside the pasture, hay, corn or tall grass at the same
+  // grass verges along the path: on about one in seven track tiles beside the pasture, hay, corn or tall grass at the same
   // height, a tuft leaning out over that side (anchored on the track, so no build tile is taken; the creatures
   // walk the track's middle line, a tile away); clear of the gates, the stairs and any tile with a prop
   (function () {
@@ -15418,7 +15420,7 @@ fn boxOf(V: Vox) -> Box {
     for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
       if (at(x, y) !== ":" || stairs.includes(x + "," + y) || Math.hypot(x + 0.5 - 12, y + 0.5 - 12) > 11.2) continue;
       if ((y <= 2 && Math.abs(x - 11.5) <= 2.5) || (x >= 21 && Math.abs(y - 11.5) <= 2.5)) continue;
-      if (P.hash(x, y, 12, 3) >= 0.7) continue;
+      if (P.hash(x, y, 12, 3) >= 0.15) continue;
       const side = [[1, 0], [-1, 0], [0, 1], [0, -1]].find(([dx, dy]) => V.includes(at(x + dx, y + dy)) && Hh[y + dy][x + dx] === Hh[y][x] && !used.has(x + dx + "," + (y + dy)));
       if (side) m.props.push(["cm_tallgrass", { seed: 1 + ((x + y * 3) % 4), w: 1 }, x, y, { dx: side[0] * 0.38, dy: side[1] * 0.38 }]);
     }
@@ -15426,10 +15428,11 @@ fn boxOf(V: Vox) -> Box {
   // the undergrowth (the user: "thin high and low grass ... more trees and bushes/shrubs"): seven more autumn
   // trees on the corner banks and the west grass (the option sets of the ones above, so no new bricks), shrubs
   // in rust, amber and scarlet on the corner wall tops, in the tall grass and at the trees' feet, and thin
-  // grass, a tall clump on every tall-grass tile and wall top by the field and a low tuft on about half those wall
-  // tops (the tall grass's own ground has the map's blades, CT.mapGrass), a low tuft at each tree's foot and
-  // along most of the path's verges. Only on tiles that already take no plant (not a build
-  // kind, or a prop's tile), so the placement zones stay as they were; clear of the gates and the stairs
+  // grass, a tall clump on each tall-grass tile that has no tall grass yet (the tall grass's own ground and the
+  // wall tops have the map's blades, CT.mapGrass), a low tuft at each tree's foot and on some of the
+  // path's verges that have no tall tuft: one grass prop a tile at most, as each is ray-marched on its own (the
+  // Corn Moon perf pass). Only on tiles that already take no plant (not a build kind, or a prop's tile), so the
+  // placement zones stay as they were; clear of the gates and the stairs
   (function () {
     const m = CT.maps.cornmoon, K = m.kind, Hh = m.h, at = (x, y) => (K[y] && K[y][x]) || "_", stairs = ["6,6", "7,6", "17,11", "18,11"], N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
     const B = chars(m.game.build), V = chars([...m.game.build, "cmtallgrass", "cmcorn"]);
@@ -15447,10 +15450,10 @@ fn boxOf(V: Vox) -> Box {
     m.props.filter((d) => d[0] === "cm_apple").map(cell).forEach((c) => { const [x, y] = c.split(",").map(Number); put(["cm_thingrass", { seed: 1 + ((x + y) % 2) }, x, y, { dx: -0.3, dy: 0.3 }]); });
     for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
       const k = at(x, y), hs = P.hash(x, y, 14, 3), s = 1 + (P.hash(x, y, 15, 3) < 0.5 ? 0 : 1), off = (i) => ({ dx: (P.hash(x, y, 16, i) - 0.5) * 0.6, dy: (P.hash(x, y, 17, i) - 0.5) * 0.6 });
-      if (Math.hypot(x + 0.5 - 12, y + 0.5 - 12) > 11.2 || gate(x, y)) continue;
-      if (k === "g" || (k === "#" && N4.some(([dx, dy]) => !"#_".includes(at(x + dx, y + dy))))) {
-        put(["cm_thingrass", { seed: s, tall: true }, x, y, off(1)]); if (k === "#" && hs < 0.5) put(["cm_thingrass", { seed: 3 - s }, x, y, off(2)]);
-      } else if (k === ":" && hs < 0.75) {
+      if (Math.hypot(x + 0.5 - 12, y + 0.5 - 12) > 11.2 || gate(x, y) || used.has(x + "," + y)) continue;
+      if (k === "g") {
+        put(["cm_thingrass", { seed: s, tall: true }, x, y, off(1)]);
+      } else if (k === ":" && hs < 0.3) {
         const side = N4.find(([dx, dy]) => V.includes(at(x + dx, y + dy)) && Hh[y + dy][x + dx] === Hh[y][x]);
         if (side) put(["cm_thingrass", { seed: s }, x, y, { dx: side[0] * 0.44 - side[1] * 0.2, dy: side[1] * 0.44 + side[0] * 0.2 }]);
       }
@@ -17473,7 +17476,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.72.0", name: "Mossheart", commit: "e4d400a" };
+  G.VERSION = { v: "0.73.0", name: "Mossheart", commit: "0307ae2" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
