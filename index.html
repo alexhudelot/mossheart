@@ -16265,7 +16265,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.57.0", name: "Mossheart", commit: "94a3f41" };
+  G.VERSION = { v: "0.58.0", name: "Mossheart", commit: "1d361ba" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -19152,6 +19152,92 @@ function MA_DSP() {
   };
   G.LINK_ART = {};
   for (const id in LINK) { const [[a, b], color, color2, width, motes, mote] = LINK[id]; G.LINK_ART[id] = { color, color2, width, motes, mote, icon: pair(a, b) }; }
+})();
+
+</script>
+<script>/* src/art/weather-looks.js */
+/* Weather looks (A-W1): the look of every front and each garden's climate, for G-W1's weather model in
+   view/weather.js (design: docs/designs/2026-11-04-weather-variety-layers.md). Looks only: Game owns the walk,
+   the resolve rules, the schedule and the gameplay. Load before view/weather.js.
+   G.WEATHER_LOOKS.fronts[id] = { name, heavy?, rare?, <layer>: [low, high] }, merged over weather.js's FRONTS.
+     The layers: cloud, rain, snow, fog, fogLow, wind, gust, petals, leaves, flash, each k from 0 to 1. Each
+     k walks inside its range (and starts in the middle); a layer left out is 0. heavy counts toward the
+     escalation; rare is the chance per front change, at most once a session.
+     The k steps by layer: rain 0.2 drizzle, 0.5 rain, 1 downpour; wind 0.2 breeze, 0.5 wind, 1 gale; fog
+     0.2 haze, 0.5 mist, 1 fog; cloud 0.2 scattered, 0.5 broken, 1 overcast.
+     Every range sits inside resolve()'s rules, so a front settles where it is drawn and is never clamped:
+     cloud >= 0.8 x rain or snow (the sun shower aside), fog <= 1 - 0.8 x wind and fogLow only in wind
+     <= 0.4, fog <= 0.5 in rain > 0.6, flash only with rain >= 0.6 under cloud >= 0.8 or snow >= 0.6, petals
+     only in dry air, snow above 0.6 only in wind >= 0.4, petals or leaves, rain or snow (sleet aside).
+   G.WEATHER_LOOKS.climates[garden] = { weights, calm, boss, rare }, replacing weather.js's CLIMATES:
+     weights  how often a front change picks each front (relative; the rare fronts roll on their own)
+     calm     the lighter fronts the build phase drifts toward
+     boss     the front a boss wave forces
+     rare     optional, a factor on a rare front's chance in this garden (0: never there)
+   G.WEATHER_LOOKS.rainbow: the bow's colours and strength for atmos.js, and a pale moonbow in a night garden. */
+(function () {
+  const G = (window.MG = window.MG || {});
+
+  G.WEATHER_LOOKS = {
+    fronts: {
+      clear: { name: "Clear", cloud: [0, 0.15], wind: [0.05, 0.3], gust: [0.3, 0.6] },
+      overcast: { name: "Overcast", cloud: [0.7, 0.95], wind: [0.15, 0.4], gust: [0.4, 0.6] },
+      // a dry windy day: leaves in the air, a few clouds racing
+      wind: { name: "Windy", cloud: [0.1, 0.35], wind: [0.5, 0.8], gust: [0.5, 0.8], leaves: [0.35, 0.65] },
+      showers: { name: "Showers", cloud: [0.55, 0.85], rain: [0.15, 0.6], wind: [0.3, 0.55], gust: [0.4, 0.7] },
+      rain: { name: "Rain", cloud: [0.75, 0.95], rain: [0.35, 0.75], wind: [0.25, 0.5], gust: [0.4, 0.6] },
+      storm: { name: "Storm", heavy: true, cloud: [0.9, 1], rain: [0.75, 1], wind: [0.6, 0.9], gust: [0.6, 0.9], flash: [0.5, 1], leaves: [0, 0.3] },
+      // the morning mist hugs the ground in still air (fogLow) and lifts as the wind rises
+      mistmorn: { name: "Mist", cloud: [0.1, 0.3], fog: [0.35, 0.6], fogLow: [1, 1], wind: [0, 0.15], gust: [0.2, 0.35] },
+      // fog tops out at 0.9: at wind 0.1 the rule allows 0.92, so the far side stays a silhouette, never blank
+      fog: { name: "Fog", cloud: [0.3, 0.6], fog: [0.6, 0.9], fogLow: [1, 1], wind: [0, 0.1], gust: [0.2, 0.35] },
+      drizzlemist: { name: "Drizzle in mist", cloud: [0.6, 0.85], fog: [0.3, 0.55], rain: [0.1, 0.3], wind: [0.05, 0.25], gust: [0.3, 0.5] },
+      gale: { name: "Gale", heavy: true, cloud: [0.4, 0.7], wind: [0.8, 1], gust: [0.7, 1], leaves: [0.5, 0.9] },
+      // snow stops at 0.6 in light wind (rule 7), so the plain snow front tops out there; heavier is a blizzard
+      snow: { name: "Snow", cloud: [0.75, 0.95], snow: [0.35, 0.6], wind: [0.15, 0.4], gust: [0.3, 0.5] },
+      blizzard: { name: "Blizzard", heavy: true, cloud: [0.9, 1], snow: [0.75, 1], wind: [0.6, 0.9], gust: [0.6, 0.9] },
+      petals: { name: "Petals", cloud: [0, 0.2], wind: [0.3, 0.55], gust: [0.4, 0.7], petals: [0.35, 0.7] },
+      // the rare ones
+      sunshower: { name: "Sun shower", rare: 0.04, cloud: [0.1, 0.3], rain: [0.3, 0.5], wind: [0.15, 0.35], gust: [0.3, 0.5] },
+      thundersnow: { name: "Thundersnow", rare: 0.02, heavy: true, cloud: [0.9, 1], snow: [0.6, 0.9], wind: [0.4, 0.7], gust: [0.5, 0.8], flash: [0.3, 0.6] },
+      petalstorm: { name: "Petal storm", rare: 0.03, cloud: [0, 0.15], wind: [0.6, 0.85], gust: [0.8, 1], petals: [0.8, 1] },
+      goldenhaze: { name: "Golden haze", rare: 0.03, cloud: [0, 0.2], fog: [0.25, 0.35], fogLow: [1, 1], wind: [0, 0.15], gust: [0.2, 0.35] },
+      sleet: { name: "Sleet", rare: 0.02, cloud: [0.85, 1], rain: [0.15, 0.25], snow: [0.15, 0.25], wind: [0.3, 0.6], gust: [0.4, 0.7] },
+    },
+
+    // Momiji is the maple garden: a bit of everything, wind with leaves a touch more often, snow rare.
+    // Fernglass leans to mist, drizzle and showers. Corn Moon is a windy autumn night on a farm: wind, gales
+    // and clear nights, fog now and then for Halloween, a cold autumn rain, no blossom (so no petal storm).
+    climates: {
+      momiji: {
+        weights: { clear: 3, overcast: 2, wind: 2, showers: 2, rain: 1.5, storm: 0.6, mistmorn: 1, fog: 0.6, gale: 0.4, snow: 0.5, blizzard: 0.15, petals: 1.5 },
+        calm: ["clear", "petals", "mistmorn"],
+        boss: "storm",
+      },
+      fernglass: {
+        weights: { mistmorn: 3, fog: 1.8, drizzlemist: 2.5, showers: 2, rain: 1, storm: 0.5, overcast: 1.5, clear: 1, gale: 0.2, petals: 0.4 },
+        calm: ["mistmorn", "clear"],
+        boss: "storm",
+      },
+      cornmoon: {
+        weights: { clear: 2.5, wind: 3, gale: 1.2, overcast: 1, showers: 1, rain: 0.5, storm: 0.6, mistmorn: 0.8, fog: 0.5, snow: 0.3, blizzard: 0.2 },
+        calm: ["clear", "wind", "mistmorn"],
+        boss: "gale",
+        rare: { petalstorm: 0 },
+      },
+    },
+
+    // The bow when the rain ends under a clearing sky (weather.js starts it, atmos.js draws it). A soft,
+    // painterly bow: warm, slightly muted bands outside to inside, so it reads as light in the sky rather
+    // than a sticker. In a night garden it is a pale moonbow, almost white with a hint of colour.
+    rainbow: {
+      bands: ["#f06a5c", "#f59a4a", "#f5d466", "#86d27a", "#62b2ec", "#7d80e6", "#a878dc"], // outside to inside
+      alpha: 0.2, // at its brightest (atmos.js draws 0.16 today)
+      width: 1.2, // band width x atmos.js's default (h x 0.011, at least 3 px), so it reads on a phone
+      night: ["cornmoon"], // the gardens that get the moonbow
+      moon: { bands: ["#e8dcd8", "#ece2d4", "#eeeacc", "#dceadc", "#d4e2ee", "#d8d8ee", "#e0d6ec"], alpha: 0.12 },
+    },
+  };
 })();
 
 </script>
