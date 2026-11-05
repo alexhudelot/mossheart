@@ -16432,7 +16432,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.62.0", name: "Mossheart", commit: "d3b4321" };
+  G.VERSION = { v: "0.63.0", name: "Mossheart", commit: "07d2908" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -16549,7 +16549,7 @@ function MA_DSP() {
     { id: "spiritprism", kinds: ["sun", "wisp"], name: "Spirit Prism", gives: { sun: { prism: 1 }, wisp: { dmg: 0.1 } }, desc: "The Lens beam splits to 1 more creature; the Wisp hits 10% harder" },
     { id: "sporebank", kinds: ["puff", "puff"], name: "Spore Bank", gives: { puff: { slow: 0.05 } }, desc: "Both slow 5% more" },
     { id: "kindred", kinds: ["wisp", "wisp"], name: "Kindred Lights", gives: { wisp: { chain: 1 } }, desc: "Both leap once more" },
-    { id: "hedge", kinds: ["briar", "briar"], name: "Bramble Hedge", gives: { briar: { patch: 0.3 } }, desc: "Both grow their patches 30% wider" },
+    { id: "hedge", kinds: ["briar", "briar"], name: "Briar Hedge", gives: { briar: { patch: 0.3 } }, desc: "Both grow their patches 30% wider" },
     { id: "rotbed", kinds: ["toad", "toad"], name: "Rot Bed", gives: { toad: { dmg: 0.15 } }, desc: "Both hit 15% harder" },
     { id: "fullmoon", kinds: ["moon", "moon"], name: "Full Moon", gives: { moon: { mark: 0.15 } }, desc: "Both mark 15% stronger" },
     { id: "lilypond", kinds: ["lily", "lily"], name: "Lily Pond", gives: { lily: { heat: 0.5 } }, desc: "Both heat up 50% faster" },
@@ -16737,12 +16737,12 @@ function MA_DSP() {
   // Fernglass: its first plants hold less of the road, so the golems (wave 4) and then the first boss ended
   // 15 of 100 sim runs by wave 5, against 5 on Momiji; with 20% off over 8 waves, 4, and the mean stays at
   // Momiji's (11.92 against 12.09; tools/sim.html, seeds 1-100 to wave 40).
-  D.LEVEL_EASE = { fernglass: [0.2, 8] };
+  D.LEVEL_EASE = { fernglass: [0.2, 8], cornmoon: [0.5, 24] };
   D.levelHp = (level, wave) => { const e = D.LEVEL_EASE[level]; return e ? 1 - e[0] * Math.max(0, 1 - (wave - 1) / e[1]) : 1; };
   // The plants each garden grows (State.plants: its seed bar and digit keys, the bot, and the gifts drafted
   // there), five with every element among them; a garden not listed grows all eight. A plant of another
   // garden still stands and grows where a save has it. tools/sim.html ?plants= tries another set (all: every plant).
-  D.LEVEL_PLANTS = { momiji: ["thorn", "puff", "sun", "wisp", "briar"], fernglass: ["thorn", "puff", "moon", "toad", "lily"] };
+  D.LEVEL_PLANTS = { momiji: ["thorn", "puff", "sun", "wisp", "briar"], fernglass: ["thorn", "puff", "moon", "toad", "lily"], cornmoon: ["sun", "wisp", "briar", "toad", "lily"] };
   D.plantsOf = (level) => D.LEVEL_PLANTS[level] || D.TOWER_ORDER;
   // whether a boon belongs where only `plants` grow: one tied to a plant (its `el`) only where that plant does
   D.boonFits = (b, plants) => !D.TOWERS[b.el] || plants.includes(b.el);
@@ -24121,7 +24121,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     <p><b>Begin Wave</b> sends the next wave. The <b>wave almanac</b> lists what is coming, what each creature is
       weak to (▲) and what it resists (▼). Seed cards are marked the same way.</p>
     <p>A steady halo on a creature means it resists the plant hitting it; pulsing veins mean it is weak to it.</p>
-    <p>After each wave the garden offers a gift. Every 5th wave brings the Blight Spirit.</p>
+    <p>After each wave the garden offers a gift. Every 5th wave brings a boss: the Blight Spirit, then the Mould Mother, in turn.</p>
     <p>The <b>↺ ↻</b> buttons turn the garden. The <b>☁</b> button picks the mood (the light) and the weather;
       Random rolls new ones every wave. The chips under the readouts are your gifts: tap one to read it.</p>
     <p class="dim">${G.VERSION ? G.VERSION.name + " " + G.VERSION.label : ""}</p>
