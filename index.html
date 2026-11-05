@@ -682,11 +682,12 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
   #setbody .seg button { font-size: calc(13px * var(--ts)); padding: 5px 7px; }
   #setbody .note { font-size: calc(11.5px * var(--ts)); line-height: 1.25; margin: 0 0 4px; }
   /* (a big UI scale on a narrow phone, html.tight from menu.js applyUi: under 320 px wide in the zoomed px, as
-     360 px at 115% and up. A setting's name over its choices, which wrap across the card, and the long notes
-     folded to a line until tapped; then menu.js G.fitUi zooms what is still too tall) */
-  html.tight #setbody div.row { flex-wrap: wrap; gap: 3px 8px; min-height: 0; margin-bottom: 5px; }
-  html.tight #setbody div.row > span { width: 100%; }
-  html.tight #setbody div.row .seg { flex-basis: 100%; }
+     360 px at 115% and up. A setting's choices beside its name when they fit, else under it, wrapping across
+     the card; the long notes folded to a line until tapped; then menu.js G.fitUi zooms what is still too tall,
+     and as it zooms, more rows fit on one line) */
+  html.tight #setbody div.row { flex-wrap: wrap; gap: 2px 8px; min-height: 0; margin-bottom: 4px; }
+  html.tight #setbody div.row .seg { flex: 1 0 auto; max-width: 100%; }
+  html.tight #setbody .note { margin-bottom: 3px; }
   html.tight #setbody .note.dim:not(:has(.btn)):not(.open) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
   .howto p { font-size: calc(13.5px * var(--ts)); margin: 0 0 7px; line-height: 1.32; }
   #boonrow { gap: 10px; }
@@ -10453,6 +10454,8 @@ fn boxOf(V: Vox) -> Box {
      setCells(rgba8) one rgba texel per map tile (hooks: cellAt)
      setLights(list) point lights on top of the scene's own
      sprites         an ME.SpriteBatch drawn in the forward pass (orbs, beams, rings, gauge bars)
+     backdrop        fn(view), called in frame(): its additive sprites (view.sprites, a batch of its own) draw
+                     just in front of the far plane, behind the scene, e.g. a starfield (view.far(x, y))
      addLayer(L)     a GPU layer with its own resources (ME.VoxelPhysics): L.init(R) once, L.prepare(time,
                      dt) before encoding, L.compute(pass) in the "layers" compute pass, L.gbuffer(pass)
                      after the volumes (pipelines target R.gTargets with R.gDepth); L.ripples are rings
@@ -10504,6 +10507,7 @@ fn boxOf(V: Vox) -> Box {
     end() { this.nAdd = this.split < 0 ? this.n : this.split; this.nAlpha = this.n - this.nAdd; }
   }
   ME.SpriteBatch = SpriteBatch;
+  ME.BACKDROP_Z = 0.003; // the backdrop's sprites' NDC depth (R.backdrop; 0 is the far plane)
   // G-buffer targets: albedo + AO, normal + material + aux, emissive of marked volumes. Only the volumes
   // write the third (GV); everything else keeps it masked (G). App layers draw with R.gTargets / R.gDepth.
   ME.GBUFFER = {
@@ -10607,6 +10611,7 @@ fn boxOf(V: Vox) -> Box {
       this.fieldRes = S.fieldRes || 1;
       this.user = new Float32Array(4 * ME.USER_SLOTS);
       this.sprites = new SpriteBatch();
+      this.backdrop = null; this.backSprites = null; // (R.backdrop: the header)
       this.layers = [];
     }
 
@@ -11444,13 +11449,25 @@ fn boxOf(V: Vox) -> Box {
     // The sprite buffer stays from frame to frame; it doubles when the batch did (SpriteBatch.grow), and the
     // two sprite bind groups are rebuilt on it. A late wave (towers, effects, a bar per creature) passed the
     // old fixed 6144 and lost the sprites put last, the health bars.
-    growSprites() {
+    growSprites(n = this.sprites.max) {
       const old = this.spriteBuf, P = this.pl;
-      this.spriteBuf = this.dev.createBuffer({ label: "sprites", size: this.sprites.max * 48, usage: BU.STORAGE | BU.COPY_DST });
+      this.spriteBuf = this.dev.createBuffer({ label: "sprites", size: n * 48, usage: BU.STORAGE | BU.COPY_DST });
       this.g1.spriteAdd = this.bg(P.spriteAdd, 1, [{ buffer: this.spriteBuf }]);
       this.g1.spriteAlpha = this.bg(P.spriteAlpha, 1, [{ buffer: this.spriteBuf }]);
       old.destroy();
       this.spriteGrows = (this.spriteGrows || 0) + 1;
+    }
+
+    // The backdrop (R.backdrop = fn): its own batch, refilled every frame and drawn with the app's additive
+    // sprites. view.far(x, y) is the world point at NDC x, y just in front of the far plane (depth
+    // ME.BACKDROP_Z: reversed Z, so everything the scene draws is in front of it); view.w, h are the canvas's.
+    // Returns how many sprites it put.
+    drawBackdrop(cam, time, dt) {
+      const b = this.backSprites || (this.backSprites = new SpriteBatch(1024)), [w, h] = this.out, { ivp } = cam.matrices(w, h);
+      b.begin();
+      this.backdrop({ R: this, sprites: b, cam, time, dt, w, h, ivp, far: (x, y) => ME.m4.apply(ivp, [x, y, ME.BACKDROP_Z]) });
+      b.end();
+      return b.nAdd;
     }
 
     frame(cam, time, dt) {
@@ -11468,9 +11485,15 @@ fn boxOf(V: Vox) -> Box {
       if (b > a) d.queue.writeBuffer(this.instBuf, a * IF * 4, sim.inst, a * IF, (b - a) * IF);
       if (nInst > sim.staticCount) d.queue.writeBuffer(this.instBuf, sim.staticCount * IF * 4, sim.inst, sim.staticCount * IF, (nInst - sim.staticCount) * IF);
       this.instUp = true;
-      const sp = this.sprites, nSp = sp.nAdd + sp.nAlpha;
-      if (sp.max * 48 > this.spriteBuf.size) this.growSprites();
-      if (nSp) d.queue.writeBuffer(this.spriteBuf, 0, sp.data, 0, nSp * 12);
+      const sp = this.sprites, nBk = this.backdrop ? this.drawBackdrop(cam, time, dt) : 0, nAdd = sp.nAdd + nBk, nSp = nAdd + sp.nAlpha;
+      if (Math.max(sp.max, nSp) * 48 > this.spriteBuf.size) this.growSprites(Math.max(sp.max, nSp));
+      if (!nBk) { if (nSp) d.queue.writeBuffer(this.spriteBuf, 0, sp.data, 0, nSp * 12); }
+      else {
+        // the app's additive sprites, the backdrop's, then the app's bars (drawn from nAdd on)
+        if (sp.nAdd) d.queue.writeBuffer(this.spriteBuf, 0, sp.data, 0, sp.nAdd * 12);
+        d.queue.writeBuffer(this.spriteBuf, sp.nAdd * 48, this.backSprites.data, 0, nBk * 12);
+        if (sp.nAlpha) d.queue.writeBuffer(this.spriteBuf, nAdd * 48, sp.data, sp.nAdd * 12, sp.nAlpha * 12);
+      }
       for (const L of this.layers) L.prepare(time, dt);
       const enc = d.createCommandEncoder();
 
@@ -11547,9 +11570,9 @@ fn boxOf(V: Vox) -> Box {
       if (s.water && s.particles && this.pcount.spray) { r.setPipeline(P.spray); r.setBindGroup(0, g0.spray); r.setBindGroup(1, g1.spray); r.draw(36, this.pcount.spray, 0, this.pcount.leaf + this.pcount.fly + this.pcount.mist); }
       if (s.water && this.bubbleN) { r.setPipeline(P.spriteAdd); r.setBindGroup(0, g0.spriteAdd); r.setBindGroup(1, g1.bubbles); r.draw(6, this.bubbleN); }
       if (s.particles && this.pcount.fly + this.pcount.mist) { r.setPipeline(P.sparks); r.setBindGroup(0, g0.sparks); r.setBindGroup(1, g1.sparks); r.draw(6, this.pcount.fly + this.pcount.mist, 0, this.pcount.leaf); }
-      if (sp.nAdd) { r.setPipeline(P.spriteAdd); r.setBindGroup(0, g0.spriteAdd); r.setBindGroup(1, g1.spriteAdd); r.draw(6, sp.nAdd); }
+      if (nAdd) { r.setPipeline(P.spriteAdd); r.setBindGroup(0, g0.spriteAdd); r.setBindGroup(1, g1.spriteAdd); r.draw(6, nAdd); }
       if (s.glass && this.glass) { r.setPipeline(P.glass); r.setBindGroup(0, g0.glass); r.setVertexBuffer(0, this.glass.vb); r.setIndexBuffer(this.glass.ib, "uint32"); r.drawIndexed(this.glass.n); }
-      if (sp.nAlpha) { r.setPipeline(P.spriteAlpha); r.setBindGroup(0, g0.spriteAlpha); r.setBindGroup(1, g1.spriteAlpha); r.draw(6, sp.nAlpha, 0, sp.nAdd); }
+      if (sp.nAlpha) { r.setPipeline(P.spriteAlpha); r.setBindGroup(0, g0.spriteAlpha); r.setBindGroup(1, g1.spriteAlpha); r.draw(6, sp.nAlpha, 0, nAdd); }
       r.end();
       // bloom
       const B = this.views.bloom;
@@ -12602,6 +12625,143 @@ fn boxOf(V: Vox) -> Box {
     btn("Close", () => el.remove());
     el.append(row);
   };
+})();
+
+</script>
+<script>/* ../MossheartEngine/src/dismiss.js */
+/* Easy close for a game's pop-ups (moved here from Mossheart's view/dismiss.js, 2026-11-05, so DeckChess
+   shares it): every dismissible pop-up closes three ways, a tap
+   outside it, its ✕ (a 44px target on a phone) or a swipe on a touch screen (down for sheets and cards, any
+   way for the modals; the panel follows the finger and snaps back short of the threshold). Esc stays with
+   its owners (a game's menu and main). ME.Dismiss.add(el, o) wires one:
+     o.close()   closes it (the owner's own close, so its state stays right)
+     o.panel     what carries the ✕ and follows the finger (default el)
+     o.hit       a selector: taps inside a match are not "outside" (default: inside o.panel)
+     o.veil      el is a backdrop over the game: a click on it outside o.panel closes
+     o.outside   el floats over the game: a tap anywhere outside it closes and is swallowed, so it never
+                 reaches the meadow; o.open() says whether it is showing, o.skip(target) spares its toggle
+     o.dir       "down" (default) or "any"
+     o.x         false: no ✕ of ours (the panel has its own, the game tip)
+     o.tab       a choice (the gifts, the run's end): it never closes, it minimises to a tab of that label
+                 at the bottom that brings it back; the owner drops the tab with ME.Dismiss.untab(el)
+   ME.Dismiss.drag(el, [{x, y, t}, ...]) runs a swipe from plain points, for the flows. The ✕ is .x and the
+   tab #dztab, styled by the game (Mossheart: game.css); a choice's ✕ is a – (it minimises). */
+(function () {
+  const ME = window.ME;
+  // (ME.Dismiss.scrollers: a selector of the inner lists that scroll, which keep a swipe while they can)
+  const LOCK = 8, FAR = 60, FLICK = 0.5, FLICK_MIN = 20;
+  const wired = new Map();
+  let eatClick = 0, eatId = null, eatAt = null;
+
+  // a choice minimised: one tab at a time
+  let tab = null, tabFor = null;
+  const untab = (el) => { if (tab && (!el || tabFor === el)) { tab.remove(); tab = null; tabFor = null; } };
+  const minimise = (el, label) => {
+    el.classList.remove("show"); untab();
+    tab = document.createElement("button");
+    tab.id = "dztab"; tab.className = "btn"; tab.textContent = label + " ▴"; tabFor = el;
+    tab.addEventListener("click", () => { untab(); el.classList.add("show"); });
+    (document.getElementById("ui") || document.body).appendChild(tab);
+  };
+
+  // the swipe, from plain points: start, move (true once it is a swipe of ours), end
+  const swipe = {
+    start(w, p, target) { w.sw = { x: p.x, y: p.y, t: p.t, lx: p.x, ly: p.y, lt: p.t, on: false, off: false, target }; },
+    move(w, p) {
+      const s = w.sw;
+      if (!s || s.off) return false;
+      const dx = p.x - s.x, dy = p.y - s.y;
+      if (!s.on) {
+        if (Math.hypot(dx, dy) < LOCK) return false;
+        const vert = Math.abs(dy) >= Math.abs(dx);
+        if (w.o.dir !== "any" && !(vert && dy > 0)) { s.off = true; return false; }
+        // an inner list that can still scroll that way keeps the gesture
+        const sc = s.target && s.target.closest && D.scrollers && s.target.closest(D.scrollers);
+        if (sc && w.panel.contains(sc) && vert) {
+          const up = sc.scrollTop > 0, down = sc.scrollTop + sc.clientHeight < sc.scrollHeight - 1;
+          if ((dy > 0 && up) || (dy < 0 && down)) { s.off = true; return false; }
+        }
+        s.on = true; w.panel.style.transition = "none";
+      }
+      const tx = w.o.dir === "any" ? dx : 0, ty = w.o.dir === "any" ? dy : Math.max(0, dy);
+      w.panel.style.translate = `${tx}px ${ty}px`;
+      w.panel.style.opacity = String(Math.max(0.35, 1 - Math.hypot(tx, ty) / 400));
+      s.vx = (p.x - s.lx) / Math.max(1, p.t - s.lt); s.vy = (p.y - s.ly) / Math.max(1, p.t - s.lt);
+      s.lx = p.x; s.ly = p.y; s.lt = p.t; s.tx = tx; s.ty = ty;
+      return true;
+    },
+    end(w) {
+      const s = w.sw; w.sw = null;
+      if (!s || !s.on) return false;
+      const d = Math.hypot(s.tx, s.ty), v = w.o.dir === "any" ? Math.hypot(s.vx, s.vy) : s.vy;
+      eatClick = performance.now() + 400; eatId = null; eatAt = null;
+      if (d > FAR || (v > FLICK && d > FLICK_MIN)) { reset(w.panel, false); close(w); return true; }
+      reset(w.panel, true);
+      return false;
+    },
+  };
+  const reset = (panel, ease) => {
+    panel.style.transition = ease ? "translate 0.18s ease-out, opacity 0.18s" : "none";
+    panel.style.translate = ""; panel.style.opacity = "";
+    if (ease) setTimeout(() => { panel.style.transition = ""; }, 200); else panel.style.transition = "";
+  };
+  const close = (w) => { if (w.o.tab) minimise(w.el, w.o.tab); else w.o.close(); };
+
+  function add(el, o) {
+    if (!el) return;
+    const panel = o.panel || el, w = { el, o, panel, sw: null };
+    wired.set(el, w);
+    if (getComputedStyle(panel).position === "static") panel.style.position = "relative";
+    const x = document.createElement("button");
+    x.className = "x"; x.type = "button"; x.textContent = o.tab ? "–" : "✕"; x.setAttribute("aria-label", o.tab ? "Minimise" : "Close");
+    x.addEventListener("click", (e) => { e.stopPropagation(); close(w); });
+    if (o.x !== false) panel.appendChild(x);
+    // (a target no longer in the page was inside: a click that re-renders what it hit, Settings' tabs and
+    // options, reaches the veil after its button is gone)
+    const inside = (t) => !t.isConnected || (o.hit ? !!t.closest(o.hit) : panel.contains(t)) || t === x;
+    if (o.veil) el.addEventListener("click", (e) => { if (performance.now() < eatClick) return; if (!inside(e.target)) close(w); });
+    if (o.outside) {
+      document.addEventListener("pointerdown", (e) => {
+        if (!o.open() || el.contains(e.target) || (o.skip && o.skip(e.target))) return;
+        e.preventDefault(); e.stopPropagation();
+        eatId = e.pointerId; eatAt = e.target; eatClick = performance.now() + 700;
+        close(w);
+      }, true);
+    }
+    // touch: the panel follows the finger
+    const pt = (e) => { const t = e.changedTouches[0]; return { x: t.clientX, y: t.clientY, t: performance.now() }; };
+    panel.addEventListener("touchstart", (e) => { if (e.touches.length === 1) swipe.start(w, pt(e), e.target); else w.sw = null; }, { passive: true });
+    panel.addEventListener("touchmove", (e) => { if (swipe.move(w, pt(e))) e.preventDefault(); }, { passive: false });
+    panel.addEventListener("touchend", () => swipe.end(w));
+    panel.addEventListener("touchcancel", () => { if (w.sw && w.sw.on) reset(panel, true); w.sw = null; });
+  }
+
+  // the tap that closed a panel (or ended a swipe) stops here: its pointerup and click never reach the game
+  const eat = (e) => {
+    if (performance.now() >= eatClick) return;
+    if (e.type === "pointerup" && e.pointerId !== eatId) return;
+    if (e.type === "click") {
+      if (e.target.closest && e.target.closest(".x, #dztab")) return;
+      // (one click only, on what the closing tap hit: a quick next tap elsewhere, the wave button right after
+      // closing the sky panel, goes through)
+      if (eatAt && e.target !== eatAt) return;
+      eatClick = 0;
+    }
+    e.preventDefault(); e.stopPropagation();
+  };
+  document.addEventListener("pointerup", eat, true);
+  document.addEventListener("click", eat, true);
+
+  // a swipe from plain points (the flows): true if it closed
+  function drag(el, pts) {
+    const w = wired.get(el);
+    if (!w || pts.length < 2) return false;
+    swipe.start(w, pts[0], w.panel);
+    for (const p of pts.slice(1)) swipe.move(w, p);
+    return swipe.end(w);
+  }
+
+  const D = ME.Dismiss = { add, drag, untab, tabbed: () => tabFor, scrollers: "" };
 })();
 
 </script>
@@ -16272,7 +16432,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.61.0", name: "Mossheart", commit: "9455d8f" };
+  G.VERSION = { v: "0.62.0", name: "Mossheart", commit: "d3b4321" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -22190,138 +22350,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
 </script>
 <script>/* src/view/dismiss.js */
-/* Easy close for the pop-ups (the user's ask 2026-11-04): every dismissible pop-up closes three ways, a tap
-   outside it, its ✕ (a 44px target on a phone) or a swipe on a touch screen (down for sheets and cards, any
-   way for the modals; the panel follows the finger and snaps back short of the threshold). Esc stays with
-   its owners (menu.js, main.js). G.Dismiss.add(el, o) wires one:
-     o.close()   closes it (the owner's own close, so its state stays right)
-     o.panel     what carries the ✕ and follows the finger (default el)
-     o.hit       a selector: taps inside a match are not "outside" (default: inside o.panel)
-     o.veil      el is a backdrop over the game: a click on it outside o.panel closes
-     o.outside   el floats over the game: a tap anywhere outside it closes and is swallowed, so it never
-                 reaches the meadow; o.open() says whether it is showing, o.skip(target) spares its toggle
-     o.dir       "down" (default) or "any"
-     o.x         false: no ✕ of ours (the panel has its own, the game tip)
-     o.tab       a choice (the gifts, the run's end): it never closes, it minimises to a tab of that label
-                 at the bottom that brings it back; the owner drops the tab with G.Dismiss.untab(el)
-   G.Dismiss.drag(el, [{x, y, t}, ...]) runs a swipe from plain points, for the flows. The ✕ is .x and the
-   tab #dztab, in game.css; a choice's ✕ is a – (it minimises). */
+/* Easy close for the pop-ups now lives in the engine (MossheartEngine/src/dismiss.js, ME.Dismiss, 2026-11-05):
+   this keeps the game's name for it, G.Dismiss, and the game's inner lists that keep a swipe while they scroll. */
 (function () {
   const G = window.MG;
-  const SCROLLERS = ".cscroll, #inspbody, #almbody";
-  const LOCK = 8, FAR = 60, FLICK = 0.5, FLICK_MIN = 20;
-  const wired = new Map();
-  let eatClick = 0, eatId = null, eatAt = null;
-
-  // a choice minimised: one tab at a time
-  let tab = null, tabFor = null;
-  const untab = (el) => { if (tab && (!el || tabFor === el)) { tab.remove(); tab = null; tabFor = null; } };
-  const minimise = (el, label) => {
-    el.classList.remove("show"); untab();
-    tab = document.createElement("button");
-    tab.id = "dztab"; tab.className = "btn"; tab.textContent = label + " ▴"; tabFor = el;
-    tab.addEventListener("click", () => { untab(); el.classList.add("show"); });
-    (document.getElementById("ui") || document.body).appendChild(tab);
-  };
-
-  // the swipe, from plain points: start, move (true once it is a swipe of ours), end
-  const swipe = {
-    start(w, p, target) { w.sw = { x: p.x, y: p.y, t: p.t, lx: p.x, ly: p.y, lt: p.t, on: false, off: false, target }; },
-    move(w, p) {
-      const s = w.sw;
-      if (!s || s.off) return false;
-      const dx = p.x - s.x, dy = p.y - s.y;
-      if (!s.on) {
-        if (Math.hypot(dx, dy) < LOCK) return false;
-        const vert = Math.abs(dy) >= Math.abs(dx);
-        if (w.o.dir !== "any" && !(vert && dy > 0)) { s.off = true; return false; }
-        // an inner list that can still scroll that way keeps the gesture
-        const sc = s.target && s.target.closest && s.target.closest(SCROLLERS);
-        if (sc && w.panel.contains(sc) && vert) {
-          const up = sc.scrollTop > 0, down = sc.scrollTop + sc.clientHeight < sc.scrollHeight - 1;
-          if ((dy > 0 && up) || (dy < 0 && down)) { s.off = true; return false; }
-        }
-        s.on = true; w.panel.style.transition = "none";
-      }
-      const tx = w.o.dir === "any" ? dx : 0, ty = w.o.dir === "any" ? dy : Math.max(0, dy);
-      w.panel.style.translate = `${tx}px ${ty}px`;
-      w.panel.style.opacity = String(Math.max(0.35, 1 - Math.hypot(tx, ty) / 400));
-      s.vx = (p.x - s.lx) / Math.max(1, p.t - s.lt); s.vy = (p.y - s.ly) / Math.max(1, p.t - s.lt);
-      s.lx = p.x; s.ly = p.y; s.lt = p.t; s.tx = tx; s.ty = ty;
-      return true;
-    },
-    end(w) {
-      const s = w.sw; w.sw = null;
-      if (!s || !s.on) return false;
-      const d = Math.hypot(s.tx, s.ty), v = w.o.dir === "any" ? Math.hypot(s.vx, s.vy) : s.vy;
-      eatClick = performance.now() + 400; eatId = null; eatAt = null;
-      if (d > FAR || (v > FLICK && d > FLICK_MIN)) { reset(w.panel, false); close(w); return true; }
-      reset(w.panel, true);
-      return false;
-    },
-  };
-  const reset = (panel, ease) => {
-    panel.style.transition = ease ? "translate 0.18s ease-out, opacity 0.18s" : "none";
-    panel.style.translate = ""; panel.style.opacity = "";
-    if (ease) setTimeout(() => { panel.style.transition = ""; }, 200); else panel.style.transition = "";
-  };
-  const close = (w) => { if (w.o.tab) minimise(w.el, w.o.tab); else w.o.close(); };
-
-  function add(el, o) {
-    if (!el) return;
-    const panel = o.panel || el, w = { el, o, panel, sw: null };
-    wired.set(el, w);
-    if (getComputedStyle(panel).position === "static") panel.style.position = "relative";
-    const x = document.createElement("button");
-    x.className = "x"; x.type = "button"; x.textContent = o.tab ? "–" : "✕"; x.setAttribute("aria-label", o.tab ? "Minimise" : "Close");
-    x.addEventListener("click", (e) => { e.stopPropagation(); close(w); });
-    if (o.x !== false) panel.appendChild(x);
-    // (a target no longer in the page was inside: a click that re-renders what it hit, Settings' tabs and
-    // options, reaches the veil after its button is gone)
-    const inside = (t) => !t.isConnected || (o.hit ? !!t.closest(o.hit) : panel.contains(t)) || t === x;
-    if (o.veil) el.addEventListener("click", (e) => { if (performance.now() < eatClick) return; if (!inside(e.target)) close(w); });
-    if (o.outside) {
-      document.addEventListener("pointerdown", (e) => {
-        if (!o.open() || el.contains(e.target) || (o.skip && o.skip(e.target))) return;
-        e.preventDefault(); e.stopPropagation();
-        eatId = e.pointerId; eatAt = e.target; eatClick = performance.now() + 700;
-        close(w);
-      }, true);
-    }
-    // touch: the panel follows the finger
-    const pt = (e) => { const t = e.changedTouches[0]; return { x: t.clientX, y: t.clientY, t: performance.now() }; };
-    panel.addEventListener("touchstart", (e) => { if (e.touches.length === 1) swipe.start(w, pt(e), e.target); else w.sw = null; }, { passive: true });
-    panel.addEventListener("touchmove", (e) => { if (swipe.move(w, pt(e))) e.preventDefault(); }, { passive: false });
-    panel.addEventListener("touchend", () => swipe.end(w));
-    panel.addEventListener("touchcancel", () => { if (w.sw && w.sw.on) reset(panel, true); w.sw = null; });
-  }
-
-  // the tap that closed a panel (or ended a swipe) stops here: its pointerup and click never reach the game
-  const eat = (e) => {
-    if (performance.now() >= eatClick) return;
-    if (e.type === "pointerup" && e.pointerId !== eatId) return;
-    if (e.type === "click") {
-      if (e.target.closest && e.target.closest(".x, #dztab")) return;
-      // (one click only, on what the closing tap hit: a quick next tap elsewhere, the wave button right after
-      // closing the sky panel, goes through)
-      if (eatAt && e.target !== eatAt) return;
-      eatClick = 0;
-    }
-    e.preventDefault(); e.stopPropagation();
-  };
-  document.addEventListener("pointerup", eat, true);
-  document.addEventListener("click", eat, true);
-
-  // a swipe from plain points (the flows): true if it closed
-  function drag(el, pts) {
-    const w = wired.get(el);
-    if (!w || pts.length < 2) return false;
-    swipe.start(w, pts[0], w.panel);
-    for (const p of pts.slice(1)) swipe.move(w, p);
-    return swipe.end(w);
-  }
-
-  G.Dismiss = { add, drag, untab, tabbed: () => tabFor };
+  G.Dismiss = ME.Dismiss;
+  ME.Dismiss.scrollers = ".cscroll, #inspbody, #almbody";
 })();
 
 </script>
@@ -26423,6 +26457,9 @@ function MG_SFX(L) {
     arp() { return this.chordNotes.map((n) => n + 12).sort((a, b) => a - b); }
 
     // --- event gestures (single notes on the grid, in the current chord)
+    // cue(name, p): a gesture by name, without the rules' events (a game other than the tower defence, DeckChess):
+    // one of onEvent's names with its data, or "phase" with p.phase
+    cue(name, p = {}) { if (name === "phase") this.onPhase(p.phase); else this.onEvent(name, p); }
     onEvent(name, data) {
       if (!this.ready || this.gameOver) return;
       const q = this.seq, clock = q.clock, g = clock + q.toGrid(), arp = () => this.arp(), now = this.mixer.ctx.currentTime;
