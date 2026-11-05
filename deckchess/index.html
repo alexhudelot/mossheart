@@ -40,8 +40,15 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #sound:not(.on) { opacity: 0.55; }
 #sky { position: fixed; z-index: 2; right: 12px; top: 68px; width: min(420px, calc(100vw - 24px)); padding: 10px 12px; display: none; flex-direction: column; gap: 8px; }
 #sky.show { display: flex; }
-#sky .skyrow { display: flex; flex-direction: column; gap: 4px; }
-#sky .skyrow > b { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; }
+/* the lighting and camera panel (main.js), top left, and the quick views over the buttons in locked and dynamic */
+#lcorner { position: absolute; top: max(10px, env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left)); display: flex; gap: 6px; }
+#view { position: fixed; z-index: 2; left: 12px; top: 68px; width: min(380px, calc(100vw - 24px)); padding: 10px 12px; display: none; flex-direction: column; gap: 8px; }
+#view.show { display: flex; }
+#views { position: absolute; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 48px); left: 50%; transform: translateX(-50%); display: none; flex-wrap: nowrap; }
+#views.show { display: flex; }
+#views button:not(.btn) { min-width: 44px; min-height: 36px; background: rgba(14, 16, 14, 0.8); }
+#sky .skyrow, #view .skyrow { display: flex; flex-direction: column; gap: 4px; }
+#sky .skyrow > b, #view .skyrow > b { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; }
 .seg button:not(.btn) { font: var(--font); font-size: 13px; color: var(--ink); background: rgba(30, 32, 26, 0.92); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; cursor: pointer; touch-action: manipulation; }
 .seg button:not(.btn).on { border-color: var(--w); box-shadow: 0 0 0 1px var(--w) inset; }
 .x { position: absolute; top: 4px; right: 4px; z-index: 3; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: rgba(255, 250, 230, 0.1); color: var(--ink); font: 600 16px/1 system-ui, sans-serif; cursor: pointer; }
@@ -79,6 +86,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
   #moves { display: none; }
   #where { display: none; }
   #sky { right: 6px; width: calc(100vw - 12px); padding: 8px 10px; }
+  #view { left: 6px; width: calc(100vw - 12px); padding: 8px 10px; }
   .seg button:not(.btn) { font-size: 12.5px; padding: 5px 7px; }
   .x { width: 44px; height: 44px; top: 0; right: 0; font-size: 18px; background: transparent; }
 }
@@ -89,10 +97,13 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 <canvas id="wx"></canvas>
 <div id="ui">
   <div id="corner"><button id="skybtn" class="btn small" title="mood and weather">☁</button><button id="sound" class="btn small" title="sound">♪</button></div>
+  <div id="lcorner"><button id="viewbtn" class="btn small" title="lighting and camera">🎥</button></div>
+  <div id="view" class="panel"><div class="skyrow"><b>Light</b><div class="seg" id="lightseg"></div></div><div class="skyrow"><b>Camera</b><div class="seg" id="camseg"></div></div><div class="skyrow"><b>View</b><div class="seg" id="viewseg"></div></div></div>
   <div id="sky" class="panel"><div class="skyrow"><b>Mood</b><div class="seg" id="moodseg"></div></div><div class="skyrow"><b>Weather</b><div class="seg" id="wxseg"></div></div></div>
   <div id="top" class="panel"><span id="where"></span><span id="turn"></span><span id="fps"></span></div>
   <div id="moves" class="panel"></div>
   <div id="tag" class="panel"></div>
+  <div id="views" class="seg"><button data-v="top" title="from above">Top</button><button data-v="side" title="low, from your side">Side</button><button data-v="follow" title="behind the last move">Follow</button><button data-v="reset" title="back to the whole board">⟲</button></div>
   <div id="bottom">
     <button id="b-undo" class="btn">Undo</button>
     <button id="b-new" class="btn">New game</button>
@@ -19043,6 +19054,18 @@ function MG_SFX(L) {
      cam.look(theta, elev)              set both angles at once (radians; the self-test's views)
      cam.depthBox(min, max)             the world box the depth range holds at every angle (T.bounds)
      cam.dragPx                         canvas px the pointers moved since the last press (a tap is a short one)
+     cam.fitTo(min, max, w, h, dy, th)  the board box and the canvas rows it fits in (dy: their offset from the
+                                        canvas's middle, canvas px; th: home's turn, else kept): sets home, the
+                                        zoom range and the pan clamp; cam.goHome() jumps there
+     cam.setMode(m)                     "free" (drag turns and tilts), "locked" (the quarter views at home's tilt:
+                                        a sideways swipe or Q, E turns a quarter) or "dynamic" (free, and event()
+                                        eases to a shot of the board's action, then back home)
+     cam.view(name, o)                  "top", "side" (the player's), "follow" (o.at, o.from: behind a move) or
+                                        "reset" (home), eased
+     cam.event(kind, o)                 in dynamic: "move" (o.at, o.from), "capture", "check" (o.at the king),
+                                        "over"
+   The view's centre (on the board's plane) stays on the board, and zoomed out below the fit it is drawn back
+   to home's, all of it at the zoom floor: panning and zooming at an edge can no longer lose the board.
    In the rotated frame (X', Y': the world turned by theta about the centre, the camera towards +Y'):
      screen x = X', screen y (up) = cos(e) Z - sin(e) Y', depth = sqrt(3) (cos(e) Y' + sin(e) Z)
    (bigger = nearer; sqrt(3) per world unit along the view, the engine's own depth scale). theta = pi/4 looks
@@ -19056,12 +19079,21 @@ function MG_SFX(L) {
   const EL0 = (20 * Math.PI) / 180, EL1 = (85 * Math.PI) / 180;
   const clampEl = (e) => Math.max(EL0, Math.min(EL1, e));
   const EASE = 12, FLING = 3.5; // the angles' ease to the drag (1/s) and a flick's decay (1/s)
+  const deg = (d) => (d * Math.PI) / 180, SWIPE = 40; // locked: canvas px of a sideways swipe that turns
+  const wrap = (a) => a - 2 * Math.PI * Math.round(a / (2 * Math.PI));
+  const quarter = (t) => Math.round((t - Math.PI / 4) / Q) * Q + Math.PI / 4;
+  const ease = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
+  // the dynamic shots: tilt (degrees, null: home's), zoom (times the fit at that angle), seconds held before
+  // home (0: stays), how far towards the action the centre goes
+  const SHOTS = { move: { el: null, z: 1.12, hold: 1.4, pull: 0.35 }, capture: { el: 30, z: 1.7, hold: 2.4, pull: 1 },
+    check: { el: 40, z: 1.45, hold: 2.2, pull: 1 }, over: { el: 28, z: 1.6, hold: 0, pull: 1 } };
 
   class BoardCamera extends ME.Camera {
     constructor(cx, cy, elev = ISO) {
       super(cx, cy);
       this.bound = { r: 8, z0: 0, z1: 2 };
       this.vth = 0; this.vel = 0; this.drag = false; this.dragPx = 0; this.last = null;
+      this.mode = "free"; this.home = null; this.fit = null; this.backAt = 0; this.shot = null;
       this.look(Math.PI / 4, ((elev || ISO) * Math.PI) / 180);
     }
     get turning() { return true; }
@@ -19110,7 +19142,107 @@ function MG_SFX(L) {
         if (Math.abs(dth) < 1e-4 && Math.abs(del) < 1e-4) this.angles(this.thT, this.elT);
         else this.angles(this.theta + dth * u, this.elev + del * u);
       }
-      super.update(now);
+      // the focus eases the world point at the centre (the engine's eases the pan, which a turn on the way moves)
+      const F = this.foc;
+      this.foc = null; super.update(now); this.foc = F;
+      if (F) {
+        const u = Math.min(1, (now - F.t0) / (F.s * 1000)), e = ease(u);
+        this.pan = this.panOf(F.W0.map((v, i) => v + (F.p[i] - v) * e));
+        if (F.z1 !== null) this.zoom = F.z0 + (F.z1 - F.z0) * e;
+        if (u >= 1) this.foc = null;
+      }
+      if (this.backAt && now >= this.backAt && !this.drag) this.view("reset");
+      this.clamp();
+    }
+    get pz() { return this.pivotZ ?? this.bound.z0; }
+    focus(p, o = {}) {
+      super.focus([p[0], p[1], this.pz], o);
+      this.foc.W0 = this.centre(this.pz); if (this.last !== null) this.foc.t0 = this.last;
+    }
+    // the centre on the board; below the fit's zoom the box it may roam shrinks to home's centre
+    clamp() {
+      const H = this.home;
+      if (!H) return;
+      const W = this.centre(this.pz), [x0, y0, x1, y1] = H.box, zr = H.zoom * 0.85;
+      const t = this.zoom >= zr ? 0 : Math.min(1, (zr - this.zoom) / Math.max(1e-6, zr - this.minZoom));
+      const lim = (v, a, b, h) => Math.max(a + (h - a) * t, Math.min(b + (h - b) * t, v));
+      const x = lim(W[0], x0, x1, H.W[0]), y = lim(W[1], y0, y1, H.W[1]);
+      if (Math.abs(x - W[0]) > 1e-6 || Math.abs(y - W[1]) > 1e-6) this.pan = this.panOf([x, y, this.pz]);
+    }
+    // the fit at angles theta, elev: its zoom and the board point at the canvas's centre
+    frameAt(theta, elev) {
+      const f = this.fit, keep = { theta: this.theta, elev: this.elev, pan: this.pan.slice(), zoom: this.zoom, foc: this.foc };
+      this.look0(theta, elev);
+      this.fitBox(f.min, f.max, f.w, f.h, 0.92);
+      this.pan[1] += f.dy / this.zoom;
+      const out = { theta, elev: this.elev, zoom: this.zoom, W: this.centre(this.pz) };
+      this.look0(keep.theta, keep.elev); this.pan = keep.pan; this.zoom = keep.zoom; this.foc = keep.foc;
+      return out;
+    }
+    // the angles alone (the pan left as it is, no ease)
+    look0(theta, elev) { const ce = this.ce; this.ce = 0; this.angles(theta, elev); if (!this.ce) this.ce = ce; }
+    // frame the board: home is the player's quarter view at its tilt (both kept across a resize)
+    fitTo(min, max, w, h, dy, theta) {
+      this.fit = { min, max, w, h, dy };
+      const th = theta ?? (this.home ? this.home.theta : this.theta), el = this.home ? this.home.elev : this.elev;
+      const H = this.frameAt(th, el);
+      H.box = [min[0], min[1], max[0], max[1]];
+      this.home = H;
+      this.minZoom = H.zoom * 0.45; this.maxZoom = H.zoom * 4;
+    }
+    // jump to home (a new game)
+    goHome() { const H = this.home; this.foc = null; this.backAt = 0; this.shot = null; this.look(H.theta, H.elev); this.zoom = H.zoom; this.pan = this.panOf(H.W); }
+    setMode(m) {
+      this.mode = m === "locked" || m === "dynamic" ? m : "free";
+      this.backAt = 0; this.shot = null;
+      if (this.mode === "locked" && this.home) { this.vth = this.vel = 0; this.thT = quarter(this.thT); this.elT = this.home.elev; }
+    }
+    // ease the angles to theta (the nearest way round), elev
+    aim(theta, elev) { this.vth = this.vel = 0; this.thT = this.theta + wrap(theta - this.theta); this.elT = clampEl(elev); }
+    // the angle looking along a move's line (from -> at; one coming at the player is looked along backwards),
+    // never further round than maxOff from home (a shot from the opponent's side reads as a flip); in locked
+    // mode the nearest quarter view
+    along(from, at, maxOff) {
+      const dx = at[0] - from[0], dy = at[1] - from[1];
+      let t = Math.hypot(dx, dy) < 1e-3 ? this.thT : Math.atan2(-dx, -dy);
+      if (maxOff != null && this.home) {
+        let d = wrap(t - this.home.theta);
+        if (Math.abs(d) > Math.PI / 2) d = wrap(d + Math.PI);
+        t = this.home.theta + Math.max(-maxOff, Math.min(maxOff, d));
+      }
+      return this.mode === "locked" ? quarter(this.theta + wrap(t - this.theta)) : t;
+    }
+    view(name, o = {}) {
+      const H = this.home;
+      if (!H) return;
+      this.backAt = 0; this.shot = null;
+      const lock = this.mode === "locked", s = o.s ?? 0.7;
+      if (name === "top") {
+        const th = lock ? quarter(this.thT) : this.thT, f = this.frameAt(th, EL1);
+        this.aim(th, EL1); this.focus(f.W, { s, zoom: f.zoom });
+      } else if (name === "side") {
+        const el = lock ? H.elev : deg(22), f = this.frameAt(H.theta, el);
+        this.aim(H.theta, el); this.focus(f.W, { s, zoom: f.zoom });
+      } else if (name === "follow" && o.at) {
+        const th = this.along(o.from || H.W, o.at, Math.PI / 2), el = lock ? H.elev : deg(o.el ?? 34);
+        const f = this.frameAt(th, el);
+        this.aim(th, el); this.focus(o.at, { s, zoom: f.zoom * (o.z ?? 1.6) });
+      } else {
+        this.aim(H.theta, H.elev); this.focus(H.W, { s, zoom: H.zoom });
+      }
+    }
+    // the board's action, in dynamic mode: a shot of it, then home after its hold (a press takes it over)
+    event(kind, o = {}) {
+      const S = SHOTS[kind];
+      if (this.mode !== "dynamic" || !S || !this.home || this.drag || !o.at) return false;
+      // a move's nudge never cuts a bigger shot short
+      if (kind === "move" && this.shot && this.shot !== "move" && this.backAt) return false;
+      const H = this.home, th = S.el == null ? H.theta : this.along(o.from || H.W, o.at, Math.PI / 3);
+      const el = S.el == null ? H.elev : deg(S.el), f = this.frameAt(th, el);
+      const at = H.W.map((v, i) => v + ((o.at[i] ?? v) - v) * S.pull);
+      this.aim(th, el); this.focus(at, { s: kind === "move" ? 0.8 : 0.9, zoom: f.zoom * S.z });
+      this.shot = kind; this.backAt = S.hold ? (this.last ?? 0) + (S.hold + 0.9) * 1000 : 0;
+      return true;
     }
     // the angles still moving (an ease, a flick) or a focus on the way
     get busy() { return !!this.foc || Math.abs(this.thT - this.theta) > 1e-4 || Math.abs(this.elT - this.elev) > 1e-4 || !!this.vth || !!this.vel; }
@@ -19157,14 +19289,15 @@ function MG_SFX(L) {
     attach(el, onChange) {
       const ptrs = new Map();
       const px = (e) => { const r = el.getBoundingClientRect(), k = el.width / r.width; return [(e.clientX - r.left) * k, (e.clientY - r.top) * k]; };
-      let pinch = null, mode = null, tMove = 0;
+      let pinch = null, mode = null, tMove = 0, sw = [0, 0];
       // radians per canvas px: the canvas's shorter side turns the board about 200 degrees
       const rate = () => 3.5 / Math.max(300, Math.min(el.width, el.height));
       el.addEventListener("pointerdown", (e) => {
         try { el.setPointerCapture(e.pointerId); } catch (_) { /* pointer already gone */ }
         if (!ptrs.size) { this.dragPx = 0; mode = e.button === 2 || e.button === 1 || e.shiftKey ? "pan" : "turn"; }
-        ptrs.set(e.pointerId, px(e)); pinch = null;
+        ptrs.set(e.pointerId, px(e)); pinch = null; sw = [0, 0];
         this.drag = true; this.vth = this.vel = 0; tMove = performance.now();
+        this.backAt = 0; // the player takes a dynamic shot over
       });
       el.addEventListener("pointermove", (e) => {
         if (!ptrs.has(e.pointerId)) return;
@@ -19173,6 +19306,7 @@ function MG_SFX(L) {
         this.dragPx += Math.hypot(dx, dy);
         this.foc = null; // the player takes the camera back
         if (ptrs.size === 1 && mode === "pan") { this.pan[0] -= dx / this.zoom; this.pan[1] -= dy / this.zoom; }
+        else if (ptrs.size === 1 && mode === "turn" && this.mode === "locked") { sw[0] += dx; sw[1] += dy; }
         else if (ptrs.size === 1 && mode === "turn") {
           const k = rate(), now = performance.now(), dt = Math.max(8, now - tMove) / 1000;
           this.thT -= dx * k; this.elT = clampEl(this.elT + dy * k * 0.6);
@@ -19195,6 +19329,7 @@ function MG_SFX(L) {
         pinch = null;
         if (ptrs.size) return;
         this.drag = false;
+        if (mode === "turn" && this.mode === "locked" && Math.abs(sw[0]) > SWIPE && Math.abs(sw[0]) > 1.5 * Math.abs(sw[1])) this.snap(sw[0] > 0 ? -1 : 1);
         // a flick carries on only if the finger was still moving when it lifted
         if (mode !== "turn" || performance.now() - tMove > 80) this.vth = this.vel = 0;
         else { this.vth = Math.max(-6, Math.min(6, this.vth)); this.vel = Math.max(-3, Math.min(3, this.vel)); }
@@ -19288,7 +19423,8 @@ function MG_SFX(L) {
      a = 0 off the board, else 1 + round(127 + 127 t): the territory, t in [-1, 1] (white's control minus
          black's, 0 a square nobody holds or both hold equally)
    Renderer.user slots:
-     user[0] = overlay on, grid on, hovered world tile xy (-1 = none)
+     user[0] = the glow gain (0 = overlay off, 1 normal, 3 the glow lighting: view/lighting.js), grid on,
+               hovered world tile xy (-1 = none)
      user[1] = the board's top z, whose turn (0 white, 1 black), rumble 0..1, territory on
      user[2] = the last ripple: its centre xy (world), its start (s, the frame clock u.vdir.w), its kind
                (0 a move, 1 a capture, 2 a promotion)
@@ -19309,7 +19445,9 @@ fn hookMark(m: u32, flash: f32, n: vec3f, lp: vec3f, hc: f32, seed: f32) -> Mark
   let tm = u.vdir.w;
   let rim = pow(1.0 - clamp(dot(n, -u.vdir.xyz), 0.0, 1.0), 2.4);
   let tc = select(u.user[4].rgb, u.user[5].rgb, (m & ${G.MARK.BLACK}u) != 0u);
-  g.emit += tc * rim * 0.35;
+  // the glow gain (user[0].x): the rim brighter and, past 1, a faint light in the whole piece
+  let gg = max(1.0, u.user[0].x);
+  g.emit += tc * rim * 0.35 * gg + tc * 0.06 * (gg - 1.0) * (0.6 + 0.4 * rim);
   if ((m & ${G.MARK.SELECTED}u) != 0u) { g.emit += tc * rim * (1.6 + 0.5 * sin(tm * 4.0)) + tc * 0.1; }
   if ((m & ${G.MARK.CHECK}u) != 0u) { g.emit += vec3f(1.0, 0.25, 0.2) * rim * (1.5 + 0.6 * sin(tm * 6.0)); }
   if ((m & ${G.MARK.HOVER}u) != 0u) { g.emit += tc * rim * 0.8; }
@@ -19351,6 +19489,12 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     col += tc * 0.05 * at * line * top;
   }
   col = mix(col, vec3f(0.95, 0.9, 0.75), line * 0.08 * u.user[0].y * top);
+  // the glow lighting: the lines lit, the squares faintly in the colour of who holds them
+  let gg = max(0.0, u.user[0].x - 1.0);
+  if (gg > 0.0) {
+    col += vec3f(1.0, 0.85, 0.55) * line * 0.22 * gg * top + vec3f(0.5, 0.45, 0.4) * (1.0 - sstep(0.0, 0.2, edge)) * 0.05 * gg * top;
+    if (at > 0.01) { col += select(u.user[5].rgb, u.user[4].rgb, t > 0.0) * 0.05 * at * gg * top; }
+  }
   let sel = select(u.user[4].rgb, u.user[5].rgb, u.user[1].y > 0.5);
   if (cell.b > 0.5) { col = mix(col, vec3f(1.0, 0.78, 0.3), (0.22 + 0.35 * line) * top); }
   if (cell.r > 0.75) { col = mix(col, sel * 1.2, (0.3 + 0.55 * line) * top); }
@@ -19395,6 +19539,75 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
   return col;
 }`,
   });
+})();
+
+</script>
+<script>/* src/view/lighting.js */
+/* The board's lighting modes, over Mossheart's look (its preset, mood and weather, which atmos.apply writes
+   into R.set every frame):
+     current  Mossheart's look as it is
+     day      full day: the canopy's shade off, a high sun, a bright fill, little haze
+     hall     an indoor tournament: light from overhead, even and soft, almost no shadow, no sunbeams
+     glow     the room dark, the pieces' rims and the board's lines lit: the light comes from the game
+   new DG.Lighting(R); lights.set(mode); lights.apply(rdt) after the mood each frame (it eases the R.set
+   values toward the mode's over ~0.6 s, and switches the sun and the canopy halfway); lights.glow is the gain
+   on the pieces' and the board's glow (1, 3 in glow), for Renderer.user[0].x (view/shaders.js) */
+(function () {
+  const G = (window.DG = window.DG || {});
+
+  // sunEl, sunAz: degrees on the map's sun (R.L0); canopy, shafts: switched, not blended; glow: the gain
+  G.LIGHTS = {
+    current: { name: "Current" },
+    day: { name: "Day", canopy: false, sunEl: 25, sunAz: 0, amb: 0.32, shade: 0.3, pool: 0.3, exposure: 1.12, shaftK: 0.05, haze: 0.03, vignette: 0.3, bloomK: 0.9 },
+    hall: { name: "Tournament", canopy: false, shafts: false, sunEl: 50, sunAz: 0, shade: 0.18, pool: 0.2, amb: 0.38, shaftK: 0, haze: 0.02, vignette: 0.25, exposure: 1.05, bloomK: 0.8 },
+    glow: { name: "Glow", shafts: false, shade: 0.8, amb: 0.05, pool: 0.1, exposure: 0.7, shaftK: 0, bloomK: 2.2, vignette: 0.75, glow: 3 },
+  };
+  const SWITCH = ["canopy", "shafts", "sunEl", "sunAz"], SKIP = new Set(["name", "glow", ...SWITCH]);
+  const EASE = 5; // 1/s
+
+  class Lighting {
+    constructor(R) {
+      this.R = R; this.mode = "current"; this.glow = 1;
+      this.w = {}; for (const m in G.LIGHTS) if (m !== "current") this.w[m] = 0;
+      this.kept = {}; // the switched values as they were before a mode took them over
+    }
+    set(mode) { this.mode = G.LIGHTS[mode] ? mode : "current"; return this.mode; }
+    // snap: no ease (the selftest, a first frame)
+    apply(rdt, snap) {
+      const s = this.R.set, k = snap ? 1 : 1 - Math.exp(-rdt * EASE);
+      let sum = 0, top = null;
+      for (const m in this.w) {
+        this.w[m] += ((m === this.mode ? 1 : 0) - this.w[m]) * k;
+        if (this.w[m] < 1e-3) this.w[m] = 0;
+        sum += this.w[m];
+        if (!top || this.w[m] > this.w[top]) top = m;
+      }
+      this.glow = 1;
+      if (sum > 0) {
+        const n = Math.max(1, sum), keys = new Set();
+        for (const m in this.w) if (this.w[m]) for (const key in G.LIGHTS[m]) if (!SKIP.has(key) && key in s) keys.add(key);
+        // each mode's share of its values, Mossheart's for the rest (and for a key a mode leaves alone)
+        for (const key of keys) {
+          let v = s[key] * (1 - sum / n);
+          for (const m in this.w) if (this.w[m]) v += (G.LIGHTS[m][key] ?? s[key]) * (this.w[m] / n);
+          s[key] = v;
+        }
+        for (const m in this.w) this.glow += ((G.LIGHTS[m].glow ?? 1) - 1) * (this.w[m] / n);
+      }
+      // the switched values: the leading mode's past halfway, else back as they were
+      const P = top && this.w[top] > 0.5 ? G.LIGHTS[top] : null;
+      for (const key of SWITCH) {
+        if (P && key in P) { if (!(key in this.kept)) this.kept[key] = s[key]; s[key] = P[key]; }
+        else if (key in this.kept) {
+          // sunEl, sunAz: atmos.apply writes Mossheart's own every frame; canopy, shafts it may not
+          if (key === "canopy" || key === "shafts") s[key] = this.kept[key];
+          delete this.kept[key];
+        }
+      }
+      return this.glow;
+    }
+  }
+  G.Lighting = Lighting;
 })();
 
 </script>
@@ -19591,10 +19804,12 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
 <script>/* src/view/hud.js */
 /* The HUD (index.html's #ui): the top bar (where, whose turn, check), the move list, the bottom buttons, the
    promotion picker and the end of the game. One board and no menu: the game opens straight onto the board.
-   The settings come from the URL (?side=w|b ?level=0..2 ?promo=queen|choose), else from the last game
+   The settings come from the URL (?side=w|b ?level=0..2 ?promo=queen|choose ?light=current|day|hall|glow
+   ?cam=free|locked|dynamic), else from the last game
    (localStorage, when the browser keeps it), else the defaults (white, Normal, always a queen).
      new DG.Hud({ where, undo(), newGame() })
-     hud.settings                      { side (0 white, 1 black), level, promo }
+     hud.settings                      { side (0 white, 1 black), level, promo, light, cam }
+     hud.keep(key, value)              a setting changed (the view panel: light, cam), remembered
      hud.show({ game, status, thinking, you, canUndo })   the top bar, the move list and the buttons
      hud.askPromo(color) -> Promise<type (QUEEN..KNIGHT), or 0 when dismissed>
      hud.showEnd(status, you), hud.hideEnd()
@@ -19618,10 +19833,13 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       const q = new URLSearchParams(location.search), kept = load();
       const pick = (v, ok, d) => (v != null && ok(v) ? v : d);
       const side = q.get("side"), level = q.get("level"), promo = q.get("promo");
+      const one = (k, list) => { const v = q.get(k); return list.includes(v) ? v : pick(kept[k], (x) => list.includes(x), list[0]); };
       this.settings = {
         side: side === "b" ? 1 : side === "w" ? 0 : pick(kept.side, (v) => v === 0 || v === 1, 0),
         level: level != null && LEVELS[+level] ? +level : pick(kept.level, (v) => !!LEVELS[v], 1),
         promo: promo === "choose" || promo === "queen" ? promo : pick(kept.promo, (v) => v === "queen" || v === "choose", "queen"),
+        light: one("light", ["current", "day", "hall", "glow"]),
+        cam: one("cam", ["free", "locked", "dynamic"]),
       };
       save(this.settings);
       $("where").textContent = o.where || "";
@@ -19632,6 +19850,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       this.promoWait = null;
       $("promo").onclick = (e) => { if (e.target === $("promo")) this.answerPromo(0); };
     }
+    keep(key, v) { this.settings[key] = v; save(this.settings); }
     get level() { return LEVELS[this.settings.level]; }
     show({ game, status, thinking, you, canUndo }) {
       const t = $("turn"), side = SIDES[game.turn];
@@ -19695,7 +19914,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.13.0", name: "DeckChess", commit: "0307ae2" };
+  G.VERSION = { v: "0.14.0", name: "DeckChess", commit: "7260e31" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -19715,7 +19934,9 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    frame. Mossheart's look comes with it: its default preset, sunbeams, its mood and weather (its sky panel)
    and its music, those through the stand-in for its game (src/mg-standin.js), fed with the chess game's events.
    The game opens straight onto the board: one board, no menu.
-   URL options: ?side=w|b, ?level=0..2, ?promo=queen|choose (view/hud.js), ?mood= ?weather= (Mossheart's),
+   The view panel (🎥): the lighting (view/lighting.js), the camera's mode and its quick views (view/camera.js).
+   URL options: ?side=w|b, ?level=0..2, ?promo=queen|choose, ?light=current|day|hall|glow,
+   ?cam=free|locked|dynamic (view/hud.js), ?mood= ?weather= (Mossheart's),
    ?seed=N (the AI's; 1 under ?selftest and ?match, else random), ?depth=N (the AI's, over the level's),
    ?dpr=1, ?scale=0.8, ?nocache=1, ?vs=N (terrain), ?hero=N (pieces), ?small=1 (a phone's caps), ?preset=,
    ?elev=20..85 (the camera's pitch in degrees, Mossheart's iso angle by default: view/camera.js), ?mute=1,
@@ -19796,7 +20017,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     const scene = { game: null, base: {}, moodDusk: null, bossWave: false, waterAt: () => null, zoomIn: 1 };
     const app = { R, scene, phys, st, T, paused: false };
     const atmos = (app.atmos = scene.atmos = new MG.Atmos(app));
-    document.getElementById("skybtn").onclick = () => atmos.toggle();
+    document.getElementById("skybtn").onclick = () => { showView(false); atmos.toggle(); };
     const audio = MG.Audio ? new MG.Audio(null, app, banks) : null;
     if (audio && (ME.qn("mute", 0) || selftest || match)) audio.setEnabled(false);
     const soundBtn = document.getElementById("sound");
@@ -19822,6 +20043,9 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       atmos.apply(s);
       if ("glassK" in s) s.glassK = 0;
     };
+    // the board's lighting over the mood (view/lighting.js), its gain on the glow into Renderer.user[0].x
+    const lights = new G.Lighting(R);
+    lights.set(hud.settings.light);
 
     // ------------------------------------------------------------------ board, pieces, the game
     const board = new G.BoardView({ st, T, R }, region), pieces = new G.PiecesView(board, models);
@@ -19873,6 +20097,11 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       if (info.promo) shake(0.6);
       if (st.check && !st.over) shake(0.5);
       if (st.over && st.check) { shake(1); fx.mateT = Math.max(1e-3, fx.clock); }
+      // the dynamic camera's shot of it (view/camera.js event: only in that mode)
+      const g = ctl.game, from = board.centre(info.from);
+      if (st.over) cam.event("over", { at: board.centre(kingSq(g, g.turn)) });
+      else if (st.check) cam.event("check", { at: board.centre(kingSq(g, g.turn)), from: P });
+      else cam.event(info.capture ? "capture" : "move", { at: P, from });
     };
 
     ctl = {
@@ -19890,6 +20119,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         hud.hideEnd();
         const side = this.you.length === 1 ? this.you[0] : 0;
         if (side !== this.side) { this.side = side; if (cam) frameView(true); }
+        else if (cam && cam.home) cam.view("reset");
         this.refresh();
         cue("start");
         ME.log("GAME", { board: boardId, you: this.you, depth, seed: this.seed - 2 });
@@ -19988,17 +20218,19 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     const freeRows = () => {
       const c = canvas.getBoundingClientRect(), k = canvas.height / Math.max(1, c.height);
       const rect = (id) => { const e = document.getElementById(id), r = e && e.getBoundingClientRect(); return r && r.height ? r : null; };
-      const t = rect("top"), b = rect("bottom"), y0 = t ? t.bottom : c.top, y1 = b ? b.top : c.bottom;
+      const t = rect("top"), b = rect("bottom"), v = rect("views"), y0 = t ? t.bottom : c.top;
+      const y1 = Math.min(b ? b.top : c.bottom, v ? v.top : c.bottom);
       return y1 - y0 > 64 ? [(y0 - c.top + 6) * k, (y1 - c.top - 6) * k] : [0, canvas.height];
     };
-    // the board fitted to the free rows at the camera's angle; turn: first back to the player's side (black's:
-    // half a turn round) at the iso angle's diagonal. The zoom keeps to a range about that fit
+    // the board fitted to the free rows (view/camera.js fitTo: home, the zoom range, the pan's clamp); turn:
+    // back to home, the player's side (black's: half a turn round) at the iso angle's diagonal, else (a resize)
+    // the fit at the angles as they are
     const frameView = (turn) => {
-      if (turn) cam.turnTo(ctl.side === 1 ? 2 : 0);
       const [y0, y1] = freeRows(), [bmin, bmax] = board.box();
-      cam.fitBox(bmin, bmax, canvas.width, y1 - y0, 0.92);
-      cam.pan[1] += (canvas.height / 2 - (y0 + y1) / 2) / cam.zoom;
-      cam.minZoom = cam.zoom * 0.45; cam.maxZoom = cam.zoom * 4;
+      cam.fitTo(bmin, bmax, canvas.width, y1 - y0, canvas.height / 2 - (y0 + y1) / 2, turn ? (ctl.side === 1 ? 2 : 0) * (Math.PI / 2) + Math.PI / 4 : undefined);
+      if (turn) { cam.goHome(); return; }
+      const f = cam.frameAt(cam.theta, cam.elev);
+      cam.foc = null; cam.zoom = f.zoom; cam.pan = cam.panOf(f.W);
     };
     fitCanvas();
     ctl.newGame(hud.settings);
@@ -20006,6 +20238,40 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     frameView(true);
     cam.attach(canvas);
     window.addEventListener("resize", () => { fitCanvas(); frameView(false); });
+
+    // ------------------------------------------------------------------ the view panel: light, camera, views
+    // 🎥 opens it (and closes the sky's); the quick views' row (#views) shows in the locked and dynamic modes
+    const $ = (id) => document.getElementById(id), viewBox = $("view"), viewsRow = $("views");
+    const CAMS = { free: "Free", locked: "Locked", dynamic: "Dynamic" }, VIEWS = { top: "Top", side: "Side", follow: "Follow", reset: "Reset" };
+    const segOf = (el, names, key, pick) => {
+      el.innerHTML = Object.entries(names).map(([k, n]) => `<button data-${key}="${k}">${n}</button>`).join("");
+      el.onclick = (e) => { const b = e.target.closest("button"); if (b) pick(b.dataset[key]); };
+    };
+    const mark = (el, key, v) => { for (const b of el.querySelectorAll("button")) b.classList.toggle("on", b.dataset[key] === v); };
+    function showView(open) {
+      const show = open ?? !viewBox.classList.contains("show");
+      viewBox.classList.toggle("show", show); $("viewbtn").classList.toggle("on", show);
+      if (show) atmos.toggle(false);
+    }
+    const quickView = (v) => {
+      const L = ctl.last;
+      if (v === "follow" && L) cam.view("follow", { at: board.centre(L.to), from: board.centre(L.from) });
+      else cam.view(v === "follow" ? "reset" : v);
+    };
+    const setLight = (m) => { mark($("lightseg"), "l", lights.set(m)); hud.keep("light", lights.mode); };
+    const setCam = (m) => {
+      cam.setMode(m); mark($("camseg"), "c", cam.mode); hud.keep("cam", cam.mode);
+      viewsRow.classList.toggle("show", cam.mode !== "free");
+      frameView(false);
+    };
+    segOf($("lightseg"), Object.fromEntries(Object.entries(G.LIGHTS).map(([k, L]) => [k, L.name])), "l", setLight);
+    segOf($("camseg"), CAMS, "c", setCam);
+    segOf($("viewseg"), VIEWS, "v", quickView);
+    viewsRow.onclick = (e) => { const b = e.target.closest("button[data-v]"); if (b) quickView(b.dataset.v); };
+    $("viewbtn").onclick = () => showView();
+    ME.Dismiss.add(viewBox, { outside: true, dir: "any", open: () => viewBox.classList.contains("show"), skip: (t) => !!t.closest("#viewbtn"), close: () => showView(false) });
+    setLight(hud.settings.light);
+    setCam(hud.settings.cam);
     document.getElementById("loading").style.display = "none";
 
     // ------------------------------------------------------------------ pointer and keys
@@ -20078,6 +20344,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       atmos.update(rdt);
       scene.zoomIn = zoomIn();
       mood(rdt);
+      R.user[0] = lights.apply(rdt);
       const sp = R.sprites;
       sp.begin(); starsDrawn = stars.write(R, cam, canvas.width, canvas.height, fx.clock, canvas.width / Math.max(1, canvas.clientWidth)); sp.end();
       // the rumble: Mossheart's camera shake
@@ -20202,14 +20469,48 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         cap.undone = g.history.length === 0 && pieces.list.length === 32;
         nFrames += await frames(10);
         const capOk = cap.played === "e4 d5 exd5" && cap.shattered === 1 && cap.voxels > 50 && cap.ripple === G.RIPPLE.CAPTURE && cap.landed === 3 && cap.territory > 0 && cap.undone;
+        // the camera (view/camera.js): a pan far off the board comes back onto it, zoomed all the way out the
+        // centre is home's; each mode's quick views and a dynamic shot run, and after a reset every square is
+        // in view again; then each lighting mode, snapped, sets its values (glow's gain 3)
+        const camT = { panBack: -1, zoomHome: -1, views: 0, shot: false, inView: {} }, H0 = cam.home, pz = cam.pz;
+        const near = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+        cam.pan = cam.panOf([H0.W[0] + 60, H0.W[1] - 60, pz]); cam.clamp();
+        { const c = cam.centre(pz), [x0, y0, x1, y1] = H0.box; camT.panBack = c[0] >= x0 - 1e-3 && c[0] <= x1 + 1e-3 && c[1] >= y0 - 1e-3 && c[1] <= y1 + 1e-3 ? 1 : 0; }
+        cam.zoom = cam.minZoom; cam.clamp(); camT.zoomHome = +near(cam.centre(pz), H0.W).toFixed(3);
+        cam.goHome();
+        const allIn = () => {
+          const [a, b] = freeRows();
+          let n = 0;
+          for (let s = 0; s < 64; s++) { const [x, y] = cam.toScreen(board.centre(s), W, H); if (x >= 0 && x < W && y >= a && y <= b) n++; }
+          return n;
+        };
+        const L0 = { from: sq("e2"), to: sq("e4") };
+        for (const m of ["free", "locked", "dynamic"]) {
+          setCam(m);
+          ctl.last = L0;
+          for (const v of ["top", "side", "follow", "reset"]) { quickView(v); nFrames += await frames(50); camT.views++; }
+          if (m === "dynamic") { camT.shot = cam.event("capture", { at: board.centre(sq("d5")), from: board.centre(sq("e4")) }); nFrames += await frames(50); cam.view("reset"); nFrames += await frames(50); }
+          camT.inView[m] = allIn();
+        }
+        ctl.last = null; setCam("free");
+        const camOk = camT.panBack === 1 && camT.zoomHome < 0.05 && camT.views === 12 && camT.shot && Object.values(camT.inView).every((n) => n === 64);
+        const lightT = {};
+        for (const m of Object.keys(G.LIGHTS)) {
+          lights.set(m); mood(0); const gain = lights.apply(0, true), s = R.set;
+          lightT[m] = { glow: gain, amb: +(+s.amb).toFixed(3), exposure: +(+s.exposure).toFixed(3), canopy: s.canopy, sunEl: s.sunEl };
+        }
+        const LD = G.LIGHTS;
+        const lightOk = lightT.glow.glow === 3 && lightT.day.glow === 1 && Math.abs(lightT.day.amb - LD.day.amb) < 1e-3 && Math.abs(lightT.hall.exposure - LD.hall.exposure) < 1e-3 && lightT.day.canopy === false && lightT.hall.sunEl === LD.hall.sunEl;
+        setLight("current"); mood(0); lights.apply(0, true);
+        nFrames += await frames(10);
         // the pieces' baked sizes and their heights on the board (tiles)
         const sizes = {};
         for (const c of [0, 1]) for (let t = 1; t <= 6; t++) { const m = models[c][t]; sizes["wb"[c] + " PNBRQK"[t]] = { model: m.name, h: +m.h.toFixed(2), r: +m.r.toFixed(2), fit: +m.fit.toFixed(2), height: m.height }; }
         out.board = { id: boardId, region, z: +board.z.toFixed(3), zSpread: board.zSpread, pieces: sizes };
         ME.log("BOARD", JSON.stringify({ id: boardId, z: out.board.z, zSpread: board.zSpread, region }));
-        out.pick = pick; out.turned = turned; out.script = script; out.capture = cap;
+        out.pick = pick; out.turned = turned; out.script = script; out.capture = cap; out.camera = camT; out.lighting = lightT;
         out.sky = { stars: starsDrawn, atmos: atmos.state(), cues: fx.cues, audio: audio ? audio.stats() : null };
-        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2 && capOk && starsDrawn > 100 && !mg.length;
+        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2 && capOk && camOk && lightOk && starsDrawn > 100 && !mg.length;
       }
       Object.assign(out, { frames: nFrames, avgFrameIntervalMs: avg(ints.slice(5)), avgCpuMs: avg(cpus.slice(5)), gpuMs: R.gpuMs, errors: ME.errors });
       report(out);
