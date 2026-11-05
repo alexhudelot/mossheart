@@ -9984,7 +9984,10 @@ fn rain(uv: vec2f, sd: f32) -> vec3f {
     let a = ax * ay * k;
     if (a <= 0.002) { continue; }
     let sv = textureSampleLevel(sunV, lin, sunUVW(P), 0.0);
-    acc += (u.fog.rgb * (0.35 + 0.65 * sv.g) * 0.5 + pow(u.beamCol.rgb, vec3f(1.6)) * sv.r * 0.35 + 0.03) * a;
+    // (out of the sky's reach the haze colour goes to a blue-grey of its brightness: a warm haze tinted the
+    // streaks under the canopy tan)
+    let hz = mix(vec3f(dot(u.fog.rgb, vec3f(0.3, 0.5, 0.2))) * vec3f(0.86, 0.96, 1.16), u.fog.rgb, sv.g);
+    acc += (hz * (0.35 + 0.65 * sv.g) * 0.5 + pow(u.beamCol.rgb, vec3f(1.6)) * sv.r * 0.35 + vec3f(0.027, 0.03, 0.034)) * a;
   }
   return acc * 0.7;
 }
@@ -10815,7 +10818,7 @@ fn boxOf(V: Vox) -> Box {
   // the rain's, per unit of rain (ME.Sky's rain entry, which it skips once the engine draws the rain); shaftK
   // keeps a thin cloud's drizzle from showing full sun shafts (Game's Subtle Showers eyeball, #455)
   WeatherMix.LIGHT_RAIN = { shaftK: 0.6, exposure: 0.1, haze: 0.02 };
-  WeatherMix.DRIFT_MIN = 0.04; // the clouds' drift with the wind off or still (a quarter of 0.15 at rest), so they never stop
+  WeatherMix.DRIFT_MIN = 0.25; // the least cloud drift, as a share of the calm drift (windE[0] is 1 at calm): the clouds still creep with the wind off
   ME.WeatherMix = WeatherMix;
 
   class Renderer {
@@ -13210,7 +13213,7 @@ fn boxOf(V: Vox) -> Box {
         v.snow = Math.min(v.snow, 0.15); v.flash = 0;
       }
       if (this.front === "sunshower") shower = true;
-      return { v: resolve(v, Object.assign({ sunshower: shower, sleet: this.front === "sleet" }, o)), sun: this.sun > 0 };
+      return { v: resolve(v, Object.assign({ sunshower: shower, sleet: this.front === "sleet" }, o)), sun: this.sun > 0, shower };
     }
     // every frame: the sun break's clock, the hurt rain, the rainbow when rain ends under a clear sky
     tick(dt, life, over, shown) {
@@ -13327,6 +13330,7 @@ fn boxOf(V: Vox) -> Box {
   const COLOURS = { rain: "205,220,235", snow: "250,252,255", petals: "246,176,198", leaves: ["214,150,62", "138,170,74"], flash: "235,240,255" };
   const MOOD_ROLL = ["cosy", "morning", "clear", "golden", "dusk", "night"];
   const EASE = 1.5, EASE_DYN = 4; // s: the blend toward the weather (slower when it follows the run)
+  const CLOUD_RAIN = 0.6; // the least cloud the engine gets while it rains (scaled(); Art: 0.5 the softest)
   // the lit settings the weather and the moods' "after" scale, at rest
   const ONE = { shaftK: 1, pool: 1, exposure: 1, bloomK: 1, amb: 1, haze: 0, vignette: 0, wind: 1, gust: 0.5 };
   const FX = ["rain", "snow", "petals", "leaves"];
@@ -13482,7 +13486,7 @@ fn boxOf(V: Vox) -> Box {
       if (!dyn) { md.sun = 0; md.hurt = false; }
       const life = dyn ? run.life ?? 1 : 1;
       const r = md.target({ over: dyn && over }, { reduced: this.reduced });
-      this.v = this.level > 0 ? r.v : ME.WX.zero(); this.sun = this.level > 0 && r.sun;
+      this.v = this.level > 0 ? r.v : ME.WX.zero(); this.sun = this.level > 0 && r.sun; this.shower = r.shower;
       md.tick(dt, life, over, this.v);
       if (md.front !== this.lastFront) { this.lastFront = md.front; this.renderPanel(); }
       // the settings' intensity: L on the particles, rings and lightning, Ll on the light, the wind and the gusts
@@ -13520,11 +13524,14 @@ fn boxOf(V: Vox) -> Box {
       this.draw(dt);
     }
     // the resolved vector at the settings' intensity, for R.weather.mix(): the light layers (cloud, fog, wind) at
-    // Ll, the rest at L, each capped at 1; fogLow stays a flag, and gust is the mapped one (0.5 at rest)
+    // Ll, the rest at L, each capped at 1; fogLow stays a flag, and gust is the mapped one (0.5 at rest). Rain
+    // keeps the cloud at CLOUD_RAIN or more at any intensity (Subtle's Ll 0.4 left the shafts and pools of a
+    // clear day under a drizzle), except in a sun shower or a sun break in rain (target()'s shower)
     // (one object, rewritten each call)
     scaled(L, Ll, gust) {
       const v = this.v, o = this.mixV || (this.mixV = {});
       for (const l of ME.WX.LAYERS) o[l] = Math.min(1, v[l] * (l === "cloud" || l === "fog" || l === "wind" ? Ll : L));
+      if (L > 0 && v.rain > 0.02 && !this.shower) o.cloud = Math.max(o.cloud, CLOUD_RAIN);
       o.fogLow = L > 0 ? v.fogLow : 0; o.gust = gust;
       o.wind = Math.min(1, 0.15 + (v.wind - 0.15) * Ll); // (around its rest, not from 0: equal at Normal)
       return o;
@@ -17352,7 +17359,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.68.0", name: "Mossheart", commit: "478b1f6" };
+  G.VERSION = { v: "0.69.0", name: "Mossheart", commit: "55b88d7" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
