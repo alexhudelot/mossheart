@@ -16272,7 +16272,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.59.0", name: "Mossheart", commit: "a0983ed" };
+  G.VERSION = { v: "0.60.0", name: "Mossheart", commit: "3b74de7" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -16483,7 +16483,7 @@ function MA_DSP() {
   D.DEW_TIERS = [200, 400, 700];
   D.DEW_LUCK = { rare: [1, 1.25, 1.5, 1.8], epic: [1, 1.4, 1.9, 2.5], legendary: [1, 1, 1, 1.4] };
   // whether a rarity can be drawn with `dew` banked at `wave` (the plain rarities: always; epics from EPIC_FROM)
-  D.rarityOpen = (r, dew, wave) => { const R = D.RARITY[r]; return r === "epic" ? wave >= D.EPIC_FROM : !R.band || (D.dewTier(dew) >= R.band && wave >= R.from); };
+  D.rarityOpen = (r, dew, wave) => { const ra = D.RARITY[r]; return r === "epic" ? wave >= D.EPIC_FROM : !ra.band || (D.dewTier(dew) >= ra.band && wave >= ra.from); };
   D.dewTier = (dew) => D.DEW_TIERS.reduce((n, x) => n + (dew >= x ? 1 : 0), 0);
   // the dew rate the sounds and the counter read (State.gained): dew per second of game time, decaying over DEW_TAU s
   D.DEW_TAU = 2;
@@ -21555,7 +21555,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const G = window.MG, ME = window.ME;
   const LAYERS = ["cloud", "rain", "snow", "fog", "fogLow", "wind", "gust", "petals", "leaves", "flash"];
   // layer: [low, high], the range its walk stays in (absent: 0); name: the panel's and the sky button's;
-  // heavy: counts toward the escalation's share; rare: its chance at a front change (once a session)
+  // heavy: counts toward the escalation's share; rare: its chance at a front change (once a run: newRun clears what it has seen)
   const FRONTS = {
     clear: { name: "Clear", cloud: [0, 0.15], wind: [0.05, 0.3], gust: [0.3, 0.6] },
     overcast: { name: "Overcast", cloud: [0.7, 0.95], wind: [0.15, 0.4], gust: [0.4, 0.6] },
@@ -21794,8 +21794,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
    This file is the adapter: it turns the model's resolved vector into what draws today, factors on the
    lighting (fewer shafts and sun pools, more haze, a dimmer exposure), the wind (R.set.windK) and its gusts
    (R.set.gust, E-W0), screen-space rain, snow, petals or leaves on a 2D canvas over the scene (#wx), rain
-   rings on the open water, lightning and a rainbow arc; it hands the vector to R.weather.mix() once the
-   engine has it. */
+   rings on the open water, lightning and a rainbow arc; it hands the vector, at the settings' intensity, to
+   R.weather.mix() once the engine has it. Art tunes the per-layer looks in G.WEATHER_LOOKS.layers (A-W1). */
 (function () {
   const G = window.MG, ME = window.ME;
   const KEY = "mossheart.atmos";
@@ -21825,6 +21825,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // the overlay's strengths per unit of k (1 is a storm's rain, BUDGET particles), and the rain rings
   const FXK = { rain: 1, snow: 1, petals: 0.65, leaves: 1.1 };
   const RINGS = 1.8;
+  // the overlay's colours ("r,g,b"; the drops' alpha varies per drop): leaves are two, autumn and green
+  const COLOURS = { rain: "205,220,235", snow: "250,252,255", petals: "246,176,198", leaves: ["214,150,62", "138,170,74"], flash: "235,240,255" };
   const MOOD_ROLL = ["cosy", "morning", "clear", "golden", "dusk", "night"];
   const EASE = 1.5, EASE_DYN = 4; // s: the blend toward the weather (slower when it follows the run)
   // the lit settings the weather and the moods' "after" scale, at rest
@@ -21839,6 +21841,19 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // drift over their mean fall speed). The upwind side spawns that much wider, or the wind sweeps the
   // particles off it and leaves it bare (the left of the screen, in rain or snow)
   const DRIFT = { rain: 0.12, snow: 14 / 50, petals: 26 / 55, leaves: 0 };
+  // the per-layer looks Art tunes (A-W1): G.WEATHER_LOOKS.layers = { light: { <layer>: { f, add } },
+  // sunbreak, fx, rings, budget, colours }, each part merged over the defaults above (a light entry replaces
+  // that layer's whole entry); cached until G.WEATHER_LOOKS.layers changes
+  let layersOf, layersAll;
+  const layers = () => {
+    const l = (G.WEATHER_LOOKS || {}).layers;
+    if (l !== layersOf || !layersAll) {
+      layersOf = l; const o = l || {};
+      layersAll = { light: Object.assign({}, LIGHT, o.light), sunbreak: Object.assign({}, SUNBREAK, o.sunbreak), fx: Object.assign({}, FXK, o.fx),
+        rings: o.rings ?? RINGS, budget: o.budget ?? BUDGET, colours: Object.assign({}, COLOURS, o.colours) };
+    }
+    return layersAll;
+  };
   // the bow, outside to inside, its strength and band width (x the default), and the pale moonbow of a night
   // garden or the Night mood; G.WEATHER_LOOKS.rainbow (A-W1) replaces each one it has
   const RAINBOW = ["#ff5a4e", "#ff9a3c", "#ffe25a", "#7ee06a", "#5ab8ff", "#7a72ff", "#b46cff"], BOW_ALPHA = 0.16, BOW_WIDTH = 1;
@@ -21966,22 +21981,26 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.v = this.level > 0 ? r.v : G.WX.zero(); this.sun = this.level > 0 && r.sun;
       md.tick(dt, life, over, this.v);
       if (md.front !== this.lastFront) { this.lastFront = md.front; this.renderPanel(); }
-      if (this.R.weather && this.R.weather.mix) this.R.weather.mix(this.v);
       // the settings' intensity: L on the particles, rings and lightning, Ll on the light, the wind and the gusts
       const v = this.v, t = Object.assign({ rain: 0, snow: 0, petals: 0, leaves: 0, rings: 0 }, ONE), L = this.level, Ll = Math.min(1.3, L);
+      const gust = Math.max(0, Math.min(1, 0.5 + (v.gust - 0.5) * Ll)), lk = layers();
+      // the engine's path gets the vector after the intensity (the study's knob scales k after the rules), the
+      // gust included, so the gusts are written there and not in apply() too
+      this.mixed = !!(this.R.weather && this.R.weather.mix);
+      if (this.mixed) this.R.weather.mix(this.scaled(L, Ll, gust));
       for (const k in m.after || {}) t[k] *= m.after[k];
-      for (const l in LIGHT) {
-        const e = LIGHT[l], k = v[l] * Ll;
-        for (const p in e.f) t[p] *= Math.max(0, 1 - e.f[p] * k);
-        for (const p in e.add) t[p] += e.add[p] * k;
+      for (const l in lk.light) {
+        const e = lk.light[l], k = (v[l] || 0) * Ll;
+        for (const p in e.f || {}) t[p] *= Math.max(0, 1 - e.f[p] * k);
+        for (const p in e.add || {}) t[p] += e.add[p] * k;
       }
       if (v.rain > 0.6) t.vignette += 0.15 * (v.rain - 0.6) / 0.4 * Ll; // (a downpour closes in)
-      if (this.sun) for (const p in SUNBREAK) t[p] *= 1 + (SUNBREAK[p] - 1) * Ll;
+      if (this.sun) for (const p in lk.sunbreak) t[p] *= 1 + (lk.sunbreak[p] - 1) * Ll;
       // (wind: about today's 1 under a clear sky's breeze, 2.5 when windy, 3.3 in a gale)
       t.wind = 1 + (Math.max(0.3, 1 + 3 * (v.wind - 0.15)) - 1) * Ll;
-      t.gust = Math.max(0, Math.min(1, 0.5 + (v.gust - 0.5) * Ll));
-      for (const k of FX) t[k] = v[k] * FXK[k] * L;
-      t.rings = v.rain * RINGS * L;
+      t.gust = gust;
+      for (const k of FX) t[k] = v[k] * (lk.fx[k] ?? 1) * L;
+      t.rings = v.rain * lk.rings * L;
       const k = 1 - Math.exp(-dt / (dyn ? EASE_DYN : EASE));
       for (const key in t) this.cur[key] += (t[key] - this.cur[key]) * k;
       // lightning: more often and brighter with the flash layer
@@ -21993,6 +22012,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.rings(dt);
       this.draw(dt);
     }
+    // the resolved vector at the settings' intensity, for R.weather.mix(): the light layers (cloud, fog, wind) at
+    // Ll, the rest at L, each capped at 1; fogLow stays a flag, and gust is the mapped one (0.5 at rest)
+    scaled(L, Ll, gust) {
+      const v = this.v, o = {};
+      for (const l of G.WX.LAYERS) o[l] = Math.min(1, v[l] * (l === "cloud" || l === "fog" || l === "wind" ? Ll : L));
+      o.fogLow = L > 0 ? v.fogLow : 0; o.gust = gust;
+      return o;
+    }
     // at the end of the view's mood(): the preset's other settings (sun, glass, mottle), then the weather's
     // and the mood's factors on what the dusk blend wrote
     apply(s) {
@@ -22001,7 +22028,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       for (const key of ["shaftK", "pool", "exposure", "bloomK", "amb"]) s[key] *= c[key];
       s.haze += c.haze; s.vignette += c.vignette;
       s.windK = (this.R.set0.windK ?? 1) * c.wind;
-      s.gust = c.gust;
+      if (!this.mixed) s.gust = c.gust; // (one writer: the mix carries it once the engine has one)
       if (this.flash > 0) s.exposure *= 1 + 1.6 * this.flash * this.flash;
     }
     // raindrops on the open water: rings at random spots of the map, about 14 a second in rain
@@ -22031,7 +22058,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     draw(dt) {
       const ctx = this.ctx;
       if (!ctx) return;
-      const w = this.cv.width, h = this.cv.height, c = this.cur, scale = this.reduced ? 0.4 : 1, wind = c.wind;
+      const w = this.cv.width, h = this.cv.height, c = this.cur, scale = this.reduced ? 0.4 : 1, wind = c.wind, lk = layers(), col = lk.colours, lv = [].concat(col.leaves);
       // the zoom (1 at the default framing): closer in, bigger and faster drops and fewer of them, so the screen
       // reads as the same weather nearer; farther out, smaller and more
       const z = Math.min(3, Math.max(0.5, this.scene.zoomIn || 1)), sk = z ** 0.75, ck = Math.min(1.6, Math.max(0.6, 1 / z));
@@ -22041,7 +22068,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       let all = 0;
       for (const k of FX) {
         pad[k] = h * DRIFT[k] * Math.max(0, wind) + 30;
-        want[k] = BUDGET * c[k] * scale * (k === "rain" ? 1 : 0.6) * ck * (w + pad[k]) / w; all += want[k];
+        want[k] = lk.budget * c[k] * scale * (k === "rain" ? 1 : 0.6) * ck * (w + pad[k]) / w; all += want[k];
       }
       for (const k of FX) want[k] = Math.round(want[k] * Math.min(1, CAP / Math.max(1, all)));
       for (const p of this.parts) have[p.kind]++;
@@ -22071,20 +22098,20 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (p.x < -40 * sk) continue; // (still upwind of the screen)
         if (p.kind === "rain") {
           const len = p.len * sk;
-          ctx.strokeStyle = `rgba(205,220,235,${0.22 + 0.2 * p.r})`; ctx.lineWidth = (1 + p.r * 0.6) * Math.min(2, sk);
+          ctx.strokeStyle = `rgba(${col.rain},${0.22 + 0.2 * p.r})`; ctx.lineWidth = (1 + p.r * 0.6) * Math.min(2, sk);
           ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - len * slant, p.y - len); ctx.stroke();
         } else if (p.kind === "snow") {
-          ctx.fillStyle = `rgba(250,252,255,${0.55 + 0.35 * p.r})`;
+          ctx.fillStyle = `rgba(${col.snow},${0.55 + 0.35 * p.r})`;
           ctx.beginPath(); ctx.arc(p.x, p.y, p.size * sk, 0, 6.283); ctx.fill();
         } else {
           const s = p.size * sk;
-          ctx.fillStyle = p.kind === "petals" ? `rgba(246,176,198,${0.7 + 0.25 * p.r})` : p.r < 0.5 ? "rgba(214,150,62,0.85)" : "rgba(138,170,74,0.85)";
+          ctx.fillStyle = p.kind === "petals" ? `rgba(${col.petals},${0.7 + 0.25 * p.r})` : `rgba(${lv[p.r < 0.5 ? 0 : lv.length - 1]},0.85)`;
           ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.a); ctx.scale(1, 0.35 + 0.65 * Math.abs(Math.sin(p.a * 1.3)));
           ctx.beginPath(); ctx.ellipse(0, 0, s, s * 0.6, 0, 0, 6.283); ctx.fill(); ctx.restore();
         }
       }
       this.parts = keep;
-      if (this.flash > 0) { ctx.fillStyle = `rgba(235,240,255,${(0.28 * this.flash).toFixed(3)})`; ctx.fillRect(0, 0, w, h); }
+      if (this.flash > 0) { ctx.fillStyle = `rgba(${col.flash},${(0.28 * this.flash).toFixed(3)})`; ctx.fillRect(0, 0, w, h); }
     }
 
     // ------------------------------------------------------------------ the sky panel
@@ -24561,8 +24588,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // token a 16th: semitones over the key's D (12 the D an octave up), "." a rest. Fourths, fifths and
   // minor thirds, the Dorian B (9, 21) or the Phrygian Eb (13); none of them spells a major triad
   const DORIAN = [0, 2, 3, 5, 7, 9, 10], PHRYGIAN = [0, 1, 3, 5, 7, 8, 10];
-  const MA = "12 . . 15 . . 10", MB = "7 10 . 12", MC = "15 . 14 . 12 . . 7", MD = "19 . . 17 15";
-  const ME = "12 . 7 . . 3 . 5", MF = "10 12", MG = "22 . . 19 . 17 . 12", MH = "14 15 . . 12 . 7";
+  const M1 = "12 . . 15 . . 10", M2 = "7 10 . 12", M3 = "15 . 14 . 12 . . 7", M4 = "19 . . 17 15";
+  const M5 = "12 . 7 . . 3 . 5", M6 = "10 12", M7 = "22 . . 19 . 17 . 12", M8 = "14 15 . . 12 . 7";
   const MP1 = "13 . . 12 . . 7", MP2 = "12 13 . . 10 . 8 7", MP3 = "19 . 20 . . 15 . 13", MP4 = "7 . 8 7";
 
   // Liquid's own harmony, F minor: lush rootless minor ninths and elevenths, a ninth with a fourth and a
@@ -24694,27 +24721,27 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         pulse: { db: -18, at: [0] },
         roll: { db: -22, pats: [". 0 . 0 . 0 0 . . 0 . 0 . 12s 0 10", ". . 0 . . 0 . 0 . . 0 . . 0 7 ."], fill: ". 0 . 0 . 0 10s 12 . 0 . 0 7 . 1s 0" },
         kit: { kick: [0, 8], hat: [6, 14], shaker: [], db: [-22, -30, -36] },
-        phr: { insts: ["mote", "mote", "pling"], db: -21, motifs: [MA, MB, MF, ME], mode: DORIAN, every: 2, at: 8, odds: 1, rest: 0.2, throw: 0.4, keys: 0.3, edit: 0.25, edits: ["rev", "stutter", "drop"] }, wob: [2, 0.5],
+        phr: { insts: ["mote", "mote", "pling"], db: -21, motifs: [M1, M2, M6, M5], mode: DORIAN, every: 2, at: 8, odds: 1, rest: 0.2, throw: 0.4, keys: 0.3, edit: 0.25, edits: ["rev", "stutter", "drop"] }, wob: [2, 0.5],
         spark: { db: -24, odds: 0.25 },
         fx: { whoosh: -31, riser: [-32, 0.25], rev: -31, blip: [-30, 0.15] },
         voices: [V("spark", "Keys", -23, [48, 72], 1, [5, 10])],
         breath: { on: [60, 120], off: [20, 50] },
         alt: { progs: [DR_C, DR_A],
           roll: { db: -22, pats: [". 0 . 0 0 . 0 . . 0 . 0 0 . 10s 0"], fill: ". 0 . 0 0 . 7s 0 . 0 . 12 0 . 10s 0" },
-          phr: { insts: ["mote", "pling"], db: -21, motifs: [MH, MD, MB], mode: DORIAN, every: 2, at: 8, odds: 1, rest: 0.2, throw: 0.4, keys: 0.4, edit: 0.25, edits: ["rev", "stutter", "drop"] } } },
+          phr: { insts: ["mote", "pling"], db: -21, motifs: [M8, M4, M2], mode: DORIAN, every: 2, at: 8, odds: 1, rest: 0.2, throw: 0.4, keys: 0.4, edit: 0.25, edits: ["rev", "stutter", "drop"] } } },
       wave: { bpm: 94, drive: 4, progs: [DR_WAVE, DR_B], tense: DR_TENSE, lp: [4000, 6400], wet: [0.3, 0.34], fadeIn: 2, fadeOut: 3, sweep: [24, 0.4],
         reso: [900, 4600, 18, 2, 7], pump: 0.42, phase: 0.45, pan: 0.65, lpan: 0.5, taps: [3, 6, 9],
         bed: { every: 2, inst: "saw", pad: -26, breath: -32, drone: -25 },
         pulse: { db: -17, at: [0] },
         roll: { db: -20, pats: [". 0 0a 0 . 0 0 10s . 0 0a 0 . 12 0 7", ". 0 0 0a . 0 7 0 . 0 0 0a . 10s 12 0"], fill: ". 0 0 0a . 0 0 0 . 0 10 0 . 12s 0 1s" },
         kit: { kick: [0, 4, 8, 12], hat: [2, 6, 10, 14], shaker: [3, 7, 11, 15], db: [-21, -29, -36] },
-        phr: { insts: ["mote", "mote", "pling"], db: -21, motifs: [MA, MC, MD, MG, MH], mode: DORIAN, every: 2, at: 4, odds: 0.9, rest: 0.25, throw: 0.55, keys: 0.3, edit: 0.35, edits: ["stutter", "gate", "rev", "drop"] }, wob: [2, 0.6],
+        phr: { insts: ["mote", "mote", "pling"], db: -21, motifs: [M1, M3, M4, M7, M8], mode: DORIAN, every: 2, at: 4, odds: 0.9, rest: 0.25, throw: 0.55, keys: 0.3, edit: 0.35, edits: ["stutter", "gate", "rev", "drop"] }, wob: [2, 0.6],
         acid: { db: -31, notes: [2, 3], deg: [0, 4], i: 0.4 },
         spark: { db: -24, odds: 0.35 },
         fx: { whoosh: -30, riser: [-30, 0.5], rev: -30, blip: [-29, 0.3] },
         voices: [V("spark", "Keys", -23, [44, 60], 1, [5, 10])],
         breath: { on: [90, 160], off: [10, 25] },
-        alt: { progs: [DR_B, DR_WAVE], phr: { insts: ["mote", "pling"], db: -21, motifs: [MB, ME, MG], mode: DORIAN, every: 1, at: 4, odds: 0.6, rest: 0.2, throw: 0.55, keys: 0.4, edit: 0.35, edits: ["stutter", "gate", "rev", "drop"] } } },
+        alt: { progs: [DR_B, DR_WAVE], phr: { insts: ["mote", "pling"], db: -21, motifs: [M2, M5, M7], mode: DORIAN, every: 1, at: 4, odds: 0.6, rest: 0.2, throw: 0.55, keys: 0.4, edit: 0.35, edits: ["stutter", "gate", "rev", "drop"] } } },
       boss: { bpm: 98, drive: 2, progs: [DR_BOSS, DR_BOSS_B], lp: [4400, 6800], wet: [0.32, 0.36], fadeIn: 1.5, fadeOut: 3, sweep: [16, 0.35],
         reso: [1100, 5400, 14, 2, 8], pump: 0.48, phase: 0.5, pan: 0.7, lpan: 0.55, taps: [3, 6, 9],
         bed: { every: 2, inst: "saw", pad: -25, breath: -31, drone: -24 },
@@ -24732,7 +24759,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         reso: [600, 2200, 30, 1, 4], pump: 0.2, phase: 0.3, pan: 0.5, lpan: 0.35, taps: [3, 6, 9],
         bed: { every: 2, inst: "saw", pad: -27, breath: -32, drone: -23 },
         pulse: { db: -19, at: [0] },
-        phr: { insts: ["mote", "pling"], db: -23, motifs: [MA, MF, MD], mode: DORIAN, every: 4, at: 4, odds: 0.7, rest: 0.25, throw: 0.7, keys: 0.5, edit: 0.15, edits: ["rev", "drop"] }, wob: [4, 0.3],
+        phr: { insts: ["mote", "pling"], db: -23, motifs: [M1, M6, M4], mode: DORIAN, every: 4, at: 4, odds: 0.7, rest: 0.25, throw: 0.7, keys: 0.5, edit: 0.15, edits: ["rev", "drop"] }, wob: [4, 0.3],
         spark: { db: -25, odds: 0.3 },
         fx: { whoosh: -32, rev: -31 },
         voices: [V("spark", "Keys", -22, [64, 96], 1, [0, 5])],
@@ -25791,7 +25818,7 @@ function MG_SFX(L) {
   // the context buffers more (audio.js), the notes are scheduled further ahead, the voice pools are smaller
   // and Drift's effects cheaper. The crackle the user heard on a phone: the audio thread missing its deadlines.
   const LOW = (G.AUDIO_LOW = (() => {
-    const f = window.ME ? ME.qn("lowaudio", -1) : -1;
+    const q = new URLSearchParams(location.search), f = q.has("lowaudio") ? parseFloat(q.get("lowaudio")) : -1;
     if (f >= 0) return f > 0;
     return matchMedia("(pointer: coarse)").matches || /Android|iPhone|iPad|Mobile/.test(navigator.userAgent) || (navigator.deviceMemory || 8) <= 4 || (navigator.hardwareConcurrency || 8) <= 2;
   })());
