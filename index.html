@@ -7738,10 +7738,18 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 (function () {
   const ME = window.ME, P = window.PX;
 
+  // a map's blades: ME.content.mapGrass[its id] when its pack gives one (Corn Moon's gold, tan and rust), else
+  // ME.content.grass, whole (no merge: a map's set names all its materials). The terrain key hashes this
+  // (cache.js), so a map's own set rebakes that map only
+  ME.grassFor = function (st) {
+    const C = ME.content || {}, id = st && (st.map && st.map.id !== undefined ? st.map.id : st.id);
+    return (C.mapGrass && id !== undefined && C.mapGrass[id]) || C.grass;
+  };
+
   ME.bakeGrass = function (T, st, pal) {
     const t0 = ME.now(), VS = T.VS, { NX, NY, O, grid, top } = T, PLANE = NX * NY, H = P.hash, TL = T.tiles;
-    // grass grows on the tiles whose kind asks for it (grass: true), with the content's blades (ME.content.grass)
-    const GR = (ME.content || {}).grass;
+    // grass grows on the tiles whose kind asks for it (grass: true), with the map's blades (grassFor above)
+    const GR = ME.grassFor(st);
     if (!GR || !TL.grass.includes(1)) return { blades: new Float32Array([0, 0, -99, 0]), count: 0, ms: 0 };
     const KV = VS / 16; // blade sizes are tuned in voxels at 16 per tile: the same size in tiles at any density
     // but a blade is one voxel wide, so above 16 there are KV times the tufts a tile (the user: more grass at
@@ -7964,7 +7972,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       const C = ME.content, src = (k, v) => (typeof v === "function" ? String(v) : v);
       const v1 = st.map && st.map.v !== undefined, kinds = {};
       if (v1 && C && C.kinds) for (const n of Object.values(st.map.legend || {})) if (n !== null && C.kinds[n]) kinds[n] = C.kinds[n];
-      const content = C ? JSON.stringify([C.terrain, kinds, C.defaultMaterial, C.grass, C.critters, C.walkers, C.groundLamps, C.edgeRound, ME.qn("edgebreak", 1) === 0 ? null : C.edgeBreak, C.sand], src) : "";
+      const content = C ? JSON.stringify([C.terrain, kinds, C.defaultMaterial, ME.grassFor ? ME.grassFor(st) : C.grass, C.critters, C.walkers, C.groundLamps, C.edgeRound, ME.qn("edgebreak", 1) === 0 ? null : C.edgeBreak, C.sand], src) : "";
       const lists = C ? JSON.stringify([C.volumeDeco, C.flipbookFrames, C.modelScale, C.critterScale, C.primLights, C.sunShadeHalf], src) : "";
       // a v1 map names the bake, and its game block (route, cover, spawns) is not baked, but for its lane
       // kinds (game.lane: the edge breakup keeps their borders straight, bake-terrain.js)
@@ -13538,12 +13546,18 @@ fn boxOf(V: Vox) -> Box {
     // the resolved vector at the settings' intensity, for R.weather.mix(): the light layers (cloud, fog, wind) at
     // Ll, the rest at L, each capped at 1; fogLow stays a flag, and gust is the mapped one (0.5 at rest). Rain
     // keeps the cloud at CLOUD_RAIN or more at any intensity (Subtle's Ll 0.4 left the shafts and pools of a
-    // clear day under a drizzle), except in a sun shower or a sun break in rain (target()'s shower)
+    // clear day under a drizzle), ramped in from rain 0.02 to 0.08 (no step as a shower starts or ends), except
+    // in a sun shower or a sun break (target()'s shower, or this.sun: a break in rain under 0.05 has no shower
+    // flag). resolve() calls a front a sun shower only while its rain is 0.5 or less, so a hurt rain past 0.5
+    // can carry the shower flag without being one: harmless, the floor is then below the cloud it already has
     // (one object, rewritten each call)
     scaled(L, Ll, gust) {
       const v = this.v, o = this.mixV || (this.mixV = {});
       for (const l of ME.WX.LAYERS) o[l] = Math.min(1, v[l] * (l === "cloud" || l === "fog" || l === "wind" ? Ll : L));
-      if (L > 0 && v.rain > 0.02 && !this.shower) o.cloud = Math.max(o.cloud, CLOUD_RAIN);
+      if (L > 0 && v.rain > 0.02 && !this.shower && !this.sun) {
+        const t = Math.min(1, (v.rain - 0.02) / 0.06), k = t * t * (3 - 2 * t);
+        o.cloud = Math.max(o.cloud, o.cloud + (CLOUD_RAIN - o.cloud) * k);
+      }
       o.fogLow = L > 0 ? v.fogLow : 0; o.gust = gust;
       o.wind = Math.min(1, 0.15 + (v.wind - 0.15) * Ll); // (around its rest, not from 0: equal at Normal)
       return o;
@@ -14902,8 +14916,9 @@ fn boxOf(V: Vox) -> Box {
     cmCabbage: "FOLIAGE", cmKale: "FOLIAGE", cmPetal: "FOLIAGE",
   });
   CT.sunShadeHalf = (CT.sunShadeHalf || []).concat(["cmLeaf", "cmAppleLeaf", "cmAmber", "cmScarlet"]);
-  // no terrain grass tufts here: the content's blades are the valley's greens (one set for the pack); the
-  // field's tall gold grass is the cm_tallgrass volumes, which sway with the travelling gusts
+  // the terrain blades on the pasture and under the tall grass: gold, tan and rust (the thin grass's mix), dark
+  // corn-leaf reeds on the ditch banks; this map's own set (ME.grassFor), so Momiji keeps its greens
+  CT.mapGrass = Object.assign(CT.mapGrass || {}, { cornmoon: { ground: ["cmMeadowN", "cmMeadow", "cmMeadowA", "cmMeadowR", "cmMeadow2", "cmLitter"], blade: "cmGrass", blade2: "cmGrassTan", dry: "cmGrassRust", reed: "cmLeafDk" } });
 
   // ---------------------------------------------------------------- kinds
   Object.assign(CT.kinds = CT.kinds || {}, {
@@ -14915,15 +14930,15 @@ fn boxOf(V: Vox) -> Box {
     // the build tiles: the pasture, cushioned turf with fallen leaves thick under the trees, in its four autumn
     // bands (cmmeadown the top field, cmmeadow the middle, cmmeadowa the low field, cmmeadowr past the ditch),
     // and the mown hay strips, their windrows a darker stripe along x
-    cmmeadown: { recipe: "carpet", top: "cmMeadowN", mottle: "cmMeadow", cushions: true, litter: "cmLitter", drape: ["cmMeadowN", "cmMeadow"], overhang: "cmMeadowN", under: "rock" },
-    cmmeadow: { recipe: "carpet", top: "cmMeadow", mottle: "cmMeadow2", cushions: true, litter: "cmLitter", drape: ["cmMeadow", "cmMeadow2"], overhang: "cmMeadow", under: "rock" },
-    cmmeadowa: { recipe: "carpet", top: "cmMeadowA", mottle: "cmMeadow", cushions: true, litter: "cmLitter", drape: ["cmMeadowA", "cmMeadow"], overhang: "cmMeadowA", under: "rock" },
-    cmmeadowr: { recipe: "carpet", top: "cmMeadowR", mottle: "cmMeadowA", cushions: true, litter: "cmLitter", drape: ["cmMeadowR", "cmMeadowA"], overhang: "cmMeadowR", under: "rock" },
+    cmmeadown: { recipe: "carpet", grass: true, top: "cmMeadowN", mottle: "cmMeadow", cushions: true, litter: "cmLitter", drape: ["cmMeadowN", "cmMeadow"], overhang: "cmMeadowN", under: "rock" },
+    cmmeadow: { recipe: "carpet", grass: true, top: "cmMeadow", mottle: "cmMeadow2", cushions: true, litter: "cmLitter", drape: ["cmMeadow", "cmMeadow2"], overhang: "cmMeadow", under: "rock" },
+    cmmeadowa: { recipe: "carpet", grass: true, top: "cmMeadowA", mottle: "cmMeadow", cushions: true, litter: "cmLitter", drape: ["cmMeadowA", "cmMeadow"], overhang: "cmMeadowA", under: "rock" },
+    cmmeadowr: { recipe: "carpet", grass: true, top: "cmMeadowR", mottle: "cmMeadowA", cushions: true, litter: "cmLitter", drape: ["cmMeadowR", "cmMeadowA"], overhang: "cmMeadowR", under: "rock" },
     cmstubble: { recipe: "layer", top: "cmStubble", mottle: "cmMeadow", mottleK: 0.2, stripe: { mat: "cmWindrow", width: 0.24 }, depth: 0.1, under: "rock" },
     // under the corn: loam with a furrow of dead weeds down each tile (a stripe along x); under the tall grass,
     // the browner straw; the pumpkin patch's soil
     cmcorn: { recipe: "layer", top: "cmLoam", stripe: { mat: "cmMeadow2", width: 0.2 }, depth: 0.1, under: "rock" },
-    cmtallgrass: { recipe: "carpet", top: "cmMeadow2", mottle: "cmMeadow", litter: "cmLitter", drape: ["cmMeadow", "cmMeadow2"], overhang: "cmMeadow", under: "rock" },
+    cmtallgrass: { recipe: "carpet", grass: true, top: "cmMeadow2", mottle: "cmMeadow", litter: "cmLitter", drape: ["cmMeadow", "cmMeadow2"], overhang: "cmMeadow", under: "rock" },
     cmpatch: { recipe: "layer", top: "cmPatch", mottle: "cmLoam", mottleK: 0.3, depth: 0.15, under: "rock" },
     // the sheep pen's trodden straw bedding over turf, and the kitchen garden's dark rows with grass between
     cmpen: { recipe: "layer", top: "cmStraw", mottle: "cmMeadow2", mottleK: 0.4, depth: 0.1, under: "rock" },
@@ -15396,12 +15411,13 @@ fn boxOf(V: Vox) -> Box {
   // walk the track's middle line, a tile away); clear of the gates, the stairs and any tile with a prop
   (function () {
     const m = CT.maps.cornmoon, K = m.kind, Hh = m.h, at = (x, y) => (K[y] && K[y][x]) || "_", stairs = ["6,6", "7,6", "17,11", "18,11"];
+    const chars = (kinds) => Object.keys(m.legend).filter((ch) => kinds.includes(m.legend[ch])).join(""), V = chars([...m.game.build, "cmtallgrass", "cmcorn"]);
     const used = new Set(m.props.map((p) => Math.floor(p[2] + 0.5 + ((p[4] && p[4].dx) || 0)) + "," + Math.floor(p[3] + 0.5 + ((p[4] && p[4].dy) || 0))));
     for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
       if (at(x, y) !== ":" || stairs.includes(x + "," + y) || Math.hypot(x + 0.5 - 12, y + 0.5 - 12) > 11.2) continue;
       if ((y <= 2 && Math.abs(x - 11.5) <= 2.5) || (x >= 21 && Math.abs(y - 11.5) <= 2.5)) continue;
       if (P.hash(x, y, 12, 3) >= 0.7) continue;
-      const side = [[1, 0], [-1, 0], [0, 1], [0, -1]].find(([dx, dy]) => ".oarsgc".includes(at(x + dx, y + dy)) && Hh[y + dy][x + dx] === Hh[y][x] && !used.has(x + dx + "," + (y + dy)));
+      const side = [[1, 0], [-1, 0], [0, 1], [0, -1]].find(([dx, dy]) => V.includes(at(x + dx, y + dy)) && Hh[y + dy][x + dx] === Hh[y][x] && !used.has(x + dx + "," + (y + dy)));
       if (side) m.props.push(["cm_tallgrass", { seed: 1 + ((x + y * 3) % 4), w: 1 }, x, y, { dx: side[0] * 0.38, dy: side[1] * 0.38 }]);
     }
   })();
@@ -15413,8 +15429,9 @@ fn boxOf(V: Vox) -> Box {
   // kind, or a prop's tile), so the placement zones stay as they were; clear of the gates and the stairs
   (function () {
     const m = CT.maps.cornmoon, K = m.kind, Hh = m.h, at = (x, y) => (K[y] && K[y][x]) || "_", stairs = ["6,6", "7,6", "17,11", "18,11"], N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    const chars = (kinds) => Object.keys(m.legend).filter((ch) => kinds.includes(m.legend[ch])).join(""), B = chars(m.game.build), V = chars([...m.game.build, "cmtallgrass", "cmcorn"]);
     const cell = (d) => Math.floor(d[2] + 0.5 + ((d[4] && d[4].dx) || 0)) + "," + Math.floor(d[3] + 0.5 + ((d[4] && d[4].dy) || 0));
-    const used = new Set(m.props.map(cell)), put = (d) => { const c = cell(d), [x, y] = c.split(",").map(Number); if (!".oars".includes(at(x, y)) || used.has(c)) m.props.push(d); };
+    const used = new Set(m.props.map(cell)), put = (d) => { const c = cell(d), [x, y] = c.split(",").map(Number); if (!B.includes(at(x, y)) || used.has(c)) m.props.push(d); };
     const gate = (x, y) => (y <= 2 && Math.abs(x - 11.5) <= 2.5) || (x >= 21 && Math.abs(y - 11.5) <= 2.5) || stairs.includes(x + "," + y);
     const SH = [{ seed: 1, leaf: "cmAppleLeaf" }, { seed: 2, leaf: "cmAmber" }, { seed: 3, leaf: "cmScarlet" }], shrub = (x, y, dx, dy) => put(["cm_shrub", SH[(x * 2 + y) % 3], x, y, { dx, dy }]);
     [[{ seed: 8, leaf: "cmAmber", fruit: false }, 6, 2, 0.25, 0.25], [{ seed: 3, fruit: false }, 17, 2, -0.25, 0.25], [{ seed: 6, fruit: false }, 2, 6, 0.25, 0.25],
@@ -15431,7 +15448,7 @@ fn boxOf(V: Vox) -> Box {
       if (k === "g" || (k === "#" && N4.some(([dx, dy]) => !"#_".includes(at(x + dx, y + dy))))) {
         put(["cm_thingrass", { seed: s, tall: true }, x, y, off(1)]); put(["cm_thingrass", { seed: 3 - s }, x, y, off(2)]);
       } else if (k === ":" && hs < 0.75) {
-        const side = N4.find(([dx, dy]) => ".oarsgc".includes(at(x + dx, y + dy)) && Hh[y + dy][x + dx] === Hh[y][x]);
+        const side = N4.find(([dx, dy]) => V.includes(at(x + dx, y + dy)) && Hh[y + dy][x + dx] === Hh[y][x]);
         if (side) put(["cm_thingrass", { seed: s }, x, y, { dx: side[0] * 0.44 - side[1] * 0.2, dy: side[1] * 0.44 + side[0] * 0.2 }]);
       }
     }
@@ -17453,7 +17470,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.70.0", name: "Mossheart", commit: "1dae698" };
+  G.VERSION = { v: "0.71.0", name: "Mossheart", commit: "66f20cc" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
