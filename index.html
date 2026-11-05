@@ -17476,7 +17476,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.73.0", name: "Mossheart", commit: "0307ae2" };
+  G.VERSION = { v: "0.74.0", name: "Mossheart", commit: "7260e31" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -27526,6 +27526,9 @@ function MG_SFX(L) {
       if (S.phase !== G.Phase.BUILD) return;
       if (S.wave >= this.maxWaves) { this.hooks.log(`reached wave ${S.wave}, heart ${S.heartHp}/${S.heartMax}, dew ${S.dew}, plants ${this.game.towers.length}`); this.finish(false); return; }
       this.spend();
+      // (what the garden could not spend: the dew left after this build's sowing and growing)
+      const last = this.rows[this.rows.length - 1];
+      if (last && last.wave === S.wave && last.left == null) last.left = S.dew;
       this.waveT0 = this.game.time;
       this.hooks.deselect();
       this.game.startWave();
@@ -27605,6 +27608,8 @@ function MG_SFX(L) {
       const report = {
         seed: S.seed, reached: S.wave, gameOver, heart: [S.heartHp, S.heartMax], dew: S.dew,
         plants: this.game.towers.map((t) => t.kind + t.level).join(" "), boons: S.boons.join(" "),
+        // (the dew: gathered, spent on plants, the most held; ?dew=1 in tools/sim.js reads them with each wave row's)
+        dewEarned: this.game.stats.dew, dewSpent: this.game.stats.spent, peakDew: this.game.stats.peakDew,
         waves: this.rows, realSecs: +real.toFixed(1), avgFps: +(this.frames / Math.max(1e-3, real)).toFixed(1),
       };
       this.hooks.setSpeed(1);
