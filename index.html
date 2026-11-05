@@ -8505,7 +8505,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   ME.wgsl = ME.wgsl || {};
 
   // float offsets into the uniform buffer (vec4 aligned)
-  ME.UOFF = { vp: 0, ivp: 16, vdir: 32, sun: 36, res: 40, grid: 44, dims: 48, cgrid: 52, cdims: 56, look: 60, look2: 64, look3: 68, fog: 72, beamCol: 76, canopy: 80, canopy2: 84, shadow: 88, shadow2: 92, beams: 96, beamK: 128, ids: 136, misc: 140, outres: 144, part: 148, psrc: 152, geo: 156, misc2: 160, look4: 164, wind: 168, canopy3: 172, water2: 176, lgrid: 180, field: 184, weather: 188, weather2: 192, weather3: 196, wclear: 200, user: 216 };
+  ME.UOFF = { vp: 0, ivp: 16, vdir: 32, sun: 36, res: 40, grid: 44, dims: 48, cgrid: 52, cdims: 56, look: 60, look2: 64, look3: 68, fog: 72, beamCol: 76, canopy: 80, canopy2: 84, shadow: 88, shadow2: 92, beams: 96, beamK: 128, ids: 136, misc: 140, outres: 144, part: 148, psrc: 152, geo: 156, misc2: 160, look4: 164, wind: 168, canopy3: 172, water2: 176, lgrid: 180, field: 184, weather: 188, weather2: 192, weather3: 196, wclear: 200, weather4: 216, user: 220 };
   // vec4 slots of app data at the end of the block (u.user[k], Renderer.user) for the shader hooks
   ME.USER_SLOTS = 6;
   ME.USIZE = ME.UOFF.user + 4 * ME.USER_SLOTS;
@@ -8561,6 +8561,7 @@ struct U {
   weather2: vec4f, // wet, cover, cloud, fog height
   weather3: vec4f, // fog base z, low fog, petals, wind channel
   wclear: array<vec4f, 4>, // fog clearings: x, y, radius, softness (radius 0 = unused)
+  weather4: vec4f, // rain streak layers (at most 3; 2 on a phone and compat), -, -, -
   user: array<vec4f, ${ME.USER_SLOTS}>, // app data for the shader hooks (Renderer.user)
 };
 @group(0) @binding(0) var<uniform> u: U;
@@ -9263,6 +9264,24 @@ fn forest(uv: vec2f) -> f32 {
     col = A.rgb * (vec3f(1.0, 0.85, 0.6) * 2.4 * (lam * vis * (0.15 + 0.85 * cook) + trans) + vec3f(0.18, 0.3, 0.2) * ao * 0.8);
   }
   col *= 1.0 + max(0.0, s - 0.9) * 1.8;
+  // rain (Weather 2) on the terrain and the models, not the sim's instances: wet darkens where the sky reaches
+  // (sv.g), moss less, with a faint sheen on wet walls; the up-facing open ground splashes, a hashed point per
+  // 0.25 cell crowning for 0.15 s once a cycle (1.4 s in a drizzle to 0.5 s in a downpour) at its own phase
+  if (aux < 1000.0 && (u.weather2.x > 0.0 || u.weather.x > 0.0)) {
+    let wetK = u.weather2.x * sv.g * select(1.0, 0.55, cls == 1u);
+    col *= 1.0 - 0.28 * wetK;
+    col += vec3f(0.9, 0.95, 1.0) * pow(max(dot(reflect(-V, n), L), 0.0), 24.0) * wetK * (1.0 - sstep(0.2, 0.9, n.z)) * 0.08 * vis;
+    let r = u.weather.x;
+    if (r > 0.0 && n.z > 0.7) {
+      let g = 0.25; let c = floor(p.xy / g); let P = mix(1.4, 0.5, r);
+      let ph = u.vdir.w / P + hash12(c + 19.0); let age = fract(ph) * P;
+      if (age < 0.15 && hash12(c + vec2f(floor(ph) * 0.173, 4.0)) < 0.2 + 0.6 * r) {
+        let at = (c + 0.2 + 0.6 * vec2f(hash12(c + vec2f(floor(ph), 8.0)), hash12(c + vec2f(2.0, floor(ph))))) * g;
+        let x = length(p.xy - at) - age * 0.45;
+        col += u.fog.rgb * sstep(0.014, 0.0, abs(x)) * (1.0 - age / 0.15) * r * sv.g * 0.45;
+      }
+    }
+  }
   if (cls == 3u) { col = rampC(mat, 1.0) * (1.7 + 0.35 * sin(u.vdir.w * 3.0 + p.x * 5.0 + p.y * 3.0)) * m0.w; } // m0.w: the material's em gain
   _ = fieldT; _ = cellT; // bound even when the hooks ignore them
   col = hookShade(col, p, n, cls, aux >= 1000.0);
@@ -9423,6 +9442,26 @@ struct VO { @builtin(position) pos: vec4f, @location(0) w: vec3f, @location(1) f
 @vertex fn vs(@location(0) p: vec3f, @location(1) f: vec3f) -> VO { var o: VO; o.pos = u.vp * vec4f(p, 1.0); o.w = p; o.f = f; return o; }
 ` + RAMP + /* wgsl */ `
 struct Wv { h: f32, foam: f32 };
+// rain rings (Weather 2): a grid of 0.4 cells, each landing a drop every 0.6 s (a downpour) to 1.6 s (a drizzle)
+// at its own phase and a hashed point, more cells dropping as the rain grows; a ring spreads into the 2 x 2
+// nearest cells. Procedural, so the 48 event rings stay free for splashes, critters and the falls.
+fn rainRings(p: vec2f, t: f32) -> vec2f {
+  let r = u.weather.x;
+  if (r <= 0.0) { return vec2f(0.0); }
+  let g = 0.4; let c0 = floor(p / g - 0.5); let P = mix(1.6, 0.6, r);
+  var o = vec2f(0.0);
+  for (var j = 0; j < 4; j++) {
+    let c = c0 + vec2f(f32(j & 1), f32(j >> 1));
+    let ph = t / P + hash12(c + 0.37);
+    let kd = floor(ph); let age = fract(ph) * P;
+    if (hash12(c + vec2f(kd * 0.131, 7.0)) > 0.25 + 0.6 * r) { continue; }
+    let at = (c + 0.2 + 0.6 * vec2f(hash12(c + vec2f(kd, 3.0)), hash12(c + vec2f(5.0, kd)))) * g;
+    let x = length(p - at) - age * 0.3;
+    let env = exp(-age * 3.5) * exp(-x * x * 600.0) * (0.5 + 0.5 * r);
+    o += vec2f(env * sin(x * 90.0) * 0.006, env * exp(-age * 6.0) * 0.5);
+  }
+  return o;
+}
 fn waves(p: vec2f, fl: vec2f, st: f32, t: f32, rough: f32) -> Wv {
   let sp = mix(0.3, 1.5, st); let per = 3.0;
   let f0 = fract(t / per); let f1 = fract(t / per + 0.5); let k0 = 1.0 - abs(2.0 * f0 - 1.0);
@@ -9441,6 +9480,7 @@ fn waves(p: vec2f, fl: vec2f, st: f32, t: f32, rough: f32) -> Wv {
     w.h += env * sin(x * 46.0) * 0.012;
     w.foam += env * exp(-age * 3.0) * sstep(0.4, 1.0, sin(x * 46.0)) * 0.9;
   }
+  let rr = rainRings(p, t); w.h += rr.x; w.foam += rr.y;
   return w;
 }
 @fragment fn fs(i: VO) -> @location(0) vec4f {
@@ -9502,6 +9542,7 @@ fn wavesL(p: vec2f, fl: vec2f, st: f32, t: f32, rough: f32, calm: f32) -> Wv {
     w.h += env * sin(x * 46.0) * 0.012;
     w.foam += env * exp(-age * 3.0) * sstep(0.4, 1.0, sin(x * 46.0)) * 0.9;
   }
+  let rr = rainRings(p, t); w.h += rr.x; w.foam += rr.y;
   return w;
 }
 // a looked water (a water kind's clarity, tint, absorb, calm, glint): the floor seen through it, tinted toward
@@ -9713,6 +9754,28 @@ const QUAD = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0
   W.glass = W.common + /* wgsl */ `
 struct VO { @builtin(position) pos: vec4f, @location(0) n: vec3f, @location(1) w: vec3f };
 @vertex fn vs(@location(0) p: vec3f, @location(1) n: vec3f) -> VO { var o: VO; o.pos = u.vp * vec4f(p, 1.0); o.n = n; o.w = p; return o; }
+// rain on the glass (Weather 2), on its surface in arc length around the centre by height: beads in a fine
+// grid, and drops running down columns of it at their own pace with a short trail above the head, more of
+// both as the rain grows. The caller weights it toward grazing angles, where water on glass catches light.
+fn glassRain(w: vec3f) -> f32 {
+  let r = u.weather.x;
+  if (r <= 0.0) { return 0.0; }
+  let d = w.xy - u.geo.xy;
+  let s = atan2(d.y, d.x) * max(u.geo.z, 0.5); let t = u.vdir.w;
+  let bq = vec2f(s, w.z) / 0.07; let bc = floor(bq); let bh = hash12(bc + 11.0);
+  let bo = fract(bq) - (0.25 + 0.5 * vec2f(hash12(bc + 2.0), hash12(bc + 5.0)));
+  let bead = sstep(0.12 + 0.1 * bh, 0.04, length(bo)) * step(bh, 0.4 * r);
+  let cw = 0.11; let col = floor(s / cw); let hc = hash12(vec2f(col, 41.0));
+  let P = 2.5 + 4.0 * hc; let ph = t / P + hc; let cyc = floor(ph);
+  let H = max(u.geo.w - u.misc2.z, 0.5);
+  let zd = u.geo.w - fract(ph) * H * 1.15;
+  let on = step(hash12(vec2f(col, cyc + 3.0)), 0.55 * r);
+  let dx = (fract(s / cw) - 0.3 - 0.4 * hash12(vec2f(col, cyc))) * cw;
+  let dz = w.z - zd;
+  let head = sstep(0.022, 0.008, length(vec2f(dx, dz * 0.7)));
+  let trail = sstep(0.008, 0.002, abs(dx)) * sstep(0.0, 0.02, dz) * sstep(0.4, 0.0, dz) * 0.5;
+  return bead * 0.45 + max(head, trail) * on;
+}
 @fragment fn fs(i: VO) -> @location(0) vec4f {
   let V = -u.vdir.xyz; var n = normalize(i.n);
   let nd = dot(n, V); let front = nd > 0.0;
@@ -9725,7 +9788,8 @@ struct VO { @builtin(position) pos: vec4f, @location(0) n: vec3f, @location(1) w
   win *= (0.2 + 0.8 * (1.0 - ndv)) * select(0.0, 1.0, front);
   let rim = pow(1.0 - ndv, 7.0) * 0.3;
   let base = select(0.3, 1.0, front);
-  return vec4f(vec3f(0.92, 0.98, 0.9) * (fres * 0.22 + win * 0.16 + rim) * base * u.misc.x, 0.0);
+  let wet = glassRain(i.w) * (0.25 + 0.75 * (1.0 - ndv)) * 0.3;
+  return vec4f(vec3f(0.92, 0.98, 0.9) * (fres * 0.22 + win * 0.16 + rim + wet) * base * u.misc.x, 0.0);
 }
 `;
 
@@ -9881,6 +9945,48 @@ fn s(uv: vec2f) -> vec3f { return textureSampleLevel(src, lin, uv, 0.0).rgb; }
 fn toSrgb(c: vec3f) -> vec3f { return select(1.055 * pow(c, vec3f(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3f(0.0031308)); }
 fn shoulder(x: vec3f) -> vec3f { let k = 0.8; return select(k + (1.0 - k) * (1.0 - exp(-(x - k) / (1.0 - k))), x, x <= vec3f(k)); }
 fn heat(x: f32) -> vec3f { let t = clamp(x, 0.0, 1.0); return clamp(vec3f(1.5 * t, 1.5 * (1.0 - abs(t - 0.5) * 2.0) + 0.1 * (1.0 - t), 1.2 * (1.0 - t * 1.6)), vec3f(0.0), vec3f(1.0)); }
+// Rain (Weather 2): streak layers at fixed view depths, 1 at a drizzle to 3 in a downpour (u.weather4.x caps
+// them: 2 on a phone and compat), each fading in over its third of the rain channel. A layer is a grid of
+// columns in the camera's right and up axes at its world point (so the streaks stay with the world as the
+// view pans and grow as it zooms in), one hashed drop per cell falling down the screen and slanting with the
+// wind. It shows only in front of the scene (reverse Z: its depth above the scene's) and is lit by the sun
+// volume at its point: the haze colour where the sky reaches it, the sun's where the sun does.
+fn rain(uv: vec2f, sd: f32) -> vec3f {
+  let r = u.weather.x;
+  let n = min(i32(ceil(r * 3.0 - 0.01)), i32(u.weather4.x));
+  if (n <= 0) { return vec3f(0.0); }
+  let right = normalize(u.ivp[0].xyz); let up = normalize(u.ivp[1].xyz);
+  let wpp = length(u.ivp[0].xyz) * 2.0 * u.outres.z; // world units per canvas pixel
+  let wd = vec3f(u.wind.xy, 0.0) * (0.35 + 1.4 * u.weather3.w);
+  let slant = dot(wd, right) * 0.45;
+  let t = u.vdir.w;
+  var acc = vec3f(0.0);
+  for (var i = 0; i < n; i++) {
+    let fi = f32(i);
+    let ld = 0.8 - fi * 0.24; // near to far
+    if (ld <= sd) { continue; }
+    let k = clamp(r * 3.0 - fi, 0.0, 1.0);
+    let P = (u.ivp * vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, ld, 1.0)).xyz;
+    let sc = 1.0 - fi * 0.22; // far layers: thinner, shorter, slower
+    let cw = 0.16 * sc; let ch = mix(0.9, 1.5, r) * sc;
+    let y = dot(P, up); let x = dot(P, right) + y * slant;
+    let col = floor(x / cw); let h = hash12(vec2f(col, fi * 17.0 + 3.0));
+    let yy = (y + t * (5.5 + 2.5 * h) * sc) / ch + h * 13.0;
+    let cell = floor(yy); let fy = fract(yy);
+    let h2 = hash12(vec2f(col + 31.0 * fi, cell));
+    if (h2 > 0.3 + 0.45 * r) { continue; }
+    let len = mix(0.22, 0.5, r) * (0.7 + 0.6 * h2);
+    let dx = (fract(x / cw) - (0.25 + 0.5 * hash12(vec2f(cell, col + 7.0)))) * cw;
+    let w = 0.006 * sc;
+    let ax = sstep(w + wpp, 0.0, abs(dx)) * min(1.0, w / wpp + 0.25);
+    let ay = sstep(0.0, 0.06, fy) * sstep(len, len * 0.45, fy) * (0.45 + 0.55 * sstep(len, 0.0, fy));
+    let a = ax * ay * k;
+    if (a <= 0.002) { continue; }
+    let sv = textureSampleLevel(sunV, lin, sunUVW(P), 0.0);
+    acc += (u.fog.rgb * (0.35 + 0.65 * sv.g) * 0.5 + pow(u.beamCol.rgb, vec3f(1.6)) * sv.r * 0.35 + 0.03) * a;
+  }
+  return acc * 0.7;
+}
 @fragment fn fs(@builtin(position) fc: vec4f) -> @location(0) vec4f {
   let uv = fc.xy * u.outres.zw;
   let mode = i32(u.look3.x + 0.5);
@@ -9908,6 +10014,7 @@ fn heat(x: f32) -> vec3f { let t = clamp(x, 0.0, 1.0); return clamp(vec3f(1.5 * 
   c += textureSampleLevel(bloomT, lin, uv, 0.0).rgb * u.look3.z;
   c += pow(u.beamCol.rgb, vec3f(1.6)) * textureSampleLevel(shaftT, lin, uv, 0.0).r * u.look3.y;
   c = mix(c, u.fog.rgb, u.fog.w);
+  if (u.weather.x > 0.0) { c += rain(uv, textureLoad(gD, min(vec2i(uv * u.res.xy), vec2i(u.res.xy) - 1), 0)); }
   c = shoulder(c * u.look3.w);
   let q = (uv - 0.5) * vec2f(1.0, 0.86);
   c *= 1.0 - u.beamCol.w * pow(clamp(length(q) * 1.3, 0.0, 1.0), 2.4);
@@ -10608,19 +10715,23 @@ fn boxOf(V: Vox) -> Box {
   // a target vector, the wet and snow-cover integrators, and the factors writeUniforms puts on top of R.set (it
   // never writes R.set). Until the first set() or mix() it is inactive: every factor is 1 and the gust is
   // R.set.gust's, so a scene without weather draws as before. Once active the gust is the mix's (R.set.gust
-  // stays at its base 0.5). Weather 1 draws the clouds (canopy texture and light), the wind and the gusts:
-  // the layers in draws, which ME.Sky leaves to it; rain, snow and fog reach the uniforms for later steps.
+  // stays at its base 0.5). It draws the layers in draws, which ME.Sky leaves to it: Weather 1 the clouds (canopy
+  // texture and light), the wind and the gusts; Weather 2 the rain (streaks in composite, wet ground and its
+  // splashes in lighting, rings in the water, drops on the glass, splash() accents on the ponds). Snow and fog
+  // reach the uniforms for later steps.
   const WX_CH = ["rain", "snow", "fog", "fogHeight", "cloud", "wind", "gust", "petals", "fogLow"];
   const WX_REST = { rain: 0, snow: 0, fog: 0, fogHeight: 3, cloud: 0, wind: 0.15, gust: 0.5, petals: 0, fogLow: 0 };
+  const SPLASH_PER_S = 3; // splash() accents: a bucket of 3, refilled at 3 a second
   class WeatherMix {
     constructor(R) {
       this.R = R; this.active = false; this.flashK = 1; this.auto = true;
-      this.draws = new Set(["cloud", "wind", "gust"]);
+      this.draws = new Set(["cloud", "wind", "gust", "rain"]);
       this.cur = Object.assign({}, WX_REST); this.to = Object.assign({}, WX_REST);
       this.tau = 8 / 3; this.wet = 0; this.cover = 0; this.flashV = 0; this.fogBase = null;
       this.clear = new Float32Array(16);
       this.state = { kind: "clear", rain: 0, snow: 0, fog: 0, cloud: 0, wind: 0.15, wet: 0, cover: 0, flash: 0 };
       this.onFlash = null; this.onSplash = null;
+      this.splashTok = SPLASH_PER_S; this.splashAcc = 0; this.seed = 0x2545f491;
     }
     // a preset at intensity k (0..1 of its full vector; the rest blends toward calm), over seconds
     set(kind, intensity = 1, seconds = 8) {
@@ -10642,9 +10753,18 @@ fn boxOf(V: Vox) -> Box {
     }
     // fog clearing i (0..3): a hole of radius r around x, y (r 0 removes it)
     setFogClear(i, x, y, r, soft = 0.5) { this.clear.set([x, y, r, soft], (i & 3) * 4); }
-    // (Weather 4: lightning, the auto strikes and the splashes; flash() only lights the uniform today)
+    // (Weather 4: lightning and the auto strikes; flash() only lights the uniform today)
     flash(k = 1) { this.flashV = Math.max(this.flashV, k * this.flashK); if (this.onFlash) this.onFlash(k); }
-    splash() {}
+    // a splash accent at p (a ring and droplets from every GPU layer that splashes, ME.VoxelPhysics among them),
+    // then onSplash(p, k); at most SPLASH_PER_S a second, false when the bucket is empty
+    splash(p, k = 0.3) {
+      if (this.splashTok < 1) return false;
+      this.splashTok -= 1;
+      for (const L of this.R.layers || []) if (L.splash) L.splash(p, k);
+      if (this.onSplash) this.onSplash(p, k);
+      return true;
+    }
+    rnd() { let x = this.seed; x ^= x << 13; x ^= x >>> 17; x ^= x << 5; this.seed = x >>> 0; return this.seed / 4294967296; }
     // once a frame, before the sim: ease the channels (clouds and wind lead, rain and snow 30 % behind) and
     // integrate wet (~20 s of rain, ~90 s to dry) and cover (~40 s of snow, ~120 s to melt, faster in rain)
     update(time, dt) {
@@ -10655,6 +10775,17 @@ fn boxOf(V: Vox) -> Box {
       this.wet = c.rain > 0.02 ? Math.min(1, this.wet + d * c.rain / 20) : Math.max(0, this.wet - d / 90);
       this.cover = c.snow > 0.02 ? Math.min(1, this.cover + d * c.snow / 40) : Math.max(0, this.cover - d * (1 + 3 * c.rain) / 120);
       this.flashV = Math.max(0, this.flashV - d * 2.2);
+      // the accents: auto (the default) splashes the ponds in heavy rain, 0 at rain 0.5 up to 3 a second at 1
+      this.splashTok = Math.min(SPLASH_PER_S, this.splashTok + d * SPLASH_PER_S);
+      const pt = this.R.pondTiles;
+      if (this.auto && c.rain > 0.5 && pt && pt.length) {
+        this.splashAcc += d * SPLASH_PER_S * (c.rain - 0.5) / 0.5;
+        while (this.splashAcc >= 1) {
+          this.splashAcc -= 1;
+          const w = pt[Math.floor(this.rnd() * pt.length)];
+          this.splash([w.x + 0.1 + 0.8 * this.rnd(), w.y + 0.1 + 0.8 * this.rnd(), w.z], 0.3);
+        }
+      } else this.splashAcc = 0;
       const s = this.state;
       s.rain = c.rain; s.snow = c.snow; s.fog = c.fog; s.cloud = c.cloud; s.wind = c.wind; s.wet = this.wet; s.cover = this.cover; s.flash = this.flashV;
     }
@@ -11539,6 +11670,7 @@ fn boxOf(V: Vox) -> Box {
       set4(u, O.weather2, Wx.wet, Wx.cover, wc, on ? wv.fogHeight : 0);
       set4(u, O.weather3, on ? Wx.base() : 0, on ? wv.fogLow : 0, on ? wv.petals : 0, on ? wv.wind : 0);
       u.set(Wx.clear, O.wclear);
+      set4(u, O.weather4, (ME.phone && ME.phone()) || ME.compat ? 2 : 3, 0, 0, 0);
       u.set(this.user, O.user);
       this.dev.queue.writeBuffer(this.ubuf, 0, u);
     }
@@ -13147,8 +13279,9 @@ fn boxOf(V: Vox) -> Box {
    snow, petals or leaves on a 2D canvas over the scene (#wx), rain rings on the open water, lightning and a
    rainbow arc. Once the renderer has R.weather.mix() it hands it the vector at the settings' intensity, the
    gust included: then the gust is the mix vector's, and apply() leaves R.set.gust at its base. The layers the
-   engine draws itself (R.weather.draws: the clouds, the wind and the gusts since Weather 1) lose their LIGHT
-   entry here, and R.set.windK stays at its base (the engine scales it by its wind channel). The game tunes
+   engine draws itself (R.weather.draws: the clouds, the wind and the gusts since Weather 1, the rain since
+   Weather 2, which also ends the overlay rain and the rings) lose their LIGHT entry here, and R.set.windK
+   stays at its base (the engine scales it by its wind channel). The game tunes
    the per-layer looks in ME.WX.looks().layers. */
 (function () {
   const ME = window.ME;
@@ -13397,10 +13530,12 @@ fn boxOf(V: Vox) -> Box {
       if (!this.mixed) s.gust = c.gust; // (one writer: the mix carries it once the engine has one)
       if (this.flash > 0) s.exposure *= 1 + 1.6 * this.flash * this.flash;
     }
+    // the engine draws the rain itself (Weather 2: streaks, rings, splashes): no overlay rain and no rings here
+    engineRain() { return !!(this.mixed && this.R.weather.draws && this.R.weather.draws.has("rain")); }
     // raindrops on the open water: rings at random spots of the map, about 14 a second in rain
     rings(dt) {
       const phys = this.app.phys, map = this.app.st.map;
-      if (!phys || !map || this.cur.rings < 0.05 || this.app.paused) return;
+      if (!phys || !map || this.cur.rings < 0.05 || this.app.paused || this.engineRain()) return;
       this.ringAcc += dt * 14 * this.cur.rings;
       for (let tries = 0; this.ringAcc >= 1 && tries < 24; tries++) {
         const x = Math.random() * map.W, y = Math.random() * map.H, z = this.scene.waterAt(x, y);
@@ -13436,6 +13571,7 @@ fn boxOf(V: Vox) -> Box {
         pad[k] = h * DRIFT[k] * Math.max(0, wind) + 30;
         want[k] = lk.budget * c[k] * scale * (k === "rain" ? 1 : 0.6) * ck * (w + pad[k]) / w; all += want[k];
       }
+      if (this.engineRain()) { all -= want.rain; want.rain = 0; }
       for (const k of FX) want[k] = Math.round(want[k] * Math.min(1, CAP / Math.max(1, all)));
       for (const p of this.parts) have[p.kind]++;
       for (const k of FX) for (let n = have[k]; n < want[k]; n++) this.parts.push(this.spawn(k, w, h, true, pad[k], sk));
@@ -17204,7 +17340,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.65.0", name: "Mossheart", commit: "221c6bf" };
+  G.VERSION = { v: "0.66.0", name: "Mossheart", commit: "7faef10" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -22507,7 +22643,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
    this is Mossheart's host for it: the run it follows is the game's (its seed, the garden, the build phase,
    game over and the Heart Tree's life, all only while a game is on), its waves start and clear the fronts,
    Momiji opens on the Morning mood, and the choice is kept under "mossheart.atmos". G.Atmos is new Atmos(app)
-   as before; G.MOODS is the engine's. */
+   as before; G.MOODS is the engine's. Since Weather 1 (#450) the sky drives R.weather by mix(), so
+   R.weather.state.kind always reads "mix": the front on show is app.atmos.state().front (weatherNow for the
+   panel's choice). */
 (function () {
   const G = window.MG, ME = window.ME;
   const LEVEL_MOOD = { momiji: "morning" };
