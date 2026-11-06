@@ -20221,7 +20221,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
      animate(info, game)    a move just played (DG.info of it; game already after it): the piece slides
                             with a hop (a knight leaps), a taken piece bursts as the mover reaches it
                             (onCapture), castling's rook slides after the king, a promoted pawn turns
-                            into its new piece as it lands (onLand)
+                            into its new piece as it lands (onLand); a strike on a Ward lunges and comes back
      onCapture(victim)      set by the app: a taken piece at the moment it goes (its voxels burst, main.js)
      onLand(piece, info)    set by the app: the moving piece (not castling's rook) on its new square
      busy                   a move is still on its way
@@ -20264,6 +20264,13 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       const taken = info.enPassant ? info.to + (p.c ? 8 : -8) : info.capture ? info.to : -1;
       const victim = taken >= 0 ? this.pieceAt(taken) : null;
       const knight = p.t === G.PIECE.KNIGHT;
+      if (info.strike) {
+        // a strike on a Ward: nothing moves, so the attacker lunges at the target and comes back to its square;
+        // the target flashes as its Ward breaks
+        const from = p.P.slice(), to = this.board.centre(info.to);
+        p.walk = { from, to: from, at: to, t: 0, dur: SLIDE * 1.5, hop: 0.12, info, victim };
+        return;
+      }
       this.slide(p, info.to, 0, knight ? 0.75 : 0.12, info);
       if (victim) victim.die = { t: -p.walk.dur * (knight ? 0.85 : 0.6), burst: false };
       if (info.promo) p.promo = info.promo;
@@ -20281,8 +20288,9 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         if (w) {
           w.t += dt;
           if (w.t > 0) {
-            const k = Math.min(1, w.t / w.dur), e = ease(k);
-            p.P = [lerp(w.from[0], w.to[0], e), lerp(w.from[1], w.to[1], e), lerp(w.from[2], w.to[2], e) + Math.sin(k * Math.PI) * w.hop];
+            const k = Math.min(1, w.t / w.dur), e = w.at ? Math.sin(k * Math.PI) * 0.45 : ease(k), T = w.at || w.to;
+            p.P = [lerp(w.from[0], T[0], e), lerp(w.from[1], T[1], e), lerp(w.from[2], T[2], e) + Math.sin(k * Math.PI) * w.hop];
+            if (w.victim && k >= 0.5) { w.victim.flash = 1; w.victim = null; }
             if (k >= 1) {
               p.P = w.to.slice(); p.walk = null;
               if (p.promo) { p.t = p.promo; p.promo = 0; p.flash = 1; }
@@ -20652,7 +20660,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.16.0", name: "DeckChess", commit: "acc3fe8" };
+  G.VERSION = { v: "0.17.0", name: "DeckChess", commit: "2f7da03" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -21417,14 +21425,27 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         nFrames += await frames(10);
         sheet.preset("classic");
         const deckOk = dk.open && dk.sel === "b1" && dk.stride && dk.ward && dk.pts.join() === "43,44,45" && dk.over === "Over budget" && dk.refused && dk.queen === "1 Q max" && dk.boardSel && dk.round && dk.bad && dk.oppCells === 16 && dk.preview === 32 && dk.lens >= 3 && dk.playing && dk.traits.includes("b1:WS") && dk.traits.includes("e2:V") && dk.card.includes("Stride");
+        // a strike (exd5 onto a Warded pawn): the rules leave both pawns where they are, and so does the screen;
+        // black's answer from d5 then moves black's pawn, not white's
+        const st = { san: "", from: "", to: "", reply: "" };
+        ctl.newGame(hud.settings, "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2 d5:W"); ctl.you = [0, 1];
+        const sm = ctl.game.find(sq("e4"), sq("d5"), 0);
+        st.strike = !!sm && G.info(sm).strike;
+        ctl.play(sm); nFrames += await frames(120, () => !pieces.busy);
+        const pc = (s) => { const p = pieces.pieceAt(sq(s)); return p ? "wb"[p.c] + " PNBRQK"[p.t] : "-"; };
+        st.san = ctl.game.sans[0] || ""; st.from = pc("e4"); st.to = pc("d5");
+        ctl.play(ctl.game.find(sq("d5"), sq("d4"), 0)); nFrames += await frames(120, () => !pieces.busy);
+        st.reply = pc("d4") + "," + pc("e4");
+        ctl.fen = null; ctl.newGame(hud.settings); ctl.you = [0];
+        const strikeOk = st.strike && st.from === "wP" && st.to === "bP" && st.reply === "bP,wP";
         // the pieces' baked sizes and their heights on the board (tiles)
         const sizes = {};
         for (const c of [0, 1]) for (let t = 1; t <= 6; t++) { const m = models[c][t]; sizes["wb"[c] + " PNBRQK"[t]] = { model: m.name, h: +m.h.toFixed(2), r: +m.r.toFixed(2), fit: +m.fit.toFixed(2), height: m.height }; }
         out.board = { id: boardId, region, z: +board.z.toFixed(3), zSpread: board.zSpread, pieces: sizes };
         ME.log("BOARD", JSON.stringify({ id: boardId, z: out.board.z, zSpread: board.zSpread, region }));
-        out.pick = pick; out.turned = turned; out.script = script; out.capture = cap; out.camera = camT; out.lighting = lightT; out.deck = dk;
+        out.pick = pick; out.turned = turned; out.script = script; out.capture = cap; out.camera = camT; out.lighting = lightT; out.deck = dk; out.strike = st;
         out.sky = { stars: starsDrawn, atmos: atmos.state(), cues: fx.cues, audio: audio ? audio.stats() : null };
-        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2 && capOk && camOk && lightOk && deckOk && starsDrawn > 100 && !mg.length;
+        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2 && capOk && camOk && lightOk && deckOk && strikeOk && starsDrawn > 100 && !mg.length;
       }
       Object.assign(out, { frames: nFrames, avgFrameIntervalMs: avg(ints.slice(5)), avgCpuMs: avg(cpus.slice(5)), gpuMs: R.gpuMs, errors: ME.errors });
       report(out);
