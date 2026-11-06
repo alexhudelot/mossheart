@@ -340,6 +340,10 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 .veil h2 { color: #fffae6; font-size: calc(30px * var(--ts)); text-align: center; margin: 0 0 16px; text-shadow: 0 2px 8px #1a260d; }
 .veil .col { display: flex; flex-direction: column; align-items: center; }
 #boonrow { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }
+#boonbuy { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
+#boonbuy .btn { padding: 8px 18px; min-width: 150px; font-weight: 700; }
+#boonbuy .btn small { display: block; font-weight: 500; opacity: 0.85; }
+#boonbuy .btn.poor small { color: #c0563a; }
 .boon { width: 250px; min-height: 180px; padding: 16px; display: flex; flex-direction: column; gap: 12px; text-align: center; justify-content: center;
   font: inherit; color: var(--ink); background: var(--paper); border: 3px solid var(--blossom); border-radius: 16px; box-shadow: var(--shadow); cursor: pointer; }
 .boon:hover { background: var(--paper2); transform: translateY(-3px); }
@@ -789,6 +793,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   #dztab { bottom: calc(168px + 128px * var(--ts) + var(--sb)); }
   body:has(#dztab) #hint { bottom: calc(222px + 128px * var(--ts) + var(--sb)); }
   #boons .col > .x { top: -10px; right: -4px; background: rgba(20, 31, 15, 0.55); }
+  /* (the gifts screen's draw-again and +1 gift buttons come down over the seed rows, which can't be used then) */
+  body:has(#boons.show) #seeds { visibility: hidden; }
 }
 </style>
 </head>
@@ -812,7 +818,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   <div id="toast" role="status" aria-live="polite"></div>
   <div id="dewgauge"><div id="dewbar" role="meter" aria-label="Dew bank" aria-valuemin="0" aria-valuenow="0"><i class="tick" style="--at: 0.3"></i><i class="tick" style="--at: 0.55"></i><i class="tick" style="--at: 0.8"></i><i class="fill"><i class="bub"></i><i class="bub"></i><i class="bub"></i></i><b class="luck"></b></div><div id="dew" role="status" aria-label="Dew 0"><svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 .6C4.4 3.4 1 7.2 1 10.6a5 5 0 0 0 10 0C11 7.2 7.6 3.4 6 .6z"/><path class="glint" d="M3.6 10.2a2.6 2.6 0 0 0 1.9 3.1"/></svg><b id="dewn">0</b></div></div>
   <button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button>
-  <div id="boons" class="veil"><div class="col"><h2>The garden offers a gift</h2><div id="boonrow"></div></div></div>
+  <div id="boons" class="veil"><div class="col"><h2>The garden offers a gift</h2><div id="boonrow"></div><div id="boonbuy"><button id="reroll" class="btn"></button><button id="morepick" class="btn"></button></div></div></div>
   <div id="over" class="veil dark"><div class="panel card"><h2>The Heart Tree sleeps</h2><div class="cscroll"><p id="overtxt"></p><div id="oversum" class="oversum"></div><div id="overboard" class="lboard" style="display:none"></div></div><button id="again" class="btn pink">Plant anew</button></div></div>
   <div class="help">drag pan · wheel zoom · Q/E turn · 1–5 seeds · space wave</div>
 </div>
@@ -4462,7 +4468,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // and what a ceiling above 32 checks against maxBufferSize (docs/decisions/2026-10-20-hero-density.md)
   const texelBytes = (f) => (/^(r8|stencil8)/.test(f) ? 1 : /^(rg8|r16|depth16)/.test(f) ? 2 : /^(rgba16|rg32)/.test(f) ? 8 : /^rgba32/.test(f) ? 16 : 4);
   const gpuTally = (device) => {
-    const M = (ME.gpuMem = { buf: 0, tex: 0, peak: 0, nBuf: 0, nTex: 0, maxBuf: 0, maxBufLabel: "" });
+    const M = (ME.gpuMem = { buf: 0, tex: 0, peak: 0, nBuf: 0, nTex: 0, maxBuf: 0, maxBufLabel: "", maxUp: 0, maxUpLabel: "", nUp: 0, upMs: 0, upSplit: 0 });
     const add = (k, n, d) => { M[k] += d; M[n] += Math.sign(d); M.peak = Math.max(M.peak, M.buf + M.tex); };
     const track = (o, k, n, s) => {
       add(k, n, s);
@@ -4486,6 +4492,34 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       }
       return track(ct(d), "tex", "nTex", s * (d.sampleCount || 1));
     };
+    // Every writeTexture goes up in pieces the browser can stage. Dawn copies each call into a staging buffer whose
+    // rows are padded to 256 bytes, and that buffer must fit maxBufferSize (256 MB by default): Mossheart at vs12
+    // with the graft models staged 264 MB. A piece is at most ME.TEX_WRITE_MAX of padded bytes, in z-slabs, else in
+    // rows of one layer, and is passed as a view of just its bytes (offset 0), so nothing past it is staged.
+    // M.maxUp: the largest padded size a caller asked for, and its texture's label (the headroom against the limit).
+    // M.nUp, M.upMs: the browser writeTexture calls and the ms spent in them; M.upSplit: the calls that went up in pieces.
+    const q = device.queue, wt0 = q.writeTexture.bind(q), wt = (...a) => { const t = performance.now(); wt0(...a); M.nUp++; M.upMs += performance.now() - t; };
+    q.writeTexture = (dst, data, lay, size) => {
+      if (data instanceof ArrayBuffer) data = new Uint8Array(data);
+      const w = size.width ?? size[0], h = size.height ?? size[1] ?? 1, n = size.depthOrArrayLayers ?? size[2] ?? 1;
+      const bpr = lay.bytesPerRow || 0, rpi = lay.rowsPerImage || h, row = Math.ceil(bpr / 256) * 256, up = row * (rpi * (n - 1) + h);
+      if (up > M.maxUp) { M.maxUp = up; M.maxUpLabel = dst.texture.label || ""; }
+      const o = dst.origin || [0, 0, 0], x = o.x ?? o[0] ?? 0, y = o.y ?? o[1] ?? 0, z = o.z ?? o[2] ?? 0, off = lay.offset || 0;
+      const cap = Math.max(row, Math.min(ME.TEX_WRITE_MAX, device.limits.maxBufferSize)); // a row goes up whole
+      if (up <= cap || !bpr || !ArrayBuffer.isView(data)) {
+        if (!ArrayBuffer.isView(data) || !bpr) return wt(dst, data, lay, size);
+        const len = Math.min(bpr * (rpi * (n - 1) + h), data.byteLength - off);
+        return wt(dst, new Uint8Array(data.buffer, data.byteOffset + off, Math.max(0, len)), { bytesPerRow: bpr, rowsPerImage: rpi }, [w, h, n]);
+      }
+      M.upSplit++;
+      if (n > 1) {
+        const dz = Math.max(1, Math.floor(cap / (row * rpi)));
+        for (let k = 0; k < n; k += dz) q.writeTexture({ ...dst, origin: [x, y, z + k] }, data, { offset: off + k * bpr * rpi, bytesPerRow: bpr, rowsPerImage: rpi }, [w, h, Math.min(dz, n - k)]);
+      } else {
+        const dy = Math.max(1, Math.floor(cap / row));
+        for (let k = 0; k < h; k += dy) q.writeTexture({ ...dst, origin: [x, y + k, z] }, data, { offset: off + k * bpr, bytesPerRow: bpr }, [w, Math.min(dy, h - k), 1]);
+      }
+    };
   };
 
   ME.initGPU = async function (canvas) {
@@ -4505,7 +4539,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // Above VS 24 the terrain's buffers outgrow the default limits (at 64 on the 14-tile jar: buffers up to
     // 1.15 GB against maxBufferSize 256 MB, a 221 MB solid-cell binding against 128 MB), so ask for what the
     // adapter allows. Set ME.VS before this. At 24 and below nothing changes; a phone has no room for 64.
-    if (ME.VS > 24)
+    // ?bigbuf=1 asks for them at every VS (the check of the other fix for the vs12 graft pool, without the render target).
+    if (ME.VS > 24 || ME.qn("bigbuf", 0))
       for (const k of ["maxBufferSize", "maxStorageBufferBindingSize"]) if (adapter.limits[k] > 0) requiredLimits[k] = adapter.limits[k];
     // compatibility rules: every G-buffer target shares one write mask, so all of them write the emissive
     if (compat) ME.GBUFFER.G = ME.GBUFFER.GV;
@@ -4554,15 +4589,20 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     return b;
   };
 
-  // 3D texture with optional extra mips, all supplied as typed arrays (x fastest, then y, then z). Each level goes
-  // up in z-slabs of at most ME.TEX_WRITE_MAX bytes (64 MB): one writeTexture of a 512 MB brick pool would make the
-  // browser stage all of it at once.
-  ME.TEX_WRITE_MAX = 64 << 20;
+  // 3D texture with optional extra mips, all supplied as typed arrays (x fastest, then y, then z). The device's
+  // writeTexture (gpuTally) sends each level up in pieces of at most ME.TEX_WRITE_MAX staged bytes (64 MB): one
+  // writeTexture of a 512 MB brick pool would make the browser stage all of it at once.
+  // ?texmax=KB lowers it, to force the split paths in a check (192 sends the vs12 brick pool up in row bands).
+  ME.TEX_WRITE_MAX = ME.qn("texmax", 65536) * 1024;
+  // A 3D level is one subresource, so the first piece makes Dawn zero the whole level first, and D3D12 zeroes a
+  // texture that cannot be a render target through one staging buffer of the level's size (264 MB for the vs12
+  // graft pool): a level over maxBufferSize is made a render target too, which Dawn clears without staging.
   ME.tex3d = function (device, label, format, dims, levels, bpp, usage = 0) {
+    if (!ME.qn("bigbuf", 0) && Math.ceil(dims[0] * bpp / 256) * 256 * dims[1] * dims[2] > device.limits.maxBufferSize) usage |= GPUTextureUsage.RENDER_ATTACHMENT;
     const t = device.createTexture({ label, format, dimension: "3d", size: dims, mipLevelCount: levels.length, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | usage });
     levels.forEach((data, mip) => {
-      const w = Math.max(1, dims[0] >> mip), h = Math.max(1, dims[1] >> mip), d = Math.max(1, dims[2] >> mip), layer = w * h * bpp, dz = Math.max(1, Math.floor(ME.TEX_WRITE_MAX / layer));
-      for (let z = 0; z < d; z += dz) device.queue.writeTexture({ texture: t, mipLevel: mip, origin: [0, 0, z] }, data, { offset: z * layer, bytesPerRow: w * bpp, rowsPerImage: h }, [w, h, Math.min(dz, d - z)]);
+      const w = Math.max(1, dims[0] >> mip), h = Math.max(1, dims[1] >> mip), d = Math.max(1, dims[2] >> mip);
+      device.queue.writeTexture({ texture: t, mipLevel: mip }, data, { bytesPerRow: w * bpp, rowsPerImage: h }, [w, h, d]);
     });
     return t;
   };
@@ -13549,7 +13589,8 @@ fn boxOf(V: Vox) -> Box {
     // clear day under a drizzle), ramped in from rain 0.02 to 0.08 (no step as a shower starts or ends), except
     // in a sun shower or a sun break (target()'s shower, or this.sun: a break in rain under 0.05 has no shower
     // flag). resolve() calls a front a sun shower only while its rain is 0.5 or less, so a hurt rain past 0.5
-    // can carry the shower flag without being one: harmless, the floor is then below the cloud it already has
+    // can carry the shower flag without being one: the floor stays off then, and resolve's own rule greys it,
+    // less than the floor would at Subtle (target() setting shower only while rain <= 0.5 would close it)
     // (one object, rewritten each call)
     scaled(L, Ll, gust) {
       const v = this.v, o = this.mixV || (this.mixV = {});
@@ -17476,7 +17517,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.74.0", name: "Mossheart", commit: "7260e31" };
+  G.VERSION = { v: "0.75.0", name: "Mossheart", commit: "1734a1c" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -18838,6 +18879,7 @@ function MA_DSP() {
   // dew the called wave's creatures carry, x the share of the running wave still to fight to the power
   // `pow`, so a call at once pays far more than one late in the wave (Game.earlyBonus; the sim tunes them)
   const EARLY_MAX = 3;
+  const PICKS_MAX = G.PICKS_MAX = 2; // (extra picks a run: Game.buyPick)
   G.EARLY = { pay: 2, pow: 1.5 };
 
   class Game {
@@ -18859,7 +18901,9 @@ function MA_DSP() {
       // spore clouds' next sting and the wildfire's next leap
       this.brambleT = 0; this.flyT = 0; this.pulseT = 0; this.flyK = 0; this.cloudT = 0; this.fireT = 0;
       // the gifts on offer while the phase is CHOOSE_BOON
-      this.offer = null;
+      // the gifts on offer while the phase is CHOOSE_BOON; whether this screen was drawn again (a reroll, once a
+      // screen) and whether a second pick from it is paid for (Game.buyPick)
+      this.offer = null; this.rerolled = false; this.extra = false;
       // the running wave's dew challenge (D.challengeFor, set when a wave starts from BUILD; its state "live",
       // "met" or "failed"), or null
       this.chal = null;
@@ -18869,7 +18913,9 @@ function MA_DSP() {
       // creatures that got through per kind (the last one is what the garden fell to), growths and uprootings
       // per plant, dew spent on plants, the most dew held, and the frames drawn in play (main.js, the mean fps)
       this.stats = { kills: {}, byElement: [0, 0, 0, 0], leaked: 0, planted: {}, grown: 0, uprooted: 0, dew: 0,
-        leakedBy: {}, lastLeak: "", grownBy: {}, soldBy: {}, spent: 0, peakDew: 0, frames: 0, frameT: 0 };
+        leakedBy: {}, lastLeak: "", grownBy: {}, soldBy: {}, spent: 0, peakDew: 0, frames: 0, frameT: 0,
+        // the dew sinks (rerolls and extra picks bought, the dew they took: Game.reroll, Game.buyPick)
+        rerolls: 0, picks: 0, sunk: 0 };
       const st = this.stats, add = (o, k) => { o[k] = (o[k] || 0) + 1; };
       this.unsub = [
         G.on("leaked", (e) => { this.chalFail("untouched"); this.heartShock = Math.min(0.5, this.heartShock + 0.25); st.leaked++; add(st.leakedBy, e.kind); st.lastLeak = e.kind; }),
@@ -18878,6 +18924,8 @@ function MA_DSP() {
         G.on("tower_upgraded", (e) => { add(st.grownBy, e.kind); if (S.phase === G.Phase.WAVE && !e.free) this.chalFail("handsoff"); }),
         G.on("tower_sold", (e) => add(st.soldBy, e.tower.kind)),
         G.on("dew", () => { if (S.dew > st.peakDew) st.peakDew = S.dew; }),
+        // (a dew sink bought while a wave runs is a hand on the garden too)
+        G.on("sunk", () => { if (S.phase === G.Phase.WAVE) this.chalFail("handsoff"); }),
       ];
     }
     // a new run replaces this game: drop its event handlers
@@ -19036,9 +19084,17 @@ function MA_DSP() {
     // Puffcap's burst count (its sleep), a Ghost Lily's beams (the creature held, the heat)
     restPlants() { for (const t of this.towers) { t.beams = 0; t.cloudT = 0; t.bursts = 0; for (const r of t.rays) { r.t = -1; r.uid = -1; r.hold = 0; } } }
     chooseBoon(b) {
+      const rest = this.offer ? this.offer.filter((o) => o !== b) : [];
       const lv = S.applyBoon(b); this.offer = null;
       const cleanse = lv > 0 && b.levels[lv - 1].cleanse;
       if (cleanse) this.blight.cleanse(cleanse);
+      // (a second pick paid for: the same screen again, less the gift taken)
+      if (this.extra && rest.length) {
+        this.extra = false; this.offer = rest;
+        G.emit("offer"); G.emit("boons_offered", { boons: rest, again: true });
+        return;
+      }
+      this.extra = false;
       // (a wave called early is owed its own draft: the next one follows at once)
       if (this.owed > 0) { this.owed--; this.offerBoons(); return; }
       S.setPhase(G.Phase.BUILD);
@@ -19076,9 +19132,42 @@ function MA_DSP() {
     // (the offer is drawn before the phase changes, so a save taken on the phase change carries it; a chained
     // draft stays in CHOOSE_BOON, and an "offer" event has the save written then)
     offerBoons() {
-      this.offer = S.rollBoons(3);
+      this.offer = S.rollBoons(3); this.rerolled = false; this.extra = false;
       if (S.phase === G.Phase.CHOOSE_BOON) G.emit("offer"); else S.setPhase(G.Phase.CHOOSE_BOON);
       G.emit("boons_offered", { boons: this.offer });
+    }
+    // The dew sinks on the gifts screen (docs/designs/2026-11-05-dew-sinks-and-upgrades.md, Prices): a reroll
+    // draws the three again, once a screen, at the luck of the band the price leaves (S.rollBoons reads the
+    // bar, from the run's own rng, so a save and a replay draw the same); an extra pick takes a second gift
+    // from the screen, twice a run, the second half again dearer. Both priced by the wave just cleared. Each
+    // returns whether it was bought, and "sunk" goes out ({ kind, cost }).
+    rerollCost() { return 20 + 10 * S.wave; }
+    pickCost() { return Math.round((100 + 20 * S.wave) * Math.pow(1.5, this.stats.picks)); }
+    // why it can't be bought now, for the button (the HUD shows it on it), or "" if it can
+    rerollBlocked() {
+      if (S.phase !== G.Phase.CHOOSE_BOON || !this.offer) return "No gifts on offer";
+      if (this.rerolled) return "Drawn again already";
+      return S.dew < this.rerollCost() ? "Not enough dew" : "";
+    }
+    pickBlocked() {
+      if (S.phase !== G.Phase.CHOOSE_BOON || !this.offer || this.offer.length < 2) return "No gifts on offer";
+      if (this.extra) return "Bought: pick two";
+      if (this.stats.picks >= PICKS_MAX) return `${PICKS_MAX} extra gifts a run`;
+      return S.dew < this.pickCost() ? "Not enough dew" : "";
+    }
+    sink(kind, cost) { S.spend(cost); this.stats.sunk += cost; G.emit("sunk", { kind, cost }); }
+    reroll() {
+      if (this.rerollBlocked()) return false;
+      this.sink("reroll", this.rerollCost()); this.stats.rerolls++;
+      this.offer = S.rollBoons(3); this.rerolled = true; // (a pick paid for stays paid)
+      G.emit("offer"); G.emit("boons_offered", { boons: this.offer, again: true });
+      return true;
+    }
+    buyPick() {
+      if (this.pickBlocked()) return false;
+      this.sink("pick", this.pickCost()); this.stats.picks++; this.extra = true;
+      G.emit("offer"); G.emit("boons_offered", { boons: this.offer, again: true });
+      return true;
     }
 
     update(dt) {
@@ -19277,6 +19366,8 @@ function MA_DSP() {
         phase: S.phase, offer: S.phase === P.CHOOSE_BOON && game.offer ? game.offer.map((o) => o.id) : null,
         // (the drafts still owed after this one, for waves called early: Game.owed)
         owed: S.phase === P.CHOOSE_BOON ? game.owed : 0,
+        // (and on the screen: drawn again already, a second pick paid for: Game.reroll, Game.buyPick)
+        sink: S.phase === P.CHOOSE_BOON ? [game.rerolled, game.extra] : null,
         towers: game.towers.map((t) => [t.kind, t.cx, t.cy, t.level, t.invested]),
         blight: { level: b64(quantise(b.level)), scar: b64(quantise(b.scar)) },
         stats: JSON.parse(JSON.stringify(game.stats)), time: +game.time.toFixed(2),
@@ -19342,7 +19433,7 @@ function MA_DSP() {
         G.emit("dew"); G.emit("heart"); G.emit("wave"); G.emit("mods");
         const offer = d.phase === P.CHOOSE_BOON && d.offer ? d.offer.map(D.boon).filter(Boolean) : null;
         if (offer && offer.length) {
-          game.offer = offer; game.owed = d.owed || 0;
+          game.offer = offer; game.owed = d.owed || 0; [game.rerolled, game.extra] = (d.sink || [false, false]).map(Boolean);
           S.setPhase(P.CHOOSE_BOON);
           G.emit("boons_offered", { boons: offer });
         } else S.setPhase(P.BUILD);
@@ -22963,6 +23054,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         this.arm(null); this.act.sell();
       });
       $("again").addEventListener("click", () => this.act.restart());
+      // (the gifts screen redraws on the game's boons_offered after each: main.js)
+      $("reroll").addEventListener("click", () => this.game.reroll());
+      $("morepick").addEventListener("click", () => this.game.buyPick());
       // the dew bank: a gain (State.gained, just before its "dew") pulses it, more as it comes faster, and the
       // number counts up; it glows while dew comes fast (data-hot: the rate's tier in DEW_HOT)
       this.dewShown = S.dew; this.dewGain = false; this.dewRaf = 0; this.pulseAt = 0; this.sprayAt = 0;
@@ -23127,7 +23221,23 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         el.addEventListener("click", () => { $("boons").classList.remove("show"); choose(b); });
         row.appendChild(el);
       });
+      this.boonBuy();
       G.Dismiss.untab(); $("boons").classList.add("show");
+    }
+    // Under the cards, the gifts screen's dew sinks (Game.reroll, Game.buyPick): each a stone button with its
+    // price, greyed with the reason when it can't be bought; the title says when two may be taken
+    boonBuy() {
+      const g = this.game, rb = g.rerollBlocked(), pb = g.pickBlocked();
+      $("boons").querySelector("h2").textContent = g.extra ? "Take two gifts" : "The garden offers a gift";
+      const set = (id, text, cost, why) => {
+        const b = $(id);
+        b.disabled = !!why;
+        b.innerHTML = `${text} <small>${why && why !== "Not enough dew" ? esc(why) : `${fmtDew(cost)} dew`}</small>`;
+        b.classList.toggle("poor", why === "Not enough dew");
+      };
+      set("reroll", "↻ Draw again", g.rerollCost(), rb);
+      set("morepick", "+1 gift", g.pickCost(), pb);
+      $("morepick").style.display = g.extra || g.stats.picks < G.PICKS_MAX ? "" : "none";
     }
     showGameOver(wave, best) {
       $("overtxt").innerHTML = `You tended the meadow for ${wave} waves.<br>Longest bloom: ${best}`;
@@ -27489,7 +27599,8 @@ function MG_SFX(L) {
    It plays through the rules alone, so the same bot drives the full game (main.js) and the rules-only
    balance sim (tools/sim.html). With hooks.early (0-1) it also calls the next wave early (Game.callEarly)
    once what is left of the running one falls to that share (1: as soon as it may). Everything else comes through hooks: { maxWaves, early, now(), log(line),
-   deselect(), hideBoons(), setSpeed(x), finish(report) }. */
+   deselect(), hideBoons(), setSpeed(x), finish(report), sinks }. With hooks.sinks it also spends dew on the gifts
+   screen (Game.reroll, Game.buyPick: Bot.sinks). */
 (function () {
   const G = window.MG, D = G.Defs, S = G.state;
 
@@ -27509,10 +27620,20 @@ function MG_SFX(L) {
     }
     dispose() { for (const u of this.unsub) u(); }
 
+    // the gifts screen's sinks: draw again when no card helps (best score under 1), else buy a second gift,
+    // each only while it leaves dew to build with; true when it spent (the offer comes again: boons_offered)
+    sinks() {
+      const g = this.game, best = Math.max(...this.boons.map((b) => score(b, g.towers)));
+      if (best < 1 && !g.rerollBlocked() && S.dew - g.rerollCost() >= 50) { this.hooks.log(`  drew again for ${g.rerollCost()} dew`); return g.reroll(); }
+      if (!g.pickBlocked() && S.dew - g.pickCost() >= 100) { this.hooks.log(`  bought a second gift for ${g.pickCost()} dew`); return g.buyPick(); }
+      return false;
+    }
+
     update(rdt) {
       if (this.done) return;
       this.simT += rdt;
       if (this.boons && (this.boonAt -= rdt) <= 0) {
+        if (this.hooks.sinks && this.sinks()) return;
         const b = pickBoon(this.boons, this.game.towers); this.boons = null;
         this.hooks.hideBoons();
         this.hooks.log(`  boon: ${b.name}`);
@@ -27619,15 +27740,15 @@ function MG_SFX(L) {
   // The gift it takes: a fused boon, else a card that unlocks one, else one that leaves a fusion a single
   // step away, else the first that helps a plant it has sown (or all of them, the garden or the heart),
   // else the first card (as a player chasing the recipes on the cards, and feeding the plants they grow, would)
+  const score = (b, towers) => {
+    if (b.needs) return 100;
+    let s = 0;
+    for (const f of D.fusionsWith(b.id)) if (S.fits(f) && !S.boonLevel(f.id)) { const m = S.fusionMissing(f, b.id).length; s = Math.max(s, m === 0 ? 50 : m === 1 ? 10 : 0); }
+    return s + (D.TOWERS[b.el] && !towers.some((t) => t.kind === b.el) ? 0 : 1);
+  };
   const pickBoon = (boons, towers) => {
-    const score = (b) => {
-      if (b.needs) return 100;
-      let s = 0;
-      for (const f of D.fusionsWith(b.id)) if (S.fits(f) && !S.boonLevel(f.id)) { const m = S.fusionMissing(f, b.id).length; s = Math.max(s, m === 0 ? 50 : m === 1 ? 10 : 0); }
-      return s + (D.TOWERS[b.el] && !towers.some((t) => t.kind === b.el) ? 0 : 1);
-    };
     let best = boons[0];
-    for (const b of boons) if (score(b) > score(best)) best = b;
+    for (const b of boons) if (score(b, towers) > score(best, towers)) best = b;
     return best;
   };
   // average damage multiplier a plant gets against a wave, weighted by the vitality each kind brings
