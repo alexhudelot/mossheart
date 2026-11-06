@@ -40,12 +40,16 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #sound:not(.on) { opacity: 0.55; }
 #sky { position: fixed; z-index: 2; right: 12px; top: 68px; width: min(420px, calc(100vw - 24px)); padding: 10px 12px; display: none; flex-direction: column; gap: 8px; }
 #sky.show { display: flex; }
-/* the lighting and camera panel (main.js), top left, and the quick views over the buttons in locked and dynamic */
+/* the lighting and camera panel (main.js), top left, and the camera row over the buttons: guided its turns and
+   preset, locked and dynamic their quick views, and always the guided / free toggle */
 #lcorner { position: absolute; top: max(10px, env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left)); display: flex; gap: 6px; }
 #view { position: fixed; z-index: 2; left: 12px; top: 68px; width: min(380px, calc(100vw - 24px)); padding: 10px 12px; display: none; flex-direction: column; gap: 8px; }
 #view.show { display: flex; }
-#views { position: absolute; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 48px); left: 50%; transform: translateX(-50%); display: none; flex-wrap: nowrap; }
-#views.show { display: flex; }
+#views { position: absolute; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 48px); left: 50%; transform: translateX(-50%); display: flex; flex-wrap: nowrap; max-width: calc(100vw - 12px); }
+#views > span { display: none; gap: 6px; }
+#views[data-m="guided"] > .g, #views[data-m="locked"] > .q, #views[data-m="dynamic"] > .q { display: flex; }
+#views [data-g="left"], #views [data-g="right"] { font-size: 18px; line-height: 1; }
+#views #g-pre { min-width: 60px; }
 #views button:not(.btn) { min-width: 44px; min-height: 36px; background: rgba(14, 16, 14, 0.8); }
 #sky .skyrow, #view .skyrow { display: flex; flex-direction: column; gap: 4px; }
 #sky .skyrow > b, #view .skyrow > b { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; }
@@ -103,7 +107,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
   <div id="top" class="panel"><span id="where"></span><span id="turn"></span><span id="fps"></span></div>
   <div id="moves" class="panel"></div>
   <div id="tag" class="panel"></div>
-  <div id="views" class="seg"><button data-v="top" title="from above">Top</button><button data-v="side" title="low, from your side">Side</button><button data-v="follow" title="behind the last move">Follow</button><button data-v="reset" title="back to the whole board">⟲</button></div>
+  <div id="views" class="seg"><span class="g"><button data-g="left" title="turn the board a quarter left (Q)">⟲</button><button data-g="cycle" id="g-pre" title="the next view: your side, top, low">Side</button><button data-g="right" title="turn the board a quarter right (E)">⟳</button></span><span class="q"><button data-v="top" title="from above">Top</button><button data-v="side" title="low, from your side">Side</button><button data-v="follow" title="behind the last move">Follow</button><button data-v="reset" title="back to the whole board">⌂</button></span><button data-g="mode" id="g-mode" title="guided or free camera">Free</button></div>
   <div id="bottom">
     <button id="b-undo" class="btn">Undo</button>
     <button id="b-new" class="btn">New game</button>
@@ -3757,7 +3761,7 @@ window.addEventListener("error", (e) => {
   // and what a ceiling above 32 checks against maxBufferSize (docs/decisions/2026-10-20-hero-density.md)
   const texelBytes = (f) => (/^(r8|stencil8)/.test(f) ? 1 : /^(rg8|r16|depth16)/.test(f) ? 2 : /^(rgba16|rg32)/.test(f) ? 8 : /^rgba32/.test(f) ? 16 : 4);
   const gpuTally = (device) => {
-    const M = (ME.gpuMem = { buf: 0, tex: 0, peak: 0, nBuf: 0, nTex: 0, maxBuf: 0, maxBufLabel: "" });
+    const M = (ME.gpuMem = { buf: 0, tex: 0, peak: 0, nBuf: 0, nTex: 0, maxBuf: 0, maxBufLabel: "", maxUp: 0, maxUpLabel: "", nUp: 0, upMs: 0, upSplit: 0 });
     const add = (k, n, d) => { M[k] += d; M[n] += Math.sign(d); M.peak = Math.max(M.peak, M.buf + M.tex); };
     const track = (o, k, n, s) => {
       add(k, n, s);
@@ -3781,6 +3785,34 @@ window.addEventListener("error", (e) => {
       }
       return track(ct(d), "tex", "nTex", s * (d.sampleCount || 1));
     };
+    // Every writeTexture goes up in pieces the browser can stage. Dawn copies each call into a staging buffer whose
+    // rows are padded to 256 bytes, and that buffer must fit maxBufferSize (256 MB by default): Mossheart at vs12
+    // with the graft models staged 264 MB. A piece is at most ME.TEX_WRITE_MAX of padded bytes, in z-slabs, else in
+    // rows of one layer, and is passed as a view of just its bytes (offset 0), so nothing past it is staged.
+    // M.maxUp: the largest padded size a caller asked for, and its texture's label (the headroom against the limit).
+    // M.nUp, M.upMs: the browser writeTexture calls and the ms spent in them; M.upSplit: the calls that went up in pieces.
+    const q = device.queue, wt0 = q.writeTexture.bind(q), wt = (...a) => { const t = performance.now(); wt0(...a); M.nUp++; M.upMs += performance.now() - t; };
+    q.writeTexture = (dst, data, lay, size) => {
+      if (data instanceof ArrayBuffer) data = new Uint8Array(data);
+      const w = size.width ?? size[0], h = size.height ?? size[1] ?? 1, n = size.depthOrArrayLayers ?? size[2] ?? 1;
+      const bpr = lay.bytesPerRow || 0, rpi = lay.rowsPerImage || h, row = Math.ceil(bpr / 256) * 256, up = row * (rpi * (n - 1) + h);
+      if (up > M.maxUp) { M.maxUp = up; M.maxUpLabel = dst.texture.label || ""; }
+      const o = dst.origin || [0, 0, 0], x = o.x ?? o[0] ?? 0, y = o.y ?? o[1] ?? 0, z = o.z ?? o[2] ?? 0, off = lay.offset || 0;
+      const cap = Math.max(row, Math.min(ME.TEX_WRITE_MAX, device.limits.maxBufferSize)); // a row goes up whole
+      if (up <= cap || !bpr || !ArrayBuffer.isView(data)) {
+        if (!ArrayBuffer.isView(data) || !bpr) return wt(dst, data, lay, size);
+        const len = Math.min(bpr * (rpi * (n - 1) + h), data.byteLength - off);
+        return wt(dst, new Uint8Array(data.buffer, data.byteOffset + off, Math.max(0, len)), { bytesPerRow: bpr, rowsPerImage: rpi }, [w, h, n]);
+      }
+      M.upSplit++;
+      if (n > 1) {
+        const dz = Math.max(1, Math.floor(cap / (row * rpi)));
+        for (let k = 0; k < n; k += dz) q.writeTexture({ ...dst, origin: [x, y, z + k] }, data, { offset: off + k * bpr * rpi, bytesPerRow: bpr, rowsPerImage: rpi }, [w, h, Math.min(dz, n - k)]);
+      } else {
+        const dy = Math.max(1, Math.floor(cap / row));
+        for (let k = 0; k < h; k += dy) q.writeTexture({ ...dst, origin: [x, y + k, z] }, data, { offset: off + k * bpr, bytesPerRow: bpr }, [w, Math.min(dy, h - k), 1]);
+      }
+    };
   };
 
   ME.initGPU = async function (canvas) {
@@ -3800,7 +3832,8 @@ window.addEventListener("error", (e) => {
     // Above VS 24 the terrain's buffers outgrow the default limits (at 64 on the 14-tile jar: buffers up to
     // 1.15 GB against maxBufferSize 256 MB, a 221 MB solid-cell binding against 128 MB), so ask for what the
     // adapter allows. Set ME.VS before this. At 24 and below nothing changes; a phone has no room for 64.
-    if (ME.VS > 24)
+    // ?bigbuf=1 asks for them at every VS (the check of the other fix for the vs12 graft pool, without the render target).
+    if (ME.VS > 24 || ME.qn("bigbuf", 0))
       for (const k of ["maxBufferSize", "maxStorageBufferBindingSize"]) if (adapter.limits[k] > 0) requiredLimits[k] = adapter.limits[k];
     // compatibility rules: every G-buffer target shares one write mask, so all of them write the emissive
     if (compat) ME.GBUFFER.G = ME.GBUFFER.GV;
@@ -3849,15 +3882,20 @@ window.addEventListener("error", (e) => {
     return b;
   };
 
-  // 3D texture with optional extra mips, all supplied as typed arrays (x fastest, then y, then z). Each level goes
-  // up in z-slabs of at most ME.TEX_WRITE_MAX bytes (64 MB): one writeTexture of a 512 MB brick pool would make the
-  // browser stage all of it at once.
-  ME.TEX_WRITE_MAX = 64 << 20;
+  // 3D texture with optional extra mips, all supplied as typed arrays (x fastest, then y, then z). The device's
+  // writeTexture (gpuTally) sends each level up in pieces of at most ME.TEX_WRITE_MAX staged bytes (64 MB): one
+  // writeTexture of a 512 MB brick pool would make the browser stage all of it at once.
+  // ?texmax=KB lowers it, to force the split paths in a check (192 sends the vs12 brick pool up in row bands).
+  ME.TEX_WRITE_MAX = ME.qn("texmax", 65536) * 1024;
+  // A 3D level is one subresource, so the first piece makes Dawn zero the whole level first, and D3D12 zeroes a
+  // texture that cannot be a render target through one staging buffer of the level's size (264 MB for the vs12
+  // graft pool): a level over maxBufferSize is made a render target too, which Dawn clears without staging.
   ME.tex3d = function (device, label, format, dims, levels, bpp, usage = 0) {
+    if (!ME.qn("bigbuf", 0) && Math.ceil(dims[0] * bpp / 256) * 256 * dims[1] * dims[2] > device.limits.maxBufferSize) usage |= GPUTextureUsage.RENDER_ATTACHMENT;
     const t = device.createTexture({ label, format, dimension: "3d", size: dims, mipLevelCount: levels.length, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | usage });
     levels.forEach((data, mip) => {
-      const w = Math.max(1, dims[0] >> mip), h = Math.max(1, dims[1] >> mip), d = Math.max(1, dims[2] >> mip), layer = w * h * bpp, dz = Math.max(1, Math.floor(ME.TEX_WRITE_MAX / layer));
-      for (let z = 0; z < d; z += dz) device.queue.writeTexture({ texture: t, mipLevel: mip, origin: [0, 0, z] }, data, { offset: z * layer, bytesPerRow: w * bpp, rowsPerImage: h }, [w, h, Math.min(dz, d - z)]);
+      const w = Math.max(1, dims[0] >> mip), h = Math.max(1, dims[1] >> mip), d = Math.max(1, dims[2] >> mip);
+      device.queue.writeTexture({ texture: t, mipLevel: mip }, data, { bytesPerRow: w * bpp, rowsPerImage: h }, [w, h, d]);
     });
     return t;
   };
@@ -17926,7 +17964,8 @@ function MG_SFX(L) {
     // clear day under a drizzle), ramped in from rain 0.02 to 0.08 (no step as a shower starts or ends), except
     // in a sun shower or a sun break (target()'s shower, or this.sun: a break in rain under 0.05 has no shower
     // flag). resolve() calls a front a sun shower only while its rain is 0.5 or less, so a hurt rain past 0.5
-    // can carry the shower flag without being one: harmless, the floor is then below the cloud it already has
+    // can carry the shower flag without being one: the floor stays off then, and resolve's own rule greys it,
+    // less than the floor would at Subtle (target() setting shower only while rain <= 0.5 would close it)
     // (one object, rewritten each call)
     scaled(L, Ll, gust) {
       const v = this.v, o = this.mixV || (this.mixV = {});
@@ -19057,13 +19096,19 @@ function MG_SFX(L) {
      cam.fitTo(min, max, w, h, dy, th)  the board box and the canvas rows it fits in (dy: their offset from the
                                         canvas's middle, canvas px; th: home's turn, else kept): sets home, the
                                         zoom range and the pan clamp; cam.goHome() jumps there
-     cam.setMode(m)                     "free" (drag turns and tilts), "locked" (the quarter views at home's tilt:
-                                        a sideways swipe or Q, E turns a quarter) or "dynamic" (free, and event()
-                                        eases to a shot of the board's action, then back home)
+     cam.setMode(m)                     "guided" (the default: a preset at a quarter view, framed whole; a sideways
+                                        swipe, Q, E or rotate() turns a quarter, and event() makes a short, gentle
+                                        move with the game, then back), "free" (drag turns and tilts), "locked"
+                                        (the quarter views at home's tilt) or "dynamic" (free, and event() eases
+                                        to a closer shot of the board's action, then back home)
+     cam.rotate(dir), cam.preset(name)  guided: a quarter turn (dir -1, 1); "player" (60 degrees), "top" or "low"
+     cam.cycle()                        guided: the next preset (player, top, low)
+     cam.calm, cam.hold                 guided: no gameplay moves (reduced motion); none, and no return, for now
+                                        (the app: the player has a piece selected)
      cam.view(name, o)                  "top", "side" (the player's), "follow" (o.at, o.from: behind a move) or
                                         "reset" (home), eased
-     cam.event(kind, o)                 in dynamic: "move" (o.at, o.from), "capture", "check" (o.at the king),
-                                        "over"
+     cam.event(kind, o)                 in guided and dynamic: "move" (o.at, o.from; guided: only o.long, a long
+                                        slide or a knight's hop), "capture", "check" (o.at the king), "over"
    The view's centre (on the board's plane) stays on the board, and zoomed out below the fit it is drawn back
    to home's, all of it at the zoom floor: panning and zooming at an edge can no longer lose the board.
    In the rotated frame (X', Y': the world turned by theta about the centre, the camera towards +Y'):
@@ -19087,13 +19132,21 @@ function MG_SFX(L) {
   // home (0: stays), how far towards the action the centre goes
   const SHOTS = { move: { el: null, z: 1.12, hold: 1.4, pull: 0.35 }, capture: { el: 30, z: 1.7, hold: 2.4, pull: 1 },
     check: { el: 40, z: 1.45, hold: 2.2, pull: 1 }, over: { el: 28, z: 1.6, hold: 0, pull: 1 } };
+  // guided: the presets' tilts (degrees), and its gentle moves: zoom on the preset's fit, how far towards the
+  // action the centre goes, the ease (s), the hold before the preset again (0: stays), the turn towards the
+  // action at most and the tilt's change (degrees)
+  const PRESETS = { player: 60, top: 85, low: 26 }, ORDER = ["player", "top", "low"];
+  const NUDGES = { move: { z: 1.05, pull: 0.22, s: 0.6, hold: 0.9, turn: 0, tilt: 0 },
+    capture: { z: 1.1, pull: 0.3, s: 0.6, hold: 1.1, turn: 0, tilt: 0 },
+    check: { z: 1.08, pull: 0.3, s: 0.7, hold: 1.4, turn: 18, tilt: -6 },
+    over: { z: 0.9, pull: 0, s: 1.6, hold: 0, turn: 0, tilt: 6 } };
 
   class BoardCamera extends ME.Camera {
     constructor(cx, cy, elev = ISO) {
       super(cx, cy);
       this.bound = { r: 8, z0: 0, z1: 2 };
       this.vth = 0; this.vel = 0; this.drag = false; this.dragPx = 0; this.last = null;
-      this.mode = "free"; this.home = null; this.fit = null; this.backAt = 0; this.shot = null;
+      this.mode = "free"; this.pre = "player"; this.gth = null; this.calm = false; this.hold = false; this.home = null; this.fit = null; this.backAt = 0; this.shot = null;
       this.look(Math.PI / 4, ((elev || ISO) * Math.PI) / 180);
     }
     get turning() { return true; }
@@ -19151,7 +19204,7 @@ function MG_SFX(L) {
         if (F.z1 !== null) this.zoom = F.z0 + (F.z1 - F.z0) * e;
         if (u >= 1) this.foc = null;
       }
-      if (this.backAt && now >= this.backAt && !this.drag) this.view("reset");
+      if (this.backAt && now >= this.backAt && !this.drag && !this.hold) this.view("reset");
       this.clamp();
     }
     get pz() { return this.pivotZ ?? this.bound.z0; }
@@ -19188,15 +19241,28 @@ function MG_SFX(L) {
       const H = this.frameAt(th, el);
       H.box = [min[0], min[1], max[0], max[1]];
       this.home = H;
+      if (theta != null || this.gth == null) this.gth = quarter(H.theta);
       this.minZoom = H.zoom * 0.45; this.maxZoom = H.zoom * 4;
     }
     // jump to home (a new game)
-    goHome() { const H = this.home; this.foc = null; this.backAt = 0; this.shot = null; this.look(H.theta, H.elev); this.zoom = H.zoom; this.pan = this.panOf(H.W); }
+    goHome() {
+      const H = this.mode === "guided" ? this.guide() : this.home;
+      this.foc = null; this.backAt = 0; this.shot = null; this.look(H.theta, H.elev); this.zoom = H.zoom; this.pan = this.panOf(H.W);
+    }
     setMode(m) {
-      this.mode = m === "locked" || m === "dynamic" ? m : "free";
+      this.mode = ["guided", "locked", "dynamic"].includes(m) ? m : "free";
       this.backAt = 0; this.shot = null;
       if (this.mode === "locked" && this.home) { this.vth = this.vel = 0; this.thT = quarter(this.thT); this.elT = this.home.elev; }
+      if (this.mode === "guided" && this.home) { this.gth = quarter(this.thT); this.view("reset"); }
     }
+    // guided: the preset's view, framed whole at its quarter turn
+    guide() { return this.frameAt(this.gth ?? this.home.theta, deg(PRESETS[this.pre])); }
+    rotate(dir) { if (this.mode !== "guided" || !this.home) return; this.gth += dir * Q; this.view("reset"); }
+    preset(name) { if (!PRESETS[name]) return; this.pre = name; if (this.mode === "guided" && this.home) this.view("reset"); }
+    cycle() { this.preset(ORDER[(ORDER.indexOf(this.pre) + 1) % ORDER.length]); return this.pre; }
+    // a swipe or Q, E: guided turns its preset, the others a plain quarter turn
+    turn(dir) { if (this.mode === "guided") this.rotate(dir); else this.snap(dir); }
+    get stepped() { return this.mode === "locked" || this.mode === "guided"; }
     // ease the angles to theta (the nearest way round), elev
     aim(theta, elev) { this.vth = this.vel = 0; this.thT = this.theta + wrap(theta - this.theta); this.elT = clampEl(elev); }
     // the angle looking along a move's line (from -> at; one coming at the player is looked along backwards),
@@ -19217,7 +19283,13 @@ function MG_SFX(L) {
       if (!H) return;
       this.backAt = 0; this.shot = null;
       const lock = this.mode === "locked", s = o.s ?? 0.7;
-      if (name === "top") {
+      if (this.mode === "guided" && name !== "follow") {
+        // a quick view picks the preset (side: the low one); reset is the preset as it is
+        const p = name === "side" ? "low" : name;
+        if (PRESETS[p]) this.pre = p;
+        const f = this.guide();
+        this.aim(f.theta, f.elev); this.focus(f.W, { s, zoom: f.zoom });
+      } else if (name === "top") {
         const th = lock ? quarter(this.thT) : this.thT, f = this.frameAt(th, EL1);
         this.aim(th, EL1); this.focus(f.W, { s, zoom: f.zoom });
       } else if (name === "side") {
@@ -19233,6 +19305,7 @@ function MG_SFX(L) {
     }
     // the board's action, in dynamic mode: a shot of it, then home after its hold (a press takes it over)
     event(kind, o = {}) {
+      if (this.mode === "guided") return this.nudge(kind, o);
       const S = SHOTS[kind];
       if (this.mode !== "dynamic" || !S || !this.home || this.drag || !o.at) return false;
       // a move's nudge never cuts a bigger shot short
@@ -19242,6 +19315,26 @@ function MG_SFX(L) {
       const at = H.W.map((v, i) => v + ((o.at[i] ?? v) - v) * S.pull);
       this.aim(th, el); this.focus(at, { s: kind === "move" ? 0.8 : 0.9, zoom: f.zoom * S.z });
       this.shot = kind; this.backAt = S.hold ? (this.last ?? 0) + (S.hold + 0.9) * 1000 : 0;
+      return true;
+    }
+    // guided: a short, gentle move with the game (none with reduced motion, while dragging or with a piece
+    // selected; a plain move only when it is long), then the preset again after its hold
+    nudge(kind, o) {
+      const N = NUDGES[kind];
+      if (!N || this.calm || this.hold || this.drag || !this.home || !o.at || (kind === "move" && !o.long)) return false;
+      if (kind === "move" && this.shot && this.shot !== "move" && this.backAt) return false;
+      const P = this.guide();
+      let th = P.theta;
+      if (N.turn) {
+        // towards the action: looking from the board's middle at it, never more than N.turn round
+        let d = wrap(Math.atan2(-(o.at[0] - P.W[0]), -(o.at[1] - P.W[1])) - th);
+        if (Math.abs(d) > Math.PI / 2) d = wrap(d + Math.PI);
+        th += Math.max(-deg(N.turn), Math.min(deg(N.turn), d));
+      }
+      const el = clampEl(P.elev + deg(N.tilt)), f = this.frameAt(th, el);
+      const at = f.W.map((v, i) => v + ((o.at[i] ?? v) - v) * N.pull);
+      this.aim(th, el); this.focus(at, { s: N.s, zoom: f.zoom * N.z });
+      this.shot = kind; this.backAt = N.hold ? (this.last ?? 0) + (N.s + N.hold) * 1000 : 0;
       return true;
     }
     // the angles still moving (an ease, a flick) or a focus on the way
@@ -19297,7 +19390,7 @@ function MG_SFX(L) {
         if (!ptrs.size) { this.dragPx = 0; mode = e.button === 2 || e.button === 1 || e.shiftKey ? "pan" : "turn"; }
         ptrs.set(e.pointerId, px(e)); pinch = null; sw = [0, 0];
         this.drag = true; this.vth = this.vel = 0; tMove = performance.now();
-        this.backAt = 0; // the player takes a dynamic shot over
+        if (this.mode !== "guided") this.backAt = 0; // the player takes a dynamic shot over (guided still goes back)
       });
       el.addEventListener("pointermove", (e) => {
         if (!ptrs.has(e.pointerId)) return;
@@ -19306,7 +19399,7 @@ function MG_SFX(L) {
         this.dragPx += Math.hypot(dx, dy);
         this.foc = null; // the player takes the camera back
         if (ptrs.size === 1 && mode === "pan") { this.pan[0] -= dx / this.zoom; this.pan[1] -= dy / this.zoom; }
-        else if (ptrs.size === 1 && mode === "turn" && this.mode === "locked") { sw[0] += dx; sw[1] += dy; }
+        else if (ptrs.size === 1 && mode === "turn" && this.stepped) { sw[0] += dx; sw[1] += dy; }
         else if (ptrs.size === 1 && mode === "turn") {
           const k = rate(), now = performance.now(), dt = Math.max(8, now - tMove) / 1000;
           this.thT -= dx * k; this.elT = clampEl(this.elT + dy * k * 0.6);
@@ -19329,7 +19422,7 @@ function MG_SFX(L) {
         pinch = null;
         if (ptrs.size) return;
         this.drag = false;
-        if (mode === "turn" && this.mode === "locked" && Math.abs(sw[0]) > SWIPE && Math.abs(sw[0]) > 1.5 * Math.abs(sw[1])) this.snap(sw[0] > 0 ? -1 : 1);
+        if (mode === "turn" && this.stepped && Math.abs(sw[0]) > SWIPE && Math.abs(sw[0]) > 1.5 * Math.abs(sw[1])) this.turn(sw[0] > 0 ? -1 : 1);
         // a flick carries on only if the finger was still moving when it lifted
         if (mode !== "turn" || performance.now() - tMove > 80) this.vth = this.vel = 0;
         else { this.vth = Math.max(-6, Math.min(6, this.vth)); this.vel = Math.max(-3, Math.min(3, this.vel)); }
@@ -19339,8 +19432,8 @@ function MG_SFX(L) {
       el.addEventListener("wheel", (e) => { e.preventDefault(); this.foc = null; this.zoomAt(px(e), Math.pow(1.0015, -e.deltaY), el); onChange && onChange(); }, { passive: false });
       window.addEventListener("keydown", (e) => {
         // by position (ME.keys): the A and E keys on AZERTY
-        if (ME.keys.is(e, "KeyQ")) this.snap(-1);
-        if (ME.keys.is(e, "KeyE")) this.snap(1);
+        if (ME.keys.is(e, "KeyQ")) this.turn(-1);
+        if (ME.keys.is(e, "KeyE")) this.turn(1);
       });
     }
   }
@@ -19805,11 +19898,11 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
 /* The HUD (index.html's #ui): the top bar (where, whose turn, check), the move list, the bottom buttons, the
    promotion picker and the end of the game. One board and no menu: the game opens straight onto the board.
    The settings come from the URL (?side=w|b ?level=0..2 ?promo=queen|choose ?light=current|day|hall|glow
-   ?cam=free|locked|dynamic), else from the last game
+   ?cam=guided|free|locked|dynamic), else from the last game
    (localStorage, when the browser keeps it), else the defaults (white, Normal, always a queen).
      new DG.Hud({ where, undo(), newGame() })
-     hud.settings                      { side (0 white, 1 black), level, promo, light, cam }
-     hud.keep(key, value)              a setting changed (the view panel: light, cam), remembered
+     hud.settings                      { side (0 white, 1 black), level, promo, light, camera }
+     hud.keep(key, value)              a setting changed (the view panel: light, camera), remembered
      hud.show({ game, status, thinking, you, canUndo })   the top bar, the move list and the buttons
      hud.askPromo(color) -> Promise<type (QUEEN..KNIGHT), or 0 when dismissed>
      hud.showEnd(status, you), hud.hideEnd()
@@ -19839,7 +19932,8 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         level: level != null && LEVELS[+level] ? +level : pick(kept.level, (v) => !!LEVELS[v], 1),
         promo: promo === "choose" || promo === "queen" ? promo : pick(kept.promo, (v) => v === "queen" || v === "choose", "queen"),
         light: one("light", ["current", "day", "hall", "glow"]),
-        cam: one("cam", ["free", "locked", "dynamic"]),
+        // the camera is kept as "camera" (#468 saved "cam" for everyone, so guided, the new default, shows once)
+        camera: (() => { const v = q.get("cam"), L = ["guided", "free", "locked", "dynamic"]; return L.includes(v) ? v : pick(kept.camera, (x) => L.includes(x), L[0]); })(),
       };
       save(this.settings);
       $("where").textContent = o.where || "";
@@ -19914,7 +20008,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.14.0", name: "DeckChess", commit: "7260e31" };
+  G.VERSION = { v: "0.15.0", name: "DeckChess", commit: "5ed8e63" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -19934,12 +20028,14 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    frame. Mossheart's look comes with it: its default preset, sunbeams, its mood and weather (its sky panel)
    and its music, those through the stand-in for its game (src/mg-standin.js), fed with the chess game's events.
    The game opens straight onto the board: one board, no menu.
-   The view panel (🎥): the lighting (view/lighting.js), the camera's mode and its quick views (view/camera.js).
+   The view panel (🎥): the lighting (view/lighting.js), the camera's mode and its quick views (view/camera.js); the camera
+   row over the buttons: guided's quarter turns, its preset (your side, top, low) and guided / free.
    URL options: ?side=w|b, ?level=0..2, ?promo=queen|choose, ?light=current|day|hall|glow,
-   ?cam=free|locked|dynamic (view/hud.js), ?mood= ?weather= (Mossheart's),
+   ?cam=guided|free|locked|dynamic (view/hud.js), ?calm=1 (guided without its moves, as under reduced motion),
+   ?mood= ?weather= (Mossheart's),
    ?seed=N (the AI's; 1 under ?selftest and ?match, else random), ?depth=N (the AI's, over the level's),
    ?dpr=1, ?scale=0.8, ?nocache=1, ?vs=N (terrain), ?hero=N (pieces), ?small=1 (a phone's caps), ?preset=,
-   ?elev=20..85 (the camera's pitch in degrees, Mossheart's iso angle by default: view/camera.js), ?mute=1,
+   ?elev=20..85 (free's pitch in degrees, Mossheart's iso angle by default: view/camera.js), ?mute=1,
    ?hotseat=1 (both sides by hand), ?match=1 (the AI against itself to the end, JSON report into #result),
    ?selftest=1 (picking by the grid at many angles, every square in view, a scripted move by touch and mouse,
    the AI's reply and an undo, a capture's burst, the stand-in's fields; timings and errors into #result). */
@@ -20097,11 +20193,14 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       if (info.promo) shake(0.6);
       if (st.check && !st.over) shake(0.5);
       if (st.over && st.check) { shake(1); fx.mateT = Math.max(1e-3, fx.clock); }
-      // the dynamic camera's shot of it (view/camera.js event: only in that mode)
+      // the camera's move with it (view/camera.js event: guided's gentle ones, dynamic's shots; a guided plain
+      // move only when long: a slide of three squares or more, or a knight's hop)
       const g = ctl.game, from = board.centre(info.from);
+      const dx = Math.abs((info.from & 7) - (info.to & 7)), dy = Math.abs((info.from >> 3) - (info.to >> 3));
+      const long = Math.max(dx, dy) >= 3 || dx * dy === 2;
       if (st.over) cam.event("over", { at: board.centre(kingSq(g, g.turn)) });
       else if (st.check) cam.event("check", { at: board.centre(kingSq(g, g.turn)), from: P });
-      else cam.event(info.capture ? "capture" : "move", { at: P, from });
+      else cam.event(info.capture ? "capture" : "move", { at: P, from, long });
     };
 
     ctl = {
@@ -20240,9 +20339,15 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     window.addEventListener("resize", () => { fitCanvas(); frameView(false); });
 
     // ------------------------------------------------------------------ the view panel: light, camera, views
-    // 🎥 opens it (and closes the sky's); the quick views' row (#views) shows in the locked and dynamic modes
+    // 🎥 opens it (and closes the sky's); the camera row over the buttons (#views) has guided's quarter turns
+    // and preset, locked and dynamic's quick views, and the guided / free toggle
     const $ = (id) => document.getElementById(id), viewBox = $("view"), viewsRow = $("views");
-    const CAMS = { free: "Free", locked: "Locked", dynamic: "Dynamic" }, VIEWS = { top: "Top", side: "Side", follow: "Follow", reset: "Reset" };
+    const CAMS = { guided: "Guided", free: "Free", locked: "Locked", dynamic: "Dynamic" }, VIEWS = { top: "Top", side: "Side", follow: "Follow", reset: "Reset" };
+    const PRESET = { player: "Side", top: "Top", low: "Low" };
+    // reduced motion: guided keeps its presets and makes no moves with the game (?calm=1 to try it)
+    const calmQ = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)");
+    const calm = () => { cam.calm = ME.qn("calm", 0) === 1 || !!(calmQ && calmQ.matches); };
+    calm(); if (calmQ && calmQ.addEventListener) calmQ.addEventListener("change", calm);
     const segOf = (el, names, key, pick) => {
       el.innerHTML = Object.entries(names).map(([k, n]) => `<button data-${key}="${k}">${n}</button>`).join("");
       el.onclick = (e) => { const b = e.target.closest("button"); if (b) pick(b.dataset[key]); };
@@ -20260,18 +20365,31 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     };
     const setLight = (m) => { mark($("lightseg"), "l", lights.set(m)); hud.keep("light", lights.mode); };
     const setCam = (m) => {
-      cam.setMode(m); mark($("camseg"), "c", cam.mode); hud.keep("cam", cam.mode);
-      viewsRow.classList.toggle("show", cam.mode !== "free");
-      frameView(false);
+      cam.setMode(m); mark($("camseg"), "c", cam.mode); hud.keep("camera", cam.mode);
+      viewsRow.dataset.m = cam.mode; $("g-mode").textContent = cam.mode === "guided" ? "Free" : "Guided";
+      showPreset();
+      if (cam.mode !== "guided") frameView(false);
+    };
+    const showPreset = () => { $("g-pre").textContent = PRESET[cam.pre]; };
+    // the row's guided buttons: a quarter turn either way, the next preset, guided <-> free
+    const guided = (k) => {
+      if (k === "left" || k === "right") cam.rotate(k === "left" ? -1 : 1);
+      else if (k === "cycle") cam.cycle();
+      else if (k === "mode") setCam(cam.mode === "guided" ? "free" : "guided");
+      showPreset();
     };
     segOf($("lightseg"), Object.fromEntries(Object.entries(G.LIGHTS).map(([k, L]) => [k, L.name])), "l", setLight);
     segOf($("camseg"), CAMS, "c", setCam);
     segOf($("viewseg"), VIEWS, "v", quickView);
-    viewsRow.onclick = (e) => { const b = e.target.closest("button[data-v]"); if (b) quickView(b.dataset.v); };
+    viewsRow.onclick = (e) => {
+      const b = e.target.closest("button");
+      if (b && b.dataset.v) quickView(b.dataset.v); else if (b && b.dataset.g) guided(b.dataset.g);
+    };
     $("viewbtn").onclick = () => showView();
     ME.Dismiss.add(viewBox, { outside: true, dir: "any", open: () => viewBox.classList.contains("show"), skip: (t) => !!t.closest("#viewbtn"), close: () => showView(false) });
     setLight(hud.settings.light);
-    setCam(hud.settings.cam);
+    setCam(hud.settings.camera);
+    frameView(true); // the row now shows: the board fitted above it, at the mode's home
     document.getElementById("loading").style.display = "none";
 
     // ------------------------------------------------------------------ pointer and keys
@@ -20329,6 +20447,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       const now = ME.now(), rdt = dtOverride ?? Math.min(0.1, (now - last) / 1000);
       dyn.update(now, now - last); last = now;
       fx.clock = (now - start) / 1000;
+      cam.hold = ctl.sel !== -1; // guided: still while the player has a piece selected
       cam.update(now);
       pieces.update(rdt * speed);
       ctl.update();
@@ -20366,6 +20485,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       // and mouse (e2, e4), the AI's reply and an undo, as a player would, then a capture by hand (its burst and
       // ripple) taken back; match: the AI against itself until the game ends (or ?maxs= seconds pass)
       const maxMs = ME.qn("maxs", 300) * 1000, cpus = [], ints = [];
+      if (selftest) cam.calm = true; // guided's moves with the game stay out of the picking and the script
       const frames = async (n, until) => {
         let prev = ME.now(), k = 0;
         await new Promise((resolve) => {
@@ -20492,8 +20612,23 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
           if (m === "dynamic") { camT.shot = cam.event("capture", { at: board.centre(sq("d5")), from: board.centre(sq("e4")) }); nFrames += await frames(50); cam.view("reset"); nFrames += await frames(50); }
           camT.inView[m] = allIn();
         }
+        // guided: each preset frames every square, a quarter turn either way, a nudge with the game only when
+        // not calm and not while a piece is selected, and back to the preset after it
+        setCam("guided"); cam.calm = false;
+        const gd = { presets: {}, turn: 0, nudge: false, calm: true, held: true, back: 0 };
+        for (const p of ["player", "top", "low"]) { cam.preset(p); nFrames += await frames(60); gd.presets[p] = allIn(); }
+        cam.preset("player"); nFrames += await frames(10);
+        const g0 = cam.gth; cam.rotate(1); gd.turn = +((cam.gth - g0) / (Math.PI / 2)).toFixed(3); cam.rotate(-1); nFrames += await frames(60);
+        const at = { at: board.centre(sq("d5")), from: board.centre(sq("e4")) };
+        cam.hold = true; gd.held = !!cam.event("capture", at); cam.hold = false;
+        cam.calm = true; gd.calm = !!cam.event("capture", at); cam.calm = false;
+        gd.nudge = !!cam.event("capture", at);
+        nFrames += await frames(240, () => !cam.backAt && Math.abs(cam.elev - cam.elT) < 1e-3); nFrames += await frames(60);
+        gd.back = allIn(); camT.inView.guided = gd.back; camT.guided = gd;
+        cam.calm = true;
         ctl.last = null; setCam("free");
-        const camOk = camT.panBack === 1 && camT.zoomHome < 0.05 && camT.views === 12 && camT.shot && Object.values(camT.inView).every((n) => n === 64);
+        const guidedOk = Object.values(gd.presets).every((n) => n === 64) && gd.turn === 1 && gd.nudge && !gd.calm && !gd.held;
+        const camOk = camT.panBack === 1 && camT.zoomHome < 0.05 && camT.views === 12 && camT.shot && guidedOk && Object.values(camT.inView).every((n) => n === 64);
         const lightT = {};
         for (const m of Object.keys(G.LIGHTS)) {
           lights.set(m); mood(0); const gain = lights.apply(0, true), s = R.set;
