@@ -71,6 +71,58 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 .seg.big .btn { font-size: 22px; padding: 10px 16px; }
 #endtitle.w { color: var(--w); } #endtitle.b { color: var(--b); }
 
+/* the deck screen (view/deck-ui.js): docked right on a desktop, a bottom sheet on a phone; while it's open (#ui
+   .building) the game's buttons and move list step aside. Trait rarity colours: common, uncommon, rare. */
+.r1 { --rc: #cfd6c4; } .r2 { --rc: #7fc8ff; } .r3 { --rc: #e3a6ff; } .r4 { --rc: #ffc45e; }
+#deck { position: absolute; z-index: 3; top: 60px; right: max(10px, env(safe-area-inset-right)); width: 330px; max-height: calc(100vh - 76px); overflow-y: auto; padding: 10px 12px; display: none; flex-direction: column; gap: 8px; }
+#deck.show { display: flex; }
+#ui.building #bottom, #ui.building #views, #ui.building #moves { display: none; }
+.dk-head { display: flex; align-items: center; gap: 8px; }
+.dk-head b { font-size: 15px; }
+#dk-preset { flex: 1; min-width: 0; font: var(--font); font-size: 13px; color: var(--ink); background: rgba(30, 32, 26, 0.92); border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; }
+#dk-pts { font: 600 13px ui-monospace, Consolas, monospace; color: var(--w); white-space: nowrap; }
+.dk-track { height: 4px; background: rgba(255, 255, 255, 0.08); border-radius: 2px; overflow: hidden; }
+#dk-bar { height: 100%; width: 0; background: var(--w); transition: width 0.15s; }
+#dk-bar.full { background: var(--ok); }
+#dk-grid, #dk-opp { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; }
+#dk-opp { display: none; } #dk-opp.show { display: grid; }
+#dk-opp .dk-cell { color: var(--b); }
+.dk-cell { position: relative; aspect-ratio: 1; display: grid; place-items: center; font-size: 22px; line-height: 1; color: var(--w); background: rgba(30, 32, 26, 0.92); border: 1px solid var(--line); border-radius: 5px; padding: 0; cursor: pointer; touch-action: manipulation; }
+div.dk-cell { cursor: default; }
+.dk-cell.king { opacity: 0.6; cursor: default; }
+.dk-cell.on { border-color: var(--w); box-shadow: 0 0 0 1px var(--w) inset, 0 0 10px rgba(243, 223, 168, 0.35); }
+.dk-cell .pips { position: absolute; left: 2px; right: 2px; bottom: 2px; display: flex; gap: 2px; justify-content: center; }
+.dk-cell .pips i { width: 6px; height: 6px; border-radius: 50%; background: var(--rc); box-shadow: 0 0 4px var(--rc); }
+.dk-hint, #dk-note { color: var(--dim); font-size: 12.5px; }
+#dk-note:empty { display: none; }
+.dk-name { font-size: 15px; } .dk-name span { color: var(--dim); font: 12px ui-monospace, Consolas, monospace; }
+#dk-edit { display: flex; flex-direction: column; gap: 6px; }
+.dk-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { font: var(--font); font-size: 13px; color: var(--ink); background: rgba(30, 32, 26, 0.92); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; cursor: pointer; touch-action: manipulation; display: inline-flex; align-items: baseline; gap: 5px; }
+.chip[class*=" r"] { border-color: color-mix(in srgb, var(--rc) 45%, transparent); }
+.chip small { color: var(--dim); font-size: 11.5px; }
+.chip em { font-style: normal; font-size: 11px; color: var(--bad); }
+.chip.on { border-color: var(--rc, var(--w)); box-shadow: 0 0 0 1px var(--rc, var(--w)) inset; }
+.chip:disabled { opacity: 0.55; cursor: default; }
+.chip.wide { width: 100%; justify-content: flex-start; }
+.dk-rule { font-size: 12.5px; line-height: 1.4; color: var(--dim); }
+.dk-rule b { color: var(--rc); }
+#dk-slots { display: flex; flex-wrap: wrap; gap: 6px; }
+#dk-slots .slot { display: inline-flex; gap: 2px; }
+.dk-share { display: flex; gap: 5px; }
+#dk-code { flex: 1; min-width: 0; font: 12px ui-monospace, Consolas, monospace; color: var(--ink); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; user-select: text; -webkit-user-select: text; }
+#dk-play { font-size: 16px; padding: 10px; }
+/* a traited piece's card (hover, or a long press) and the trait lens: a label over each traited piece */
+#tcard { position: absolute; z-index: 6; display: none; max-width: 280px; padding: 8px 10px; font-size: 12.5px; line-height: 1.4; pointer-events: none; }
+#tcard.show { display: block; }
+#tcard h3 { margin: 0 0 4px; font-size: 14px; }
+#tcard p { margin: 3px 0 0; color: var(--dim); } #tcard p b { color: var(--rc); }
+#lens { position: absolute; inset: 0; pointer-events: none; display: none; }
+#lens.show { display: block; }
+#lens span { position: absolute; transform: translate(-50%, -100%); padding: 1px 5px; border-radius: 4px; background: rgba(10, 12, 10, 0.78); border: 1px solid var(--line); font: 700 11px ui-monospace, Consolas, monospace; white-space: nowrap; }
+#lens span i { font-style: normal; color: var(--rc); }
+#lensbtn:not(.on) { opacity: 0.55; }
+
 #loading { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg); z-index: 10; }
 #loading .box { text-align: center; min-width: 260px; }
 #loading h1 { margin: 0 0 4px; font-size: 30px; letter-spacing: 0.1em; color: var(--w); }
@@ -93,6 +145,9 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
   #view { left: 6px; width: calc(100vw - 12px); padding: 8px 10px; }
   .seg button:not(.btn) { font-size: 12.5px; padding: 5px 7px; }
   .x { width: 44px; height: 44px; top: 0; right: 0; font-size: 18px; background: transparent; }
+  #deck { top: auto; left: 6px; right: 6px; bottom: max(6px, env(safe-area-inset-bottom)); width: auto; max-height: 55vh; padding: 8px 10px; gap: 6px; }
+  .dk-cell { font-size: 19px; }
+  .chip { padding: 7px 9px; }
 }
 </style>
 </head>
@@ -100,7 +155,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 <canvas id="cv"></canvas>
 <canvas id="wx"></canvas>
 <div id="ui">
-  <div id="corner"><button id="skybtn" class="btn small" title="mood and weather">☁</button><button id="sound" class="btn small" title="sound">♪</button></div>
+  <div id="corner"><button id="skybtn" class="btn small" title="mood and weather">☁</button><button id="sound" class="btn small" title="sound">♪</button><button id="lensbtn" class="btn small" title="show the pieces' traits (T)">✦</button></div>
   <div id="lcorner"><button id="viewbtn" class="btn small" title="lighting and camera">🎥</button></div>
   <div id="view" class="panel"><div class="skyrow"><b>Light</b><div class="seg" id="lightseg"></div></div><div class="skyrow"><b>Camera</b><div class="seg" id="camseg"></div></div><div class="skyrow"><b>View</b><div class="seg" id="viewseg"></div></div></div>
   <div id="sky" class="panel"><div class="skyrow"><b>Mood</b><div class="seg" id="moodseg"></div></div><div class="skyrow"><b>Weather</b><div class="seg" id="wxseg"></div></div></div>
@@ -112,6 +167,17 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
     <button id="b-undo" class="btn">Undo</button>
     <button id="b-new" class="btn">New game</button>
   </div>
+  <div id="lens"></div>
+  <div id="tcard" class="panel"></div>
+  <div id="deck" class="panel"><div class="dk-head"><b>Your deck</b><select id="dk-preset" title="start from a preset"></select><span id="dk-pts"></span></div>
+    <div class="dk-track"><div id="dk-bar"></div></div>
+    <div id="dk-grid"></div>
+    <div id="dk-edit"></div>
+    <div id="dk-slots"></div>
+    <div class="dk-share"><input id="dk-code" spellcheck="false" placeholder="share code"><button class="chip" data-a="share">Copy code</button><button class="chip" data-a="import">Load code</button></div>
+    <div id="dk-note"></div>
+    <button id="dk-oppbtn" class="chip wide" data-a="opp"></button><div id="dk-opp"></div>
+    <button id="dk-play" class="btn on" data-a="play">Play</button></div>
   <div id="promo" class="veil"><div class="panel card"><h2>Promote to</h2><div id="p-pick" class="seg big"></div></div></div>
   <div id="end" class="veil"><div class="panel card"><h2 id="endtitle"></h2><p id="endtxt"></p>
     <div class="row end"><button id="e-look" class="btn">Look at the board</button><button id="e-again" class="btn on">New game</button></div></div></div>
@@ -18340,12 +18406,27 @@ function MG_SFX(L) {
    so a step off the board is one bit test. A move is one integer: from | to << 7 | promo << 14 | flags << 17
    (0x88 squares; info() unpacks it into 0..63 squares). A piece is its type (PAWN..KING) | BLACK for black.
    make()/unmake() are the fast pair the search and perft use; play()/undo() are the game's, which also keep
-   the position keys for repetition and the move list. */
+   the position keys for repetition and the move list.
+   Traits (piece decks, docs/designs/2026-11-06-deckchess-piece-decks.md §2): each square holds a trait mask
+   (tr) that moves with its piece, and a census (tc) counts each trait per side. A position loaded from a
+   TFEN (a FEN with a 7th field such as "b1:WS,d2:W") is `traited`; every trait branch is skipped when it
+   isn't, so a plain FEN runs exactly the classic rules. A strike (F_STRIKE) is a capture onto a Warded
+   piece: nothing moves, the piece loses its Ward. */
 (function () {
   const G = (window.DG = window.DG || {});
 
   const PAWN = 1, KNIGHT = 2, BISHOP = 3, ROOK = 4, QUEEN = 5, KING = 6, BLACK = 8;
-  const F_CAP = 1, F_EP = 2, F_CASTLE = 4, F_DOUBLE = 8, F_PROMO = 16;
+  const F_CAP = 1, F_EP = 2, F_CASTLE = 4, F_DOUBLE = 8, F_PROMO = 16, F_STRIKE = 32;
+
+  // the traits: one bit each in a square's mask, one letter each in the TFEN, and the piece types that may
+  // carry them. Phase 5's (Squire, Ember, Leap, Sanctuary, Phoenix) take the next bits.
+  const TRAITS = [
+    { id: "ward", letter: "W", on: "PNBRQ" }, { id: "vanguard", letter: "V", on: "PNBRQ" },
+    { id: "glide", letter: "G", on: "R" }, { id: "rally", letter: "R", on: "NBRQ" },
+    { id: "anointed", letter: "A", on: "P" }, { id: "stride", letter: "S", on: "NB" }, { id: "pike", letter: "P", on: "P" },
+  ];
+  const T_WARD = 1, T_VAN = 2, T_GLIDE = 4, T_RALLY = 8, T_ANOINT = 16, T_STRIDE = 32, T_PIKE = 64;
+  const I_WARD = 0, I_RALLY = 3, I_STRIDE = 5, I_PIKE = 6;
   const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
   const FILES = "abcdefgh", LETTER = " PNBRQK";
 
@@ -18366,6 +18447,9 @@ function MG_SFX(L) {
   const Z_CASTLE = 16 * 128, Z_EP = Z_CASTLE + 16, Z_SIDE = Z_EP + 8;
   const ZLO = new Int32Array(Z_SIDE + 1), ZHI = new Int32Array(Z_SIDE + 1);
   { const r = new G.Rng(0xdec0c4e5); for (let i = 0; i < ZLO.length; i++) { ZLO[i] = r.u32() | 0; ZHI[i] = r.u32() | 0; } }
+  // trait keys, bit * 128 + square, from their own seed so the classic keys stay as they were
+  const ZTLO = new Int32Array(16 * 128), ZTHI = new Int32Array(16 * 128);
+  { const r = new G.Rng(0x7a17c0de); for (let i = 0; i < ZTLO.length; i++) { ZTLO[i] = r.u32() | 0; ZTHI[i] = r.u32() | 0; } }
 
   class Chess {
     constructor(fen) { this.load(fen || START); }
@@ -18390,6 +18474,23 @@ function MG_SFX(L) {
       this.ep = f[3] && f[3] !== "-" ? (+f[3][1] - 1) * 16 + FILES.indexOf(f[3][0]) : -1;
       this.half = +(f[4] || 0);
       this.full = +(f[5] || 1);
+      this.tr = new Uint16Array(128);
+      this.tc = new Uint8Array(32);
+      this.traited = !!f[6] && f[6] !== "-";
+      if (this.traited) {
+        for (const item of f[6].split(",")) {
+          const [name, letters] = item.split(":"), s = name ? (+name[1] - 1) * 16 + FILES.indexOf(name[0]) : -1;
+          if (s < 0 || s & 0x88 || name.length !== 2 || !letters) throw new Error("bad TFEN traits: " + item);
+          const t = b[s] & 7;
+          if (!t || t === KING) throw new Error(`TFEN traits on ${t ? "a king" : "an empty square"}: ` + item);
+          for (const l of letters) {
+            const i = TRAITS.findIndex((x) => x.letter === l);
+            if (i < 0 || !TRAITS[i].on.includes(LETTER[t]) || this.tr[s] & (1 << i)) throw new Error("bad TFEN trait: " + item);
+            this.tr[s] |= 1 << i;
+          }
+          this.census(b[s] >> 3, this.tr[s], 1);
+        }
+      }
       this.stack = [];
       this.startFen = this.fen();
       this.keys = [this.key()];
@@ -18403,7 +18504,22 @@ function MG_SFX(L) {
       c.b = this.b.slice(); c.king = this.king.slice(); c.turn = this.turn; c.castle = this.castle; c.ep = this.ep;
       c.half = this.half; c.full = this.full; c.stack = this.stack.slice(); c.startFen = this.startFen;
       c.keys = this.keys.slice(); c.history = this.history.slice(); c.sans = this.sans.slice();
+      c.tr = this.tr.slice(); c.tc = this.tc.slice(); c.traited = this.traited;
       return c;
+    }
+
+    // add d (1 or -1) to side c's count of each trait in mask m
+    census(c, m, d) { for (let i = c * 16; m; i++, m >>= 1) if (m & 1) this.tc[i] += d; }
+
+    // the TFEN's 7th field: "b1:WS,d2:W", or "-"
+    traits() {
+      const out = [];
+      for (let s = 0; s < 120; s++) {
+        if (s & 0x88) { s += 7; continue; }
+        const m = this.tr[s];
+        if (m) out.push(name88(s) + ":" + TRAITS.filter((x, i) => m & (1 << i)).map((x) => x.letter).join(""));
+      }
+      return out.join(",") || "-";
     }
 
     fen() {
@@ -18421,7 +18537,8 @@ function MG_SFX(L) {
         if (r) s += "/";
       }
       const cs = (this.castle & 1 ? "K" : "") + (this.castle & 2 ? "Q" : "") + (this.castle & 4 ? "k" : "") + (this.castle & 8 ? "q" : "");
-      return `${s} ${this.turn ? "b" : "w"} ${cs || "-"} ${this.ep < 0 ? "-" : name88(this.ep)} ${this.half} ${this.full}`;
+      return `${s} ${this.turn ? "b" : "w"} ${cs || "-"} ${this.ep < 0 ? "-" : name88(this.ep)} ${this.half} ${this.full}` +
+        (this.traited ? " " + this.traits() : "");
     }
 
     // the position key (53 bits of the Zobrist hash): equal keys are the same position for repetition
@@ -18431,6 +18548,7 @@ function MG_SFX(L) {
         if (s & 0x88) { s += 7; continue; }
         const p = this.b[s];
         if (p) { lo ^= ZLO[p * 128 + s]; hi ^= ZHI[p * 128 + s]; }
+        if (this.traited) for (let m = this.tr[s], i = s; m; i += 128, m >>= 1) if (m & 1) { lo ^= ZTLO[i]; hi ^= ZTHI[i]; }
       }
       lo ^= ZLO[Z_CASTLE + this.castle]; hi ^= ZHI[Z_CASTLE + this.castle];
       if (this.ep >= 0) { lo ^= ZLO[Z_EP + (this.ep & 7)]; hi ^= ZHI[Z_EP + (this.ep & 7)]; }
@@ -18458,6 +18576,12 @@ function MG_SFX(L) {
       for (const d of ORTH) {
         for (let x = s + d; !(x & 0x88); x += d) { const p = b[x]; if (p) { if (p === rq || p === qq) return true; break; } }
       }
+      // the traits that attack: a Pike pawn straight ahead, a Stride piece one step away (census-gated)
+      if (this.traited) {
+        const tr = this.tr, tc = this.tc, i = by * 16;
+        if (tc[i + I_PIKE]) { const x = by ? s + 16 : s - 16; if (!(x & 0x88) && b[x] === pw && tr[x] & T_PIKE) return true; }
+        if (tc[i + I_STRIDE]) for (const d of ALL) { const x = s + d; if (!(x & 0x88) && tr[x] & T_STRIDE && b[x] >> 3 === by) return true; }
+      }
       return false;
     }
 
@@ -18476,21 +18600,39 @@ function MG_SFX(L) {
       for (const d of ORTH) {
         for (let x = s + d; !(x & 0x88); x += d) { const p = b[x]; if (p) { if (p === rq || p === qq) n++; break; } }
       }
+      if (this.traited) {
+        const tr = this.tr;
+        { const x = by ? s + 16 : s - 16; if (!(x & 0x88) && b[x] === pw && tr[x] & T_PIKE) n++; }
+        // a Stride bishop's diagonal step is already counted as its line
+        for (let k = 0; k < 8; k++) {
+          const x = s + ALL[k];
+          if (!(x & 0x88) && tr[x] & T_STRIDE && b[x] >> 3 === by && !(k < 4 && (b[x] & 7) === BISHOP)) n++;
+        }
+      }
       return n;
     }
 
     inCheck() { return this.attacked(this.king[this.turn], this.turn ^ 1); }
 
     // pseudo-legal moves into `out` (the king may be left in check; legal() filters). caps: captures and
-    // promotions only, for the AI's quiescence search.
+    // promotions only, for the AI's quiescence search. A capture onto a Warded piece is a strike instead
+    // (no promotion), and strikes stay out of caps.
     gen(out, caps) {
-      const b = this.b, c = this.turn, e = c ^ 1;
+      const b = this.b, c = this.turn, e = c ^ 1, tr = this.tr, traited = this.traited;
       const promos = (s, x, fl) => { for (let t = QUEEN; t >= KNIGHT; t--) out.push(mk(s, x, t, fl | F_PROMO)); };
+      const ward = (x) => traited && tr[x] & T_WARD;
+      // a capture of the piece on x (promoting on the last rank when `last`)
+      const take = (s, x, last) => {
+        if (ward(x)) { if (!caps) out.push(mk(s, x, 0, F_CAP | F_STRIKE)); }
+        else if (last) promos(s, x, F_CAP);
+        else out.push(mk(s, x, 0, F_CAP));
+      };
+      const rally = traited && this.tc[c * 16 + I_RALLY] > 0;
       for (let s = 0; s < 120; s++) {
         if (s & 0x88) { s += 7; continue; }
         const p = b[s];
         if (!p || p >> 3 !== c) continue;
-        const t = p & 7;
+        const t = p & 7, m = traited ? tr[s] : 0;
         if (t === PAWN) {
           const d = c ? -16 : 16, n = s + d, last = c ? 0 : 7;
           if (!b[n]) {
@@ -18499,13 +18641,22 @@ function MG_SFX(L) {
               out.push(mk(s, n, 0, 0));
               if (s >> 4 === (c ? 6 : 1) && !b[n + d]) out.push(mk(s, n + d, 0, F_DOUBLE));
             }
-          }
+          } else if (m & T_PIKE && b[n] >> 3 === e) take(s, n, n >> 4 === last);
           for (let k = -1; k <= 1; k += 2) {
             const x = n + k;
             if (x & 0x88) continue;
             const q = b[x];
-            if (q && q >> 3 === e) { if (x >> 4 === last) promos(s, x, F_CAP); else out.push(mk(s, x, 0, F_CAP)); }
-            else if (x === this.ep) out.push(mk(s, x, 0, F_CAP | F_EP));
+            if (q && q >> 3 === e) take(s, x, x >> 4 === last);
+            else if (x === this.ep) {
+              if (ward(c ? x + 16 : x - 16)) { if (!caps) out.push(mk(s, x, 0, F_CAP | F_EP | F_STRIKE)); }
+              else out.push(mk(s, x, 0, F_CAP | F_EP));
+            }
+          }
+          // Rally: a step sideways next to a friendly Rally piece, quiet only
+          if (rally && !caps) {
+            let near = false;
+            for (const d8 of ALL) { const x = s + d8; if (!(x & 0x88) && tr[x] & T_RALLY && b[x] >> 3 === c) { near = true; break; } }
+            if (near) for (let k = -1; k <= 1; k += 2) { const x = s + k; if (!(x & 0x88) && !b[x]) out.push(mk(s, x, 0, 0)); }
           }
         } else if (t === KNIGHT || t === KING) {
           for (const d of t === KNIGHT ? KNIGHT_STEPS : ALL) {
@@ -18513,16 +18664,28 @@ function MG_SFX(L) {
             if (x & 0x88) continue;
             const q = b[x];
             if (!q) { if (!caps) out.push(mk(s, x, 0, 0)); }
-            else if (q >> 3 === e) out.push(mk(s, x, 0, F_CAP));
+            else if (q >> 3 === e) take(s, x, false);
           }
         } else {
           for (const d of t === BISHOP ? DIAG : t === ROOK ? ORTH : ALL) {
             for (let x = s + d; !(x & 0x88); x += d) {
               const q = b[x];
               if (!q) { if (!caps) out.push(mk(s, x, 0, 0)); continue; }
-              if (q >> 3 === e) out.push(mk(s, x, 0, F_CAP));
+              if (q >> 3 === e) take(s, x, false);
               break;
             }
+          }
+          // Glide: a rook's quiet diagonal step
+          if (m & T_GLIDE && !caps) for (const d of DIAG) { const x = s + d; if (!(x & 0x88) && !b[x]) out.push(mk(s, x, 0, 0)); }
+        }
+        // Stride: a king step for a knight (all 8) or a bishop (the 4 straight ones it lacks)
+        if (m & T_STRIDE) {
+          for (const d of t === BISHOP ? ORTH : ALL) {
+            const x = s + d;
+            if (x & 0x88) continue;
+            const q = b[x];
+            if (!q) { if (!caps) out.push(mk(s, x, 0, 0)); }
+            else if (q >> 3 === e) take(s, x, false);
           }
         }
       }
@@ -18539,16 +18702,42 @@ function MG_SFX(L) {
 
     make(m) {
       const b = this.b, from = m & 127, to = (m >> 7) & 127, fl = m >> 17, p = b[from], c = p >> 3;
-      let cap = b[to];
-      if (fl & F_EP) { const x = c ? to + 16 : to - 16; cap = b[x]; b[x] = 0; }
-      this.stack.push({ m, cap, castle: this.castle, ep: this.ep, half: this.half });
+      if (fl & F_STRIKE) {
+        // nothing moves: the target (behind the en passant square for a pawn) loses its Ward
+        const x = fl & F_EP ? (c ? to + 16 : to - 16) : to, tr = this.tr;
+        this.stack.push({ m, cap: 0, castle: this.castle, ep: this.ep, half: this.half, mt: 0, ct: tr[x] });
+        tr[x] &= ~T_WARD;
+        this.tc[(c ^ 1) * 16 + I_WARD]--;
+        this.ep = -1;
+        this.half = 0;
+        if (c) this.full++;
+        this.turn ^= 1;
+        return;
+      }
+      let cap = b[to], cs = to;
+      if (fl & F_EP) { cs = c ? to + 16 : to - 16; cap = b[cs]; b[cs] = 0; }
+      const tr = this.tr, mt = this.traited ? tr[from] : 0, ct = this.traited ? tr[cs] : 0;
+      this.stack.push({ m, cap, castle: this.castle, ep: this.ep, half: this.half, mt, ct });
       b[to] = fl & F_PROMO ? ((m >> 14) & 7) | (c << 3) : p;
       b[from] = 0;
+      if (this.traited) {
+        // the mask moves with its piece; a capture takes the victim's out of the census
+        let n = mt;
+        if (ct) { this.census(c ^ 1, ct, -1); tr[cs] = 0; }
+        if (fl & F_PROMO) n = mt & T_ANOINT ? T_WARD : 0;
+        if (cap && n & T_VAN) n |= T_WARD;
+        if (n !== mt) { this.census(c, mt, -1); this.census(c, n, 1); }
+        tr[from] = 0; tr[to] = n;
+      }
       if ((p & 7) === KING) {
         this.king[c] = to;
         if (fl & F_CASTLE) {
           if (to > from) { b[from + 1] = b[from + 3]; b[from + 3] = 0; }
           else { b[from - 1] = b[from - 4]; b[from - 4] = 0; }
+          if (this.traited) {
+            if (to > from) { tr[from + 1] = tr[from + 3]; tr[from + 3] = 0; }
+            else { tr[from - 1] = tr[from - 4]; tr[from - 4] = 0; }
+          }
         }
       }
       this.castle &= CASTLE_MASK[from] & CASTLE_MASK[to];
@@ -18568,15 +18757,33 @@ function MG_SFX(L) {
       const u = this.stack.pop(), m = u.m, b = this.b, from = m & 127, to = (m >> 7) & 127, fl = m >> 17;
       const c = (this.turn ^= 1);
       if (c) this.full--;
+      if (fl & F_STRIKE) {
+        this.tr[fl & F_EP ? (c ? to + 16 : to - 16) : to] = u.ct;
+        this.tc[(c ^ 1) * 16 + I_WARD]++;
+        this.castle = u.castle; this.ep = u.ep; this.half = u.half;
+        return;
+      }
       const p = fl & F_PROMO ? PAWN | (c << 3) : b[to];
       b[from] = p;
-      if (fl & F_EP) { b[to] = 0; b[c ? to + 16 : to - 16] = u.cap; }
+      const cs = fl & F_EP ? (c ? to + 16 : to - 16) : to;
+      if (fl & F_EP) { b[to] = 0; b[cs] = u.cap; }
       else b[to] = u.cap;
+      const tr = this.tr;
+      if (this.traited) {
+        const n = tr[to];
+        if (n !== u.mt) { this.census(c, n, -1); this.census(c, u.mt, 1); }
+        tr[to] = 0; tr[from] = u.mt;
+        if (u.ct) { tr[cs] = u.ct; this.census(c ^ 1, u.ct, 1); }
+      }
       if ((p & 7) === KING) {
         this.king[c] = from;
         if (fl & F_CASTLE) {
           if (to > from) { b[from + 3] = b[from + 1]; b[from + 1] = 0; }
           else { b[from - 4] = b[from - 1]; b[from - 1] = 0; }
+          if (this.traited) {
+            if (to > from) { tr[from + 3] = tr[from + 1]; tr[from + 1] = 0; }
+            else { tr[from - 4] = tr[from - 1]; tr[from - 1] = 0; }
+          }
         }
       }
       this.castle = u.castle; this.ep = u.ep; this.half = u.half;
@@ -18642,7 +18849,8 @@ function MG_SFX(L) {
       return n;
     }
 
-    // no sequence of legal moves can mate: K v K, a lone minor piece, or only bishops all on one colour
+    // no sequence of legal moves can mate: K v K, a lone minor piece, or only bishops all on one colour (a Stride
+    // piece moves like a king too, so it never counts as dead)
     dead() {
       let minors = 0, knights = 0, bish = [0, 0];
       for (let s = 0; s < 120; s++) {
@@ -18650,6 +18858,7 @@ function MG_SFX(L) {
         const t = this.b[s] & 7;
         if (!t || t === KING) continue;
         if (t === PAWN || t === ROOK || t === QUEEN) return false;
+        if (this.traited && this.tr[s] & T_STRIDE) return false;
         minors++;
         if (t === KNIGHT) knights++;
         else bish[((s >> 4) + (s & 7)) & 1]++;
@@ -18673,7 +18882,8 @@ function MG_SFX(L) {
       const b = this.b, from = m & 127, to = (m >> 7) & 127, fl = m >> 17, p = b[from], t = p & 7;
       let s;
       if (fl & F_CASTLE) s = to > from ? "O-O" : "O-O-O";
-      else if (t === PAWN) s = (fl & F_CAP ? FILES[from & 7] + "x" : "") + name88(to) + (fl & F_PROMO ? "=" + LETTER[(m >> 14) & 7] : "");
+      // a pawn's sideways step (Rally) names its file first, "cd3", so it never reads like d2-d3
+      else if (t === PAWN) s = (fl & F_CAP ? FILES[from & 7] + "x" : (from & 7) !== (to & 7) ? FILES[from & 7] : "") + name88(to) + (fl & F_PROMO ? "=" + LETTER[(m >> 14) & 7] : "");
       else {
         let dis = "";
         const rivals = this.moves().filter((x) => x !== m && ((x >> 7) & 127) === to && b[x & 127] === p).map((x) => x & 127);
@@ -18684,6 +18894,7 @@ function MG_SFX(L) {
         }
         s = LETTER[t] + dis + (fl & F_CAP ? "x" : "") + name88(to);
       }
+      if (fl & F_STRIKE) s += "°";
       this.make(m);
       if (this.inCheck()) s += this.legal(false).length ? "+" : "#";
       this.unmake();
@@ -18695,7 +18906,7 @@ function MG_SFX(L) {
   const info = (m) => {
     const fl = m >> 17;
     return { from: to64(m & 127), to: to64((m >> 7) & 127), promo: (m >> 14) & 7, capture: !!(fl & F_CAP),
-      enPassant: !!(fl & F_EP), castle: !!(fl & F_CASTLE), double: !!(fl & F_DOUBLE) };
+      enPassant: !!(fl & F_EP), castle: !!(fl & F_CASTLE), double: !!(fl & F_DOUBLE), strike: !!(fl & F_STRIKE) };
   };
 
   G.Chess = Chess;
@@ -18704,7 +18915,211 @@ function MG_SFX(L) {
   G.squareName = (s) => FILES[s & 7] + ((s >> 3) + 1);
   G.START = START;
   G.PIECE = { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING, BLACK };
-  G.FLAG = { CAP: F_CAP, EP: F_EP, CASTLE: F_CASTLE, DOUBLE: F_DOUBLE, PROMO: F_PROMO };
+  G.FLAG = { CAP: F_CAP, EP: F_EP, CASTLE: F_CASTLE, DOUBLE: F_DOUBLE, PROMO: F_PROMO, STRIKE: F_STRIKE };
+  G.TRAIT = { WARD: T_WARD, VANGUARD: T_VAN, GLIDE: T_GLIDE, RALLY: T_RALLY, ANOINTED: T_ANOINT, STRIDE: T_STRIDE, PIKE: T_PIKE };
+  G.TRAITS = TRAITS;
+})();
+
+</script>
+<script>/* src/core/deck.js */
+/* Piece decks (docs/designs/2026-11-06-deckchess-piece-decks.md §1): which pieces stand on the back rank and
+   which traits each piece carries. A deck is plain data, written from White's side:
+     { v: 1, back: "RNBQKBNR", traits: { b1: ["ward", "stride"], d2: ["ward"] } }
+   The king is fixed on e1 and the eight pawns on the 2nd rank; the other seven back squares each hold N, B,
+   R or Q. Black plays its own deck mirrored onto ranks 7-8 (b1 becomes b8). fen() builds the start TFEN that
+   chess.js loads. No DOM and no randomness except a DG.Rng passed in. */
+(function () {
+  const G = (window.DG = window.DG || {});
+
+  const FILES = "abcdefgh";
+  const CLASSIC = { v: 1, back: "RNBQKBNR", traits: {} };
+  const BUDGET = 45, CAPS = { Q: 1, R: 2 }, PER_PIECE = 3;
+  const COST = { P: 1, N: 3, B: 3, R: 5, Q: 9 };
+  // each trait's points, rarity (1 Common .. 4 Legendary) and the AI's value for it in centipawns (Anointed also
+  // gains 5 a rank). Points and values come from the first pricing pass (tools/rules.html?selfplay=prices,
+  // 2026-11-06: 200 games at depth 2 of the classic deck plus one trait against classic; Elo / 100 = points):
+  // Ward P 0.3, N 2.0, B 2.2, R 2.5, Q 4.2; Vanguard N 3.3; Stride N 1.9, B 1.1; Glide 0.5, Rally 0.4, Pike 0.4,
+  // Anointed about 0. A trait costs at least 1. Vanguard on P, B, R and Q isn't measured, and two Vanguard knights
+  // at 3 each beat the other templates 70-77% (?selfplay=templates), so a piece's Vanguard costs 4 (Q 5).
+  const TRAIT = {
+    ward: { pts: { P: 1, N: 2, B: 2, R: 3, Q: 4 }, rarity: 1, cp: { P: 30, N: 195, B: 215, R: 250, Q: 420 } },
+    vanguard: { pts: { P: 1, N: 4, B: 4, R: 4, Q: 5 }, rarity: 1, cp: { P: 40, N: 325, B: 325, R: 325, Q: 420 } },
+    glide: { pts: 1, rarity: 1, cp: 55 },
+    rally: { pts: 1, rarity: 1, cp: 45 },
+    anointed: { pts: 1, rarity: 1, cp: 15 },
+    stride: { pts: { N: 2, B: 1 }, rarity: 2, cp: { N: 190, B: 110 } },
+    pike: { pts: 1, rarity: 2, cp: 40 },
+  };
+  const info = (id) => G.TRAITS.find((x) => x.id === id);
+  const byPiece = (v, t) => (typeof v === "number" ? v : v[t]);
+  const traitPts = (id, t) => byPiece(TRAIT[id].pts, t);
+  const traitCp = (id, t) => byPiece(TRAIT[id].cp, t);
+
+  // The AI's four templates (§1, "How the AI picks its deck"): a back rank and the traits it wants, in order.
+  // Leap, Ember and Squire come in phase 5; until then Cavalry wants Stride only, Zealots Vanguard only, and
+  // Ascendant Anointed and Pike with one Ward. Each wants about the 6 points over the classic 39. `score` is each one's round-robin score (?selfplay=templates), which weights
+  // the pick at level 2.
+  const TEMPLATES = {
+    phalanx: { name: "Phalanx", back: "RNBQKBNR", score: 0.47,
+      wants: [["ward", "e2"], ["ward", "d2"], ["rally", "c1"], ["rally", "f1"], ["ward", "c2"], ["ward", "f2"], ["rally", "b1"]] },
+    cavalry: { name: "Cavalry", back: "RNNQKBNR", score: 0.48,
+      wants: [["stride", "g1"], ["stride", "c1"], ["stride", "b1"], ["ward", "g1"]] },
+    zealots: { name: "Zealots", back: "RNBQKBNR", score: 0.5,
+      wants: [["vanguard", "g1"], ["vanguard", "e2"], ["vanguard", "d2"]] },
+    ascendant: { name: "Ascendant", back: "RNBQKBNR", score: 0.56,
+      wants: [["pike", "e2"], ["anointed", "e2"], ["pike", "d2"], ["anointed", "d2"], ["ward", "f1"]] },
+  };
+
+  // the piece letter (PNBRQK) on a deck square such as "b1" or "d2", or "" when it isn't one
+  const pieceAt = (deck, sq) => {
+    if (!/^[a-h][12]$/.test(sq)) return "";
+    return sq[1] === "2" ? "P" : deck.back[FILES.indexOf(sq[0])] || "";
+  };
+
+  // the deck's points: its pieces and its traits
+  const points = (deck) => {
+    let n = 8 * COST.P;
+    for (const l of deck.back) n += COST[l] || 0;
+    for (const sq in deck.traits || {}) for (const id of deck.traits[sq]) if (TRAIT[id]) n += traitPts(id, pieceAt(deck, sq));
+    return n;
+  };
+
+  // what is wrong with a deck: [] when it can be played
+  const problems = (deck, budget) => {
+    const out = [];
+    if (!deck || deck.v !== 1 || typeof deck.back !== "string") return ["not a deck"];
+    const back = deck.back;
+    if (back.length !== 8 || back[4] !== "K") out.push("the back rank needs 8 squares with the king on e1");
+    for (let i = 0; i < back.length; i++) if (i !== 4 && !"NBRQ".includes(back[i])) out.push(`${FILES[i]}1 holds ${back[i]}`);
+    for (const l in CAPS) { const n = [...back].filter((x) => x === l).length; if (n > CAPS[l]) out.push(`${n} ${l} (at most ${CAPS[l]})`); }
+    let rare = 0, legend = 0;
+    for (const sq in deck.traits || {}) {
+      const ids = deck.traits[sq], t = pieceAt(deck, sq);
+      if (!t) { out.push(`traits on ${sq}, which isn't a deck square`); continue; }
+      if (t === "K") { out.push("the king can't carry traits"); continue; }
+      if (!Array.isArray(ids)) { out.push(`traits on ${sq} aren't a list`); continue; }
+      if (ids.length > PER_PIECE) out.push(`${sq} has ${ids.length} traits (at most ${PER_PIECE})`);
+      if (new Set(ids).size !== ids.length) out.push(`${sq} has a trait twice`);
+      for (const id of ids) {
+        const x = info(id);
+        if (!x || !TRAIT[id]) { out.push(`unknown trait ${id}`); continue; }
+        if (!x.on.includes(t)) out.push(`${id} can't go on ${t} (${sq})`);
+        if (TRAIT[id].rarity >= 3) rare++;
+        if (TRAIT[id].rarity === 4) legend++;
+      }
+    }
+    if (rare > 3) out.push(`${rare} Rare and Legendary traits (at most 3)`);
+    if (legend > 1) out.push(`${legend} Legendary traits (at most 1)`);
+    const pts = points(deck), cap = budget || BUDGET;
+    if (pts > cap) out.push(`${pts} points (budget ${cap})`);
+    return out;
+  };
+
+  // the start TFEN for two decks (each side's own deck, Black's mirrored onto ranks 7-8)
+  const fen = (white, black) => {
+    const w = white || CLASSIC, b = black || CLASSIC;
+    const rank = (deck, lower) => (lower ? deck.back.toLowerCase() : deck.back);
+    const pieces = `${rank(b, true)}/pppppppp/8/8/8/8/PPPPPPPP/${rank(w, false)}`;
+    let castle = (w.back[7] === "R" ? "K" : "") + (w.back[0] === "R" ? "Q" : "") + (b.back[7] === "R" ? "k" : "") + (b.back[0] === "R" ? "q" : "");
+    const items = [];
+    for (const [deck, black] of [[w, false], [b, true]]) {
+      for (const sq of Object.keys(deck.traits || {}).sort()) {
+        const ids = deck.traits[sq];
+        if (!ids.length) continue;
+        const letters = G.TRAITS.filter((x) => ids.includes(x.id)).map((x) => x.letter).join("");
+        items.push(sq[0] + (black ? (sq[1] === "1" ? "8" : "7") : sq[1]) + ":" + letters);
+      }
+    }
+    return `${pieces} w ${castle || "-"} - 0 1 ${items.join(",") || "-"}`;
+  };
+
+  // a random playable deck from `rng` (a DG.Rng), for the fuzz and the AI: a back rank within the caps, then
+  // traits added at random while the budget allows. opts: { budget, tries }
+  const random = (rng, opts) => {
+    const budget = (opts && opts.budget) || BUDGET, tries = (opts && opts.tries) || 24;
+    const back = [];
+    const left = { Q: CAPS.Q, R: CAPS.R };
+    for (let i = 0; i < 8; i++) {
+      if (i === 4) { back.push("K"); continue; }
+      const pool = "NBRQ".split("").filter((l) => !(l in left) || left[l] > 0);
+      const l = pool[rng.int(0, pool.length - 1)];
+      if (l in left) left[l]--;
+      back.push(l);
+    }
+    const deck = { v: 1, back: back.join(""), traits: {} };
+    const squares = [];
+    for (let i = 0; i < 8; i++) { if (i !== 4) squares.push(FILES[i] + "1"); squares.push(FILES[i] + "2"); }
+    for (let k = 0; k < tries; k++) {
+      const sq = squares[rng.int(0, squares.length - 1)], t = pieceAt(deck, sq);
+      const ok = G.TRAITS.filter((x) => TRAIT[x.id] && x.on.includes(t));
+      if (!ok.length) continue;
+      const id = ok[rng.int(0, ok.length - 1)].id, have = deck.traits[sq] || [];
+      if (have.includes(id) || have.length >= PER_PIECE) continue;
+      deck.traits[sq] = have.concat(id);
+      if (points(deck) > budget) { if (have.length) deck.traits[sq] = have; else delete deck.traits[sq]; }
+    }
+    return deck;
+  };
+
+  // the deck squares that hold a piece other than the king
+  const SQUARES = [];
+  for (let i = 0; i < 8; i++) { if (i !== 4) SQUARES.push(FILES[i] + "1"); SQUARES.push(FILES[i] + "2"); }
+
+  // add trait `id` to `sq` if it fits there and within the budget; true when it did
+  const tryAdd = (deck, sq, id, budget) => {
+    const t = pieceAt(deck, sq), have = deck.traits[sq] || [], x = info(id);
+    if (!t || t === "K" || !x || !TRAIT[id] || !x.on.includes(t) || have.includes(id) || have.length >= PER_PIECE) return false;
+    if (points(deck) + traitPts(id, t) > budget) return false;
+    deck.traits[sq] = have.concat(id);
+    return true;
+  };
+
+  // a template's deck by greedy fill: its wants in order, each taken if it fits, then the rest of the budget
+  // to the best AI value per point, ties broken by `rng` (a DG.Rng; none keeps the squares' order)
+  const build = (id, rng, budget) => {
+    const tp = TEMPLATES[id], cap = budget || BUDGET;
+    const deck = { v: 1, name: tp.name, back: tp.back, traits: {} };
+    for (const [tid, sq] of tp.wants) tryAdd(deck, sq, tid, cap);
+    const rest = [];
+    for (const sq of SQUARES) for (const x of G.TRAITS) if (TRAIT[x.id] && x.on.includes(pieceAt(deck, sq))) rest.push([sq, x.id]);
+    if (rng) for (let i = rest.length - 1; i > 0; i--) { const j = rng.int(0, i); [rest[i], rest[j]] = [rest[j], rest[i]]; }
+    const per = ([sq, tid]) => { const t = pieceAt(deck, sq); return traitCp(tid, t) / traitPts(tid, t); };
+    rest.sort((a, b) => per(b) - per(a));
+    for (const [sq, tid] of rest) tryAdd(deck, sq, tid, cap);
+    return deck;
+  };
+
+  // the AI's deck for a level (0 Easy, 1 Normal, 2 Hard), seeded: { id, deck }
+  //   0  the classic army, or a template with half its trait points
+  //   1  a template at random
+  //   2  a template weighted by its self-play score
+  const pick = (rng, level) => {
+    const ids = Object.keys(TEMPLATES);
+    if (level <= 0) {
+      if (rng.int(0, 1)) return { id: "classic", deck: CLASSIC };
+      const id = ids[rng.int(0, ids.length - 1)], base = points({ v: 1, back: TEMPLATES[id].back, traits: {} });
+      return { id, deck: build(id, rng, base + Math.floor((BUDGET - base) / 2)) };
+    }
+    let id = ids[rng.int(0, ids.length - 1)];
+    if (level >= 2) {
+      const w = ids.map((k) => Math.max(0.05, TEMPLATES[k].score)), sum = w.reduce((a, x) => a + x, 0);
+      let r = rng.next() * sum;
+      for (let i = 0; i < ids.length; i++) { r -= w[i]; if (r < 0) { id = ids[i]; break; } }
+    }
+    return { id, deck: build(id, rng) };
+  };
+
+  // a deck from text, for the self-play harness until the share codes (phase 3): "classic", a template id,
+  // or a back rank with traits, such as "RNBQKBNR:d2=ward+rally,g1=stride"
+  const parse = (s) => {
+    if (!s || s === "classic") return CLASSIC;
+    if (TEMPLATES[s]) return build(s);
+    const [back, rest] = s.split(":"), deck = { v: 1, name: s, back, traits: {} };
+    if (rest) for (const it of rest.split(",")) { const [sq, ids] = it.split("="); deck.traits[sq] = ids.split("+"); }
+    return deck;
+  };
+
+  G.Deck = { CLASSIC, BUDGET, CAPS, PER_PIECE, COST, TRAIT, TEMPLATES, points, problems, fen, random, pieceAt, traitCp, build, pick, parse };
 })();
 
 </script>
@@ -18721,6 +19136,16 @@ function MG_SFX(L) {
   const { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING } = G.PIECE;
   const VALUE = [0, 100, 320, 330, 500, 900, 0];
   const MATE = 100000;
+  // the traits' values (core/deck.js, TRAIT cp) by mask * 8 + piece type; a Ward's by piece
+  // type too, for ordering strikes. Anointed also gains 5 for each rank its pawn has advanced.
+  const TV = new Int16Array(128 * 8), WARD_CP = new Int16Array(8);
+  const T_ANOINT = G.TRAIT.ANOINTED, T_WARD = G.TRAIT.WARD;
+  if (G.Deck) {
+    const LET = "_PNBRQK";
+    for (let m = 1; m < 128; m++) for (let t = PAWN; t < KING; t++)
+      G.TRAITS.forEach((x, i) => { if (m & (1 << i) && x.on.includes(LET[t]) && G.Deck.TRAIT[x.id]) TV[m * 8 + t] += G.Deck.traitCp(x.id, LET[t]); });
+    for (let t = PAWN; t < KING; t++) WARD_CP[t] = TV[T_WARD * 8 + t];
+  }
 
   // a8..h8 first, from white's side, as the tables are usually printed; read for white at (7 - rank) * 8 + file
   const PST = [
@@ -18751,7 +19176,8 @@ function MG_SFX(L) {
       if (!p) continue;
       const t = p & 7, c = p >> 3, i = c ? (s >> 4) * 8 + (s & 7) : (7 - (s >> 4)) * 8 + (s & 7);
       if (t === KING) { if (c) k1 = i; else k0 = i; continue; }
-      const v = VALUE[t] + PST[t][i];
+      let v = VALUE[t] + PST[t][i];
+      if (g.traited) { const m = g.tr[s]; if (m) { v += TV[m * 8 + t]; if (m & T_ANOINT) v += 5 * (c ? 6 - (s >> 4) : (s >> 4) - 1); } }
       sc += c ? -v : v;
       if (t === QUEEN) queens++;
       else if (t !== PAWN) mg += VALUE[t];
@@ -18770,7 +19196,9 @@ function MG_SFX(L) {
       if (m === first) k = 1e6;
       else {
         const fl = m >> 17;
-        if (fl & 1) k = 1000 + 10 * VALUE[(fl & 2) ? PAWN : b[(m >> 7) & 127] & 7] - VALUE[b[m & 127] & 7] / 10;
+        // a strike takes only the Ward, so it scores as the Ward's value
+        if (fl & 32) k = 1000 + 10 * WARD_CP[(fl & 2) ? PAWN : b[(m >> 7) & 127] & 7] - VALUE[b[m & 127] & 7] / 10;
+        else if (fl & 1) k = 1000 + 10 * VALUE[(fl & 2) ? PAWN : b[(m >> 7) & 127] & 7] - VALUE[b[m & 127] & 7] / 10;
         if (fl & 16) k += 900 + VALUE[(m >> 14) & 7];
       }
       return [k, m];
@@ -20000,6 +20428,222 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
 })();
 
 </script>
+<script>/* src/view/deck-ui.js */
+/* The deck screen (docs/designs/2026-11-06-deckchess-piece-decks.md, phase 3): a sheet over the board before
+   each game, at the bottom on a phone and docked right on a desktop, where the player builds the deck their
+   side plays (core/deck.js). The board shows both decks as they stand while the sheet is open; a tap on one of
+   the player's own pieces selects it, as a tap on its cell in the sheet does.
+     a preset (Classic or one of the AI's four templates), the points against the budget (45), the 8 x 2 grid of
+     the player's pieces (rank 1 above rank 2, a to h) with a pip for each trait in its rarity's colour, then
+     for the selected piece its type (N B R Q on the back squares other than e1, within the caps) and its traits
+     (the ones that fit it, with their points), each chip greyed with the reason when it can't be taken, and the
+     one-line rule of the last trait touched; three save slots and a share code; the AI's deck for the game
+     (shown before it starts); Play.
+   The deck and the slots are kept in localStorage ("deckchess.decks") when the browser keeps it.
+   A share code is the deck as short text: DC1.<back rank>.<square><trait letters>..., such as
+   "DC1.RNNQKBNR.b1S.g1SW.e2V" (G.TRAITS' letters).
+     new DG.DeckSheet({ onChange(deck), onPlay(deck), opponent() -> { name, deck } })
+     sheet.open(), sheet.close(), sheet.isOpen, sheet.deck, sheet.sel (a deck square such as "b1", or "")
+     sheet.select(sq), sheet.toggle(id), sheet.setType(letter), sheet.preset(id), sheet.points
+     DeckSheet.code(deck) -> text, DeckSheet.decode(text) -> a deck, or null when it isn't a playable one
+     DeckSheet.RULES[id], DeckSheet.NAMES[id], DeckSheet.RARITY [, Common, Uncommon, Rare, Legendary] */
+(function () {
+  const G = (window.DG = window.DG || {});
+  const $ = (id) => document.getElementById(id);
+  const D = () => G.Deck;
+  const FILES = "abcdefgh", KEY = "deckchess.decks";
+  const NAMES = { P: "Pawn", N: "Knight", B: "Bishop", R: "Rook", Q: "Queen", K: "King" };
+  const GLYPH = { P: "♙", N: "♘", B: "♗", R: "♖", Q: "♕", K: "♔" };
+  const RARITY = ["", "Common", "Uncommon", "Rare", "Legendary"];
+  // each trait's rule in one line (the design's §2), and its name
+  const RULES = {
+    ward: "The first capture against it fails: the attacker stays put, and the piece loses its Ward.",
+    vanguard: "After it captures, it gains Ward if it has none.",
+    glide: "It may also step one square diagonally, without capturing.",
+    rally: "Friendly pawns next to it may step one square sideways, without capturing.",
+    anointed: "When it promotes, the new piece has Ward.",
+    stride: "It may also move or capture one square in any direction.",
+    pike: "It may also capture one square straight ahead.",
+  };
+  const NAME = (id) => id[0].toUpperCase() + id.slice(1);
+  const NAMES_T = {};
+  for (const id in RULES) NAMES_T[id] = NAME(id);
+  const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { return {}; } };
+  const save = (o) => { try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) { /* storage blocked */ } };
+  const copy = (deck) => ({ v: 1, name: deck.name, back: deck.back, traits: Object.fromEntries(Object.entries(deck.traits || {}).filter(([, a]) => a.length).map(([k, a]) => [k, a.slice()])) });
+  const ptsOf = (id, t) => { const p = D().TRAIT[id].pts; return typeof p === "number" ? p : p[t]; };
+  const rarityOf = (id) => D().TRAIT[id].rarity;
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+  // the share code: DC1.<back>.<sq><letters>... in the squares' order; decode() checks it with Deck.problems
+  const code = (deck) => {
+    const items = Object.keys(deck.traits || {}).sort().filter((sq) => deck.traits[sq].length)
+      .map((sq) => sq + G.TRAITS.filter((x) => deck.traits[sq].includes(x.id)).map((x) => x.letter).join(""));
+    return ["DC1", deck.back].concat(items).join(".");
+  };
+  const decode = (text) => {
+    const parts = String(text || "").trim().replace(/\s+/g, "").split(".");
+    if (parts[0].toUpperCase() !== "DC1" || parts.length < 2) return null;
+    const deck = { v: 1, back: parts[1].toUpperCase(), traits: {} };
+    for (const it of parts.slice(2)) {
+      const m = /^([a-h][12])([A-Z]+)$/i.exec(it);
+      if (!m) return null;
+      const ids = [];
+      for (const l of m[2].toUpperCase()) { const x = G.TRAITS.find((t) => t.letter === l); if (!x) return null; ids.push(x.id); }
+      deck.traits[m[1].toLowerCase()] = ids;
+    }
+    return D().problems(deck).length ? null : deck;
+  };
+
+  class DeckSheet {
+    constructor(o) {
+      this.o = o;
+      const kept = load();
+      this.slots = [0, 1, 2].map((i) => (kept.slots && kept.slots[i] && !D().problems(kept.slots[i]).length ? kept.slots[i] : null));
+      this.deck = kept.deck && !D().problems(kept.deck).length ? copy(kept.deck) : copy(D().CLASSIC);
+      this.sel = ""; this.rule = ""; this.note = ""; this.showOpp = false; this.isOpen = false;
+      const el = (this.el = $("deck"));
+      el.addEventListener("click", (e) => this.click(e));
+      $("dk-preset").addEventListener("change", (e) => { if (e.target.value) this.preset(e.target.value); });
+      this.keep();
+    }
+    get points() { return D().points(this.deck); }
+    keep() { save({ deck: this.deck, slots: this.slots }); }
+    open() { this.isOpen = true; this.el.classList.add("show"); this.draw(); }
+    close() { this.isOpen = false; this.el.classList.remove("show"); }
+    changed() { this.keep(); this.draw(); if (this.o.onChange) this.o.onChange(this.deck); }
+    select(sq) { this.sel = sq && D().pieceAt(this.deck, sq) && sq !== "e1" ? sq : ""; this.draw(); if (this.o.onChange) this.o.onChange(this.deck); }
+    preset(id) {
+      const d = id === "classic" ? D().CLASSIC : D().TEMPLATES[id] ? D().build(id) : null;
+      if (!d) return;
+      this.deck = copy(d); this.deck.name = id === "classic" ? "Classic" : d.name; this.note = "";
+      this.changed();
+    }
+    // why trait `id` can't be added to the selected piece now ("" when it can)
+    whyNot(id) {
+      const sq = this.sel, t = D().pieceAt(this.deck, sq), have = this.deck.traits[sq] || [];
+      if (have.includes(id)) return "";
+      if (have.length >= D().PER_PIECE) return D().PER_PIECE + " traits max";
+      if (this.points + ptsOf(id, t) > D().BUDGET) return "Over budget";
+      return "";
+    }
+    toggle(id) {
+      const sq = this.sel, t = D().pieceAt(this.deck, sq), x = G.TRAITS.find((q) => q.id === id);
+      if (!sq || !x || !x.on.includes(t)) return false;
+      const have = this.deck.traits[sq] || [];
+      this.rule = id;
+      if (have.includes(id)) {
+        const left = have.filter((q) => q !== id);
+        if (left.length) this.deck.traits[sq] = left; else delete this.deck.traits[sq];
+      } else if (!this.whyNot(id)) this.deck.traits[sq] = have.concat(id);
+      else { this.draw(); return false; }
+      this.deck.name = ""; this.changed();
+      return true;
+    }
+    // why the selected back square can't become `l` ("" when it can)
+    typeWhyNot(l) {
+      const i = FILES.indexOf(this.sel[0]), back = this.deck.back;
+      if (back[i] === l) return "";
+      const n = [...back].filter((x) => x === l).length, cap = D().CAPS[l];
+      if (cap != null && n >= cap) return cap + " " + l + " max";
+      const next = Object.assign(copy(this.deck), { back: back.slice(0, i) + l + back.slice(i + 1) });
+      delete next.traits[this.sel]; // its traits go with the old piece
+      if (D().points(next) > D().BUDGET) return "Over budget";
+      return "";
+    }
+    setType(l) {
+      const sq = this.sel;
+      if (!sq || sq[1] !== "1" || sq === "e1" || this.typeWhyNot(l)) return false;
+      const i = FILES.indexOf(sq[0]), back = this.deck.back;
+      if (back[i] === l) return true;
+      this.deck.back = back.slice(0, i) + l + back.slice(i + 1);
+      delete this.deck.traits[sq];
+      this.deck.name = ""; this.changed();
+      return true;
+    }
+    click(e) {
+      const b = e.target.closest("[data-a]");
+      if (!b || b.disabled) return;
+      const a = b.dataset.a, v = b.dataset.v;
+      if (a === "cell") this.select(v === this.sel ? "" : v);
+      else if (a === "type") this.setType(v);
+      else if (a === "trait") this.toggle(v);
+      else if (a === "save") { this.slots[+v] = copy(this.deck); this.note = "Saved in slot " + (+v + 1); this.keep(); this.draw(); }
+      else if (a === "load") { if (this.slots[+v]) { this.deck = copy(this.slots[+v]); this.note = "Slot " + (+v + 1) + " loaded"; this.changed(); } }
+      else if (a === "share") {
+        const c = code(this.deck), inp = $("dk-code");
+        inp.value = c; inp.select();
+        try { if (navigator.clipboard) navigator.clipboard.writeText(c).catch(() => {}); } catch (err) { /* no clipboard */ }
+        this.note = "Code copied"; this.draw();
+      } else if (a === "import") {
+        const d = decode($("dk-code").value);
+        if (d) { this.deck = d; this.note = "Code loaded"; this.changed(); } else { this.note = "That code isn't a playable deck"; this.draw(); }
+      } else if (a === "opp") { this.showOpp = !this.showOpp; this.draw(); }
+      else if (a === "play") { if (!D().problems(this.deck).length && this.o.onPlay) this.o.onPlay(copy(this.deck)); }
+    }
+    // a piece's cell: its glyph, a pip for each trait in its rarity's colour
+    cell(deck, sq, sel, act) {
+      const t = D().pieceAt(deck, sq), ids = deck.traits[sq] || [];
+      const pips = ids.map((id) => `<i class="r${rarityOf(id)}" title="${NAMES_T[id]}"></i>`).join("");
+      const tag = act ? `button data-a="cell" data-v="${sq}"` : "div";
+      return `<${tag} class="dk-cell${sq === sel ? " on" : ""}${t === "K" ? " king" : ""}" aria-label="${NAMES[t]} ${sq}">${GLYPH[t]}<span class="pips">${pips}</span></${act ? "button" : "div"}>`;
+    }
+    grid(deck, sel, act) {
+      let h = "";
+      for (const r of ["1", "2"]) for (const f of FILES) h += this.cell(deck, f + r, sel, act);
+      return h;
+    }
+    draw() {
+      if (!this.isOpen) return;
+      const deck = this.deck, Dk = D(), pts = this.points, sq = this.sel, t = Dk.pieceAt(deck, sq);
+      const presets = [["classic", "Classic"]].concat(Object.entries(Dk.TEMPLATES).map(([k, v]) => [k, v.name]));
+      const named = presets.find(([, n]) => n === deck.name);
+      $("dk-preset").innerHTML = `<option value="">${named ? "" : "Custom"}</option>` + presets.map(([k, n]) => `<option value="${k}"${named && named[0] === k ? " selected" : ""}>${n}</option>`).join("");
+      if (!named) $("dk-preset").value = "";
+      $("dk-pts").textContent = pts + " / " + Dk.BUDGET;
+      $("dk-bar").style.width = Math.min(100, (pts / Dk.BUDGET) * 100) + "%";
+      $("dk-bar").classList.toggle("full", pts >= Dk.BUDGET);
+      $("dk-grid").innerHTML = this.grid(deck, sq, true);
+      let h = "";
+      if (!sq) h = `<div class="dk-hint">Tap one of your pieces, here or on the board, to change it.</div>`;
+      else {
+        h = `<div class="dk-name">${NAMES[t]} <span>${sq}</span></div>`;
+        if (sq[1] === "1") {
+          h += `<div class="dk-chips">` + "NBRQ".split("").map((l) => {
+            const why = this.typeWhyNot(l);
+            return `<button class="chip${deck.back[FILES.indexOf(sq[0])] === l ? " on" : ""}" data-a="type" data-v="${l}"${why ? " disabled" : ""}>${GLYPH[l]} ${NAMES[l]} <small>${Dk.COST[l]}</small>${why ? `<em>${why}</em>` : ""}</button>`;
+          }).join("") + `</div>`;
+        }
+        const have = deck.traits[sq] || [];
+        h += `<div class="dk-chips">` + G.TRAITS.filter((x) => x.on.includes(t) && Dk.TRAIT[x.id]).map((x) => {
+          const why = this.whyNot(x.id);
+          return `<button class="chip r${rarityOf(x.id)}${have.includes(x.id) ? " on" : ""}" data-a="trait" data-v="${x.id}"${why ? " disabled" : ""}>${NAMES_T[x.id]} <small>${ptsOf(x.id, t)}</small>${why ? `<em>${why}</em>` : ""}</button>`;
+        }).join("") + `</div>`;
+        const r = this.rule && G.TRAITS.find((x) => x.id === this.rule && x.on.includes(t)) ? this.rule : have[0];
+        if (r) h += `<div class="dk-rule"><b class="r${rarityOf(r)}">${NAMES_T[r]}</b> · ${RARITY[rarityOf(r)]} · ${RULES[r]}</div>`;
+      }
+      $("dk-edit").innerHTML = h;
+      $("dk-slots").innerHTML = this.slots.map((s, i) => `<span class="slot"><button class="chip" data-a="load" data-v="${i}"${s ? "" : " disabled"} title="${s ? esc(code(s)) : "empty"}">Slot ${i + 1}${s ? " · " + Dk.points(s) : ""}</button><button class="chip" data-a="save" data-v="${i}" title="save this deck in slot ${i + 1}">Save</button></span>`).join("");
+      $("dk-note").textContent = this.note;
+      const opp = this.o.opponent ? this.o.opponent() : null;
+      $("dk-oppbtn").textContent = (this.showOpp ? "▾ " : "▸ ") + "Opponent: " + (opp ? opp.name + " · " + Dk.points(opp.deck) : "?");
+      $("dk-opp").innerHTML = this.showOpp && opp ? this.grid(opp.deck, "", false) : "";
+      $("dk-opp").classList.toggle("show", this.showOpp);
+      const bad = Dk.problems(deck);
+      $("dk-play").disabled = bad.length > 0;
+      $("dk-play").title = bad.join("; ");
+    }
+  }
+  DeckSheet.code = code;
+  DeckSheet.decode = decode;
+  DeckSheet.RULES = RULES;
+  DeckSheet.NAMES = NAMES_T;
+  DeckSheet.RARITY = RARITY;
+  DeckSheet.PIECE = NAMES;
+  G.DeckSheet = DeckSheet;
+})();
+
+</script>
 <script>/* src/version.js */
 /* The game's version, shown small in the bottom-right corner. Semver. Each Pages deploy goes up one minor:
    tools\artifact.ps1 -Deployed stamps the next minor above both the live page's and this file's (the first
@@ -20008,7 +20652,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.15.0", name: "DeckChess", commit: "5ed8e63" };
+  G.VERSION = { v: "0.16.0", name: "DeckChess", commit: "acc3fe8" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -20027,7 +20671,9 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    the piece set's flipbooks, DC.pieces), then the rules (core/), the view (view/), the HUD and the camera every
    frame. Mossheart's look comes with it: its default preset, sunbeams, its mood and weather (its sky panel)
    and its music, those through the stand-in for its game (src/mg-standin.js), fed with the chess game's events.
-   The game opens straight onto the board: one board, no menu.
+   The game opens on the deck screen (view/deck-ui.js) over the board, which shows both decks as they stand: the
+   player builds theirs, sees the AI's (core/deck.js pick, by the level and the seed) and plays; New game opens it
+   again. A traited piece shows its traits on a hover or a long press (#tcard), and the lens (✦, T) labels them all.
    The view panel (🎥): the lighting (view/lighting.js), the camera's mode and its quick views (view/camera.js); the camera
    row over the buttons: guided's quarter turns, its preset (your side, top, low) and guided / free.
    URL options: ?side=w|b, ?level=0..2, ?promo=queen|choose, ?light=current|day|hall|glow,
@@ -20036,7 +20682,8 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    ?seed=N (the AI's; 1 under ?selftest and ?match, else random), ?depth=N (the AI's, over the level's),
    ?dpr=1, ?scale=0.8, ?nocache=1, ?vs=N (terrain), ?hero=N (pieces), ?small=1 (a phone's caps), ?preset=,
    ?elev=20..85 (free's pitch in degrees, Mossheart's iso angle by default: view/camera.js), ?mute=1,
-   ?hotseat=1 (both sides by hand), ?match=1 (the AI against itself to the end, JSON report into #result),
+   ?deck= ?ai= (the player's and the AI's decks, as a share code, "classic", a template id or Deck.parse's text;
+   ?deck= skips the deck screen, which ?selftest and ?match always do, classic unless these say), ?hotseat=1 (both sides by hand), ?match=1 (the AI against itself to the end, JSON report into #result),
    ?selftest=1 (picking by the grid at many angles, every square in view, a scripted move by touch and mouse,
    the AI's reply and an undo, a capture's burst, the stand-in's fields; timings and errors into #result). */
 (async function () {
@@ -20057,7 +20704,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     const banks = window.MA && MG.SOUND_BANKS ? MA.renderBanks(MG.SOUND_BANKS, { cache: !ME.qn("nocache", 0) }) : null;
 
     let ctl = null;
-    const hud = new G.Hud({ where: C.boards.list[0].name, undo: () => ctl.undo(), newGame: () => ctl.newGame(hud.settings) });
+    const hud = new G.Hud({ where: C.boards.list[0].name, undo: () => ctl.undo(), newGame: () => ctl.build() });
     const boardId = C.boards.list[0].id;
 
     ME.progress("starting WebGPU", 0.01);
@@ -20203,12 +20850,55 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       else cam.event(info.capture ? "capture" : "move", { at: P, from, long });
     };
 
+    // the decks: ?deck= and ?ai= (a share code, or what Deck.parse reads), else the deck screen's and the AI's pick
+    const deckOf = (q) => {
+      const t = ME.params.get(q);
+      try { const d = t ? G.DeckSheet.decode(t) || G.Deck.parse(t) : null; return d && !G.Deck.problems(d).length ? d : null; } catch (e) { return null; }
+    };
+    const deckQ = deckOf("deck"), aiQ = deckOf("ai");
+    const uiEl = document.getElementById("ui");
+    // a deck square ("b1": the player's own ranks 1-2) on the board, by the player's side (Black's mirrored)
+    const boardSq = (d, c) => G.square(d[0] + (c ? (d[1] === "1" ? "8" : "7") : d[1]));
+    const deckSq = (s, c) => { const r = (s >> 3) + 1, f = G.squareName(s)[0], k = c ? 9 - r : r; return k <= 2 ? f + k : ""; };
     ctl = {
       game: null, ai: [null, null], you: [0], sel: -1, targets: [], last: null, status: null,
       thinking: false, ended: false, promoOpen: false, seq: 0, seed: seed0, side: -1,
-      newGame(s) {
+      building: false, opp: null, fen: null,
+      // the deck screen: the AI's deck for the next game, both decks on the board, the sheet open
+      build() {
+        const s = hud.settings;
         this.seq++;
-        this.game = new G.Chess();
+        this.building = true; this.thinking = false; this.ended = false; this.last = null; this.targets = [];
+        const p = aiQ ? { id: "custom", deck: aiQ } : G.Deck.pick(new G.Rng(Math.imul(this.seed, 0x9e3779b1) >>> 0), s.level);
+        this.opp = { name: p.id === "classic" ? "Classic" : p.deck.name || p.id, deck: p.deck };
+        this.you = ME.qn("hotseat", 0) ? [0, 1] : [s.side];
+        hud.hideEnd();
+        sheet.open(); uiEl.classList.add("building");
+        const side = this.you.length === 1 ? this.you[0] : 0;
+        this.side = side;
+        this.preview();
+        frameView(true);
+      },
+      mine() { return this.you.length === 1 ? this.you[0] : 0; },
+      preview() {
+        if (!this.building) return;
+        const c = this.mine(), w = c ? this.opp.deck : sheet.deck, b = c ? sheet.deck : this.opp.deck;
+        this.game = new G.Chess(G.Deck.fen(w, b));
+        pieces.reset(this.game); phys.clear();
+        this.sel = sheet.sel ? boardSq(sheet.sel, c) : -1;
+        this.refresh();
+      },
+      // Play: the game from the two decks
+      start(deck) {
+        const c = this.mine();
+        sheet.close(); uiEl.classList.remove("building"); this.building = false;
+        this.newGame(hud.settings, G.Deck.fen(c ? this.opp.deck : deck, c ? deck : this.opp.deck));
+        frameView(true);
+      },
+      newGame(s, fen) {
+        this.seq++;
+        if (fen) this.fen = fen;
+        this.game = new G.Chess(this.fen || undefined);
         this.you = match ? [] : ME.qn("hotseat", 0) ? [0, 1] : [s.side];
         const L = hud.level, depth = ME.qn("depth", match ? 2 : L.depth);
         for (const c of [0, 1]) this.ai[c] = new G.AI({ depth, jitter: L.jitter, seed: this.seed++, maxNodes: 250000 });
@@ -20248,6 +20938,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       // a tap on square sq (-1: off the board)
       tap(sq) {
         const g = this.game;
+        if (this.building) { sheet.select(sq >= 0 ? deckSq(sq, this.mine()) : ""); return; }
         if (this.ended || this.thinking || this.promoOpen || !this.you.includes(g.turn) || pieces.busy) return;
         if (this.sel >= 0 && sq >= 0) {
           const from = this.sel, ms = this.targets.filter((m) => G.info(m).to === sq);
@@ -20268,7 +20959,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         else { this.sel = -1; this.targets = []; }
         this.refresh();
       },
-      cancel() { if (this.sel >= 0) { this.sel = -1; this.targets = []; this.refresh(); } },
+      cancel() { if (this.building) { if (sheet.sel) sheet.select(""); return; } if (this.sel >= 0) { this.sel = -1; this.targets = []; this.refresh(); } },
       undo() {
         if (!this.canUndo()) return;
         const g = this.game;
@@ -20284,7 +20975,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       // every frame: the AI's turn once the last move has landed, the end once it has
       update() {
         const st = this.status;
-        if (pieces.busy) return;
+        if (pieces.busy || this.building) return;
         if (st.over) {
           if (!this.ended) { this.ended = true; ME.log("END", { result: st.result, reason: st.reason, plies: this.game.history.length }); if (!match) hud.showEnd(st, this.you); }
           return;
@@ -20300,6 +20991,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         }, match ? 0 : 250);
       },
     };
+    const sheet = new G.DeckSheet({ onChange: () => ctl.preview(), onPlay: (d) => ctl.start(d), opponent: () => ctl.opp });
 
     // ------------------------------------------------------------------ camera
     let cam = null;
@@ -20317,8 +21009,9 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     const freeRows = () => {
       const c = canvas.getBoundingClientRect(), k = canvas.height / Math.max(1, c.height);
       const rect = (id) => { const e = document.getElementById(id), r = e && e.getBoundingClientRect(); return r && r.height ? r : null; };
-      const t = rect("top"), b = rect("bottom"), v = rect("views"), y0 = t ? t.bottom : c.top;
-      const y1 = Math.min(b ? b.top : c.bottom, v ? v.top : c.bottom);
+      const t = rect("top"), b = rect("bottom"), v = rect("views"), d = rect("deck"), y0 = t ? t.bottom : c.top;
+      let y1 = Math.min(b ? b.top : c.bottom, v ? v.top : c.bottom);
+      if (d && d.width > 0.7 * c.width) y1 = Math.min(y1, d.top); // the deck screen's bottom sheet (a phone)
       return y1 - y0 > 64 ? [(y0 - c.top + 6) * k, (y1 - c.top - 6) * k] : [0, canvas.height];
     };
     // the board fitted to the free rows (view/camera.js fitTo: home, the zoom range, the pan's clamp); turn:
@@ -20332,7 +21025,9 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       cam.foc = null; cam.zoom = f.zoom; cam.pan = cam.panOf(f.W);
     };
     fitCanvas();
-    ctl.newGame(hud.settings);
+    // ?deck= / ?ai= (a share code or a deck's JSON): straight into that game; else the deck screen first
+    const side0 = hud.settings.side;
+    ctl.newGame(hud.settings, deckQ || aiQ ? G.Deck.fen(side0 ? aiQ : deckQ, side0 ? deckQ : aiQ) : undefined);
     ME.log("READY", { bakeMs, board: boardId, materials: pal.names.length - 1, models: MB.models.length, seed: seed0 });
     frameView(true);
     cam.attach(canvas);
@@ -20391,6 +21086,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     setCam(hud.settings.camera);
     frameView(true); // the row now shows: the board fitted above it, at the mode's home
     document.getElementById("loading").style.display = "none";
+    if (!selftest && !match && !deckQ) ctl.build();
 
     // ------------------------------------------------------------------ pointer and keys
     const toCanvas = (e) => { const r = canvas.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * canvas.width, ((e.clientY - r.top) / r.height) * canvas.height]; };
@@ -20408,31 +21104,85 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       hud.tag(hover >= 0 ? G.squareName(hover) : null, e.clientX, e.clientY, go);
     };
     const touchOff = () => { hover = -1; hud.tag(null); };
+    // the trait card: a traited piece's name, square and each trait's rule, by the mouse over it or a finger
+    // held on it (450 ms)
+    const tcard = $("tcard");
+    let cardSq = -1, longT = 0;
+    const showCard = (s, x, y) => {
+      const g = ctl.game, m = s >= 0 ? g.tr[(s >> 3) * 16 + (s & 7)] : 0;
+      if (!m) { hideCard(); return; }
+      if (s !== cardSq) {
+        const v = g.at(s), T = G.DeckSheet;
+        let h = `<h3>${T.PIECE[" PNBRQK"[v & 7]]} <small>${G.squareName(s)}</small></h3>`;
+        G.TRAITS.forEach((t, i) => { if (m & (1 << i)) { const r = G.Deck.TRAIT[t.id] ? G.Deck.TRAIT[t.id].rarity : 1; h += `<p class="r${r}"><b>${T.NAMES[t.id]}</b> ${T.RULES[t.id]}</p>`; } });
+        tcard.innerHTML = h; cardSq = s;
+      }
+      tcard.classList.add("show");
+      const w = tcard.offsetWidth, hh = tcard.offsetHeight;
+      tcard.style.left = Math.max(6, Math.min(window.innerWidth - w - 6, x + 14)) + "px";
+      tcard.style.top = Math.max(6, Math.min(window.innerHeight - hh - 6, y - hh - 14)) + "px";
+    };
+    const hideCard = () => { cardSq = -1; tcard.classList.remove("show"); clearTimeout(longT); };
     canvas.addEventListener("pointerdown", (e) => {
+      hideCard();
       if (down && down.id !== e.pointerId) { down = null; touchOff(); return; } // a second finger: a pinch
       down = { x: e.clientX, y: e.clientY, t: ME.now(), id: e.pointerId, touch: e.pointerType !== "mouse" };
-      if (down.touch) touchAt(e);
+      if (down.touch) {
+        touchAt(e);
+        const d = down, x = e.clientX, y = e.clientY, s = hover;
+        longT = setTimeout(() => { if (down === d && cam.dragPx < TAP) { d.long = true; showCard(s, x, y); } }, 450);
+      }
     });
     canvas.addEventListener("pointerup", (e) => {
       if (!down || down.id !== e.pointerId) return;
-      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y), dt = ME.now() - down.t;
-      if (down.touch) touchOff();
+      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y), dt = ME.now() - down.t, long = down.long;
+      if (down.touch) { touchOff(); hideCard(); }
       down = null;
-      if (moved >= 10 || cam.dragPx >= TAP || dt >= 600 || e.button > 0) return;
+      if (long || moved >= 10 || cam.dragPx >= TAP || dt >= 600 || e.button > 0) return;
       ctl.tap(pickPx(...toCanvas(e)));
     });
-    canvas.addEventListener("pointercancel", (e) => { if (down && down.id === e.pointerId) { if (down.touch) touchOff(); down = null; } });
+    canvas.addEventListener("pointercancel", (e) => { if (down && down.id === e.pointerId) { if (down.touch) touchOff(); down = null; } hideCard(); });
     // a right click cancels the selection; a right drag pans
     canvas.addEventListener("contextmenu", (e) => { e.preventDefault(); if (cam.dragPx < TAP) ctl.cancel(); });
     canvas.addEventListener("pointermove", (e) => {
-      if (e.pointerType === "mouse" && !e.buttons) hover = pickPx(...toCanvas(e));
+      if (e.pointerType === "mouse" && !e.buttons) { hover = pickPx(...toCanvas(e)); showCard(hover, e.clientX, e.clientY); }
       else if (down && down.touch && down.id === e.pointerId) {
-        if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < 10 && cam.dragPx < TAP) touchAt(e); else touchOff();
-      }
+        if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < 10 && cam.dragPx < TAP) touchAt(e); else { touchOff(); hideCard(); }
+      } else hideCard();
     });
-    canvas.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") hover = -1; });
+    canvas.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") { hover = -1; hideCard(); } });
+    // the lens (✦, T): each traited piece's letters above it, in their rarity's colours; on unless turned off
+    const lensEl = $("lens"), lensBtn = $("lensbtn"), tags = new Map();
+    let lensOn = true;
+    try { lensOn = localStorage.getItem("deckchess.lens") !== "0"; } catch (e) { /* storage blocked */ }
+    const setLens = (on) => {
+      lensOn = on; lensEl.classList.toggle("show", on); lensBtn.classList.toggle("on", on);
+      try { localStorage.setItem("deckchess.lens", on ? "1" : "0"); } catch (e) { /* storage blocked */ }
+    };
+    setLens(lensOn);
+    lensBtn.onclick = () => setLens(!lensOn);
+    const drawLens = () => {
+      if (!lensOn) return;
+      const g = ctl.game, r = canvas.getBoundingClientRect(), W = canvas.width, H = canvas.height, k = r.width / W, seen = new Set();
+      for (const p of pieces.list) {
+        const m = p.die ? 0 : g.tr[(p.sq >> 3) * 16 + (p.sq & 7)];
+        if (!m) continue;
+        let el = tags.get(p.id);
+        if (!el) { el = document.createElement("span"); lensEl.appendChild(el); tags.set(p.id, el); el.dataset.m = ""; }
+        if (el.dataset.m !== String(m)) {
+          el.dataset.m = String(m);
+          el.innerHTML = G.TRAITS.map((t, i) => (m & (1 << i) ? `<i class="r${G.Deck.TRAIT[t.id] ? G.Deck.TRAIT[t.id].rarity : 1}">${t.letter}</i>` : "")).join("");
+        }
+        const c = pieces.middle(p), q = cam.toScreen([c[0], c[1], 2 * c[2] - p.P[2]], W, H);
+        el.style.left = (r.left + q[0] * k).toFixed(1) + "px"; el.style.top = (r.top + q[1] * k - 4).toFixed(1) + "px";
+        seen.add(p.id);
+      }
+      for (const [id, el] of tags) if (!seen.has(id)) { el.remove(); tags.delete(id); }
+    };
     window.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") ctl.cancel();
+      if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT")) return;
+      if (e.key === "t" || e.key === "T") setLens(!lensOn);
+      else if (e.key === "Escape") ctl.cancel();
       else if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); ctl.undo(); }
     });
 
@@ -20473,6 +21223,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       R.frame(cam, fx.clock, rdt);
       const cpu = ME.now() - c0;
       cam.pan[0] -= jx; cam.pan[1] -= jy;
+      drawLens();
       if (audio) audio.update(rdt, listener());
       perf.acc += rdt; perf.n++;
       if (ME.now() - perf.t > 2000) { perf.fps = perf.n / Math.max(1e-3, perf.acc); perf.acc = 0; perf.n = 0; perf.t = ME.now(); fpsEl.textContent = Math.round(perf.fps) + " fps · " + Math.round(R.set.scale * 100) + "%"; }
@@ -20638,14 +21389,42 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         const lightOk = lightT.glow.glow === 3 && lightT.day.glow === 1 && Math.abs(lightT.day.amb - LD.day.amb) < 1e-3 && Math.abs(lightT.hall.exposure - LD.hall.exposure) < 1e-3 && lightT.day.canopy === false && lightT.hall.sunEl === LD.hall.sunEl;
         setLight("current"); mood(0); lights.apply(0, true);
         nFrames += await frames(10);
+        // the deck screen: New game opens it over both decks on the board; a tap on b1 picks the knight, Stride
+        // and Ward on it (43 points), Vanguard on e2 and Ward on d2 fill the budget (45), Ward on c2 is refused;
+        // a second queen is refused on a1; the share code round-trips, a bad one is refused; the opponent's
+        // grid, the lens over the traited pieces; Play starts the game with the deck's traits, the card names
+        // them; then Classic again, so the check profile stays clean
+        const dk = {};
+        $("b-new").click();
+        dk.open = sheet.isOpen && uiEl.classList.contains("building");
+        sheet.preset("classic");
+        ctl.tap(sq("b1")); dk.sel = sheet.sel;
+        dk.stride = sheet.toggle("stride"); dk.ward = sheet.toggle("ward"); dk.pts = [sheet.points];
+        sheet.select("e2"); sheet.toggle("vanguard"); dk.pts.push(sheet.points);
+        sheet.select("d2"); sheet.toggle("ward"); dk.pts.push(sheet.points);
+        sheet.select("c2"); dk.over = sheet.whyNot("ward"); dk.refused = !sheet.toggle("ward");
+        sheet.select("a1"); dk.queen = sheet.typeWhyNot("Q"); dk.boardSel = ctl.sel === sq("a1");
+        const code = (dk.code = G.DeckSheet.code(sheet.deck));
+        dk.round = G.DeckSheet.code(G.DeckSheet.decode(code)) === code; dk.bad = G.DeckSheet.decode("DC1.RNBQKBNR.e2Z") === null;
+        $("dk-oppbtn").click(); dk.oppCells = document.querySelectorAll("#dk-opp .dk-cell").length; $("dk-oppbtn").click();
+        dk.preview = pieces.list.length;
+        nFrames += await frames(10);
+        dk.lens = lensEl.children.length;
+        $("dk-play").click();
+        dk.playing = !ctl.building && !sheet.isOpen && !uiEl.classList.contains("building");
+        dk.traits = ctl.game.traits();
+        showCard(sq("b1"), 100, 100); dk.card = tcard.classList.contains("show") ? tcard.textContent : ""; hideCard();
+        nFrames += await frames(10);
+        sheet.preset("classic");
+        const deckOk = dk.open && dk.sel === "b1" && dk.stride && dk.ward && dk.pts.join() === "43,44,45" && dk.over === "Over budget" && dk.refused && dk.queen === "1 Q max" && dk.boardSel && dk.round && dk.bad && dk.oppCells === 16 && dk.preview === 32 && dk.lens >= 3 && dk.playing && dk.traits.includes("b1:WS") && dk.traits.includes("e2:V") && dk.card.includes("Stride");
         // the pieces' baked sizes and their heights on the board (tiles)
         const sizes = {};
         for (const c of [0, 1]) for (let t = 1; t <= 6; t++) { const m = models[c][t]; sizes["wb"[c] + " PNBRQK"[t]] = { model: m.name, h: +m.h.toFixed(2), r: +m.r.toFixed(2), fit: +m.fit.toFixed(2), height: m.height }; }
         out.board = { id: boardId, region, z: +board.z.toFixed(3), zSpread: board.zSpread, pieces: sizes };
         ME.log("BOARD", JSON.stringify({ id: boardId, z: out.board.z, zSpread: board.zSpread, region }));
-        out.pick = pick; out.turned = turned; out.script = script; out.capture = cap; out.camera = camT; out.lighting = lightT;
+        out.pick = pick; out.turned = turned; out.script = script; out.capture = cap; out.camera = camT; out.lighting = lightT; out.deck = dk;
         out.sky = { stars: starsDrawn, atmos: atmos.state(), cues: fx.cues, audio: audio ? audio.stats() : null };
-        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2 && capOk && camOk && lightOk && starsDrawn > 100 && !mg.length;
+        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2 && capOk && camOk && lightOk && deckOk && starsDrawn > 100 && !mg.length;
       }
       Object.assign(out, { frames: nFrames, avgFrameIntervalMs: avg(ints.slice(5)), avgCpuMs: avg(cpus.slice(5)), gpuMs: R.gpuMs, errors: ME.errors });
       report(out);
