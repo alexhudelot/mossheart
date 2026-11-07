@@ -748,6 +748,9 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
 @keyframes beat { 0%, 100% { transform: scale(0.8); opacity: 0.7; } 12% { transform: scale(1.25); opacity: 1; } 30% { transform: scale(0.95); } }
 .chip.soon { border-color: rgba(250, 242, 219, 0.4); background: rgba(250, 242, 219, 0.14); color: #fffae6; }
 .chip.best { border-color: var(--moss); }
+/* a run with a skipped wave (terrariums.js labels): muted, its dot still, as it plays off the board */
+.chip.off { border-color: #b7b49c; color: #5f6852; }
+.chip.off i { background: #a9a48a; animation: none; }
 .jtop { position: absolute; left: calc(14px + var(--sl)); right: calc(14px + var(--sr)); top: calc(12px + var(--st)); display: flex; align-items: center; gap: 10px; z-index: 12; }
 .jtop h2 { margin: 0; font-size: calc(22px * var(--ts)); }
 .jtop .jgap { flex: 1; }
@@ -17651,7 +17654,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.78.0", name: "Mossheart", commit: "2f7b870" };
+  G.VERSION = { v: "0.79.0", name: "Mossheart", commit: "b1d05fb" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -23278,11 +23281,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       u.set(ring2, 12);
     }
     // the garden darkens and blooms as the battle gets dramatic (world.set_mood in the Godot build), then
-    // the whole look blends toward the engine's dusk (ME.DUSK; ME.DayCycle's blend, driven by the run)
+    // the whole look blends toward the level's dusk (R.duskTo, its look's dusk over ME.DUSK, as ME.DayCycle and
+    // the sky blend; ME.DayCycle's blend, driven by the run)
     mood() {
-      const m = S.intensity, s = this.R.set, base = this.base, d = this.dusk;
+      const m = S.intensity, s = this.R.set, base = this.base, d = this.dusk, to = this.R.duskTo || ME.DUSK;
       const day = { exposure: base.exposure * (1 - 0.1 * m), bloomK: base.bloomK * (1 + 0.45 * m), vignette: base.vignette + 0.3 * m };
-      for (const k in ME.DUSK) { const v = k in day ? day[k] : base[k]; s[k] = v + (ME.DUSK[k] - v) * d; }
+      for (const k in to) { const v = k in day ? day[k] : base[k]; s[k] = v + (to[k] - v) * d; }
       s.haze = base.haze + 0.035 * m;
       s.dusk = d;
       if (this.atmos) this.atmos.apply(s); // the mood's sun and the weather on top (view/atmos.js)
@@ -24839,14 +24843,15 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const soon = !G.hasLevel(id) || !!look.soon;
       return { id, name: L.name || look.name || id, blurb: look.blurb || L.blurb || "", soon, best: soon ? 0 : S.bestOf(id), run: soon ? null : this.runOf(id) };
     }
-    // a garden's run: the one in play for the garden that is up, else its save; null if none
+    // a garden's run: the one in play for the garden that is up, else its save; null if none (skipped: a wave of
+    // it was skipped, Game.skipWave, so it plays off the board)
     runOf(id) {
       if (id === G.levelId && this.menu.inRun()) {
         const g = this.menu.app.game;
-        return { live: true, wave: S.phase === P.WAVE ? S.wave : S.wave + 1, gifts: S.boons.length, plants: g.towers.length, heart: [S.heartHp, S.heartMax], time: g.time, saved: Date.now() };
+        return { live: true, wave: S.phase === P.WAVE ? S.wave : S.wave + 1, gifts: S.boons.length, plants: g.towers.length, heart: [S.heartHp, S.heartMax], time: g.time, saved: Date.now(), skipped: !!S.offBoard };
       }
       const d = G.Save && G.Save.read(id);
-      return d ? { live: false, wave: d.wave + 1, gifts: d.boons.length, plants: d.towers.length, heart: d.heart, time: d.time || 0, saved: d.saved || 0 } : null;
+      return d ? { live: false, wave: d.wave + 1, gifts: d.boons.length, plants: d.towers.length, heart: d.heart, time: d.time || 0, saved: d.saved || 0, skipped: !!(d.stats && d.stats.skipped) } : null;
     }
     // the garden whose run was played last (the title's Continue), or null when no garden has one
     latest() {
@@ -24872,10 +24877,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     labels() {
       for (const j of this.el.querySelectorAll(".jar")) {
         const g = this.info(j.dataset.id);
-        const chip = g.run ? `<span class="chip"><i></i>Wave ${g.run.wave} · in progress</span>` : g.soon ? `<span class="chip soon">In the works</span>` : g.best ? `<span class="chip best">Best wave ${g.best}</span>` : `<span class="chip best">Not played yet</span>`;
+        const chip = g.run ? `<span class="chip${g.run.skipped ? " off" : ""}"><i></i>Wave ${g.run.wave} · ${g.run.skipped ? "off the board" : "in progress"}</span>` : g.soon ? `<span class="chip soon">In the works</span>` : g.best ? `<span class="chip best">Best wave ${g.best}</span>` : `<span class="chip best">Not played yet</span>`;
         j.querySelector(".nm").innerHTML = `<b>${esc(g.name)}</b>${chip}`;
         j.classList.toggle("soon", g.soon);
-        j.setAttribute("aria-label", g.name + (g.soon ? ", in the works" : g.run ? `, resume at wave ${g.run.wave}` : ", begin a run"));
+        j.setAttribute("aria-label", g.name + (g.soon ? ", in the works" : g.run ? `, resume at wave ${g.run.wave}${g.run.skipped ? ", off the leaderboard" : ""}` : ", begin a run"));
       }
     }
     front() { const ids = this.ids(), n = ids.length; return ids[((Math.round(this.rotTo) % n) + n) % n]; }
@@ -25433,12 +25438,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (name === "settings") this.renderSettings();
       if (name === "jars") this.terr.open(); else this.terr.close();
       if (name === "title") {
-        // Continue: the run played last, with its garden and wave (the void behind turns that garden's jar);
+        // Continue: the run played last, with its garden and wave, "off the board" if a wave of it was skipped
+        // (the void behind turns that garden's jar);
         // with no run (after a game over) Play opens the terrariums
         const l = this.terr.latest(), T = $("title"), id = l ? l.id : G.levelId;
         const c = T.querySelector('[data-a="cont"]'), j = T.querySelector('[data-a="jars"]');
         c.style.display = l ? "" : "none";
-        if (l) c.innerHTML = `Continue <small>${this.terr.info(l.id).name} · wave ${l.run.wave}</small>`;
+        if (l) c.innerHTML = `Continue <small>${this.terr.info(l.id).name} · wave ${l.run.wave}${l.run.skipped ? " · off the board" : ""}</small>`;
         j.innerHTML = l ? "Terrariums" : "Play"; j.classList.toggle("pink", !l);
         const tj = T.querySelector(".tjar");
         if (!tj.firstChild || tj.firstChild.dataset.id !== id) { tj.innerHTML = ""; const b = G.Terrariums.jarEl(id, 0.15); b.tabIndex = -1; b.setAttribute("aria-hidden", "true"); tj.appendChild(b); }
