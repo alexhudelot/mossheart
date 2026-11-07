@@ -17657,7 +17657,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.80.0", name: "Mossheart", commit: "135a1e0" };
+  G.VERSION = { v: "0.81.0", name: "Mossheart", commit: "6e434f4" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -20835,6 +20835,14 @@ function MA_DSP() {
     spore: svg(`<circle cx="12" cy="7.5" r="3.6" ${W}/><circle cx="7" cy="15.5" r="3.6" ${W}/><circle cx="17" cy="15.5" r="3.6" ${W}/><circle cx="12" cy="7.5" r="1.1" ${S}/><circle cx="7" cy="15.5" r="1.1" ${S}/><circle cx="17" cy="15.5" r="1.1" ${S}/>`),
     spirit: svg(`${flame(12, 14.2, 1.7)}<path d="M12 18.4C9 18.4 8.4 14.8 10.8 13.6C12.8 12.6 14 14.9 12.5 15.7"/>`),
   };
+  // --- the matchup marks' colours, [r, g, b] in 0..1 in Defs.ELEMENTS order (pierce, light, spore, spirit), for
+  // the resist halos, weak veins, hit flashes, weak bursts and "weak!" text, and the HUD's element chips.
+  // They replace the first plant's colour (Defs.TOWERS[ELEMENT_TOWER[e]].color) there, which leaves pierce
+  // and spore alike to protan eyes (CIEDE2000 6.6). Vermilion, pale gold, violet and sky cyan stay apart
+  // under protan, deutan and tritan simulation (Machado 2009: worst pair 26.4, deutan pierce/light) and in
+  // normal sight (35.8), and each has luminance >= 0.2, so it still glows on a dark body. The plants keep
+  // their own colours everywhere else.
+  G.ELEMENT_MARK = [[0.91, 0.251, 0.165], [1, 0.941, 0.541], [0.608, 0.361, 1], [0.624, 0.91, 1]];
   G.ENEMY_ICONS = {
     grub: svg(`<path d="M5 17.5C3 13 5.5 7 11 6.5C16.5 6 20.5 9.5 19.5 13.5C18.8 16.2 15.5 16 15 13.6C14.5 11 11.5 11.5 10.5 13.5C9.5 15.5 7 19.5 5 17.5Z" ${W}/><path d="M9 7.4L10.8 12M13.4 6.6L13.6 11M16.8 7.8L15.6 11.6"/><circle cx="18.2" cy="12" r=".9" ${S}/>`),
     beetle: svg(`<path d="M12 6.5C17 6.5 18.5 11 18.5 14C18.5 18.5 15.5 21.5 12 21.5C8.5 21.5 5.5 18.5 5.5 14C5.5 11 7 6.5 12 6.5Z" ${W}/><path d="M12 9V21.5M9.6 6.8C9.4 5 10.4 3.8 12 3.8C13.6 3.8 14.6 5 14.4 6.8M10.4 4.2L8.4 2.2M13.6 4.2L15.6 2.2M5.8 12L3 10.6M5.6 16L2.8 16.6M18.2 12L21 10.6M18.4 16L21.2 16.6"/>`),
