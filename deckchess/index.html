@@ -3982,6 +3982,7 @@ window.addEventListener("error", (e) => {
 (function () {
   const ME = window.ME, M4 = ME.m4;
   const D0 = -48, D1 = 52; // depth range in X'+Y'+Z units; reversed-Z (near = 1)
+  const ease = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2); // a turn's and a focus's easing
 
   class Camera {
     constructor(cx, cy) {
@@ -4005,7 +4006,6 @@ window.addEventListener("error", (e) => {
     focus(p, o = {}) { this.foc = { p: p.slice(), s: Math.max(0.05, o.s ?? 0.6), z0: this.zoom, z1: o.zoom != null ? Math.max(this.minZoom, Math.min(this.maxZoom, o.zoom)) : null, from: this.pan.slice(), t0: ME.now() }; }
     get busy() { return !!this.foc || this.t0 !== null; }
     update(now) {
-      const ease = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
       if (this.t0 !== null) {
         const u = Math.min(1, (now - this.t0) / 520);
         this.theta = this.from + (this.to - this.from) * ease(u);
@@ -10098,6 +10098,7 @@ fn boxOf(V: Vox) -> Box {
   const RING_MAX = 48; // water rings drawn (ringBuf)
   const byBirth = (a, b) => b[2] - a[2]; // newest ring first
   const BEAM_COL = [255, 212, 146], MOON_COL = [168, 196, 244]; // the shafts' colour by day and by moonlight
+  const FOG_COL = [40, 32, 18]; // the fog's colour when the style gives none (only read)
   const set4 = (u, o, a, b, c, d) => { u[o] = a; u[o + 1] = b; u[o + 2] = c; u[o + 3] = d; }; // (writeUniforms: no array per vec4)
   const SPRAY_MAX = 4096; // the rim spills' spray voxels, all spills together
 
@@ -11151,7 +11152,7 @@ fn boxOf(V: Vox) -> Box {
       // the weather's clouds on top of R.set (factors of exactly 1 and + 0 without weather: WeatherMix)
       const Wx = this.weather, wc = Wx.active ? Wx.cur.cloud : 0, wr = Wx.active ? Wx.cur.rain : 0, WL = WeatherMix.LIGHT, WR = WeatherMix.LIGHT_RAIN;
       set4(u, O.look3, s.debug, s.shafts ? s.shaftK * this.shaftMul * (1 + s.moonK * moon * moon * moon) * (1 - WL.shaftK * wc) * (1 - WR.shaftK * wr) : 0, s.bloomK * (1 - WL.bloomK * wc), s.exposure * (1 - WL.exposure * wc) * (1 - WR.exposure * wr));
-      const fog = (st.hd && st.hd.fog) || [40, 32, 18];
+      const fog = (st.hd && st.hd.fog) || FOG_COL;
       set4(u, O.fog, ME.lin(fog[0]), ME.lin(fog[1]), ME.lin(fog[2]), s.haze + WL.haze * wc + WR.haze * wr);
       const bc = (st.hd && st.hd.beamCol) || BEAM_COL;
       set4(u, O.beamCol, lerpN(bc[0], MOON_COL[0], moon) / 255, lerpN(bc[1], MOON_COL[1], moon) / 255, lerpN(bc[2], MOON_COL[2], moon) / 255, s.vignette);
@@ -11430,6 +11431,7 @@ fn boxOf(V: Vox) -> Box {
   // KEEP: the life of dug terrain sand (it never expires; shaders/physics.js); SETCAP: settled grains listed
   // per copy; ARGS: draw args (16 bytes), impact and settle counts (16), 64 impacts, the settled grains
   const ME = window.ME, BU = window.GPUBufferUsage || {}, F = 8, BYTES = F * 4, KEEP = 1e9, SETCAP = 2048, ARGS = 32 + 64 * 16 + SETCAP * 8;
+  const ZERO4 = new Uint32Array(4); // (writeBuffer and set copy it: never written)
   // the cells an emptied cell can unsettle (loosen): the one above, and the four beside it, level and one up
   const WAKE = [[0, 0, 1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1]];
   const hash32 = (x) => { x = Math.imul(x ^ (x >>> 16), 0x45d9f3b); x = Math.imul(x ^ (x >>> 16), 0x45d9f3b); return (x ^ (x >>> 16)) >>> 0; };
@@ -11813,7 +11815,7 @@ fn boxOf(V: Vox) -> Box {
       this.clear(); this.qh = this.qt = 0; this.carveQ.length = 0;
       this.keepLive = this.keepQueued = 0; this.gen++; this.occReset = 1; this.jobs.length = 0;
       // settled grains not yet copied are void (copies already in flight are dropped by gen)
-      this.dev.queue.writeBuffer(this.argsBuf, 16, new Uint32Array(4));
+      this.dev.queue.writeBuffer(this.argsBuf, 16, ZERO4);
       if (flips.length) this.R.carve(flips);
       this.staticBits = this.staticBits0;
       return n;
@@ -11875,7 +11877,7 @@ fn boxOf(V: Vox) -> Box {
       const enc = this.dev.createCommandEncoder(), gen = this.gen, upTo = this.stepNo;
       enc.copyBufferToBuffer(this.argsBuf, 16, st, 0, this.keeps ? st.size : 16 + 64 * 16); // the settle list once sand was dug
       this.dev.queue.submit([enc.finish()]);
-      this.dev.queue.writeBuffer(this.argsBuf, 16, new Uint32Array(4));
+      this.dev.queue.writeBuffer(this.argsBuf, 16, ZERO4);
       st.mapAsync(GPUMapMode.READ).then(() => {
         const raw = st.getMappedRange(), [total, nSet, lost] = new Uint32Array(raw, 0, 3), ev = new Float32Array(raw.slice(16, 16 + Math.min(64, total) * 16));
         const set = nSet ? new Uint32Array(raw.slice(16 + 64 * 16, 16 + 64 * 16 + Math.min(SETCAP, nSet) * 8)) : null;
@@ -11970,7 +11972,7 @@ fn boxOf(V: Vox) -> Box {
       pu[12] = T.NX; pu[13] = T.NY; pu[14] = T.NZ; pu[15] = this.capacity;
       pp[16] = T.O[0]; pp[17] = T.O[1]; pp[18] = T.O[2]; pp[19] = T.VS;
       const dg = this.digs.shift();
-      pp.set(dg || [0, 0, 0, 0], 20);
+      pp.set(dg || ZERO4, 20);
       // every terrain cell carved since the last step, given back to the solid bitset before the spawn
       // (so no grain spawns inside a cell that is still solid)
       this.nCarve = 0;
@@ -17912,6 +17914,7 @@ function MG_SFX(L) {
 (function () {
   const ME = window.ME;
   const $ = (id) => document.getElementById(id);
+  const NO_KEYS = Object.freeze({}); // (an empty table for the per-frame for-in loops: only iterated)
 
   const MOODS = {
     auto: { name: "Auto", dusk: null },
@@ -18110,12 +18113,12 @@ function MG_SFX(L) {
       // (at the same easing as cur: tau = seconds / 3); the layers it draws itself (R.weather.draws) skip LIGHT
       const dr = this.mixed && this.R.weather.draws;
       if (this.mixed) this.R.weather.mix(this.scaled(L, Ll, gust), 3 * (dyn ? EASE_DYN : EASE));
-      for (const k in m.after || {}) t[k] *= m.after[k];
+      for (const k in m.after || NO_KEYS) t[k] *= m.after[k];
       for (const l in lk.light) {
         if (dr && dr.has(l)) continue;
         const e = lk.light[l], k = (v[l] || 0) * Ll;
-        for (const p in e.f || {}) t[p] *= Math.max(0, 1 - e.f[p] * k);
-        for (const p in e.add || {}) t[p] += e.add[p] * k;
+        for (const p in e.f || NO_KEYS) t[p] *= Math.max(0, 1 - e.f[p] * k);
+        for (const p in e.add || NO_KEYS) t[p] += e.add[p] * k;
       }
       if (v.rain > 0.6) t.vignette += 0.15 * (v.rain - 0.6) / 0.4 * Ll; // (a downpour closes in)
       if (this.sun) for (const p in lk.sunbreak) t[p] *= 1 + (lk.sunbreak[p] - 1) * Ll;
@@ -18530,15 +18533,20 @@ function MG_SFX(L) {
   const PAWN = 1, KNIGHT = 2, BISHOP = 3, ROOK = 4, QUEEN = 5, KING = 6, BLACK = 8;
   const F_CAP = 1, F_EP = 2, F_CASTLE = 4, F_DOUBLE = 8, F_PROMO = 16, F_STRIKE = 32;
 
-  // the traits: one bit each in a square's mask, one letter each in the TFEN, and the piece types that may
-  // carry them. Phase 5's (Squire, Ember, Leap, Sanctuary, Phoenix) take the next bits.
+  // the traits: one bit each in a square's mask, one letter each in the TFEN, their rarity (1 Common .. 4
+  // Legendary; the decks' caps, the pips' colours and the parts' tiers all read it here) and the piece types
+  // that may carry them.
   const TRAITS = [
-    { id: "ward", letter: "W", on: "PNBRQ" }, { id: "vanguard", letter: "V", on: "PNBRQ" },
-    { id: "glide", letter: "G", on: "R" }, { id: "rally", letter: "R", on: "NBRQ" },
-    { id: "anointed", letter: "A", on: "P" }, { id: "stride", letter: "S", on: "NB" }, { id: "pike", letter: "P", on: "P" },
+    { id: "ward", letter: "W", rarity: 1, on: "PNBRQ" }, { id: "vanguard", letter: "V", rarity: 1, on: "PNBRQ" },
+    { id: "glide", letter: "G", rarity: 1, on: "R" }, { id: "rally", letter: "R", rarity: 1, on: "NBRQ" },
+    { id: "anointed", letter: "A", rarity: 1, on: "P" }, { id: "stride", letter: "S", rarity: 2, on: "NB" },
+    { id: "pike", letter: "P", rarity: 2, on: "P" }, { id: "squire", letter: "Q", rarity: 2, on: "P" },
+    { id: "ember", letter: "E", rarity: 2, on: "PNBRQ" }, { id: "leap", letter: "L", rarity: 3, on: "B" },
+    { id: "sanctuary", letter: "C", rarity: 3, on: "NBR" }, { id: "phoenix", letter: "X", rarity: 4, on: "NBR" },
   ];
   const T_WARD = 1, T_VAN = 2, T_GLIDE = 4, T_RALLY = 8, T_ANOINT = 16, T_STRIDE = 32, T_PIKE = 64;
-  const I_WARD = 0, I_RALLY = 3, I_STRIDE = 5, I_PIKE = 6;
+  const T_SQUIRE = 128, T_EMBER = 256, T_LEAP = 512, T_SANCT = 1024, T_PHOENIX = 2048;
+  const I_WARD = 0, I_RALLY = 3, I_STRIDE = 5, I_PIKE = 6, I_LEAP = 9, I_SANCT = 10;
   const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
   const FILES = "abcdefgh", LETTER = " PNBRQK";
 
@@ -18588,17 +18596,29 @@ function MG_SFX(L) {
       this.full = +(f[5] || 1);
       this.tr = new Uint16Array(128);
       this.tc = new Uint8Array(32);
+      // each piece's start square (only a Phoenix piece's is ever read: where it returns to)
+      this.org = new Uint8Array(128);
+      for (let s = 0; s < 120; s++) this.org[s] = s;
       this.traited = !!f[6] && f[6] !== "-";
       if (this.traited) {
+        const sq = (n) => n && n.length === 2 && FILES.includes(n[0]) ? (+n[1] - 1) * 16 + FILES.indexOf(n[0]) : -1;
         for (const item of f[6].split(",")) {
-          const [name, letters] = item.split(":"), s = name ? (+name[1] - 1) * 16 + FILES.indexOf(name[0]) : -1;
-          if (s < 0 || s & 0x88 || name.length !== 2 || !letters) throw new Error("bad TFEN traits: " + item);
+          // "c3:X@b1": a Phoenix knight on c3 that started on b1
+          const [name, rest] = item.split(":"), [letters, home] = (rest || "").split("@"), s = sq(name);
+          if (s < 0 || s & 0x88 || !letters) throw new Error("bad TFEN traits: " + item);
           const t = b[s] & 7;
           if (!t || t === KING) throw new Error(`TFEN traits on ${t ? "a king" : "an empty square"}: ` + item);
+          // a square listed twice would count its traits twice in the census
+          if (this.tr[s]) throw new Error("bad TFEN traits, a square listed twice: " + item);
           for (const l of letters) {
             const i = TRAITS.findIndex((x) => x.letter === l);
             if (i < 0 || !TRAITS[i].on.includes(LETTER[t]) || this.tr[s] & (1 << i)) throw new Error("bad TFEN trait: " + item);
             this.tr[s] |= 1 << i;
+          }
+          if (home !== undefined) {
+            const o = sq(home);
+            if (o < 0 || o & 0x88 || o === s || !(this.tr[s] & T_PHOENIX)) throw new Error("bad TFEN origin: " + item);
+            this.org[s] = o;
           }
           this.census(b[s] >> 3, this.tr[s], 1);
         }
@@ -18616,20 +18636,21 @@ function MG_SFX(L) {
       c.b = this.b.slice(); c.king = this.king.slice(); c.turn = this.turn; c.castle = this.castle; c.ep = this.ep;
       c.half = this.half; c.full = this.full; c.stack = this.stack.slice(); c.startFen = this.startFen;
       c.keys = this.keys.slice(); c.history = this.history.slice(); c.sans = this.sans.slice();
-      c.tr = this.tr.slice(); c.tc = this.tc.slice(); c.traited = this.traited;
+      c.tr = this.tr.slice(); c.tc = this.tc.slice(); c.org = this.org.slice(); c.traited = this.traited;
       return c;
     }
 
     // add d (1 or -1) to side c's count of each trait in mask m
     census(c, m, d) { for (let i = c * 16; m; i++, m >>= 1) if (m & 1) this.tc[i] += d; }
 
-    // the TFEN's 7th field: "b1:WS,d2:W", or "-"
+    // the TFEN's 7th field: "b1:WS,d2:W", or "-"; a Phoenix piece away from its start square adds it, "c3:X@b1"
     traits() {
       const out = [];
       for (let s = 0; s < 120; s++) {
         if (s & 0x88) { s += 7; continue; }
         const m = this.tr[s];
-        if (m) out.push(name88(s) + ":" + TRAITS.filter((x, i) => m & (1 << i)).map((x) => x.letter).join(""));
+        if (m) out.push(name88(s) + ":" + TRAITS.filter((x, i) => m & (1 << i)).map((x) => x.letter).join("") +
+          (m & T_PHOENIX && this.org[s] !== s ? "@" + name88(this.org[s]) : ""));
       }
       return out.join(",") || "-";
     }
@@ -18660,7 +18681,11 @@ function MG_SFX(L) {
         if (s & 0x88) { s += 7; continue; }
         const p = this.b[s];
         if (p) { lo ^= ZLO[p * 128 + s]; hi ^= ZHI[p * 128 + s]; }
-        if (this.traited) for (let m = this.tr[s], i = s; m; i += 128, m >>= 1) if (m & 1) { lo ^= ZTLO[i]; hi ^= ZTHI[i]; }
+        if (this.traited) {
+          for (let m = this.tr[s], i = s; m; i += 128, m >>= 1) if (m & 1) { lo ^= ZTLO[i]; hi ^= ZTHI[i]; }
+          // a Phoenix piece's start square (the last trait-key row, keyed by the start square, mixed with s)
+          if (this.tr[s] & T_PHOENIX && this.org[s] !== s) { const i = 15 * 128 + this.org[s]; lo ^= Math.imul(ZTLO[i], 2 * s + 1); hi ^= Math.imul(ZTHI[i], 2 * s + 3); }
+        }
       }
       lo ^= ZLO[Z_CASTLE + this.castle]; hi ^= ZHI[Z_CASTLE + this.castle];
       if (this.ep >= 0) { lo ^= ZLO[Z_EP + (this.ep & 7)]; hi ^= ZHI[Z_EP + (this.ep & 7)]; }
@@ -18688,11 +18713,13 @@ function MG_SFX(L) {
       for (const d of ORTH) {
         for (let x = s + d; !(x & 0x88); x += d) { const p = b[x]; if (p) { if (p === rq || p === qq) return true; break; } }
       }
-      // the traits that attack: a Pike pawn straight ahead, a Stride piece one step away (census-gated)
+      // the traits that attack: a Pike pawn straight ahead, a Stride piece one step away, a Leap bishop a
+      // knight's jump away (census-gated)
       if (this.traited) {
         const tr = this.tr, tc = this.tc, i = by * 16;
         if (tc[i + I_PIKE]) { const x = by ? s + 16 : s - 16; if (!(x & 0x88) && b[x] === pw && tr[x] & T_PIKE) return true; }
         if (tc[i + I_STRIDE]) for (const d of ALL) { const x = s + d; if (!(x & 0x88) && tr[x] & T_STRIDE && b[x] >> 3 === by) return true; }
+        if (tc[i + I_LEAP]) for (const d of KNIGHT_STEPS) { const x = s + d; if (!(x & 0x88) && b[x] === bq && tr[x] & T_LEAP) return true; }
       }
       return false;
     }
@@ -18720,6 +18747,7 @@ function MG_SFX(L) {
           const x = s + ALL[k];
           if (!(x & 0x88) && tr[x] & T_STRIDE && b[x] >> 3 === by && !(k < 4 && (b[x] & 7) === BISHOP)) n++;
         }
+        for (const d of KNIGHT_STEPS) { const x = s + d; if (!(x & 0x88) && b[x] === bq && tr[x] & T_LEAP) n++; }
       }
       return n;
     }
@@ -18728,13 +18756,21 @@ function MG_SFX(L) {
 
     // pseudo-legal moves into `out` (the king may be left in check; legal() filters). caps: captures and
     // promotions only, for the AI's quiescence search. A capture onto a Warded piece is a strike instead
-    // (no promotion), and strikes stay out of caps.
+    // (no promotion), and strikes stay out of caps. No capture (nor strike) reaches a piece next to its own
+    // side's Sanctuary piece, unless it is the king or a Sanctuary piece itself.
     gen(out, caps) {
       const b = this.b, c = this.turn, e = c ^ 1, tr = this.tr, traited = this.traited;
       const promos = (s, x, fl) => { for (let t = QUEEN; t >= KNIGHT; t--) out.push(mk(s, x, t, fl | F_PROMO)); };
       const ward = (x) => traited && tr[x] & T_WARD;
+      const sanct = traited && this.tc[e * 16 + I_SANCT] > 0;
+      const guarded = (x) => {
+        if ((b[x] & 7) === KING || tr[x] & T_SANCT) return false;
+        for (const d of ALL) { const y = x + d; if (!(y & 0x88) && tr[y] & T_SANCT && b[y] >> 3 === e) return true; }
+        return false;
+      };
       // a capture of the piece on x (promoting on the last rank when `last`)
       const take = (s, x, last) => {
+        if (sanct && guarded(x)) return;
         if (ward(x)) { if (!caps) out.push(mk(s, x, 0, F_CAP | F_STRIKE)); }
         else if (last) promos(s, x, F_CAP);
         else out.push(mk(s, x, 0, F_CAP));
@@ -18746,29 +18782,35 @@ function MG_SFX(L) {
         if (!p || p >> 3 !== c) continue;
         const t = p & 7, m = traited ? tr[s] : 0;
         if (t === PAWN) {
-          const d = c ? -16 : 16, n = s + d, last = c ? 0 : 7;
+          // a Squire pawn promotes a rank early, on its 7th (en passant never reaches it)
+          const d = c ? -16 : 16, n = s + d, sq = m & T_SQUIRE ? 1 : 0, last = (r) => c ? r <= sq : r >= 7 - sq;
           if (!b[n]) {
-            if (n >> 4 === last) promos(s, n, 0);
+            if (last(n >> 4)) promos(s, n, 0);
             else if (!caps) {
               out.push(mk(s, n, 0, 0));
               if (s >> 4 === (c ? 6 : 1) && !b[n + d]) out.push(mk(s, n + d, 0, F_DOUBLE));
             }
-          } else if (m & T_PIKE && b[n] >> 3 === e) take(s, n, n >> 4 === last);
+          } else if (m & T_PIKE && b[n] >> 3 === e) take(s, n, last(n >> 4));
           for (let k = -1; k <= 1; k += 2) {
             const x = n + k;
             if (x & 0x88) continue;
             const q = b[x];
-            if (q && q >> 3 === e) take(s, x, x >> 4 === last);
+            if (q && q >> 3 === e) take(s, x, last(x >> 4));
             else if (x === this.ep) {
+              if (sanct && guarded(c ? x + 16 : x - 16)) continue;
               if (ward(c ? x + 16 : x - 16)) { if (!caps) out.push(mk(s, x, 0, F_CAP | F_EP | F_STRIKE)); }
               else out.push(mk(s, x, 0, F_CAP | F_EP));
             }
           }
-          // Rally: a step sideways next to a friendly Rally piece, quiet only
+          // Rally: a step sideways next to a friendly Rally piece, quiet only; a Squire pawn a TFEN left on its
+          // 7th promotes as it steps (#497's case)
           if (rally && !caps) {
             let near = false;
             for (const d8 of ALL) { const x = s + d8; if (!(x & 0x88) && tr[x] & T_RALLY && b[x] >> 3 === c) { near = true; break; } }
-            if (near) for (let k = -1; k <= 1; k += 2) { const x = s + k; if (!(x & 0x88) && !b[x]) out.push(mk(s, x, 0, 0)); }
+            if (near) for (let k = -1; k <= 1; k += 2) {
+              const x = s + k;
+              if (!(x & 0x88) && !b[x]) { if (last(s >> 4)) promos(s, x, 0); else out.push(mk(s, x, 0, 0)); }
+            }
           }
         } else if (t === KNIGHT || t === KING) {
           for (const d of t === KNIGHT ? KNIGHT_STEPS : ALL) {
@@ -18790,9 +18832,10 @@ function MG_SFX(L) {
           // Glide: a rook's quiet diagonal step
           if (m & T_GLIDE && !caps) for (const d of DIAG) { const x = s + d; if (!(x & 0x88) && !b[x]) out.push(mk(s, x, 0, 0)); }
         }
-        // Stride: a king step for a knight (all 8) or a bishop (the 4 straight ones it lacks)
-        if (m & T_STRIDE) {
-          for (const d of t === BISHOP ? ORTH : ALL) {
+        // Stride: a king step for a knight (all 8) or a bishop (the 4 straight ones it lacks); Leap: a bishop's
+        // knight jumps
+        if (m & (T_STRIDE | T_LEAP)) for (const steps of [m & T_STRIDE ? (t === BISHOP ? ORTH : ALL) : null, m & T_LEAP ? KNIGHT_STEPS : null]) {
+          if (steps) for (const d of steps) {
             const x = s + d;
             if (x & 0x88) continue;
             const q = b[x];
@@ -18828,18 +18871,22 @@ function MG_SFX(L) {
       }
       let cap = b[to], cs = to;
       if (fl & F_EP) { cs = c ? to + 16 : to - 16; cap = b[cs]; b[cs] = 0; }
-      const tr = this.tr, mt = this.traited ? tr[from] : 0, ct = this.traited ? tr[cs] : 0;
-      this.stack.push({ m, cap, castle: this.castle, ep: this.ep, half: this.half, mt, ct });
+      const tr = this.tr, org = this.org, mt = this.traited ? tr[from] : 0, ct = this.traited ? tr[cs] : 0;
+      const u = { m, cap, castle: this.castle, ep: this.ep, half: this.half, mt, ct, co: org[cs], pr: -1 };
+      this.stack.push(u);
       b[to] = fl & F_PROMO ? ((m >> 14) & 7) | (c << 3) : p;
       b[from] = 0;
       if (this.traited) {
-        // the mask moves with its piece; a capture takes the victim's out of the census
+        // the mask (and start square) moves with its piece; a capture takes the victim's out of the census
         let n = mt;
         if (ct) { this.census(c ^ 1, ct, -1); tr[cs] = 0; }
         if (fl & F_PROMO) n = mt & T_ANOINT ? T_WARD : 0;
         if (cap && n & T_VAN) n |= T_WARD;
+        // Ember: taking it costs the capturer all its traits
+        if (ct & T_EMBER) n = 0;
         if (n !== mt) { this.census(c, mt, -1); this.census(c, n, 1); }
         tr[from] = 0; tr[to] = n;
+        org[to] = org[from];
       }
       if ((p & 7) === KING) {
         this.king[c] = to;
@@ -18847,10 +18894,18 @@ function MG_SFX(L) {
           if (to > from) { b[from + 1] = b[from + 3]; b[from + 3] = 0; }
           else { b[from - 1] = b[from - 4]; b[from - 4] = 0; }
           if (this.traited) {
-            if (to > from) { tr[from + 1] = tr[from + 3]; tr[from + 3] = 0; }
-            else { tr[from - 1] = tr[from - 4]; tr[from - 4] = 0; }
+            if (to > from) { tr[from + 1] = tr[from + 3]; tr[from + 3] = 0; org[from + 1] = org[from + 3]; }
+            else { tr[from - 1] = tr[from - 4]; tr[from - 4] = 0; org[from - 1] = org[from - 4]; }
           }
         }
+      }
+      // Phoenix: the captured piece returns to its empty start square without Phoenix, unless it would give check
+      if (ct & T_PHOENIX && !b[u.co]) {
+        const x = u.co, n = ct & ~T_PHOENIX;
+        b[x] = cap; tr[x] = n; org[x] = x;
+        this.census(c ^ 1, n, 1);
+        if (this.attacked(this.king[c], c ^ 1)) { b[x] = 0; tr[x] = 0; this.census(c ^ 1, n, -1); }
+        else u.pr = x;
       }
       this.castle &= CASTLE_MASK[from] & CASTLE_MASK[to];
       this.ep = -1;
@@ -18875,17 +18930,20 @@ function MG_SFX(L) {
         this.castle = u.castle; this.ep = u.ep; this.half = u.half;
         return;
       }
+      const tr = this.tr, org = this.org;
+      if (u.pr >= 0) { this.census(c ^ 1, tr[u.pr], -1); b[u.pr] = 0; tr[u.pr] = 0; }
       const p = fl & F_PROMO ? PAWN | (c << 3) : b[to];
       b[from] = p;
       const cs = fl & F_EP ? (c ? to + 16 : to - 16) : to;
       if (fl & F_EP) { b[to] = 0; b[cs] = u.cap; }
       else b[to] = u.cap;
-      const tr = this.tr;
       if (this.traited) {
         const n = tr[to];
         if (n !== u.mt) { this.census(c, n, -1); this.census(c, u.mt, 1); }
         tr[to] = 0; tr[from] = u.mt;
+        org[from] = org[to];
         if (u.ct) { tr[cs] = u.ct; this.census(c ^ 1, u.ct, 1); }
+        org[cs] = u.co;
       }
       if ((p & 7) === KING) {
         this.king[c] = from;
@@ -18893,8 +18951,8 @@ function MG_SFX(L) {
           if (to > from) { b[from + 3] = b[from + 1]; b[from + 1] = 0; }
           else { b[from - 4] = b[from - 1]; b[from - 1] = 0; }
           if (this.traited) {
-            if (to > from) { tr[from + 3] = tr[from + 1]; tr[from + 1] = 0; }
-            else { tr[from - 4] = tr[from - 1]; tr[from - 1] = 0; }
+            if (to > from) { tr[from + 3] = tr[from + 1]; tr[from + 1] = 0; org[from + 3] = org[from + 1]; }
+            else { tr[from - 4] = tr[from - 1]; tr[from - 1] = 0; org[from - 4] = org[from - 1]; }
           }
         }
       }
@@ -18962,7 +19020,7 @@ function MG_SFX(L) {
     }
 
     // no sequence of legal moves can mate: K v K, a lone minor piece, or only bishops all on one colour (a Stride
-    // piece moves like a king too, so it never counts as dead)
+    // piece moves like a king too, a Leap bishop like a knight and a bishop, so neither ever counts as dead)
     dead() {
       let minors = 0, knights = 0, bish = [0, 0];
       for (let s = 0; s < 120; s++) {
@@ -18970,7 +19028,7 @@ function MG_SFX(L) {
         const t = this.b[s] & 7;
         if (!t || t === KING) continue;
         if (t === PAWN || t === ROOK || t === QUEEN) return false;
-        if (this.traited && this.tr[s] & T_STRIDE) return false;
+        if (this.traited && this.tr[s] & (T_STRIDE | T_LEAP)) return false;
         minors++;
         if (t === KNIGHT) knights++;
         else bish[((s >> 4) + (s & 7)) & 1]++;
@@ -19028,7 +19086,8 @@ function MG_SFX(L) {
   G.START = START;
   G.PIECE = { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING, BLACK };
   G.FLAG = { CAP: F_CAP, EP: F_EP, CASTLE: F_CASTLE, DOUBLE: F_DOUBLE, PROMO: F_PROMO, STRIKE: F_STRIKE };
-  G.TRAIT = { WARD: T_WARD, VANGUARD: T_VAN, GLIDE: T_GLIDE, RALLY: T_RALLY, ANOINTED: T_ANOINT, STRIDE: T_STRIDE, PIKE: T_PIKE };
+  G.TRAIT = { WARD: T_WARD, VANGUARD: T_VAN, GLIDE: T_GLIDE, RALLY: T_RALLY, ANOINTED: T_ANOINT, STRIDE: T_STRIDE, PIKE: T_PIKE,
+    SQUIRE: T_SQUIRE, EMBER: T_EMBER, LEAP: T_LEAP, SANCTUARY: T_SANCT, PHOENIX: T_PHOENIX };
   G.TRAITS = TRAITS;
 })();
 
@@ -19047,39 +19106,52 @@ function MG_SFX(L) {
   const CLASSIC = { v: 1, back: "RNBQKBNR", traits: {} };
   const BUDGET = 45, CAPS = { Q: 1, R: 2 }, PER_PIECE = 3;
   const COST = { P: 1, N: 3, B: 3, R: 5, Q: 9 };
-  // each trait's points, rarity (1 Common .. 4 Legendary) and the AI's value for it in centipawns (Anointed also
+  // each trait's points and the AI's value for it in centipawns, and its rarity from DG.TRAITS (Anointed also
   // gains 5 a rank). Points and values come from the first pricing pass (tools/rules.html?selfplay=prices,
   // 2026-11-06: 200 games at depth 2 of the classic deck plus one trait against classic; Elo / 100 = points):
   // Ward P 0.3, N 2.0, B 2.2, R 2.5, Q 4.2; Vanguard N 3.3; Stride N 1.9, B 1.1; Glide 0.5, Rally 0.4, Pike 0.4,
   // Anointed about 0. A trait costs at least 1. Vanguard on P, B, R and Q isn't measured, and two Vanguard knights
   // at 3 each beat the other templates 70-77% (?selfplay=templates), so a piece's Vanguard costs 4 (Q 5).
   const TRAIT = {
-    ward: { pts: { P: 1, N: 2, B: 2, R: 3, Q: 4 }, rarity: 1, cp: { P: 30, N: 195, B: 215, R: 250, Q: 420 } },
-    vanguard: { pts: { P: 1, N: 4, B: 4, R: 4, Q: 5 }, rarity: 1, cp: { P: 40, N: 325, B: 325, R: 325, Q: 420 } },
-    glide: { pts: 1, rarity: 1, cp: 55 },
-    rally: { pts: 1, rarity: 1, cp: 45 },
-    anointed: { pts: 1, rarity: 1, cp: 15 },
-    stride: { pts: { N: 2, B: 1 }, rarity: 2, cp: { N: 190, B: 110 } },
-    pike: { pts: 1, rarity: 2, cp: 40 },
+    ward: { pts: { P: 1, N: 2, B: 2, R: 3, Q: 4 }, cp: { P: 30, N: 195, B: 215, R: 250, Q: 420 } },
+    vanguard: { pts: { P: 1, N: 4, B: 4, R: 4, Q: 5 }, cp: { P: 40, N: 325, B: 325, R: 325, Q: 420 } },
+    glide: { pts: 1, cp: 55 },
+    rally: { pts: 1, cp: 45 },
+    anointed: { pts: 1, cp: 15 },
+    stride: { pts: { N: 2, B: 1 }, cp: { N: 190, B: 110 } },
+    pike: { pts: 1, cp: 40 },
+    // phase 5, the second pricing pass (?selfplay=prices&pairs=12-23, 2026-11-07, under Node: 1000 games at depth 2
+    // each, from the design's first guesses, then again at these values): Squire e2 -0.1, a2 0.0; Ember e2 -0.1,
+    // g1 0.1; Leap f1 2.5, c1 2.0; Sanctuary N 0.7, B 1.0, R 0.6; Phoenix N 1.2, B 1.2, R 0.7. Leap at 3 and Phoenix
+    // at 1 let Cavalry take Leap, Phoenix and Stride (about 5 points' worth) and beat Phalanx 76%, outside the
+    // design's 40-60%, so both were re-priced (§5): Leap 4, Phoenix 2. Squire also reads the pawn table a rank
+    // ahead (ai.js). (Measured by #497, 27a789f.)
+    squire: { pts: 1, cp: 20 },
+    ember: { pts: 1, cp: 10 },
+    leap: { pts: 4, cp: 245 },
+    sanctuary: { pts: 1, cp: { N: 90, B: 100, R: 55 } },
+    phoenix: { pts: 2, cp: { N: 110, B: 125, R: 100 } },
   };
+  for (const x of G.TRAITS) if (TRAIT[x.id]) TRAIT[x.id].rarity = x.rarity;
   const info = (id) => G.TRAITS.find((x) => x.id === id);
   const byPiece = (v, t) => (typeof v === "number" ? v : v[t]);
   const traitPts = (id, t) => byPiece(TRAIT[id].pts, t);
   const traitCp = (id, t) => byPiece(TRAIT[id].cp, t);
 
-  // The AI's four templates (§1, "How the AI picks its deck"): a back rank and the traits it wants, in order.
-  // Leap, Ember and Squire come in phase 5; until then Cavalry wants Stride only, Zealots Vanguard only, and
-  // Ascendant Anointed and Pike with one Ward. Each wants about the 6 points over the classic 39. `score` is each one's round-robin score (?selfplay=templates), which weights
-  // the pick at level 2.
+  // The AI's four templates (§1, "How the AI picks its deck"): a back rank and the traits it wants, in order:
+  // Phalanx Ward and Rally on pawns, Cavalry Stride and Leap on minors, Zealots Vanguard and Ember, Ascendant
+  // Squire and Anointed pawns. Each wants about the 6 points over the classic 39. `score` is each one's round-robin
+  // score (?selfplay=templates; 2026-11-07, 1000 games a pair, every pair within 40-60%), which weights the pick at
+  // level 2. Zealots takes one Ember pawn: with two it beat Ascendant 62%. (Measured by #497, 27a789f.)
   const TEMPLATES = {
-    phalanx: { name: "Phalanx", back: "RNBQKBNR", score: 0.47,
+    phalanx: { name: "Phalanx", back: "RNBQKBNR", score: 0.46,
       wants: [["ward", "e2"], ["ward", "d2"], ["rally", "c1"], ["rally", "f1"], ["ward", "c2"], ["ward", "f2"], ["rally", "b1"]] },
-    cavalry: { name: "Cavalry", back: "RNNQKBNR", score: 0.48,
-      wants: [["stride", "g1"], ["stride", "c1"], ["stride", "b1"], ["ward", "g1"]] },
-    zealots: { name: "Zealots", back: "RNBQKBNR", score: 0.5,
-      wants: [["vanguard", "g1"], ["vanguard", "e2"], ["vanguard", "d2"]] },
-    ascendant: { name: "Ascendant", back: "RNBQKBNR", score: 0.56,
-      wants: [["pike", "e2"], ["anointed", "e2"], ["pike", "d2"], ["anointed", "d2"], ["ward", "f1"]] },
+    cavalry: { name: "Cavalry", back: "RNNQKBNR", score: 0.52,
+      wants: [["leap", "f1"], ["stride", "g1"], ["stride", "c1"], ["stride", "b1"], ["ward", "g1"]] },
+    zealots: { name: "Zealots", back: "RNBQKBNR", score: 0.54,
+      wants: [["vanguard", "g1"], ["ember", "e2"], ["vanguard", "d2"], ["ember", "d2"], ["vanguard", "e2"]] },
+    ascendant: { name: "Ascendant", back: "RNBQKBNR", score: 0.48,
+      wants: [["squire", "e2"], ["anointed", "e2"], ["squire", "d2"], ["anointed", "d2"], ["ward", "f1"]] },
   };
 
   // the piece letter (PNBRQK) on a deck square such as "b1" or "d2", or "" when it isn't one
@@ -19094,6 +19166,13 @@ function MG_SFX(L) {
     for (const l of deck.back) n += COST[l] || 0;
     for (const sq in deck.traits || {}) for (const id of deck.traits[sq]) if (TRAIT[id]) n += traitPts(id, pieceAt(deck, sq));
     return n;
+  };
+
+  // more than 3 Rare and Legendary traits, or more than 1 Legendary (problems() says so too)
+  const rareOver = (deck) => {
+    let rare = 0, legend = 0;
+    for (const sq in deck.traits) for (const id of deck.traits[sq]) { const r = TRAIT[id] ? TRAIT[id].rarity : 0; if (r >= 3) rare++; if (r === 4) legend++; }
+    return rare > 3 || legend > 1;
   };
 
   // what is wrong with a deck: [] when it can be played
@@ -19146,7 +19225,7 @@ function MG_SFX(L) {
   };
 
   // a random playable deck from `rng` (a DG.Rng), for the fuzz and the AI: a back rank within the caps, then
-  // traits added at random while the budget allows. opts: { budget, tries }
+  // traits added at random while the budget and the rarity caps allow. opts: { budget, tries }
   const random = (rng, opts) => {
     const budget = (opts && opts.budget) || BUDGET, tries = (opts && opts.tries) || 24;
     const back = [];
@@ -19168,7 +19247,7 @@ function MG_SFX(L) {
       const id = ok[rng.int(0, ok.length - 1)].id, have = deck.traits[sq] || [];
       if (have.includes(id) || have.length >= PER_PIECE) continue;
       deck.traits[sq] = have.concat(id);
-      if (points(deck) > budget) { if (have.length) deck.traits[sq] = have; else delete deck.traits[sq]; }
+      if (points(deck) > budget || rareOver(deck)) { if (have.length) deck.traits[sq] = have; else delete deck.traits[sq]; }
     }
     return deck;
   };
@@ -19177,12 +19256,13 @@ function MG_SFX(L) {
   const SQUARES = [];
   for (let i = 0; i < 8; i++) { if (i !== 4) SQUARES.push(FILES[i] + "1"); SQUARES.push(FILES[i] + "2"); }
 
-  // add trait `id` to `sq` if it fits there and within the budget; true when it did
+  // add trait `id` to `sq` if it fits there, within the budget and the rarity caps; true when it did
   const tryAdd = (deck, sq, id, budget) => {
     const t = pieceAt(deck, sq), have = deck.traits[sq] || [], x = info(id);
     if (!t || t === "K" || !x || !TRAIT[id] || !x.on.includes(t) || have.includes(id) || have.length >= PER_PIECE) return false;
     if (points(deck) + traitPts(id, t) > budget) return false;
     deck.traits[sq] = have.concat(id);
+    if (rareOver(deck)) { if (have.length) deck.traits[sq] = have; else delete deck.traits[sq]; return false; }
     return true;
   };
 
@@ -19249,12 +19329,13 @@ function MG_SFX(L) {
   const VALUE = [0, 100, 320, 330, 500, 900, 0];
   const MATE = 100000;
   // the traits' values (core/deck.js, TRAIT cp) by mask * 8 + piece type; a Ward's by piece
-  // type too, for ordering strikes. Anointed also gains 5 for each rank its pawn has advanced.
-  const TV = new Int16Array(128 * 8), WARD_CP = new Int16Array(8);
-  const T_ANOINT = G.TRAIT.ANOINTED, T_WARD = G.TRAIT.WARD;
+  // type too, for ordering strikes. Anointed also gains 5 for each rank its pawn has advanced, and a Squire
+  // pawn reads the pawn table a rank further on (it promotes a rank early).
+  const TV = new Int16Array(4096 * 8), WARD_CP = new Int16Array(8);
+  const T_ANOINT = G.TRAIT.ANOINTED, T_WARD = G.TRAIT.WARD, T_SQUIRE = G.TRAIT.SQUIRE;
   if (G.Deck) {
     const LET = "_PNBRQK";
-    for (let m = 1; m < 128; m++) for (let t = PAWN; t < KING; t++)
+    for (let m = 1; m < 4096; m++) for (let t = PAWN; t < KING; t++)
       G.TRAITS.forEach((x, i) => { if (m & (1 << i) && x.on.includes(LET[t]) && G.Deck.TRAIT[x.id]) TV[m * 8 + t] += G.Deck.traitCp(x.id, LET[t]); });
     for (let t = PAWN; t < KING; t++) WARD_CP[t] = TV[T_WARD * 8 + t];
   }
@@ -19289,7 +19370,7 @@ function MG_SFX(L) {
       const t = p & 7, c = p >> 3, i = c ? (s >> 4) * 8 + (s & 7) : (7 - (s >> 4)) * 8 + (s & 7);
       if (t === KING) { if (c) k1 = i; else k0 = i; continue; }
       let v = VALUE[t] + PST[t][i];
-      if (g.traited) { const m = g.tr[s]; if (m) { v += TV[m * 8 + t]; if (m & T_ANOINT) v += 5 * (c ? 6 - (s >> 4) : (s >> 4) - 1); } }
+      if (g.traited) { const m = g.tr[s]; if (m) { v += TV[m * 8 + t]; if (m & T_ANOINT) v += 5 * (c ? 6 - (s >> 4) : (s >> 4) - 1); if (m & T_SQUIRE && i >= 8) v += PST[PAWN][i - 8] - PST[PAWN][i]; } }
       sc += c ? -v : v;
       if (t === QUEEN) queens++;
       else if (t !== PAWN) mg += VALUE[t];
@@ -19610,15 +19691,15 @@ function MG_SFX(L) {
   // collar, a crest, an inlay band, gems) and one cue per trait. Each part is authored round its own origin
   // (the slot it sits in) in model units and set on a piece by SLOT below. The bake's key takes a model's own
   // source only, so each part's data sits inside its function.
-  // the traits in the catalogue's order: hue, rarity (1 Common .. 4 Legendary); index + 1 is a gem's hue in the
-  // shader's table (HUES)
+  // the traits in the catalogue's order and their hues; index + 1 is a gem's hue in the shader's table (HUES).
+  // Their rarities (1 Common .. 4 Legendary) are the rules' (DG.TRAITS, core/chess.js)
   const CUES = [
-    ["ward", "#9fd6ff", 1], ["vanguard", "#e5483d", 1], ["glide", "#1fa89a", 1], ["rally", "#4fbf5a", 1],
-    ["anointed", "#e8b33a", 1], ["stride", "#f39a1e", 2], ["pike", "#a8b3c1", 2], ["squire", "#f2cc4d", 2],
-    ["ember", "#ff6a1a", 2], ["leap", "#3cc3db", 3], ["sanctuary", "#a383f2", 3], ["phoenix", "#ff7a2a", 4],
+    ["ward", "#9fd6ff"], ["vanguard", "#e5483d"], ["glide", "#1fa89a"], ["rally", "#4fbf5a"],
+    ["anointed", "#e8b33a"], ["stride", "#f39a1e"], ["pike", "#a8b3c1"], ["squire", "#f2cc4d"],
+    ["ember", "#ff6a1a"], ["leap", "#3cc3db"], ["sanctuary", "#a383f2"], ["phoenix", "#ff7a2a"],
   ];
-  const CUE = {};
-  CUES.forEach(([id, hue, rarity], i) => (CUE[id] = { id, hue, rarity, idx: i + 1 }));
+  const CUE = {}, RULES = window.DG.TRAITS;
+  CUES.forEach(([id, hue], i) => (CUE[id] = { id, hue, rarity: RULES.find((t) => t.id === id).rarity, idx: i + 1 }));
   // the tier from the traits' rarities: U their sum; a Legendary with U >= 6, or U >= 8, is tier 5
   const tierOf = (ids) => {
     let u = 0, leg = false;
@@ -20592,13 +20673,16 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    display copy per piece with its square, world point, scale and the moves in progress.
      reset(game)            every piece at its square at once (a new game, an undo)
      animate(info, game)    a move just played (DG.info of it; game already after it): the piece slides
-                            with a hop (a knight leaps), a taken piece bursts as the mover reaches it
+                            with a hop (a knight or a Leap bishop leaps), a taken piece bursts as the mover reaches it
                             (onCapture), castling's rook slides after the king, a promoted pawn turns
-                            into its new piece as it lands (onLand); a strike on a Ward lunges and comes back
+                            into its new piece as it lands (onLand); a strike on a Ward lunges and comes back;
+                            a taken Phoenix piece grows back on its start square as it goes
      onCapture(victim)      set by the app: a taken piece at the moment it goes (its voxels burst, main.js)
      onLand(piece, info)    set by the app: the moving piece (not castling's rook) on its new square
      onWardBreak(piece)     set by the app: a struck piece as its Ward breaks (its shards, main.js)
      busy                   a move is still on its way
+     changed                the traits on screen changed this frame (a Ward breaks, a mover's traits turn, a
+                            piece goes or comes back): the app repaints the tiles they mark, then clears it
      partStats()            how many parts the pieces draw and each tier's count of pieces
    With parts (DC.pieces.bindParts) each piece with traits (game.tr) also draws its tier's and its traits'
    parts, offset from its anchor and turned with it; a gem's mark carries its hue (G.MARK.HUE_SHIFT).
@@ -20609,7 +20693,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
   const lerp = (a, b, u) => a + (b - a) * u, ease = (u) => (u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2);
   // facing: toward the other side (heads point +X; white sits at the larger y)
   const YAW = [-Math.PI / 2, Math.PI / 2];
-  const SLIDE = 0.32, PER_TILE = 0.05, GONE = 0.1, FPS = 5;
+  const SLIDE = 0.32, PER_TILE = 0.05, GONE = 0.1, RISE = 0.45, FPS = 5;
   // a square's trait mask (0..63; the rules keep them by 0x88 square)
   const trAt = (game, s) => (game.tr ? game.tr[(s >> 3) * 16 + (s & 7)] : 0);
 
@@ -20620,9 +20704,10 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       this.selected = -1; this.hover = -1; this.check = -1;
       this.ids = 0;
       this.onCapture = null; this.onLand = null; this.onWardBreak = null;
+      this.changed = false;
       this.layouts = new Map();
     }
-    get busy() { return this.list.some((p) => p.walk || p.die); }
+    get busy() { return this.list.some((p) => p.walk || p.die || p.rise); }
     pieceAt(sq) { return this.list.find((p) => p.sq === sq && !p.die) || null; }
     reset(game) {
       this.list = [];
@@ -20656,23 +20741,36 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       if (!p) { this.reset(game); return; }
       const taken = info.enPassant ? info.to + (p.c ? 8 : -8) : info.capture ? info.to : -1;
       const victim = taken >= 0 ? this.pieceAt(taken) : null;
-      const knight = p.t === G.PIECE.KNIGHT;
+      // a knight hops, and so does a Leap bishop on its knight-shaped moves (#497)
+      const df = Math.abs((info.to & 7) - (info.from & 7)), dr = Math.abs((info.to >> 3) - (info.from >> 3));
+      const knight = p.t === G.PIECE.KNIGHT || df * dr === 2;
       if (info.strike) {
         // a strike on a Ward: nothing moves, so the attacker lunges at the target and comes back to its square;
         // the target flashes as its Ward breaks
         const from = p.P.slice(), to = this.board.centre(info.to);
-        p.walk = { from, to: from, at: to, t: 0, dur: SLIDE * 1.5, hop: 0.12, info, victim, victimTr: trAt(game, info.to) };
+        p.walk = { from, to: from, at: to, t: 0, dur: SLIDE * 1.5, hop: 0.12, info, victim, victimTr: trAt(game, taken) };
         return;
       }
-      p.tr = trAt(game, info.to);
+      const tr = trAt(game, info.to), hit = knight ? 0.85 : 0.6;
       this.slide(p, info.to, 0, knight ? 0.75 : 0.12, info);
-      if (victim) victim.die = { t: -p.walk.dur * (knight ? 0.85 : 0.6), burst: false };
+      // its traits after the move (a Vanguard's new Ward, an Ember's loss, a promotion's) show as its victim goes,
+      // or as it lands
+      if (tr !== p.tr) { p.walk.tr = tr; p.walk.trK = victim && !info.promo ? hit : 1; }
+      if (victim) victim.die = { t: -p.walk.dur * hit, burst: false };
       if (info.promo) p.promo = info.promo;
       if (info.castle) {
         // the rook from its corner to the king's other side
         const rank = info.from & 56, kingSide = info.to > info.from;
         const rook = this.pieceAt(rank + (kingSide ? 7 : 0));
         if (rook) { rook.tr = trAt(game, rank + (kingSide ? 5 : 3)); this.slide(rook, rank + (kingSide ? 5 : 3), 0.12, 0.3); }
+      }
+      // a Phoenix return: a piece in the game with none on screen grows back once the victim has gone
+      if (victim) for (let s = 0; s < 64; s++) {
+        const v = game.at(s);
+        if (!v || this.pieceAt(s)) continue;
+        const r = this.make(s, v & 8 ? 1 : 0, v & 7, trAt(game, s));
+        r.s = 0; r.rise = { t: victim.die.t - GONE };
+        this.list.push(r);
       }
     }
     update(dt) {
@@ -20687,9 +20785,10 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
             if (w.victim && k >= 0.5) {
               // the Ward breaks: its parts go with it (onWardBreak: its shards)
               const v = w.victim;
-              v.flash = 1; v.tr = w.victimTr; w.victim = null;
+              v.flash = 1; v.tr = w.victimTr; w.victim = null; this.changed = true;
               if (this.onWardBreak) this.onWardBreak(v);
             }
+            if (w.trK && k >= w.trK) { p.tr = w.tr; w.trK = 0; this.changed = true; }
             if (k >= 1) {
               p.P = w.to.slice(); p.walk = null;
               if (p.promo) { p.t = p.promo; p.promo = 0; p.flash = 1; }
@@ -20699,7 +20798,13 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         }
         if (p.die) {
           p.die.t += dt;
-          if (p.die.t > 0 && !p.die.burst) { p.die.burst = true; p.s = 0; if (this.onCapture) this.onCapture(p); }
+          if (p.die.t > 0 && !p.die.burst) { p.die.burst = true; p.s = 0; this.changed = true; if (this.onCapture) this.onCapture(p); }
+        }
+        if (p.rise) {
+          p.rise.t += dt;
+          p.s = Math.max(0, Math.min(1, p.rise.t / RISE));
+          if (p.rise.t > 0 && !p.rise.lit) { p.rise.lit = true; p.flash = 1; this.changed = true; }
+          if (p.s >= 1) p.rise = null;
         }
       }
       this.list = this.list.filter((p) => !(p.die && p.die.t >= GONE));
@@ -20866,7 +20971,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
      (shown before it starts); Play.
    The deck and the slots are kept in localStorage ("deckchess.decks") when the browser keeps it.
    A share code is the deck as short text: DC1.<back rank>.<square><trait letters>..., such as
-   "DC1.RNNQKBNR.b1S.g1SW.e2V" (G.TRAITS' letters).
+   "DC1.RNNQKBNR.b1S.g1W.e2V" (44 points; G.TRAITS' letters).
      new DG.DeckSheet({ onChange(deck), onPlay(deck), opponent() -> { name, deck } })
      sheet.open(), sheet.close(), sheet.isOpen, sheet.deck, sheet.sel (a deck square such as "b1", or "")
      sheet.select(sq), sheet.toggle(id), sheet.setType(letter), sheet.preset(id), sheet.points
@@ -20885,10 +20990,15 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     ward: "The first capture against it fails: the attacker stays put, and the piece loses its Ward.",
     vanguard: "After it captures, it gains Ward if it has none.",
     glide: "It may also step one square diagonally, without capturing.",
-    rally: "Friendly pawns next to it may step one square sideways, without capturing.",
+    rally: "Friendly pawns next to it may step one square sideways, without capturing. A pawn still on its 2nd rank may step two, even after a Rally step.",
     anointed: "When it promotes, the new piece has Ward.",
     stride: "It may also move or capture one square in any direction.",
     pike: "It may also capture one square straight ahead.",
+    squire: "It promotes on reaching its 7th rank.",
+    ember: "When it's captured, the capturer loses all its traits.",
+    leap: "It may also move or capture like a knight.",
+    sanctuary: "Friendly pieces next to it can't be captured, except the king and other Sanctuary pieces.",
+    phoenix: "Once, when captured, it returns to its start square without Phoenix, if that square is empty and the return gives no check.",
   };
   const NAME = (id) => id[0].toUpperCase() + id.slice(1);
   const NAMES_T = {};
@@ -20900,7 +21010,8 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
   const rarityOf = (id) => D().TRAIT[id].rarity;
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-  // the share code: DC1.<back>.<sq><letters>... in the squares' order; decode() checks it with Deck.problems
+  // the share code: DC1.<back>.<sq><letters>... in the squares' order; decode() checks it with Deck.problems and
+  // refuses a square listed twice
   const code = (deck) => {
     const items = Object.keys(deck.traits || {}).sort().filter((sq) => deck.traits[sq].length)
       .map((sq) => sq + G.TRAITS.filter((x) => deck.traits[sq].includes(x.id)).map((x) => x.letter).join(""));
@@ -20912,7 +21023,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     const deck = { v: 1, back: parts[1].toUpperCase(), traits: {} };
     for (const it of parts.slice(2)) {
       const m = /^([a-h][12])([A-Z]+)$/i.exec(it);
-      if (!m) return null;
+      if (!m || m[1].toLowerCase() in deck.traits) return null;
       const ids = [];
       for (const l of m[2].toUpperCase()) { const x = G.TRAITS.find((t) => t.letter === l); if (!x) return null; ids.push(x.id); }
       deck.traits[m[1].toLowerCase()] = ids;
@@ -20950,6 +21061,12 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       if (have.includes(id)) return "";
       if (have.length >= D().PER_PIECE) return D().PER_PIECE + " traits max";
       if (this.points + ptsOf(id, t) > D().BUDGET) return "Over budget";
+      const r = rarityOf(id);
+      if (r >= 3) {
+        const all = Object.values(this.deck.traits).flat().map(rarityOf);
+        if (r === 4 && all.includes(4)) return "1 Legendary max";
+        if (all.filter((q) => q >= 3).length >= 3) return "3 Rare max";
+      }
       return "";
     }
     toggle(id) {
@@ -21077,7 +21194,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.19.0", name: "DeckChess", commit: "a246c5b" };
+  G.VERSION = { v: "0.20.0", name: "DeckChess", commit: "0aefb82" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -21356,21 +21473,25 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         const g = this.game, st = (this.status = g.status());
         pieces.selected = this.sel;
         pieces.check = st.check ? kingSq(g, g.turn) : -1;
-        const dots = [], caps = [];
+        this.paint();
+        hud.show({ game: g, status: st, thinking: this.thinking, you: this.you, canUndo: this.canUndo() });
+      },
+      // the board's tiles; the ones the traits mark (a Warded piece's square, a Sanctuary's ground: it and the
+      // squares round it) follow the pieces on screen, so a Ward breaks or a Vanguard's comes as the piece's does
+      paint() {
+        const g = this.game, dots = [], caps = [];
         for (const m of this.targets) { const i = G.info(m); (i.capture ? caps : dots).push(i.to); }
-        // the tiles the traits mark: a Warded piece's square, and a Sanctuary's ground (it and the squares round it)
         const ward = [], sanct = [];
-        for (let s = 0; s < 64; s++) {
-          const tr = g.tr ? g.tr[(s >> 3) * 16 + (s & 7)] : 0;
-          if (!tr) continue;
-          if (tr & 1 << TI.ward) ward.push(s);
-          if (TI.sanctuary >= 0 && tr & 1 << TI.sanctuary) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        for (const p of pieces.list) {
+          const s = p.sq;
+          if (!p.tr || p.s <= 0) continue;
+          if (p.tr & 1 << TI.ward) ward.push(s);
+          if (TI.sanctuary >= 0 && p.tr & 1 << TI.sanctuary) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
             const x = (s & 7) + dx, y = (s >> 3) + dy;
             if (x >= 0 && x < 8 && y >= 0 && y < 8 && !sanct.includes(y * 8 + x)) sanct.push(y * 8 + x);
           }
         }
         board.paint({ selected: this.sel, check: pieces.check, dots, caps, last: this.last ? [this.last.from, this.last.to] : null, terr: board.territory(g), ward, sanct });
-        hud.show({ game: g, status: st, thinking: this.thinking, you: this.you, canUndo: this.canUndo() });
       },
       // a human's move to take back (with the AI's answer to it)
       canUndo() {
@@ -21564,7 +21685,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       if (s !== cardSq) {
         const v = g.at(s), T = G.DeckSheet;
         let h = `<h3>${T.PIECE[" PNBRQK"[v & 7]]} <small>${G.squareName(s)}</small></h3>`;
-        G.TRAITS.forEach((t, i) => { if (m & (1 << i)) { const r = G.Deck.TRAIT[t.id] ? G.Deck.TRAIT[t.id].rarity : 1; h += `<p class="r${r}"><b>${T.NAMES[t.id]}</b> ${T.RULES[t.id]}</p>`; } });
+        G.TRAITS.forEach((t, i) => { if (m & (1 << i)) { h += `<p class="r${t.rarity}"><b>${T.NAMES[t.id]}</b> ${T.RULES[t.id]}</p>`; } });
         tcard.innerHTML = h; cardSq = s;
       }
       tcard.classList.add("show");
@@ -21621,7 +21742,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         if (!el) { el = document.createElement("span"); lensEl.appendChild(el); tags.set(p.id, el); el.dataset.m = ""; }
         if (el.dataset.m !== String(m)) {
           el.dataset.m = String(m);
-          el.innerHTML = G.TRAITS.map((t, i) => (m & (1 << i) ? `<i class="r${G.Deck.TRAIT[t.id] ? G.Deck.TRAIT[t.id].rarity : 1}">${t.letter}</i>` : "")).join("");
+          el.innerHTML = G.TRAITS.map((t, i) => (m & (1 << i) ? `<i class="r${t.rarity}">${t.letter}</i>` : "")).join("");
         }
         const c = pieces.middle(p), q = cam.toScreen([c[0], c[1], 2 * c[2] - p.P[2]], W, H);
         el.style.left = (r.left + q[0] * k).toFixed(1) + "px"; el.style.top = (r.top + q[1] * k - 4).toFixed(1) + "px";
@@ -21650,6 +21771,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       cam.hold = ctl.sel !== -1; // guided: still while the player has a piece selected
       cam.update(now);
       pieces.update(rdt * speed);
+      if (pieces.changed) { pieces.changed = false; ctl.paint(); }
       ctl.update();
       pieces.hover = hover;
       const ht = hover >= 0 ? board.tile(hover) : [-1, -1], st = ctl.status, g = ctl.game;
@@ -21893,6 +22015,31 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         ctl.fen = null; ctl.newGame(hud.settings); ctl.you = [0];
         const strikeOk = st.strike && st.from === "wP" && st.to === "bP" && st.reply === "bP,wP" && st.partsBefore === 2 && st.partsAfter === 0 &&
           (st.tileBefore & G.CELL_B.WARD) !== 0 && (st.tileAfter & G.CELL_B.WARD) === 0 && st.breaks === 1;
+        // an en passant strike (exd6 onto a Warded pawn on d5 that holds a Pike too): the struck pawn loses the Ward's
+        // parts alone, and its square keeps its ring until the lunge reaches it (the Ward breaks then)
+        const ep = {}, TR = G.TRAIT, pawnParts = (ids) => parts.layout(1, G.PIECE.PAWN, ids).list.length;
+        ctl.newGame(hud.settings, "rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3 d5:WP"); ctl.you = [0, 1];
+        const wb1 = fx.wardBreaks, em = ctl.game.find(sq("e5"), sq("d6"), 0), ei = em ? G.info(em) : {};
+        ep.strike = !!ei.strike && !!ei.enPassant; ep.partsBefore = pieces.partStats().parts;
+        ctl.play(em); nFrames += await frames(1);
+        ep.tileMid = cellB(sq("d5")); ep.breaksMid = fx.wardBreaks - wb1;
+        nFrames += await frames(120, () => !pieces.busy);
+        ep.partsAfter = pieces.partStats().parts; ep.tileAfter = cellB(sq("d5")); ep.breaks = fx.wardBreaks - wb1;
+        ep.at = [pc("d5"), pc("e5"), pc("d6")].join();
+        const epOk = ep.strike && ep.partsBefore === pawnParts(["ward", "pike"]) && ep.partsAfter === pawnParts(["pike"]) && ep.partsAfter > 0 &&
+          (ep.tileMid & G.CELL_B.WARD) !== 0 && ep.breaksMid === 0 && (ep.tileAfter & G.CELL_B.WARD) === 0 && ep.breaks === 1 && ep.at === "bP,wP,-";
+        // a Vanguard's capture (exd5): the Ward it wins shows on it and on its square as its victim goes, not as it
+        // sets off
+        const van = {};
+        ctl.newGame(hud.settings, "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2 e4:V"); ctl.you = [0, 1];
+        const mover = pieces.pieceAt(sq("e4"));
+        ctl.play(ctl.game.find(sq("e4"), sq("d5"), 0)); nFrames += await frames(1);
+        van.trMid = mover.tr; van.tileMid = cellB(sq("d5"));
+        nFrames += await frames(120, () => !pieces.busy);
+        van.tr = mover.tr; van.rules = ctl.game.tr[(sq("d5") >> 3) * 16 + (sq("d5") & 7)]; van.tileAfter = cellB(sq("d5"));
+        const vanOk = van.trMid === TR.VANGUARD && van.tr === (TR.VANGUARD | TR.WARD) && van.rules === van.tr &&
+          (van.tileMid & G.CELL_B.WARD) === 0 && (van.tileAfter & G.CELL_B.WARD) !== 0;
+        ctl.fen = null; ctl.newGame(hud.settings); ctl.you = [0];
         // the part kit (art/pieces.js bindParts): a deck position's tiers and parts as the rules give them (two
         // tier 1, eight tier 2, three tier 3; 54 parts), tiers 4 and 5 and every cue laid out on each piece (the
         // rules can't give them yet: 4 parts and 12 cues, the gem the rarest trait's), and the frames with the
@@ -21917,9 +22064,9 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         for (const c of [0, 1]) for (let t = 1; t <= 6; t++) { const m = models[c][t]; sizes["wb"[c] + " PNBRQK"[t]] = { model: m.name, h: +m.h.toFixed(2), r: +m.r.toFixed(2), fit: +m.fit.toFixed(2), height: m.height }; }
         out.board = { id: boardId, region, z: +board.z.toFixed(3), zSpread: board.zSpread, pieces: sizes };
         ME.log("BOARD", JSON.stringify({ id: boardId, z: out.board.z, zSpread: board.zSpread, region }));
-        out.pick = pick; out.turned = turned; out.script = script; out.capture = cap; out.camera = camT; out.lighting = lightT; out.deck = dk; out.strike = st; out.parts = pk;
+        out.pick = pick; out.turned = turned; out.script = script; out.capture = cap; out.camera = camT; out.lighting = lightT; out.deck = dk; out.strike = st; out.epStrike = ep; out.vanguard = van; out.parts = pk;
         out.sky = { stars: starsDrawn, atmos: atmos.state(), cues: fx.cues, audio: audio ? audio.stats() : null };
-        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2 && capOk && camOk && lightOk && deckOk && strikeOk && partsOk && starsDrawn > 100 && !mg.length;
+        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2 && capOk && camOk && lightOk && deckOk && strikeOk && epOk && vanOk && partsOk && starsDrawn > 100 && !mg.length;
       }
       Object.assign(out, { frames: nFrames, avgFrameIntervalMs: avg(ints.slice(5)), avgCpuMs: avg(cpus.slice(5)), gpuMs: R.gpuMs, errors: ME.errors });
       report(out);
