@@ -4642,6 +4642,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 (function () {
   const ME = window.ME, M4 = ME.m4;
   const D0 = -48, D1 = 52; // depth range in X'+Y'+Z units; reversed-Z (near = 1)
+  const ease = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2); // a turn's and a focus's easing
 
   class Camera {
     constructor(cx, cy) {
@@ -4665,7 +4666,6 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     focus(p, o = {}) { this.foc = { p: p.slice(), s: Math.max(0.05, o.s ?? 0.6), z0: this.zoom, z1: o.zoom != null ? Math.max(this.minZoom, Math.min(this.maxZoom, o.zoom)) : null, from: this.pan.slice(), t0: ME.now() }; }
     get busy() { return !!this.foc || this.t0 !== null; }
     update(now) {
-      const ease = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
       if (this.t0 !== null) {
         const u = Math.min(1, (now - this.t0) / 520);
         this.theta = this.from + (this.to - this.from) * ease(u);
@@ -10758,6 +10758,7 @@ fn boxOf(V: Vox) -> Box {
   const RING_MAX = 48; // water rings drawn (ringBuf)
   const byBirth = (a, b) => b[2] - a[2]; // newest ring first
   const BEAM_COL = [255, 212, 146], MOON_COL = [168, 196, 244]; // the shafts' colour by day and by moonlight
+  const FOG_COL = [40, 32, 18]; // the fog's colour when the style gives none (only read)
   const set4 = (u, o, a, b, c, d) => { u[o] = a; u[o + 1] = b; u[o + 2] = c; u[o + 3] = d; }; // (writeUniforms: no array per vec4)
   const SPRAY_MAX = 4096; // the rim spills' spray voxels, all spills together
 
@@ -11811,7 +11812,7 @@ fn boxOf(V: Vox) -> Box {
       // the weather's clouds on top of R.set (factors of exactly 1 and + 0 without weather: WeatherMix)
       const Wx = this.weather, wc = Wx.active ? Wx.cur.cloud : 0, wr = Wx.active ? Wx.cur.rain : 0, WL = WeatherMix.LIGHT, WR = WeatherMix.LIGHT_RAIN;
       set4(u, O.look3, s.debug, s.shafts ? s.shaftK * this.shaftMul * (1 + s.moonK * moon * moon * moon) * (1 - WL.shaftK * wc) * (1 - WR.shaftK * wr) : 0, s.bloomK * (1 - WL.bloomK * wc), s.exposure * (1 - WL.exposure * wc) * (1 - WR.exposure * wr));
-      const fog = (st.hd && st.hd.fog) || [40, 32, 18];
+      const fog = (st.hd && st.hd.fog) || FOG_COL;
       set4(u, O.fog, ME.lin(fog[0]), ME.lin(fog[1]), ME.lin(fog[2]), s.haze + WL.haze * wc + WR.haze * wr);
       const bc = (st.hd && st.hd.beamCol) || BEAM_COL;
       set4(u, O.beamCol, lerpN(bc[0], MOON_COL[0], moon) / 255, lerpN(bc[1], MOON_COL[1], moon) / 255, lerpN(bc[2], MOON_COL[2], moon) / 255, s.vignette);
@@ -12090,6 +12091,7 @@ fn boxOf(V: Vox) -> Box {
   // KEEP: the life of dug terrain sand (it never expires; shaders/physics.js); SETCAP: settled grains listed
   // per copy; ARGS: draw args (16 bytes), impact and settle counts (16), 64 impacts, the settled grains
   const ME = window.ME, BU = window.GPUBufferUsage || {}, F = 8, BYTES = F * 4, KEEP = 1e9, SETCAP = 2048, ARGS = 32 + 64 * 16 + SETCAP * 8;
+  const ZERO4 = new Uint32Array(4); // (writeBuffer and set copy it: never written)
   // the cells an emptied cell can unsettle (loosen): the one above, and the four beside it, level and one up
   const WAKE = [[0, 0, 1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1]];
   const hash32 = (x) => { x = Math.imul(x ^ (x >>> 16), 0x45d9f3b); x = Math.imul(x ^ (x >>> 16), 0x45d9f3b); return (x ^ (x >>> 16)) >>> 0; };
@@ -12473,7 +12475,7 @@ fn boxOf(V: Vox) -> Box {
       this.clear(); this.qh = this.qt = 0; this.carveQ.length = 0;
       this.keepLive = this.keepQueued = 0; this.gen++; this.occReset = 1; this.jobs.length = 0;
       // settled grains not yet copied are void (copies already in flight are dropped by gen)
-      this.dev.queue.writeBuffer(this.argsBuf, 16, new Uint32Array(4));
+      this.dev.queue.writeBuffer(this.argsBuf, 16, ZERO4);
       if (flips.length) this.R.carve(flips);
       this.staticBits = this.staticBits0;
       return n;
@@ -12535,7 +12537,7 @@ fn boxOf(V: Vox) -> Box {
       const enc = this.dev.createCommandEncoder(), gen = this.gen, upTo = this.stepNo;
       enc.copyBufferToBuffer(this.argsBuf, 16, st, 0, this.keeps ? st.size : 16 + 64 * 16); // the settle list once sand was dug
       this.dev.queue.submit([enc.finish()]);
-      this.dev.queue.writeBuffer(this.argsBuf, 16, new Uint32Array(4));
+      this.dev.queue.writeBuffer(this.argsBuf, 16, ZERO4);
       st.mapAsync(GPUMapMode.READ).then(() => {
         const raw = st.getMappedRange(), [total, nSet, lost] = new Uint32Array(raw, 0, 3), ev = new Float32Array(raw.slice(16, 16 + Math.min(64, total) * 16));
         const set = nSet ? new Uint32Array(raw.slice(16 + 64 * 16, 16 + 64 * 16 + Math.min(SETCAP, nSet) * 8)) : null;
@@ -12630,7 +12632,7 @@ fn boxOf(V: Vox) -> Box {
       pu[12] = T.NX; pu[13] = T.NY; pu[14] = T.NZ; pu[15] = this.capacity;
       pp[16] = T.O[0]; pp[17] = T.O[1]; pp[18] = T.O[2]; pp[19] = T.VS;
       const dg = this.digs.shift();
-      pp.set(dg || [0, 0, 0, 0], 20);
+      pp.set(dg || ZERO4, 20);
       // every terrain cell carved since the last step, given back to the solid bitset before the spawn
       // (so no grain spawns inside a cell that is still solid)
       this.nCarve = 0;
@@ -13490,6 +13492,7 @@ fn boxOf(V: Vox) -> Box {
 (function () {
   const ME = window.ME;
   const $ = (id) => document.getElementById(id);
+  const NO_KEYS = Object.freeze({}); // (an empty table for the per-frame for-in loops: only iterated)
 
   const MOODS = {
     auto: { name: "Auto", dusk: null },
@@ -13688,12 +13691,12 @@ fn boxOf(V: Vox) -> Box {
       // (at the same easing as cur: tau = seconds / 3); the layers it draws itself (R.weather.draws) skip LIGHT
       const dr = this.mixed && this.R.weather.draws;
       if (this.mixed) this.R.weather.mix(this.scaled(L, Ll, gust), 3 * (dyn ? EASE_DYN : EASE));
-      for (const k in m.after || {}) t[k] *= m.after[k];
+      for (const k in m.after || NO_KEYS) t[k] *= m.after[k];
       for (const l in lk.light) {
         if (dr && dr.has(l)) continue;
         const e = lk.light[l], k = (v[l] || 0) * Ll;
-        for (const p in e.f || {}) t[p] *= Math.max(0, 1 - e.f[p] * k);
-        for (const p in e.add || {}) t[p] += e.add[p] * k;
+        for (const p in e.f || NO_KEYS) t[p] *= Math.max(0, 1 - e.f[p] * k);
+        for (const p in e.add || NO_KEYS) t[p] += e.add[p] * k;
       }
       if (v.rain > 0.6) t.vignette += 0.15 * (v.rain - 0.6) / 0.4 * Ll; // (a downpour closes in)
       if (this.sun) for (const p in lk.sunbreak) t[p] *= 1 + (lk.sunbreak[p] - 1) * Ll;
@@ -17648,7 +17651,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.77.0", name: "Mossheart", commit: "207d340" };
+  G.VERSION = { v: "0.78.0", name: "Mossheart", commit: "2f7b870" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -17816,8 +17819,8 @@ function MA_DSP() {
   //   downpour  washes every creature `cells` back down its road (big ones less, a boss a third; a shell not)
   //   bloom     every plant attacks `rate` times as fast for `secs`
   D.RITES = [
-    { id: "frost", name: "Morning Frost", color: [0.68, 0.86, 1], slow: 0.4, secs: 4, desc: "Slows every creature 40% for 4 s" },
-    { id: "downpour", name: "Downpour", color: [0.42, 0.6, 0.9], cells: 2, desc: "Washes every creature 2 tiles back" },
+    { id: "frost", name: "Morning Frost", color: [0.68, 0.86, 1], slow: 0.4, secs: 4, desc: "Slows every creature 40% for 4 s; big ones feel it less" },
+    { id: "downpour", name: "Downpour", color: [0.42, 0.6, 0.9], cells: 2, desc: "Washes every creature 2 tiles back; big ones less" },
     { id: "bloom", name: "Bloom Burst", color: [1, 0.76, 0.32], rate: 1.5, secs: 6, desc: "Every plant attacks 50% faster for 6 s" },
   ];
   // the graft two kinds make, or null
@@ -19487,6 +19490,9 @@ function MA_DSP() {
     riteBlocked(id) {
       if (S.phase !== G.Phase.WAVE) return "Only while a wave runs";
       if (!D.RITES.some((r) => r.id === id)) return "No such rite";
+      // (one that would do nothing: Frost or Downpour with no creature on the road, Bloom while one runs)
+      if (id === "bloom" && this.bloomT > 0) return "Already blooming";
+      if (id !== "bloom" && this.enemies.count === 0) return "Nothing on the road";
       return S.dew < this.riteCost(id) ? "Not enough dew" : "";
     }
     rite(id) {
@@ -23923,7 +23929,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
       // (Rites: the button, while a wave runs, with the cheapest price)
       $("rites").style.display = S.phase === G.Phase.WAVE ? "" : "none";
-      if (S.phase === G.Phase.WAVE) label($("rites"), `Rites ▸  (from ${Math.min(...D.RITES.map((r) => this.game.riteCost(r.id)))} dew)`);
+      if (S.phase === G.Phase.WAVE) this.riteLabel();
       this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, `Lv ${ROMAN[t.level]}`),
         [["Damage", t.damage().toFixed(0)], ["Reach", t.range().toFixed(1)], ["Rate", `${t.rate().toFixed(2)}/s`], ["Aims", AIMS[t.kind] || "nearest"]],
         tips, `${now}${next}${links ? "<br>" + links : ""}${zone ? "<br>" + zone : ""}<br>Aims at ${esc(TARGETS[t.kind] || "the creature nearest the Heart Tree")}<br><span class="dim">${esc(this.matchupsOf(t.kind))}</span>`);
@@ -23946,6 +23952,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.uprootLabel(t);
       box.classList.add("show");
       this.showAlmanac();
+    }
+    // the Rites button's cheapest price, which rises with the wave (one called early starts while the card
+    // stays up) and with each rite cast (in place, only when it changed)
+    riteLabel() {
+      const txt = `Rites ▸  (from ${Math.min(...D.RITES.map((r) => this.game.riteCost(r.id)))} dew)`;
+      if ($("rites").querySelector(".lb").textContent !== txt) label($("rites"), txt);
     }
     // the rite tiles' prices and greying, as the dew stands (in place, so a tap mid-press still lands)
     riteTiles() {
@@ -24213,11 +24225,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       else label("wavebtn", `Begin Wave ${S.wave + 1}`);
       $("hint").style.display = S.wave === 0 && building && !this.selected ? "" : "none"; // (a picked seed's info says what to do)
       if (S.phase === G.Phase.GAME_OVER && $("inspector").classList.contains("show")) this.inspect(null);
-      // (a plant's card as a wave starts or ends: its Rites come or go; the rite tiles follow the dew)
+      // (a plant's card as a wave starts or ends: its Rites come or go; the rite tiles follow the dew, the
+      // button's price the wave)
       else if (this.inspected && this.showing("tower") && !this.forking) {
         const wave = S.phase === G.Phase.WAVE;
         if (this.riting && wave) this.riteTiles();
         else if (this.riting || ($("rites").style.display !== "none") !== wave) this.inspect(this.inspected);
+        else if (wave) this.riteLabel();
       }
       this.seedInfo();
       this.boonBar();
@@ -25767,7 +25781,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
       if (busy || now < this.next) return;
       const seen = this.seen(), hud = this.app.hud, more = this.on() && this.count < MAX_RUN;
-      const tip = TIPS.find((t) => (t.run ? !this.ran.includes(t.id) : more && !seen.includes(t.id)) && shown(t.by) && t.due(this, game, hud));
+      const tip = TIPS.find((t) => (t.run ? !this.ran.includes(t.id) : more && !seen.includes(t.id)) && t.due(this, game, hud) && shown(t.by)); // (the cheap state test first: shown() reads layout)
       if (tip) this.show(tip);
     }
     show(tip) {
