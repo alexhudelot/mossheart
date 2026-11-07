@@ -18493,7 +18493,7 @@ function MG_SFX(L) {
 <script>/* src/core/rng.js */
 /* Seeded RNG (mulberry32): the only randomness the rules and the AI use, so a seed always plays the same game.
    The state is one uint32. */
-(function () {
+(function core() {
   const G = (window.DG = window.DG || {});
 
   class Rng {
@@ -18510,6 +18510,7 @@ function MG_SFX(L) {
     int(a, b) { return a + Math.floor(this.next() * (b - a + 1)); }
   }
   G.Rng = Rng;
+  (G.CORE = G.CORE || []).push(core); // its source, for the AI's worker (core/ai-worker.js)
 })();
 
 </script>
@@ -18527,7 +18528,7 @@ function MG_SFX(L) {
    TFEN (a FEN with a 7th field such as "b1:WS,d2:W") is `traited`; every trait branch is skipped when it
    isn't, so a plain FEN runs exactly the classic rules. A strike (F_STRIKE) is a capture onto a Warded
    piece: nothing moves, the piece loses its Ward. */
-(function () {
+(function core() {
   const G = (window.DG = window.DG || {});
 
   const PAWN = 1, KNIGHT = 2, BISHOP = 3, ROOK = 4, QUEEN = 5, KING = 6, BLACK = 8;
@@ -19089,6 +19090,7 @@ function MG_SFX(L) {
   G.TRAIT = { WARD: T_WARD, VANGUARD: T_VAN, GLIDE: T_GLIDE, RALLY: T_RALLY, ANOINTED: T_ANOINT, STRIDE: T_STRIDE, PIKE: T_PIKE,
     SQUIRE: T_SQUIRE, EMBER: T_EMBER, LEAP: T_LEAP, SANCTUARY: T_SANCT, PHOENIX: T_PHOENIX };
   G.TRAITS = TRAITS;
+  (G.CORE = G.CORE || []).push(core); // its source, for the AI's worker (core/ai-worker.js)
 })();
 
 </script>
@@ -19099,7 +19101,7 @@ function MG_SFX(L) {
    The king is fixed on e1 and the eight pawns on the 2nd rank; the other seven back squares each hold N, B,
    R or Q. Black plays its own deck mirrored onto ranks 7-8 (b1 becomes b8). fen() builds the start TFEN that
    chess.js loads. No DOM and no randomness except a DG.Rng passed in. */
-(function () {
+(function core() {
   const G = (window.DG = window.DG || {});
 
   const FILES = "abcdefgh";
@@ -19312,6 +19314,7 @@ function MG_SFX(L) {
   };
 
   G.Deck = { CLASSIC, BUDGET, CAPS, PER_PIECE, COST, TRAIT, TEMPLATES, points, problems, fen, random, pieceAt, traitCp, build, pick, parse };
+  (G.CORE = G.CORE || []).push(core); // its source, for the AI's worker (core/ai-worker.js)
 })();
 
 </script>
@@ -19323,7 +19326,7 @@ function MG_SFX(L) {
    position can differ while staying within a few pawns' tenths of the best line.
      new DG.AI({ depth: 3, seed: 1, jitter: 12, maxNodes: 250000 }).choose(game)
        -> { move, score (centipawns, side to move), depth (the last full iteration), nodes } */
-(function () {
+(function core() {
   const G = (window.DG = window.DG || {});
   const { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING } = G.PIECE;
   const VALUE = [0, 100, 320, 330, 500, 900, 0];
@@ -19382,9 +19385,15 @@ function MG_SFX(L) {
     return g.turn ? -sc : sc;
   }
 
-  // captures first (most valuable victim, least valuable attacker), promotions with them
+  // captures first (most valuable victim, least valuable attacker), promotions with them. Sorts `ms` in place,
+  // highest key first, by an insertion sort on keys kept in one shared array: a node allocates nothing (audit
+  // PERF-D2), and the sort is stable, so the order is the one the old Array sort gave. Quiet moves (key 0) never move.
+  let KEYS = new Float64Array(256);
   function order(g, ms, first) {
-    const b = g.b, keyed = ms.map((m) => {
+    const b = g.b, n = ms.length;
+    if (n > KEYS.length) KEYS = new Float64Array(n * 2);
+    for (let i = 0; i < n; i++) {
+      const m = ms[i];
       let k = 0;
       if (m === first) k = 1e6;
       else {
@@ -19394,10 +19403,11 @@ function MG_SFX(L) {
         else if (fl & 1) k = 1000 + 10 * VALUE[(fl & 2) ? PAWN : b[(m >> 7) & 127] & 7] - VALUE[b[m & 127] & 7] / 10;
         if (fl & 16) k += 900 + VALUE[(m >> 14) & 7];
       }
-      return [k, m];
-    });
-    keyed.sort((x, y) => y[0] - x[0]);
-    return keyed.map((x) => x[1]);
+      let j = i;
+      for (; j > 0 && KEYS[j - 1] < k; j--) { KEYS[j] = KEYS[j - 1]; ms[j] = ms[j - 1]; }
+      KEYS[j] = k; ms[j] = m;
+    }
+    return ms;
   }
 
   class AI {
@@ -19480,6 +19490,100 @@ function MG_SFX(L) {
   AI.evaluate = evaluate;
   G.AI = AI;
   G.MATE = MATE;
+  (G.CORE = G.CORE || []).push(core); // its source, for the AI's worker (core/ai-worker.js)
+})();
+
+</script>
+<script>/* src/core/ai-worker.js */
+/* The AI's search off the main thread (audit PERF-D2): a Hard move searches up to 250k nodes, which froze the
+   render loop for the whole search. The rules and the AI are plain JS with no DOM, and each core module pushes
+   its own function onto DG.CORE as it loads (rng.js, chess.js, deck.js, ai.js, in that order), so the worker is
+   built from their source in a Blob URL: nothing to fetch, so it works from file:// and in the one-file build.
+   The AI is deterministic (a depth and a node budget, never a clock), so the worker finds exactly the move,
+   score, depth and node count the main thread would. Without workers, or once the worker has failed, the search
+   runs on the main thread as before.
+     DG.AIWorker.choose(ai, game)   a Promise of ai.choose(game): { move, score, depth, nodes }, or null
+     DG.AIWorker.cancel()           drops the searches in flight (their promises give null) and stops the worker
+     DG.AIWorker.mode               where the last search ran: "worker" or "main" ("" before the first)
+     DG.AIWorker.off = true         the main thread from now on (?worker=0); .fails counts the worker's failures,
+                                    .why says the last */
+(function () {
+  const G = (window.DG = window.DG || {});
+
+  // the worker's side, run after the core modules: a game arrives as its own fields, without its class
+  function serve() {
+    const G = self.DG;
+    self.onmessage = (e) => {
+      const { id, opts, game } = e.data;
+      try {
+        self.postMessage({ id, r: new G.AI(opts).choose(Object.assign(Object.create(G.Chess.prototype), game)) });
+      } catch (err) {
+        self.postMessage({ id, err: String((err && err.stack) || err) });
+      }
+    };
+  }
+
+  let w = null, url = "", next = 1, broken = false;
+  const pending = new Map(); // id -> { done, ai, g (the game as posted) }
+  const here = (ai, g) => { W.mode = "main"; return ai.choose(g); };
+  const fail = (why) => { W.fails++; W.why = String(why).slice(0, 300); };
+  const stop = () => {
+    if (w) { w.onmessage = w.onerror = null; w.terminate(); w = null; }
+    if (url) { URL.revokeObjectURL(url); url = ""; }
+  };
+  // the worker has failed as a whole: the main thread from now on, starting with the searches it held
+  const lost = (why) => {
+    fail(why); broken = true; stop();
+    const list = [...pending.values()];
+    pending.clear();
+    for (const p of list) p.done(here(p.ai, p.g));
+  };
+
+  function start() {
+    if (W.off || broken || typeof Worker === "undefined" || !G.CORE || G.CORE.length < 4) return false;
+    if (w) return true;
+    try {
+      const src = "self.window = self;\n" + G.CORE.map((f) => "(" + f + ")();\n").join("") + "(" + serve + ")();\n";
+      url = URL.createObjectURL(new Blob([src], { type: "text/javascript" }));
+      w = new Worker(url);
+    } catch (e) {
+      fail(e); broken = true; stop();
+      return false;
+    }
+    w.onmessage = (e) => {
+      const { id, r, err } = e.data, p = pending.get(id);
+      if (!p) return; // cancelled
+      pending.delete(id);
+      if (err) { fail(err); p.done(here(p.ai, p.g)); }
+      else { W.mode = "worker"; p.done(r); }
+    };
+    w.onerror = (e) => { e.preventDefault(); lost("error: " + (e.message || "the worker didn't load")); };
+    return true;
+  }
+
+  const W = {
+    mode: "", off: false, fails: 0, why: "",
+    choose(ai, game) {
+      const g = game.clone();
+      if (!start()) return Promise.resolve(here(ai, g));
+      const id = next++;
+      return new Promise((done) => {
+        pending.set(id, { done, ai, g });
+        try {
+          w.postMessage({ id, opts: { depth: ai.depth, seed: ai.seed, jitter: ai.jitter, maxNodes: ai.maxNodes }, game: g });
+        } catch (e) {
+          pending.delete(id); fail(e); done(here(ai, g));
+        }
+      });
+    },
+    cancel() {
+      if (!pending.size) return;
+      for (const p of pending.values()) p.done(null);
+      pending.clear();
+      stop(); // the stale search would hold the worker; the next choose starts another
+    },
+  };
+  G.AIWorker = W;
 })();
 
 </script>
@@ -21706,7 +21810,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.22.0", name: "DeckChess", commit: "41d4527" };
+  G.VERSION = { v: "0.23.0", name: "DeckChess", commit: "6e434f4" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -21736,6 +21840,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    ?seed=N (the AI's; 1 under ?selftest and ?match, else random), ?depth=N (the AI's, over the level's),
    ?dpr=1, ?scale=0.8, ?nocache=1, ?vs=N (terrain), ?hero=N (pieces), ?small=1 (a phone's caps), ?preset=,
    ?elev=20..85 (free's pitch in degrees, Mossheart's iso angle by default: view/camera.js), ?mute=1,
+   ?worker=0 (the AI searches on the main thread, not in its worker: core/ai-worker.js),
    ?deck= ?ai= (the player's and the AI's decks, as a share code, "classic", a template id or Deck.parse's text;
    ?deck= skips the deck screen, which ?selftest and ?match always do, classic unless these say), ?hotseat=1 (both sides by hand), ?match=1 (the AI against itself to the end, JSON report into #result),
    ?selftest=1 (picking by the grid at many angles, every square in view, a scripted move by touch and mouse,
@@ -21754,6 +21859,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     const density = { vs: ME.VS, hero: heroVS, small };
     ME.log("DENSITY", density);
     const match = ME.qn("match", 0) === 1, selftest = ME.qn("selftest", 0) === 1;
+    if (ME.qn("worker", 1) === 0) G.AIWorker.off = true;
     // Mossheart's sound banks render while the GPU starts and the bake runs; its G.Audio takes the promise
     const banks = window.MA && MG.SOUND_BANKS ? MA.renderBanks(MG.SOUND_BANKS, { cache: !ME.qn("nocache", 0) }) : null;
 
@@ -21940,7 +22046,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       // the deck screen: the AI's deck for the next game, both decks on the board, the sheet open
       build() {
         const s = hud.settings;
-        this.seq++;
+        this.seq++; G.AIWorker.cancel();
         this.building = true; this.thinking = false; this.ended = false; this.last = null; this.targets = [];
         const p = aiQ ? { id: "custom", deck: aiQ } : G.Deck.pick(new G.Rng(Math.imul(this.seed, 0x9e3779b1) >>> 0), s.level);
         this.opp = { name: p.id === "classic" ? "Classic" : p.deck.name || p.id, deck: p.deck };
@@ -21969,7 +22075,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         frameView(true);
       },
       newGame(s, fen) {
-        this.seq++;
+        this.seq++; G.AIWorker.cancel();
         if (fen) this.fen = fen;
         this.game = new G.Chess(this.fen || undefined);
         this.you = match ? [] : ME.qn("hotseat", 0) ? [0, 1] : [s.side];
@@ -22073,9 +22179,12 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         const my = this.seq, g = this.game;
         setTimeout(() => {
           if (my !== this.seq) return;
-          const r = this.ai[g.turn].choose(g);
-          this.thinking = false;
-          if (r && r.move) this.play(r.move); else this.refresh();
+          // in its worker (core/ai-worker.js), so the board keeps drawing; a newer game drops the answer
+          G.AIWorker.choose(this.ai[g.turn], g).then((r) => {
+            if (my !== this.seq) return;
+            this.thinking = false;
+            if (r && r.move) this.play(r.move); else this.refresh();
+          });
         }, match ? 0 : 250);
       },
     };
@@ -22344,11 +22453,14 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       const avg = (a) => +(a.reduce((p, q) => p + q, 0) / Math.max(1, a.length)).toFixed(3);
       const g = ctl.game;
       const mg = MG.missing();
-      const out = { ok: false, board: boardId, density, adapter: gpu.info, canvas: [canvas.width, canvas.height], render: R.size, bakeMs, models: MB.stats, mg };
+      // where the AI searched: its worker unless ?worker=0, with no failures (core/ai-worker.js); read once the
+      // AI has played (the self-test's reply comes later)
+      const aw = G.AIWorker, aiOk = () => aw.fails === 0 && (aw.off || aw.mode === "worker");
+      const out = { ok: false, board: boardId, density, adapter: gpu.info, canvas: [canvas.width, canvas.height], render: R.size, bakeMs, models: MB.stats, mg, ai: null };
       if (match) {
         const st = g.status();
         out.match = { seed: seed0, over: st.over, result: st.result, reason: st.reason, plies: g.history.length, moves: g.sans.join(" "), fen: g.fen() };
-        out.ok = ME.errors.length === 0 && st.over && !mg.length;
+        out.ok = ME.errors.length === 0 && st.over && !mg.length && aiOk();
         ME.log("MATCH", JSON.stringify({ result: st.result, reason: st.reason, plies: g.history.length }));
       } else {
         // the picking as the pointer uses it, by the grid: each square's centre and four points 0.3 tiles from
@@ -22584,9 +22696,9 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         ME.log("BOARD", JSON.stringify({ id: boardId, z: out.board.z, zSpread: board.zSpread, region }));
         out.pick = pick; out.turned = turned; out.script = script; out.capture = cap; out.camera = camT; out.lighting = lightT; out.deck = dk; out.strike = st; out.epStrike = ep; out.vanguard = van; out.parts = pk;
         out.sky = { stars: starsDrawn, atmos: atmos.state(), cues: fx.cues, audio: audio ? audio.stats() : null };
-        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2 && capOk && camOk && lightOk && deckOk && strikeOk && epOk && vanOk && partsOk && starsDrawn > 100 && !mg.length;
+        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2 && capOk && camOk && lightOk && deckOk && strikeOk && epOk && vanOk && partsOk && starsDrawn > 100 && !mg.length && aiOk();
       }
-      Object.assign(out, { frames: nFrames, avgFrameIntervalMs: avg(ints.slice(5)), avgCpuMs: avg(cpus.slice(5)), gpuMs: R.gpuMs, errors: ME.errors });
+      Object.assign(out, { ai: { mode: aw.mode, off: aw.off, fails: aw.fails, why: aw.why }, frames: nFrames, avgFrameIntervalMs: avg(ints.slice(5)), avgCpuMs: avg(cpus.slice(5)), gpuMs: R.gpuMs, errors: ME.errors });
       report(out);
       document.title = (match ? "MATCH" : "SELFTEST") + " DONE";
       return;
