@@ -19688,8 +19688,9 @@ function MG_SFX(L) {
     rotate(dir) { if (this.mode !== "guided" || !this.home) return; this.gth += dir * Q; this.view("reset"); }
     preset(name) { if (!PRESETS[name]) return; this.pre = name; if (this.mode === "guided" && this.home) this.view("reset"); }
     cycle() { this.preset(ORDER[(ORDER.indexOf(this.pre) + 1) % ORDER.length]); return this.pre; }
-    // a swipe or Q, E: guided turns its preset, the others a plain quarter turn
-    turn(dir) { if (this.mode === "guided") this.rotate(dir); else this.snap(dir); }
+    // a swipe or Q, E: guided turns its preset, the others a plain quarter turn (which takes a dynamic shot
+    // over, as a press and the wheel do)
+    turn(dir) { if (this.mode === "guided") this.rotate(dir); else { this.backAt = 0; this.snap(dir); } }
     get stepped() { return this.mode === "locked" || this.mode === "guided"; }
     // ease the angles to theta (the nearest way round), elev
     aim(theta, elev) { this.vth = this.vel = 0; this.thT = this.theta + wrap(theta - this.theta); this.elT = clampEl(elev); }
@@ -19857,7 +19858,7 @@ function MG_SFX(L) {
         mode = null;
       };
       el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
-      el.addEventListener("wheel", (e) => { e.preventDefault(); this.foc = null; this.zoomAt(px(e), Math.pow(1.0015, -e.deltaY), el); onChange && onChange(); }, { passive: false });
+      el.addEventListener("wheel", (e) => { e.preventDefault(); this.foc = null; if (this.mode !== "guided") this.backAt = 0; this.zoomAt(px(e), Math.pow(1.0015, -e.deltaY), el); onChange && onChange(); }, { passive: false });
       window.addEventListener("keydown", (e) => {
         // by position (ME.keys): the A and E keys on AZERTY
         if (ME.keys.is(e, "KeyQ")) this.turn(-1);
@@ -20660,7 +20661,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.17.0", name: "DeckChess", commit: "2f7da03" };
+  G.VERSION = { v: "0.18.0", name: "DeckChess", commit: "3f8bec2" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -21369,6 +21370,12 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
           ctl.last = L0;
           for (const v of ["top", "side", "follow", "reset"]) { quickView(v); nFrames += await frames(50); camT.views++; }
           if (m === "dynamic") { camT.shot = cam.event("capture", { at: board.centre(sq("d5")), from: board.centre(sq("e4")) }); nFrames += await frames(50); cam.view("reset"); nFrames += await frames(50); }
+          // the wheel and Q take a dynamic shot over: no return to the view after them
+          if (m === "dynamic") {
+            const at = { at: board.centre(sq("d5")), from: board.centre(sq("e4")) }, ev = (e) => { cam.event("capture", at); const b = !!cam.backAt; e(); return b && !cam.backAt; };
+            camT.cancel = [ev(() => canvas.dispatchEvent(new WheelEvent("wheel", { deltaY: 40, clientX: 200, clientY: 200, cancelable: true }))), ev(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyQ", key: "q" })))];
+            cam.view("reset"); nFrames += await frames(50);
+          }
           camT.inView[m] = allIn();
         }
         // guided: each preset frames every square, a quarter turn either way, a nudge with the game only when
@@ -21387,7 +21394,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         cam.calm = true;
         ctl.last = null; setCam("free");
         const guidedOk = Object.values(gd.presets).every((n) => n === 64) && gd.turn === 1 && gd.nudge && !gd.calm && !gd.held;
-        const camOk = camT.panBack === 1 && camT.zoomHome < 0.05 && camT.views === 12 && camT.shot && guidedOk && Object.values(camT.inView).every((n) => n === 64);
+        const camOk = camT.panBack === 1 && camT.zoomHome < 0.05 && camT.views === 12 && camT.shot && camT.cancel.every(Boolean) && guidedOk && Object.values(camT.inView).every((n) => n === 64);
         const lightT = {};
         for (const m of Object.keys(G.LIGHTS)) {
           lights.set(m); mood(0); const gain = lights.apply(0, true), s = R.set;
