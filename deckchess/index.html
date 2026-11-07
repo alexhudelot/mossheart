@@ -98,6 +98,8 @@ div.dk-cell { cursor: default; }
 .dk-name { font-size: 15px; } .dk-name span { color: var(--dim); font: 12px ui-monospace, Consolas, monospace; }
 #dk-edit { display: flex; flex-direction: column; gap: 6px; }
 .dk-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+#dk-sets { display: flex; flex-direction: column; gap: 4px; }
+.dk-lab { color: var(--dim); font-size: 12px; min-width: 38px; align-self: center; }
 .chip { font: var(--font); font-size: 13px; color: var(--ink); background: rgba(30, 32, 26, 0.92); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; cursor: pointer; touch-action: manipulation; display: inline-flex; align-items: baseline; gap: 5px; }
 .chip[class*=" r"] { border-color: color-mix(in srgb, var(--rc) 45%, transparent); }
 .chip small { color: var(--dim); font-size: 11.5px; }
@@ -170,6 +172,7 @@ div.dk-cell { cursor: default; }
   <div id="lens"></div>
   <div id="tcard" class="panel"></div>
   <div id="deck" class="panel"><div class="dk-head"><b>Your deck</b><select id="dk-preset" title="start from a preset"></select><span id="dk-pts"></span></div>
+    <div id="dk-sets" title="each side's piece set"></div>
     <div class="dk-track"><div id="dk-bar"></div></div>
     <div id="dk-grid"></div>
     <div id="dk-edit"></div>
@@ -20083,8 +20086,9 @@ function MG_SFX(L) {
      DC.pieces.CUES[id]           { hue, rarity, idx }   (idx 1..12, a gem's hue in HUES)
      DC.pieces.tierOf(ids), gemOf(ids)
      DC.pieces.RAMPS, MATS        the parts' materials, for the board's style
-     DC.pieces.bindParts(MB)      -> { layout(color, type, ids) -> { tier, gem, list: [{ f, off, sc, hue }],
-                                     sil? } }: sil { f, fine } the tier 5 silhouette, drawn in place of the base */
+     DC.pieces.bindParts(MB)      -> { layout(color, type, ids, silOk) -> { tier, gem, list: [{ f, off, sc, hue }],
+                                     sil? } }: sil { f, fine } the tier 5 silhouette, drawn in place of the base
+                                     (none with silOk false: a themed set's figurine keeps its own) */
 (function () {
   const C = (window.DC = window.DC || {});
   const FRAMES = 1;
@@ -20461,11 +20465,13 @@ function MG_SFX(L) {
       for (let c = 0; c < 2; c++) for (let t = 1; t <= 6; t++) if (SIL[t]) out[skey(c, t)] = [SIL[t], { scale: 1, fine, c, type: t }, 1];
       return out;
     },
-    // the parts bound to the bake: layout(c, t, ids) -> { tier, gem, list: [{ f, off: [x, y, z], sc: [x, y, z],
+    // the parts bound to the bake: layout(c, t, ids, silOk) -> { tier, gem, list: [{ f, off: [x, y, z], sc: [x, y, z],
     // hue }] }: each part's model id, its offset from the piece's anchor (model units, before the piece's facing
     // and its fit) and its scale (at 1 / fine), hue the gem's index (0 for the other parts). Kings get none.
     // A tier 5 knight, bishop or rook also gets sil: { f, fine }, the silhouette drawn in place of its base (at
-    // the base's fit), and its list leaves out the collar, crest and inlay the silhouette carries.
+    // the base's fit), and its list leaves out the collar, crest and inlay the silhouette carries. With silOk
+    // false (a themed set's figurine, DC.sets: the silhouettes are Staunton shapes) it keeps its base and the
+    // collar, crest and inlay instead.
     bindParts(MB) {
       const id = {};
       const get = (k) => {
@@ -20482,13 +20488,13 @@ function MG_SFX(L) {
       return {
         count: Object.keys(id).length,
         sils: SIL.filter(Boolean).length * 2,
-        layout(c, t, ids) {
+        layout(c, t, ids, silOk = true) {
           const out = { tier: 0, gem: 0, list: [] };
           let sl = SLOT[t];
           if (!sl || !ids.length) return out;
           const tier = tierOf(ids), L = out.list, R0 = AUTH_R, has = (n) => ids.includes(n);
           out.tier = tier;
-          const five = tier === 5 && !!sil[c][t];
+          const five = silOk && tier === 5 && !!sil[c][t];
           if (five) { out.sil = sil[c][t]; sl = Object.assign({}, sl, { top: sl.top5 || sl.top, head: sl.head5 || sl.head }); }
           const [cx, cz, cr] = sl.collar, [bx, bz, br] = sl.body, fr = sl.foot;
           let topZ = sl.top[1];
@@ -20535,11 +20541,12 @@ function MG_SFX(L) {
 /* Themed piece sets (DC.sets): three figurine sets, each a whole army of K Q R B N P on a themed base, in a white
    and a black colourway. A set is a skin: the same models[color][type] the Staunton set binds (DC.pieces.bind),
    so the rules, the view and the part kit's anchors work on it unchanged (a kept set gets its own SLOT table).
-   Opt-in with ?sets=all or ?sets=grove,brass (they bake beside the Staunton set), ?set=<id> to play with one.
+   The deck screen's picker chooses a set per side (main.js bakes only the chosen ones, beside the Staunton set);
+   ?sets=all or ?sets=grove,brass bakes more, ?set=<id> plays both sides with one.
      DC.sets.LIST                  [{ id, name, blurb }]
      DC.sets.use(st, ids)          adds the chosen sets' materials to the board's style (before its Palette)
      DC.sets.bakeList(fine, ids)   -> { key: [model, o, 1] } for ME.bakeModels(..., { models })
-     DC.sets.bind(MB, ids)         -> { id: models[color][type] }, as DC.pieces.bind
+     DC.sets.bind(MB, ids)         -> { id: models[color][type] }, as DC.pieces.bind, each model's set its id
    Each figurine is authored at its type's height (DC.pieces.HEIGHT), facing +X, its base's top at z 0.1. */
 (function () {
   const C = (window.DC = window.DC || {});
@@ -20907,7 +20914,7 @@ function MG_SFX(L) {
           if (!frames) throw new Error("no baked figurine " + key(id, c, t));
           const m = MB.models[frames[0]], h = m.h || 1, r = m.r || 0.4;
           const fit = Math.max(0.5, Math.min(1.8, P.HEIGHT[t] / h, 0.42 / r));
-          models[c][t] = { frames, h, r, fine: m.fine || 1, fit, height: +(h * fit).toFixed(3), name: "dcs_" + id + "_" + TYPES[t] };
+          models[c][t] = { frames, h, r, fine: m.fine || 1, fit, height: +(h * fit).toFixed(3), name: "dcs_" + id + "_" + TYPES[t], set: id };
         }
         out[id] = models;
       }
@@ -20958,6 +20965,7 @@ function MG_SFX(L) {
   const EL0 = (20 * Math.PI) / 180, EL1 = (85 * Math.PI) / 180;
   const clampEl = (e) => Math.max(EL0, Math.min(EL1, e));
   const EASE = 12, FLING = 3.5; // the angles' ease to the drag (1/s) and a flick's decay (1/s)
+  const FIT = 0.97; // the share of the free space a fitted board fills (zoomed in: the whole board, edge to edge)
   const deg = (d) => (d * Math.PI) / 180, SWIPE = 40; // locked: canvas px of a sideways swipe that turns
   const wrap = (a) => a - 2 * Math.PI * Math.round(a / (2 * Math.PI));
   const quarter = (t) => Math.round((t - Math.PI / 4) / Q) * Q + Math.PI / 4;
@@ -21060,7 +21068,7 @@ function MG_SFX(L) {
     frameAt(theta, elev) {
       const f = this.fit, keep = { theta: this.theta, elev: this.elev, pan: this.pan.slice(), zoom: this.zoom, foc: this.foc };
       this.look0(theta, elev);
-      this.fitBox(f.min, f.max, f.w, f.h, 0.92);
+      this.fitBox(f.min, f.max, f.w, f.h, FIT);
       this.pan[1] += f.dy / this.zoom;
       const out = { theta, elev: this.elev, zoom: this.zoom, W: this.centre(this.pz) };
       this.look0(keep.theta, keep.elev); this.pan = keep.pan; this.zoom = keep.zoom; this.foc = keep.foc;
@@ -21180,7 +21188,7 @@ function MG_SFX(L) {
       return [c * x - s * y, s * x + c * y, p[2]];
     }
     // frame the box at this angle, with a margin (the depth range is depthBox's)
-    fitBox(min, max, w, h, margin = 0.92) {
+    fitBox(min, max, w, h, margin = FIT) {
       this.foc = null;
       let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
       for (let k = 0; k < 8; k++) {
@@ -21588,6 +21596,8 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
                          for its side), squashed so two or three attackers more is full control */
 (function () {
   const G = (window.DG = window.DG || {});
+  // the rim the camera's framing keeps round the squares (a sliver: the board fills the view, zoomed in)
+  const RIM = 0.05;
 
   class BoardView {
     constructor(app, region) {
@@ -21623,9 +21633,9 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       return t < 0 ? -1 : this.sqOf(ray.a[0] + ray.dir[0] * t, ray.a[1] + ray.dir[1] * t);
     }
     centre(sq) { const [x, y] = this.tile(sq); return [x + 0.5, y + 0.5, this.z]; }
-    // the board's corners in the world, with half a tile of its rim and room above for the back rank's
-    // pieces (the camera's framing)
-    box() { return [[this.x0 - 0.5, this.y0 - 0.5, this.z], [this.x0 + 8.5, this.y0 + 8.5, this.z + 1.4]]; }
+    // the board's corners in the world, a sliver of its rim (RIM) and room above for the
+    // back rank's pieces (the camera's framing)
+    box() { return [[this.x0 - RIM, this.y0 - RIM, this.z], [this.x0 + 8 + RIM, this.y0 + 8 + RIM, this.z + 1.4]]; }
     territory(game) {
       const out = new Float32Array(64);
       for (let s = 0; s < 64; s++) {
@@ -21673,9 +21683,11 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
      changed                the traits on screen changed this frame (a Ward breaks, a mover's traits turn, a
                             piece goes or comes back): the app repaints the tiles they mark, then clears it
      partStats()            how many parts the pieces draw and each tier's count of pieces
+     setModels(models)      another set's models (the deck screen's picker)
    With parts (DC.pieces.bindParts) each piece with traits (game.tr) also draws its tier's and its traits'
    parts, offset from its anchor and turned with it; a gem's mark carries its hue (G.MARK.HUE_SHIFT). A tier 5
-   knight, bishop or rook draws its silhouette (the layout's sil) in place of its base.
+   Staunton knight, bishop or rook draws its silhouette (the layout's sil) in place of its base; a themed set's
+   figurine (its model's set, DC.sets) keeps its own with the lower tiers' parts.
    The input sets selected (a square or -1), hover (a square or -1) and check (the king's square or -1).
    drawn[i] is the piece this layer drew as its i-th instance last frame (R.pick's index). */
 (function () {
@@ -21715,11 +21727,13 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       if (!l) {
         const ids = [];
         for (let i = 0; i < G.TRAITS.length; i++) if (p.tr & (1 << i)) ids.push(G.TRAITS[i].id);
-        l = this.parts.layout(p.c, p.t, ids);
+        l = this.parts.layout(p.c, p.t, ids, !this.models[p.c][p.t].set);
         this.layouts.set(k, l);
       }
       return l;
     }
+    // a side's set changed (the deck screen's picker): models[color][type] as the constructor's
+    setModels(models) { this.models = models; this.layouts.clear(); this.changed = true; }
     slide(p, to, delay, hop, info = null) {
       const from = p.P.slice(), P1 = this.board.centre(to);
       const d = Math.hypot(P1[0] - from[0], P1[1] - from[1]);
@@ -21848,10 +21862,12 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    promotion picker and the end of the game. One board and no menu: the game opens straight onto the board.
    The settings come from the URL (?side=w|b ?level=0..2 ?promo=queen|choose ?light=current|day|hall|glow
    ?cam=guided|free|locked|dynamic), else from the last game
-   (localStorage, when the browser keeps it), else the defaults (white, Normal, always a queen).
+   (localStorage, when the browser keeps it), else the defaults (white, Normal, always a queen, the Tournament
+   lighting, the Staunton set against a random one).
      new DG.Hud({ where, undo(), newGame() })
-     hud.settings                      { side (0 white, 1 black), level, promo, light, camera }
-     hud.keep(key, value)              a setting changed (the view panel: light, camera), remembered
+     hud.settings                      { side (0 white, 1 black), level, promo, lighting, camera, set, oppSet, weather }
+     hud.keep(key, value)              a setting changed (the view panel: lighting, camera; the deck screen's
+                                       set picker: set, oppSet; the sky panel: weather), remembered
      hud.show({ game, status, thinking, you, canUndo })   the top bar, the move list and the buttons
      hud.askPromo(color) -> Promise<type (QUEEN..KNIGHT), or 0 when dismissed>
      hud.showEnd(status, you), hud.hideEnd()
@@ -21868,6 +21884,8 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
   const KEY = "deckchess.settings";
   const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { return {}; } };
   const save = (s) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* storage blocked */ } };
+  // the piece sets a side can play: the Staunton set, then DC.sets'
+  const SETS = () => ["classic"].concat(((window.DC && DC.sets && DC.sets.LIST) || []).map((s) => s.id));
 
   class Hud {
     constructor(o) {
@@ -21875,14 +21893,19 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       const q = new URLSearchParams(location.search), kept = load();
       const pick = (v, ok, d) => (v != null && ok(v) ? v : d);
       const side = q.get("side"), level = q.get("level"), promo = q.get("promo");
-      const one = (k, list) => { const v = q.get(k); return list.includes(v) ? v : pick(kept[k], (x) => list.includes(x), list[0]); };
       this.settings = {
         side: side === "b" ? 1 : side === "w" ? 0 : pick(kept.side, (v) => v === 0 || v === 1, 0),
         level: level != null && LEVELS[+level] ? +level : pick(kept.level, (v) => !!LEVELS[v], 1),
         promo: promo === "choose" || promo === "queen" ? promo : pick(kept.promo, (v) => v === "queen" || v === "choose", "queen"),
-        light: one("light", ["current", "day", "hall", "glow"]),
+        // the lighting is kept as "lighting" (Tournament, hall, the new default, shows once over an old "light")
+        lighting: (() => { const v = q.get("light"), L = ["current", "day", "hall", "glow"]; return L.includes(v) ? v : pick(kept.lighting, (x) => L.includes(x), "hall"); })(),
+        // each side's piece set (DC.sets ids, or the Staunton "classic"); the opponent's may be "random"
+        set: pick(kept.set, (x) => SETS().includes(x), "classic"),
+        oppSet: pick(kept.oppSet, (x) => x === "random" || SETS().includes(x), "random"),
         // the camera is kept as "camera" (#468 saved "cam" for everyone, so guided, the new default, shows once)
         camera: (() => { const v = q.get("cam"), L = ["guided", "free", "locked", "dynamic"]; return L.includes(v) ? v : pick(kept.camera, (x) => L.includes(x), L[0]); })(),
+        // the weather this game's sky panel picked (main.js checks it against Mossheart's fronts; "" a clear sky)
+        weather: pick(kept.weather, (x) => typeof x === "string", ""),
       };
       save(this.settings);
       $("where").textContent = o.where || "";
@@ -21960,10 +21983,12 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
      (the ones that fit it, with their points), each chip greyed with the reason when it can't be taken, and the
      one-line rule of the last trait touched; three save slots and a share code; the AI's deck for the game
      (shown before it starts); Play.
+   Over it all, each side's piece set (the app's sets(), picked with onSet: the opponent's may be Random).
    The deck and the slots are kept in localStorage ("deckchess.decks") when the browser keeps it.
    A share code is the deck as short text: DC1.<back rank>.<square><trait letters>..., such as
    "DC1.RNNQKBNR.b1S.g1W.e2V" (44 points; G.TRAITS' letters).
-     new DG.DeckSheet({ onChange(deck), onPlay(deck), opponent() -> { name, deck } })
+     new DG.DeckSheet({ onChange(deck), onPlay(deck), opponent() -> { name, deck },
+                        sets() -> { list: [{ id, name, title }], mine, opp, fixed }, onSet(side, id) })
      sheet.open(), sheet.close(), sheet.isOpen, sheet.deck, sheet.sel (a deck square such as "b1", or "")
      sheet.select(sq), sheet.toggle(id), sheet.setType(letter), sheet.preset(id), sheet.points
      DeckSheet.code(deck) -> text, DeckSheet.decode(text) -> a deck, or null when it isn't a playable one
@@ -22112,6 +22137,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         const d = decode($("dk-code").value);
         if (d) { this.deck = d; this.note = "Code loaded"; this.changed(); } else { this.note = "That code isn't a playable deck"; this.draw(); }
       } else if (a === "opp") { this.showOpp = !this.showOpp; this.draw(); }
+      else if (a === "set" || a === "oppset") { if (this.o.onSet) this.o.onSet(a === "set" ? 0 : 1, v); this.draw(); }
       else if (a === "play") { if (!D().problems(this.deck).length && this.o.onPlay) this.o.onPlay(copy(this.deck)); }
     }
     // a piece's cell: its glyph, a pip for each trait in its rarity's colour
@@ -22129,6 +22155,10 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     draw() {
       if (!this.isOpen) return;
       const deck = this.deck, Dk = D(), pts = this.points, sq = this.sel, t = Dk.pieceAt(deck, sq);
+      // the piece sets: the player's row, then the opponent's (Random first); fixed (?set=) greys them
+      const S = this.o.sets ? this.o.sets() : null, RND = { id: "random", name: "Random", title: "A set rolled for each game's load" };
+      $("dk-sets").innerHTML = !S ? "" : [["set", "You", S.mine, S.list], ["oppset", "Them", S.opp, [RND].concat(S.list)]].map(([a, lab, cur, list]) =>
+        `<div class="dk-chips"><span class="dk-lab">${lab}</span>` + list.map((s) => `<button class="chip${s.id === cur ? " on" : ""}" data-a="${a}" data-v="${s.id}" title="${esc(s.title)}"${S.fixed ? " disabled" : ""}>${esc(s.name)}</button>`).join("") + `</div>`).join("");
       const presets = [["classic", "Classic"]].concat(Object.entries(Dk.TEMPLATES).map(([k, v]) => [k, v.name]));
       const named = presets.find(([, n]) => n === deck.name);
       $("dk-preset").innerHTML = `<option value="">${named ? "" : "Custom"}</option>` + presets.map(([k, n]) => `<option value="${k}"${named && named[0] === k ? " selected" : ""}>${n}</option>`).join("");
@@ -22185,7 +22215,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.24.0", name: "DeckChess", commit: "dfb63fb" };
+  G.VERSION = { v: "0.25.0", name: "DeckChess", commit: "0343f06" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -22209,9 +22239,10 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    again. A traited piece shows its traits on a hover or a long press (#tcard), and the lens (✦, T) labels them all.
    The view panel (🎥): the lighting (view/lighting.js), the camera's mode and its quick views (view/camera.js); the camera
    row over the buttons: guided's quarter turns, its preset (your side, top, low) and guided / free.
-   URL options: ?side=w|b, ?level=0..2, ?promo=queen|choose, ?light=current|day|hall|glow,
-   ?cam=guided|free|locked|dynamic (view/hud.js), ?calm=1 (guided without its moves, as under reduced motion),
-   ?mood= ?weather= (Mossheart's),
+   URL options: ?side=w|b, ?level=0..2, ?promo=queen|choose, ?light=current|day|hall|glow (hall, Tournament,
+   by default), ?cam=guided|free|locked|dynamic (view/hud.js), ?calm=1 (guided without its moves, as under reduced motion),
+   ?mood= ?weather= (Mossheart's; the weather is a clear sky unless ?weather= or the sky panel's pick says),
+   ?set=classic|grove|brass|reef (both sides' piece set), ?sets=all|grove,reef,.. (more sets baked: art/sets.js),
    ?seed=N (the AI's; 1 under ?selftest and ?match, else random), ?depth=N (the AI's, over the level's),
    ?dpr=1, ?scale=0.8, ?nocache=1, ?vs=N (terrain), ?hero=N (pieces), ?small=1 (a phone's caps), ?preset=,
    ?elev=20..85 (free's pitch in degrees, Mossheart's iso angle by default: view/camera.js), ?mute=1,
@@ -22249,32 +22280,52 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     const hooks = G.shaderHooks({ hues: C.pieces.HUES }), pipelines = ME.compilePipelines(gpu, hooks);
     pipelines.then(() => ME.log("PIPELINES", { ms: Math.round(ME.now() - t0) }), () => {});
 
-    // the board's world and the piece set, baked (or the engine's cached copy of the bake)
-    // ?sets=all (or grove,reef,..) also bakes the themed sets (art/sets.js); ?set=<id> plays with one of them
-    const { st, map, region } = C.boards.style(boardId), setIds = ME.q("sets", "") || null;
-    if (setIds) C.sets.use(st, setIds);
+    // the piece sets (art/sets.js): each side's from the deck screen's picker (hud.settings set and oppSet, a
+    // random opponent's rolled once a load), ?set=<id> both sides'; ?selftest and ?match play the Staunton set
+    // unless ?set= says. The bake takes the Staunton set (its parts dress every set) and the themed ones in
+    // play, ?sets=all (or grove,reef,..) more; a set picked that isn't baked reloads the page (main.js pickSet)
+    const SETS = ["classic"].concat(C.sets.LIST.map((s) => s.id));
+    const forced = SETS.includes(ME.q("set", "")) ? ME.q("set", "") : selftest || match ? "classic" : null;
+    const rolled = SETS[Math.floor(Math.random() * SETS.length)];
+    const sideSets = () => (forced ? [forced, forced] : [hud.settings.set, hud.settings.oppSet === "random" ? rolled : hud.settings.oppSet]);
+    const setIds = [...new Set(sideSets().concat(ME.q("sets", "") ? C.sets.pick(ME.q("sets", "")) : []))].filter((s) => s !== "classic");
+
+    // the board's world and the piece sets, baked, or the engine's cached copy of the bake in parts (E3; ?nocache=1
+    // skips it): the board (its mesh and grass) in one record, the models one record each, keyed on their source,
+    // so a set baked once comes back from the cache while it stays in play. Every set's materials are in the style,
+    // so the board's record and the palette are the same whichever sets play. Both are written after R.init (flush)
+    const { st, map, region } = C.boards.style(boardId);
+    C.sets.use(st, "all");
     const pal = new ME.Palette(st);
     const ids = { sky: pal.id("sky"), water: pal.id("water"), fall: pal.id("fall"), maple: pal.id("maple") };
     const fine = heroVS / ME.VS;
-    const bakeOpts = { walkers: false, progressive: false, models: Object.assign(C.pieces.bakeList(fine), setIds ? C.sets.bakeList(fine, setIds) : {}) };
-    const key = ME.bakeCache.key(st, JSON.stringify(bakeOpts) + "|deckchess-" + boardId), hit = ME.qn("nocache", 0) ? null : await ME.bakeCache.get(key);
-    let T, mesh, MB, grass;
+    const bakeOpts = { walkers: false, progressive: false, cache: true, models: Object.assign(C.pieces.bakeList(fine), C.sets.bakeList(fine, setIds)) };
+    const tkey = ME.bakeCache.terrainKey(st, "|deckchess-" + boardId), hit = await ME.bakeCache.get(tkey);
+    let T, mesh, MB, grass, early;
     if (hit) {
-      for (const n of hit.palNames.slice(1)) pal.id(n);
-      ({ T, mesh, MB, grass } = hit);
-      T.groundAt = ME.groundAt(T); MB.voxel = ME.brickVoxel(MB);
+      for (const n of hit.palNames.slice(1)) pal.id(n); // same material ids as the baked arrays
+      ({ T, mesh, grass } = hit);
+      T.groundAt = ME.groundAt(T);
       ME.log("CACHE", { hit: true });
+      early = ME.bakeModels.start(st, pal, bakeOpts);
     } else {
+      early = ME.bakeModels.start(st, pal, bakeOpts); // the model workers run during the board's bake
       T = await ME.bakeTerrain(st, pal);
       ME.log("TERRAIN", T.stats);
       mesh = await ME.greedyMesh(T);
-      MB = await ME.bakeModels(T, st, pal, bakeOpts);
-      ME.log("MODELS", MB.stats);
+      // (the grass before the models, so its materials are numbered before theirs on a hit too)
       grass = ME.bakeGrass(T, st, pal);
-      ME.bakeCache.put(key, { palNames: pal.names, T: Object.assign({}, T, { groundAt: null }), mesh, MB: Object.assign({}, MB, { voxel: null }), grass });
+      // (the coarse grid copied: the model bake splats into it, and adds its splat again on a hit)
+      ME.bakeCache.later(tkey, { palNames: pal.names.slice(), T: Object.assign({}, T, { groundAt: null, coarse: T.coarse.slice(), splat: undefined }), mesh, grass });
     }
-    const themed = setIds ? C.sets.bind(MB, setIds) : null;
-    const models = (themed && themed[ME.q("set", "")]) || C.pieces.bind(MB), parts = C.pieces.bindParts(MB);
+    MB = await ME.bakeModels(T, st, pal, bakeOpts, early);
+    ME.log("MODELS", MB.stats);
+    const bakeOnlyMs = Math.round(ME.now() - t0);
+    // each side's models (DC.pieces.bind's models[color][type]) from its set: dressed for the player's colour (see
+    // ctl.dress), the Staunton set's until then
+    const themed = C.sets.bind(MB, setIds), staunton = C.pieces.bind(MB), parts = C.pieces.bindParts(MB);
+    const setOf = (id) => (id !== "classic" && themed[id]) || staunton;
+    let models = [setOf(sideSets()[0])[0], setOf(sideSets()[1])[1]];
     const tables = pal.build();
     if (pal.missing.size) ME.log("WARN materials without ramps:", [...pal.missing].join(","));
     ME.progress("uploading", 0.85); await ME.tick();
@@ -22286,6 +22337,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     R.set.critters = false;
     ME.progress("compiling shaders", 0.9); await ME.tick();
     await R.init();
+    ME.bakeCache.flush(tkey); // (not awaited: the parts go in one at a time, the status line counts them)
     // the voxel physics: a taken piece's voxels, and the weather's (Mossheart's capacity)
     const phys = R.addLayer(new ME.VoxelPhysics(T, { capacity: 12288, sliceMs: 4 }));
     if (ME.params.has("scale")) R.set.scale = ME.qn("scale", 1);
@@ -22300,6 +22352,17 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     const scene = { game: null, base: {}, moodDusk: null, bossWave: false, waterAt: () => null, zoomIn: 1 };
     const app = { R, scene, phys, st, T, paused: false };
     const atmos = (app.atmos = scene.atmos = new MG.Atmos(app));
+    // the weather: a clear sky unless ?weather= says, or this game's own pick from the sky panel (hud's "weather")
+    if (!ME.params.has("weather")) {
+      const k = hud.settings.weather, w = ME.WX.fronts()[k] || k === "random" || k === "dynamic" ? k : "clear";
+      if (atmos.weather !== w) { atmos.weather = w; atmos.roll(); }
+    }
+    // a fixed front starts without the layers it has none of (the model's enter() only halves them, so the
+    // Dynamic roll's calm front, Petals at seed 1, drifted over a clear sky for the first half minute)
+    const front = ME.WX.fronts()[atmos.weather];
+    if (front) for (const l in atmos.model.v) if (!front[l]) atmos.model.v[l] = 0;
+    const choose = atmos.choose.bind(atmos);
+    atmos.choose = (k, v) => { choose(k, v); if (k === "weather") hud.keep("weather", v); };
     document.getElementById("skybtn").onclick = () => { showView(false); atmos.toggle(); };
     const audio = MG.Audio ? new MG.Audio(null, app, banks) : null;
     if (audio && (ME.qn("mute", 0) || selftest || match)) audio.setEnabled(false);
@@ -22328,7 +22391,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     };
     // the board's lighting over the mood (view/lighting.js), its gain on the glow into Renderer.user[0].x
     const lights = new G.Lighting(R);
-    lights.set(hud.settings.light);
+    lights.set(hud.settings.lighting);
 
     // ------------------------------------------------------------------ board, pieces, the game
     const board = new G.BoardView({ st, T, R }, region), pieces = new G.PiecesView(board, models, parts);
@@ -22426,6 +22489,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         const p = aiQ ? { id: "custom", deck: aiQ } : G.Deck.pick(new G.Rng(Math.imul(this.seed, 0x9e3779b1) >>> 0), s.level);
         this.opp = { name: p.id === "classic" ? "Classic" : p.deck.name || p.id, deck: p.deck };
         this.you = ME.qn("hotseat", 0) ? [0, 1] : [s.side];
+        this.dress();
         hud.hideEnd();
         sheet.open(); uiEl.classList.add("building");
         const side = this.you.length === 1 ? this.you[0] : 0;
@@ -22434,6 +22498,12 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         frameView(true);
       },
       mine() { return this.you.length === 1 ? this.you[0] : 0; },
+      // each side's set on the board: the player's (hud's set) on their colour, the opponent's (oppSet) on the other
+      dress() {
+        const [a, b] = sideSets(), c = this.mine(), m = [];
+        m[c] = setOf(a)[c]; m[1 - c] = setOf(b)[1 - c];
+        if (m[0] !== models[0] || m[1] !== models[1]) { models = m; pieces.setModels(m); }
+      },
       preview() {
         if (!this.building) return;
         const c = this.mine(), w = c ? this.opp.deck : sheet.deck, b = c ? sheet.deck : this.opp.deck;
@@ -22457,6 +22527,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         const L = hud.level, depth = ME.qn("depth", match ? 2 : L.depth);
         for (const c of [0, 1]) this.ai[c] = new G.AI({ depth, jitter: L.jitter, seed: this.seed++, maxNodes: 250000 });
         this.sel = -1; this.targets = []; this.last = null; this.thinking = false; this.ended = false;
+        this.dress();
         pieces.reset(this.game); phys.clear();
         fx.ripple = [0, 0, 0, 0]; fx.mateT = 0;
         hud.hideEnd();
@@ -22563,7 +22634,21 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         }, match ? 0 : 250);
       },
     };
-    const sheet = new G.DeckSheet({ onChange: () => ctl.preview(), onPlay: (d) => ctl.start(d), opponent: () => ctl.opp });
+    // the deck screen's set picker: a side's set (0 the player's, 1 the opponent's, which may be "random"), kept;
+    // one not baked this load reloads the page, which bakes it (the deck is kept: view/deck-ui.js)
+    const SHORT = { classic: "Classic", grove: "Grove", brass: "Clockwork", reef: "Reef" };
+    const setList = SETS.map((id) => { const s = C.sets.LIST.find((x) => x.id === id); return { id, name: SHORT[id] || (s ? s.name : id), title: s ? s.name + ": " + s.blurb : "The Staunton set" }; });
+    const pickSet = (side, id) => {
+      hud.keep(side ? "oppSet" : "set", id);
+      const want = id === "random" ? rolled : id;
+      if (forced || want === "classic" || setIds.includes(want)) { ctl.dress(); ctl.preview(); return; }
+      sheet.note = "Baking " + (SHORT[want] || want) + "…"; sheet.draw();
+      setTimeout(() => location.reload(), 60);
+    };
+    const sheet = new G.DeckSheet({
+      onChange: () => ctl.preview(), onPlay: (d) => ctl.start(d), opponent: () => ctl.opp,
+      sets: () => ({ list: setList, mine: forced || hud.settings.set, opp: forced || hud.settings.oppSet, fixed: !!forced }), onSet: pickSet,
+    });
 
     // ------------------------------------------------------------------ camera
     let cam = null;
@@ -22600,7 +22685,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     // ?deck= / ?ai= (a share code or a deck's JSON): straight into that game; else the deck screen first
     const side0 = hud.settings.side;
     ctl.newGame(hud.settings, deckQ || aiQ ? G.Deck.fen(side0 ? aiQ : deckQ, side0 ? deckQ : aiQ) : undefined);
-    ME.log("READY", { bakeMs, board: boardId, materials: pal.names.length - 1, models: MB.models.length, seed: seed0 });
+    ME.log("READY", { bakeMs, bakeOnlyMs, sets: setIds, board: boardId, materials: pal.names.length - 1, models: MB.models.length, seed: seed0 });
     frameView(true);
     cam.attach(canvas);
     window.addEventListener("resize", () => { fitCanvas(); frameView(false); });
@@ -22630,7 +22715,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       if (v === "follow" && L) cam.view("follow", { at: board.centre(L.to), from: board.centre(L.from) });
       else cam.view(v === "follow" ? "reset" : v);
     };
-    const setLight = (m) => { mark($("lightseg"), "l", lights.set(m)); hud.keep("light", lights.mode); };
+    const setLight = (m) => { mark($("lightseg"), "l", lights.set(m)); hud.keep("lighting", lights.mode); };
     const setCam = (m) => {
       cam.setMode(m); mark($("camseg"), "c", cam.mode); hud.keep("camera", cam.mode);
       viewsRow.dataset.m = cam.mode; $("g-mode").textContent = cam.mode === "guided" ? "Free" : "Guided";
@@ -22654,7 +22739,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     };
     $("viewbtn").onclick = () => showView();
     ME.Dismiss.add(viewBox, { outside: true, dir: "any", open: () => viewBox.classList.contains("show"), skip: (t) => !!t.closest("#viewbtn"), close: () => showView(false) });
-    setLight(hud.settings.light);
+    setLight(hud.settings.lighting);
     setCam(hud.settings.camera);
     frameView(true); // the row now shows: the board fitted above it, at the mode's home
     document.getElementById("loading").style.display = "none";
@@ -22802,7 +22887,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       if (ME.now() - perf.t > 2000) { perf.fps = perf.n / Math.max(1e-3, perf.acc); perf.acc = 0; perf.n = 0; perf.t = ME.now(); fpsEl.textContent = Math.round(perf.fps) + " fps · " + Math.round(R.set.scale * 100) + "%"; }
       return cpu;
     };
-    G.app = { gpu, st, map, region, T, MB, sim, R, cam, hud, board, pieces, models, sets: themed, ctl, phys, atmos, audio, fx, stars, get game() { return ctl.game; } };
+    G.app = { gpu, st, map, region, T, MB, sim, R, cam, hud, board, pieces, get models() { return models; }, sets: themed, ctl, phys, atmos, audio, fx, stars, get game() { return ctl.game; } };
 
     if (selftest || match) {
       // selftest: the picking over the 64 squares at the opening view and at many angles, then a move by touch
@@ -22831,7 +22916,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       // where the AI searched: its worker unless ?worker=0, with no failures (core/ai-worker.js); read once the
       // AI has played (the self-test's reply comes later)
       const aw = G.AIWorker, aiOk = () => aw.fails === 0 && (aw.off || aw.mode === "worker");
-      const out = { ok: false, board: boardId, density, adapter: gpu.info, canvas: [canvas.width, canvas.height], render: R.size, bakeMs, models: MB.stats, mg, ai: null };
+      const out = { ok: false, board: boardId, density, adapter: gpu.info, canvas: [canvas.width, canvas.height], render: R.size, bakeMs, bakeOnlyMs, sets: setIds, cache: ME.bakeCache.statusText(), weather: atmos.weather, lighting: hud.settings.lighting, models: MB.stats, mg, ai: null };
       if (match) {
         const st = g.status();
         out.match = { seed: seed0, over: st.over, result: st.result, reason: st.reason, plies: g.history.length, moves: g.sans.join(" "), fen: g.fen() };
@@ -22931,17 +23016,20 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
           for (let s = 0; s < 64; s++) { const [x, y] = cam.toScreen(board.centre(s), W, H); if (x >= 0 && x < W && y >= a && y <= b) n++; }
           return n;
         };
+        // a reset eases for 0.7 s, so the squares are counted once it has settled, not after a frame count (at
+        // 120 Hz 50 frames end mid-ease, and on the way back from follow's zoom a corner square was still out)
+        const settled = () => !cam.foc && Math.abs(cam.thT - cam.theta) < 1e-4 && Math.abs(cam.elT - cam.elev) < 1e-4;
         const L0 = { from: sq("e2"), to: sq("e4") };
         for (const m of ["free", "locked", "dynamic"]) {
           setCam(m);
           ctl.last = L0;
-          for (const v of ["top", "side", "follow", "reset"]) { quickView(v); nFrames += await frames(50); camT.views++; }
-          if (m === "dynamic") { camT.shot = cam.event("capture", { at: board.centre(sq("d5")), from: board.centre(sq("e4")) }); nFrames += await frames(50); cam.view("reset"); nFrames += await frames(50); }
+          for (const v of ["top", "side", "follow", "reset"]) { quickView(v); nFrames += await frames(v === "reset" ? 240 : 50, v === "reset" ? settled : null); camT.views++; }
+          if (m === "dynamic") { camT.shot = cam.event("capture", { at: board.centre(sq("d5")), from: board.centre(sq("e4")) }); nFrames += await frames(50); cam.view("reset"); nFrames += await frames(240, settled); }
           // the wheel and Q take a dynamic shot over: no return to the view after them
           if (m === "dynamic") {
             const at = { at: board.centre(sq("d5")), from: board.centre(sq("e4")) }, ev = (e) => { cam.event("capture", at); const b = !!cam.backAt; e(); return b && !cam.backAt; };
             camT.cancel = [ev(() => canvas.dispatchEvent(new WheelEvent("wheel", { deltaY: 40, clientX: 200, clientY: 200, cancelable: true }))), ev(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyQ", key: "q" })))];
-            cam.view("reset"); nFrames += await frames(50);
+            cam.view("reset"); nFrames += await frames(240, settled);
           }
           camT.inView[m] = allIn();
         }
@@ -22969,7 +23057,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         }
         const LD = G.LIGHTS;
         const lightOk = lightT.glow.glow === 3 && lightT.day.glow === 1 && Math.abs(lightT.day.amb - LD.day.amb) < 1e-3 && Math.abs(lightT.hall.exposure - LD.hall.exposure) < 1e-3 && lightT.day.canopy === false && lightT.hall.sunEl === LD.hall.sunEl;
-        setLight("current"); mood(0); lights.apply(0, true);
+        setLight("hall"); mood(0); lights.apply(0, true);
         nFrames += await frames(10);
         // the deck screen: New game opens it over both decks on the board; a tap on b1 picks the knight, Stride
         // and Ward on it (43 points), Vanguard on e2 and Ward on d2 fill the budget (45), Ward on c2 is refused;
