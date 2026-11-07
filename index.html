@@ -172,6 +172,10 @@ body.alm-open #dewbar { visibility: hidden; } /* (the bulb stays, under the alma
 #almbody .ti, #almbody .ei svg { margin-right: 2px; }
 #almbody .det .ei svg { width: 1.05em; height: 1.05em; }
 #almbody .legend { font-size: calc(12px * var(--ts)); color: #a99f8a; margin-top: 6px; }
+/* the wave skip under the coming wave (hud.js skipBtn): small and quiet, its second tap outlined */
+#almbody .btn.skip { display: block; margin: 5px 0 2px 16px; padding: 3px 10px; border-width: 2px; border-radius: 10px; box-shadow: none; font-size: calc(13px * var(--ts)); text-align: left; }
+#almbody .btn.skip small { display: block; font-weight: 500; opacity: 0.8; font-size: calc(11.5px * var(--ts)); }
+#almbody .btn.skip.armed { outline: 3px solid #e2405a; outline-offset: 1px; }
 .hide { display: none !important; }
 
 /* the weather overlay (view/atmos.js): over the scene, under the HUD */
@@ -302,6 +306,16 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 #inspbody .tips > div { margin-top: 2px; }
 #inspbody .tips .ei { white-space: nowrap; margin-right: 4px; font-weight: 800; }
 #inspbody .tips .ei svg { width: 1em; height: 1em; vertical-align: -0.15em; }
+/* the choice of a Lv III branch (hud.js inspect, this.forking): two tiles, each in its branch's tint */
+#inspbody .forks { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 2px 0 4px; }
+#inspbody .fork { display: flex; flex-direction: column; gap: 2px; text-align: left; font: inherit; color: #38452e; background: #efe4c4; border: 2px solid var(--acc); border-left-width: 6px; border-radius: 10px; padding: 6px 7px; cursor: pointer; min-width: 0; }
+#inspbody .fork b { font-weight: 800; }
+#inspbody .fork span { font-size: 0.86em; line-height: 1.25; }
+#inspbody .fork small { font-size: 0.78em; font-weight: 800; color: #6a8a3a; }
+#inspbody .fork:disabled { opacity: 0.55; cursor: default; }
+/* the rites (hud.js inspect, this.riting): three tiles, each in its rite's colour */
+#inspbody .forks.rites { grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
+#inspbody .forks.rites .fork { padding: 5px 6px; border-left-width: 5px; }
 #inspbody .more { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #cdbf98; }
 #inspbody .tglyph { letter-spacing: 0.08em; font-weight: 800; color: #8a5a2a; }
 #inspector:not(.open) .more { display: none; }
@@ -321,6 +335,11 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 #inspector .btn { height: 52px; font-size: calc(18px * var(--ts)); }
 /* a picked seed's info (hud.js seedInfo): the panel without Grow and Uproot */
 #inspector.seedinfo .btn { display: none; }
+/* a plant's grafts (hud.js inspect, Game.graftPartners): a moss row per partner, above Uproot; the first tap asks */
+#grafts { display: flex; flex-direction: column; gap: 6px; }
+#grafts:empty, #inspector.seedinfo #grafts, #inspector.foe #grafts, #inspector.gift #grafts { display: none; }
+#inspector #grafts .btn { height: 44px; font-size: calc(15px * var(--ts)); border-color: var(--moss); }
+#grafts .btn.armed { outline: 3px solid #6a8a3a; outline-offset: 2px; }
 #insptitle .short { color: #b0402a; }
 #inspbody .how { font-weight: 800; color: #8a5a2a; }
 #inspbody .tomore { display: inline-block; margin-top: 4px; font-weight: 800; color: #6a8a3a; cursor: pointer; }
@@ -813,7 +832,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   <div id="almanac"><button id="almtog">Almanac ▸</button><div id="almbody"></div></div>
   <div id="sky" class="panel"><div class="skyrow"><b>Mood</b><div class="seg" id="moodseg"></div></div><div class="skyrow"><b>Weather</b><div class="seg" id="wxseg"></div></div></div>
   <div id="hint">Tap a seed, then tap the meadow twice to plant it</div>
-  <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspbody"></div><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div>
+  <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspbody"></div><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="deepen" class="btn"><span class="lb">Deepen</span></button><div id="grafts"></div><button id="rites" class="btn"><span class="lb">Rites</span></button><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div>
   <div id="seeds"></div>
   <div id="toast" role="status" aria-live="polite"></div>
   <div id="dewgauge"><div id="dewbar" role="meter" aria-label="Dew bank" aria-valuemin="0" aria-valuenow="0"><i class="tick" style="--at: 0.3"></i><i class="tick" style="--at: 0.55"></i><i class="tick" style="--at: 0.8"></i><i class="fill"><i class="bub"></i><i class="bub"></i><i class="bub"></i></i><b class="luck"></b></div><div id="dew" role="status" aria-label="Dew 0"><svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 .6C4.4 3.4 1 7.2 1 10.6a5 5 0 0 0 10 0C11 7.2 7.6 3.4 6 .6z"/><path class="glint" d="M3.6 10.2a2.6 2.6 0 0 0 1.9 3.1"/></svg><b id="dewn">0</b></div></div>
@@ -17517,7 +17536,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.75.0", name: "Mossheart", commit: "1734a1c" };
+  G.VERSION = { v: "0.76.0", name: "Mossheart", commit: "081e44a" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -17606,6 +17625,24 @@ function MA_DSP() {
   };
   D.TOWER_ORDER = ["thorn", "puff", "sun", "wisp", "briar", "toad", "moon", "lily"];
   D.MAX_LEVEL = 3;
+  // The fork at level III (docs/designs/2026-11-05-dew-sinks-and-upgrades.md, Fork): a Thornbloom, Puffcap,
+  // Sunpetal or Willow Wisp grown from II takes one of two branches, at the same price. A is its
+  // `levels[2]`, as it always was; B is new. Changing branch means uprooting. The other plants grow one way.
+  // Each: its name, its one line (A's is the level's) and the chip the card's tile shows for it.
+  // (Their tints, Art's, in the view: plantfx.js G.BRANCH_TINTS)
+  D.FORKS = {
+    thorn: { a: { name: "Barbed", chip: ["Barbs", "+4% a hit"] },
+      b: { name: "Bramblecrown", text: "Each seed it lands shatters into 3 shards at 65% damage", chip: ["Shards", "3 × 65%"], shards: 3, mult: 0.65, onHit: true } },
+    puff: { a: { name: "Slumber", chip: ["Sleep", "0.7 s, every 3rd"] },
+      b: { name: "Mildew", text: "Bursts leave a mildew cloud that slows 30% for 3 s", chip: ["Cloud", "30% slow"] } },
+    sun: { a: { name: "Dazzle", chip: ["Stun", "0.5 s"] },
+      b: { name: "Burning Glass", text: "The beam heats up on one creature, +20% a second up to ×2", chip: ["Heat", "up to ×2"] } },
+    wisp: { a: { name: "Lure", chip: ["Lure", "0.8 s"] },
+      b: { name: "Lantern Choir", text: "Each leap of the light does 15% more, instead of fading", chip: ["Leaps", "+15% each"] } },
+  };
+  for (const k in D.FORKS) D.FORKS[k].a.text = D.TOWERS[k].levels[2];
+  // what a plant does at a level, on its branch ("a" or "b": a level III that forked)
+  D.levelText = (kind, level, branch = "a") => (level >= 3 && D.FORKS[kind] ? D.FORKS[kind][branch].text : D.TOWERS[kind].levels[level - 1]);
 
   // Links: two plants on neighbouring cells (the 8 around) whose kinds make one of these pairs are linked,
   // and each gets its side of the bonus (`gives[kind]`; a pair of one kind gives both the same). A plant
@@ -17645,6 +17682,34 @@ function MA_DSP() {
     { id: "moonlit", kinds: ["moon", "lily"], name: "Moonlit Lily", gives: { lily: { moonlit: 1 }, moon: { range: 0.15 } }, desc: "Lily beams start half hot on marked creatures; the Moonpetal reaches 15% further" },
     { id: "ghostlight", kinds: ["lily", "wisp"], name: "Ghost Light", gives: { lily: { heat: 1 }, wisp: { dmg: 0.1 } }, desc: "The Lily heats up twice as fast; the Wisp hits 10% harder" },
   ];
+  // Grafts (docs/designs/2026-11-05-dew-sinks-and-upgrades.md, Graft): two level III plants of a listed link
+  // pair, side by side, grow into one plant on the tapped cell (Game.graft). It plays as both parents from
+  // that cell (the tapped one, Tower.twin the other) and keeps every link of both kinds, theirs to each other
+  // too, with `gives` on top (bond keys, as the links' below):
+  //   warden   a Thornbloom seed roots a snare patch where it lands (0.45 tiles, 2 s: slows 30%, snares 0.4 s once in 3 s)
+  //   vsMark   a Sunpetal Lens hits marked creatures this much harder (+1: double)
+  //   mire     a Stinkhorn's puddles slow by this, and last 4 s
+  //   lantern  a Ghost Lily's beam keeps all its heat on a new creature and leaps on to the next at this share
+  // The fee is FEE × both base costs (with the seed-price gifts: S.towerCost).
+  D.GRAFTS = [
+    { id: "warden", link: "thornwall", name: "Bramble Warden", gives: { thorn: { warden: 1 } }, desc: "Its seeds root small snare patches where they land" },
+    { id: "eclipsebloom", link: "eclipse", name: "Eclipse Bloom", gives: { sun: { vsMark: 1 } }, desc: "Marks creatures; the beam does double damage to marked ones" },
+    { id: "mirecap", link: "rotgarden", name: "Mire Cap", gives: { toad: { mire: 0.3 } }, desc: "Bursts leave a poison mire that slows 30%" },
+    { id: "lantern", link: "ghostlight", name: "Ghost Lantern", gives: { lily: { lantern: 0.5 } }, desc: "The beam leaps to the next creature (50%) and keeps its heat" },
+  ];
+  D.GRAFT_FEE = 2;
+  // One-shot rites (the same design, F): bought while a wave runs, each acts once on the whole garden
+  // (Game.rite). Each is priced on its own: 60 + 6 a wave the first time in a run, then x1.5 each later use.
+  //   frost     slows every creature by `slow` for `secs` (as a slow: big ones feel less, a shell none)
+  //   downpour  washes every creature `cells` back down its road (big ones less, a boss a third; a shell not)
+  //   bloom     every plant attacks `rate` times as fast for `secs`
+  D.RITES = [
+    { id: "frost", name: "Morning Frost", color: [0.68, 0.86, 1], slow: 0.4, secs: 4, desc: "Slows every creature 40% for 4 s" },
+    { id: "downpour", name: "Downpour", color: [0.42, 0.6, 0.9], cells: 2, desc: "Washes every creature 2 tiles back" },
+    { id: "bloom", name: "Bloom Burst", color: [1, 0.76, 0.32], rate: 1.5, secs: 6, desc: "Every plant attacks 50% faster for 6 s" },
+  ];
+  // the graft two kinds make, or null
+  D.graftOf = (a, b) => { const l = D.linkOf(a, b); return (l && a !== b && D.GRAFTS.find((g) => g.link === l.id)) || null; };
   // the link two kinds make, or null
   // Placement zones: plots the garden itself favours, found on every map from its shape (core/world.js), one
   // per plot at most; a plant on one gets its bonus on top of its links (Game.relink). Heartwood: within 3
@@ -17958,6 +18023,8 @@ function MA_DSP() {
     // live readings of the battle for the music, ambience and HUD: creatures on the field per kind,
     // corruption of the plants near the path (0..1), hits per second (smoothed), lead creature's progress
     field: {}, corruption: 0, combat: 0, danger: 0,
+    // a wave of this run was skipped (Game.skipWave): it keeps no best wave, here or on the board
+    offBoard: false,
   });
   // the garden played (main.js): each keeps its own best wave and saved run (core/save.js), under the
   // plain keys for Momiji Valley and with ".<level id>" after them for the others
@@ -17975,8 +18042,8 @@ function MA_DSP() {
   S.newRun = (seed) => {
     S.seed = seed >>> 0;
     S.rng = G.rng(S.seed ^ 0x5eed);
-    S.dew = S.START_DEW; S.heartMax = S.START_HEART; S.heartHp = S.heartMax; S.wave = 0; S.intensity = 0;
-    S.time = 0; S.dewRate = 0; S.dewT = 0;
+    S.dew = S.START_DEW; S.heartMax = S.START_HEART; S.heartHp = S.heartMax; S.wave = 0; S.intensity = 0; S.offBoard = false;
+    S.time = 0; S.dewRate = 0; S.dewT = 0; S.riteRate = 1;
     S.field = {}; S.corruption = 0; S.combat = 0; S.danger = 0; S.boons = []; S.mods = {};
     G.emit("dew"); G.emit("heart"); G.emit("wave"); G.emit("mods");
     S.setPhase(G.Phase.BUILD);
@@ -18065,8 +18132,10 @@ function MA_DSP() {
     G.emit("heart");
     G.emit("heart_hit", { amount: n });
     if (S.heartHp === 0) {
-      S.best = Math.max(S.best, S.wave);
-      try { localStorage.setItem(S.levelKey(SAVE_KEY), String(S.best)); } catch (e) { /* storage blocked */ }
+      if (!S.offBoard) {
+        S.best = Math.max(S.best, S.wave);
+        try { localStorage.setItem(S.levelKey(SAVE_KEY), String(S.best)); } catch (e) { /* storage blocked */ }
+      }
       S.setPhase(G.Phase.GAME_OVER);
       G.emit("game_over", { wave: S.wave, best: S.best });
     }
@@ -18403,6 +18472,8 @@ function MA_DSP() {
     stun(i, secs) { if (this.held(i)) return; const h = this.hold(i, secs); this.stunT[i] = h; this.steadyT[i] = h + 2; }
     lure(i, secs) { if (this.held(i)) return; const h = this.hold(i, secs); this.backT[i] = h; this.steadyT[i] = h + 2; }
     push(i, d) { if (this.held(i) || this.dist[i] <= 0) return; this.dist[i] = Math.max(0, this.dist[i] - this.hold(i, d)); this.steadyT[i] = 0.6; }
+    // a rite's Downpour (Game.rite): back `d` down the road as a push, but past a steady creature too (a shell stays)
+    wash(i, d) { if (!this.alive[i] || this.shell[i] > 0 || this.dist[i] <= 0) return; this.dist[i] = Math.max(0, this.dist[i] - this.hold(i, d)); this.steadyT[i] = Math.max(this.steadyT[i], 0.6); }
     // Stinkhorn's poison (no element; the hotter one is kept), a Moonpetal's mark
     poison(i, dps, secs) { if (!this.alive[i]) return; this.poisonDps[i] = Math.max(dps, this.poisonT[i] > 0 ? this.poisonDps[i] : 0); this.poisonT[i] = Math.max(this.poisonT[i], secs); }
     mark(i, amt, secs) { if (!this.alive[i]) return; this.markAmt[i] = Math.max(amt, this.markT[i] > 0 ? this.markAmt[i] : 0); this.markT[i] = Math.max(this.markT[i], secs); }
@@ -18585,7 +18656,7 @@ function MA_DSP() {
    "mark" { from, to }. */
 (function () {
   const G = window.MG, D = G.Defs;
-  const PATCH_R = 0.6, PUDDLE_R = 0.75, SPLASH_R = 0.9;
+  const PATCH_R = 0.6, PUDDLE_R = 0.75, SPLASH_R = 0.9, SNARE_R = 0.45;
 
   class Tower {
     constructor(kind, cx, cy, world, body) {
@@ -18598,14 +18669,20 @@ function MA_DSP() {
       // a Ghost Lily's beams: { t, uid (the creature held, -1 none), hold (seconds held, the heat) }
       this.rays = [];
       // its links with neighbouring plants ({ link, other }) and their bonus (Defs.LINKS keys); Game.relink
-      this.links = []; this.bond = {};
+      this.links = []; this.bond = {}; this.deep = new Set(); // (and the links deepened with one of them)
+      // its branch at level III ("a", the level as it always was, or "b": Defs.FORKS); a Burning Glass's
+      // heat on the creature its beam holds; a Mildew Puffcap's cloud (in Shots.puddles while it lasts)
+      this.branch = "a"; this.glass = { uid: -1, wave: -1, hold: 0 }; this.cloud = null;
+      // a graft (Defs.GRAFTS, Game.graft): the other parent, a Tower of its own on this cell that plays
+      // alongside (not in Game.towers; its events name this one, its `host`)
+      this.graft = null; this.twin = null; this.host = null;
       this.refresh();
     }
     // stats: base * level * boons * links
     // (each level also changes how the plant plays, so it buys less raw damage than it used to: x1.45)
     damage() { const S = G.state; return this.def.damage * Math.pow(1.45, this.level - 1) * S.mod("dmg_" + this.kind) * S.mod("dmg_all") * (this.level >= D.MAX_LEVEL ? 1 + S.mod("grove") : 1) * (1 + (this.bond.dmg || 0)); }
     range() { const S = G.state; return this.def.range * (1 + 0.1 * (this.level - 1)) * S.mod("range_" + this.kind) * S.mod("range_all") * (1 + (this.bond.range || 0)); }
-    rate() { const S = G.state; return this.def.rate * (1 + 0.15 * (this.level - 1)) * S.mod("rate_" + this.kind) * S.mod("rate_all") * (1 + (this.bond.rate || 0)); }
+    rate() { const S = G.state; return this.def.rate * (1 + 0.15 * (this.level - 1)) * S.mod("rate_" + this.kind) * S.mod("rate_all") * (1 + (this.bond.rate || 0)) * (S.riteRate || 1); }
     // a Briar Vine patch's radius (Thornwall widens it), grown across a wide lane (p.wide)
     patchR(p) { return (PATCH_R + (p ? p.wide : 0)) * (1 + (this.bond.patch || 0)); }
     upgradeCost() { return G.state.towerCost(Math.floor(this.def.cost * 0.8 * this.level)); }
@@ -18616,7 +18693,9 @@ function MA_DSP() {
       return { damage: P.damage.call(t), range: P.range.call(t), rate: P.rate.call(t), growCost: P.upgradeCost.call(t) };
     }
     sellValue() { return Math.floor(this.invested * 0.6); }
-    upgrade() { this.level++; this.refresh(); }
+    // (growing to level III takes a branch; a plant that does not fork takes "a")
+    upgrade(branch = "a") { this.level++; if (this.level === 3) this.branch = D.FORKS[this.kind] && branch === "b" ? "b" : "a"; this.refresh(); }
+    get forked() { return this.level >= 3 && this.branch === "b"; }
     // what follows from the level: a Briar Vine's patches, a Ghost Lily's beams
     refresh() {
       if (this.kind === "briar") this.patches = Tower.patchesFor(this.world, this.X, this.Y, this.def.range, this.level);
@@ -18642,21 +18721,22 @@ function MA_DSP() {
     }
 
     update(dt, game) {
+      if (this.twin) this.twin.update(dt, game);
       this.cooldown -= dt;
       if (this.cloudT > 0) this.cloudT -= dt;
       const S = G.state;
       if (this.cooldown > 0 || S.phase === G.Phase.GAME_OVER) return;
-      const { enemies: E, shots } = game, o = this.origin(), R = this.range(), lv = this.level, el = this.element, B = this.bond;
+      const { enemies: E, shots } = game, o = this.origin(), R = this.range(), lv = this.level, el = this.element, B = this.bond, br = this.forked ? 1 : 0;
       let target = null, radius = 0;
       if (this.kind === "thorn") {
         const first = E.pickTarget(this.X, this.Y, R, "first");
         if (first >= 0) {
           target = E.centre(first);
-          shots.fire(o, first, this.damage(), this.def.speed, this.def.color, this.kind, B.pierceChain ? 1 : 0, [], lv, B);
+          shots.fire(o, first, this.damage(), this.def.speed, this.def.color, this.kind, B.pierceChain ? 1 : 0, [], lv, B, br);
           // (Thousand Needles: at every creature in reach; firing changes no creature, so all are picked at once)
           const n = S.mod("needles") > 0 ? 99 : Math.round(S.mod("split"));
           if (n > 0) for (const extra of E.pickTargets(this.X, this.Y, R, "first", n, [first]))
-            shots.fire(o, extra, this.damage(), this.def.speed, this.def.color, this.kind, B.pierceChain ? 1 : 0, [], lv, B);
+            shots.fire(o, extra, this.damage(), this.def.speed, this.def.color, this.kind, B.pierceChain ? 1 : 0, [], lv, B, br);
         }
       } else if (this.kind === "sun") {
         const strong = E.pickTarget(this.X, this.Y, R, "strong");
@@ -18668,10 +18748,14 @@ function MA_DSP() {
           const flaring = flare > 0 && ++this.beams % (summer ? 2 : 7 - flare) === 0;
           // level II: the beam burns everything on its line (40%); level III: it dazzles what it hits
           // (Spore Glow: slowed creatures take more)
-          const glow = (v) => (B.vsSlow && E.slowT[v] > 0 ? 1 + B.vsSlow : 1);
+          // (Eclipse Bloom: marked ones too)
+          const glow = (v) => (B.vsSlow && E.slowT[v] > 0 ? 1 + B.vsSlow : 1) * (B.vsMark && E.markT[v] > 0 ? 1 + B.vsMark : 1);
           if (lv >= 2) for (const v of E.onLine(this.X, this.Y, target[0], target[1], 0.3)) if (v !== strong) shots.strike(v, this.damage() * 0.4 * glow(v), el, this.kind);
-          shots.strike(strong, this.damage() * (flaring ? 3 : 1) * glow(strong), el, this.kind);
-          if (lv >= 3) E.stun(strong, 0.5);
+          // (Burning Glass, level III's other branch: the beam heats on the creature it keeps, +20% a second up to x2)
+          let heat = 1;
+          if (br) { const g = this.glass; if (g.uid !== E.uid[strong] || g.wave !== S.wave) { g.uid = E.uid[strong]; g.wave = S.wave; g.hold = 0; } heat = 1 + Math.min(1, 0.2 * g.hold); g.hold += 1 / this.rate(); }
+          shots.strike(strong, this.damage() * (flaring ? 3 : 1) * glow(strong) * heat, el, this.kind);
+          if (lv >= 3 && !br) E.stun(strong, 0.5);
           if (flaring) {
             for (const v of E.inRadius(target[0], target[1], fr)) if (v !== strong) shots.strike(v, this.damage(), el, this.kind);
             G.emit("flare", { pos: target, radius: fr });
@@ -18682,7 +18766,7 @@ function MA_DSP() {
             const next = E.pickTarget(this.X, this.Y, R, "strong", hit);
             if (next < 0) break;
             hit.push(next);
-            G.emit("prism", { from: target, to: E.centre(next), tower: this });
+            G.emit("prism", { from: target, to: E.centre(next), tower: this.host || this });
             shots.strike(next, this.damage() * (rainbow ? 0.8 : 0.7), el, this.kind);
           }
         }
@@ -18691,7 +18775,7 @@ function MA_DSP() {
         if (victims.length) {
           radius = R;
           // level II: the burst pushes them back down the road; level III: every third one puts them to sleep
-          const slow = this.def.slow + S.mod("slow_bonus") + (B.slow || 0), sleep = lv >= 3 && ++this.bursts % 3 === 0;
+          const slow = this.def.slow + S.mod("slow_bonus") + (B.slow || 0), sleep = lv >= 3 && !br && ++this.bursts % 3 === 0;
           for (const v of victims) {
             E.applySlow(v, slow, this.def.slowTime); shots.strike(v, this.damage(), el, this.kind);
             if (lv >= 2) E.push(v, 0.15);
@@ -18700,12 +18784,19 @@ function MA_DSP() {
           // (Seed Pods: the burst throws thorn seeds at the creatures nearest the Heart Tree)
           if (B.seeds) for (const v of E.pickTargets(this.X, this.Y, R, "first", B.seeds)) shots.fire(o, v, this.damage(), D.TOWERS.thorn.speed, D.TOWERS.thorn.color, "thorn");
           if (S.mod("sporestorm") > 0) this.cloudT = 3;
+          // (Mildew, level III's other branch: the burst leaves a cloud on the creature nearest the Heart Tree,
+          // slowing 30% for 3 s; one cloud a plant, moved and renewed by each burst)
+          if (br) {
+            const f = E.pickTarget(this.X, this.Y, R, "first"), c = E.centre(f >= 0 ? f : victims[0]);
+            if (!this.cloud || !shots.puddles.includes(this.cloud)) { this.cloud = { x: 0, y: 0, z: 0, t: 0, dps: 0, slow: 0.3, r: 1.0, mildew: true }; shots.puddles.push(this.cloud); }
+            Object.assign(this.cloud, { x: c[0], y: c[1], z: c[2], t: 3 });
+          }
         }
       } else if (this.kind === "wisp") {
         const first = E.pickTarget(this.X, this.Y, R, "first");
         if (first >= 0) {
           target = E.centre(first);
-          shots.fire(o, first, this.damage(), this.def.speed, this.def.color, this.kind, this.def.chain + (lv >= 2 ? 1 : 0) + Math.round(S.mod("chain_bonus")) + (B.chain || 0), [], lv, B);
+          shots.fire(o, first, this.damage(), this.def.speed, this.def.color, this.kind, this.def.chain + (lv >= 2 ? 1 : 0) + Math.round(S.mod("chain_bonus")) + (B.chain || 0), [], lv, B, br);
         }
       } else if (this.kind === "briar") {
         // the patches scratch and slow what is on them; level II snares a creature stepping on (once in 3 s)
@@ -18713,7 +18804,7 @@ function MA_DSP() {
           const victims = E.inRadius(p.x, p.y, this.patchR(p));
           if (!victims.length) continue;
           radius = this.patchR(p);
-          G.emit("bramble_patch", { pos: [p.x, p.y, p.z], tower: this });
+          G.emit("bramble_patch", { pos: [p.x, p.y, p.z], tower: this.host || this });
           for (const v of victims) {
             shots.strike(v, this.damage(), el, this.kind); E.applySlow(v, this.def.slow, 0.6);
             if (lv >= 2 && E.snareT[v] <= 0) { E.stun(v, 0.6); E.snareT[v] = 3; }
@@ -18729,30 +18820,33 @@ function MA_DSP() {
         else marked.push(...E.pickTargets(this.X, this.Y, R, "strong", lv));
         if (marked.length) {
           target = E.centre(marked[0]);
-          for (const v of marked) { G.emit("mark", { from: o, to: E.centre(v), tower: this }); E.mark(v, this.def.mark + (B.mark || 0) + S.mod("mark_bonus"), 4); if (S.mod("moonshade") > 0) E.applySlow(v, S.mod("moonshade"), 4); shots.strike(v, this.damage(), el, this.kind); }
+          for (const v of marked) { G.emit("mark", { from: o, to: E.centre(v), tower: this.host || this }); E.mark(v, this.def.mark + (B.mark || 0) + S.mod("mark_bonus"), 4); if (S.mod("moonshade") > 0) E.applySlow(v, S.mod("moonshade"), 4); shots.strike(v, this.damage(), el, this.kind); }
         }
       } else if (this.kind === "lily") {
         // each beam holds its creature while it stays in reach, heating up to 3x over 3 s; a new creature
         // starts cold (level II: keeps 60% of the heat; Lingering Spirit: more)
-        const held = this.rays.map((r) => r.t);
+        // (Ghost Lantern: keeps it all, and the beam leaps on)
+        const held = this.rays.map((r) => r.t), keep = B.lantern ? 1 : Math.max(lv >= 2 ? 0.6 : 0, S.mod("lily_keep"));
         for (const r of this.rays) {
           const ok = E.isValid(r.t, r.uid) && !E.hidden(r.t) && (E.px[r.t] - this.X) ** 2 + (E.py[r.t] - this.Y) ** 2 <= R * R;
           if (!ok) {
             const v = E.pickTarget(this.X, this.Y, R, "first", held);
-            if (v < 0) { r.t = -1; r.uid = -1; r.hold *= Math.max(lv >= 2 ? 0.6 : 0, S.mod("lily_keep")); continue; }
-            r.t = v; r.uid = E.uid[v]; r.hold *= Math.max(lv >= 2 ? 0.6 : 0, S.mod("lily_keep")); held.push(v);
+            if (v < 0) { r.t = -1; r.uid = -1; r.hold *= keep; continue; }
+            r.t = v; r.uid = E.uid[v]; r.hold *= keep; held.push(v);
             // (Moonlit Lily: a marked creature is taken half hot)
             if (B.moonlit && E.markT[v] > 0) r.hold = Math.max(r.hold, 1.5);
             target = target || E.centre(v);
           }
-          shots.strike(r.t, this.damage() * (1 + 2 * Math.min(1, r.hold / 3)), el, this.kind);
+          const hot = this.damage() * (1 + 2 * Math.min(1, r.hold / 3)), at = E.centre(r.t);
+          shots.strike(r.t, hot, el, this.kind);
+          if (B.lantern) { const next = E.pickTarget(at[0], at[1], CHAIN_RANGE, "first", [r.t]); if (next >= 0) { G.emit("haunt", { from: at, to: E.centre(next) }); shots.strike(next, hot * B.lantern, el, this.kind); } }
           r.hold += (1 + (B.heat || 0) + S.mod("heat")) / this.rate();
           if (!target) radius = radius || 0.01; // holding: keeps its pace without a new "fire"
         }
       }
       if (target || radius) {
         this.cooldown = 1 / this.rate();
-        if (target || this.kind !== "lily") G.emit("fire", { kind: this.kind, pos: o, level: lv, tower: this, base: [this.X, this.Y, this.Z], target, radius });
+        if (target || this.kind !== "lily") G.emit("fire", { kind: this.kind, pos: o, level: lv, tower: this.host || this, base: [this.X, this.Y, this.Z], target, radius });
       } else this.cooldown = 0.1; // idle re-scan; cheaper than scanning every frame
     }
   }
@@ -18761,7 +18855,7 @@ function MA_DSP() {
   // ------------------------------------------------------------------ shots
   // Homing seeds, wisps and spore bombs; handles hits, crits, wisp chaining, split shots, piercing seeds
   // and bomb splashes, and the poison puddles bombs leave ({ x, y, z, t (seconds left), dps }).
-  const CAP = 256, CHAIN_RANGE = 1.6, NO_CRIT = new Set(["pulse", "puffball"]), NONE = {};
+  const BR = D.FORKS.thorn.b, CAP = 256, CHAIN_RANGE = 1.6, NO_CRIT = new Set(["pulse", "puffball"]), NONE = {};
 
   class Shots {
     constructor(enemies) {
@@ -18773,6 +18867,8 @@ function MA_DSP() {
       this.lv = new Uint8Array(CAP); this.d0 = new Float32Array(CAP);
       // the links' bonus of the plant that fired it (Tower.bond: a seed's smoulder and leap, a bomb's rot and pods)
       this.bond = new Array(CAP);
+      // 1: fired by a plant on level III's other branch (Tower.forked: a Bramblecrown's seed, a Lantern Choir's light)
+      this.br = new Uint8Array(CAP);
       this.free = []; for (let i = CAP - 1; i >= 0; i--) this.free.push(i);
       this.puddles = []; this.puddleT = 0;
     }
@@ -18780,13 +18876,13 @@ function MA_DSP() {
     clear() { for (let i = 0; i < CAP; i++) if (this.alive[i]) { this.alive[i] = 0; this.free.push(i); } this.puddles = []; }
     // none in flight and the pool as a new one hands it out (game.js, at the end of a wave, as Enemies.reset)
     reset() { this.alive.fill(0); this.free = []; for (let i = CAP - 1; i >= 0; i--) this.free.push(i); this.puddles = []; this.puddleT = 0; }
-    fire(from, enemy, dmg, speed, col, kind, chains = 0, exclude = [], lv = 1, bond = NONE) {
+    fire(from, enemy, dmg, speed, col, kind, chains = 0, exclude = [], lv = 1, bond = NONE, br = 0) {
       if (!this.free.length || enemy < 0) return;
       const i = this.free.pop(), E = this.enemies, c = E.centre(enemy);
       this.alive[i] = 1; this.pos.set(from, i * 3); this.aimP.set(c, i * 3);
       this.target[i] = enemy; this.tuid[i] = E.uid[enemy]; this.speed[i] = speed; this.dmg[i] = dmg;
       this.chains[i] = chains; this.col[i] = col; this.kind[i] = kind; this.hitList[i] = exclude.concat([enemy]);
-      this.lv[i] = lv; this.bond[i] = bond; this.d0[i] = Math.hypot(c[0] - from[0], c[1] - from[1], c[2] - from[2]) || 1;
+      this.lv[i] = lv; this.bond[i] = bond; this.br[i] = br; this.d0[i] = Math.hypot(c[0] - from[0], c[1] - from[1], c[2] - from[2]) || 1;
     }
     // Rolls crit and applies damage of `element` from a plant of kind `source`; emits "hit" with how it
     // landed (weak or resisted) and whether a projectile (`shot`) carried it. Returns whether it killed.
@@ -18821,7 +18917,8 @@ function MA_DSP() {
       G.emit("bomb", { pos: at, radius: r, level: lv });
       for (const v of E.inRadius(at[0], at[1], r)) { this.strike(v, dmg, el, "toad", true); E.poison(v, dmg * 0.25 * (1 + rot), B.rot || rot > 0 ? 5 : 3); if (slow) E.applySlow(v, slow, 3); if (B.pods) E.applySlow(v, B.pods, 1); }
       if (cluster) return;
-      if (lv >= 2 || B.rot || rot > 0) this.puddles.push({ x: at[0], y: at[1], z: at[2], t: 3, dps: dmg * 0.3 * (1 + rot) });
+      // (a Mire Cap's mire slows too, and lasts longer)
+      if (lv >= 2 || B.rot || rot > 0) this.puddles.push({ x: at[0], y: at[1], z: at[2], t: B.mire ? 4 : 3, dps: dmg * 0.3 * (1 + rot), slow: B.mire || 0 });
       if (lv >= 3) for (let k = 0; k < 3; k++) { const a = (k / 3) * Math.PI * 2 + G.state.rng.f(); this.splash([at[0] + Math.cos(a) * 0.75, at[1] + Math.sin(a) * 0.75, at[2]], dmg * 0.4, lv, true, B); }
     }
     update(dt) {
@@ -18838,12 +18935,23 @@ function MA_DSP() {
       if (this.puddles.length) {
         for (const p of this.puddles) p.t -= dt;
         this.puddles = this.puddles.filter((p) => p.t > 0);
-        if ((this.puddleT -= dt) <= 0) { this.puddleT = 0.5; for (const p of this.puddles) for (const v of E.inRadius(p.x, p.y, PUDDLE_R)) { E.poison(v, p.dps, 1); if (G.state.mod("miasma") > 0) E.applySlow(v, 0.25, 1); } }
+        // (and a Mildew cloud slows, no poison)
+        if ((this.puddleT -= dt) <= 0) {
+          this.puddleT = 0.5;
+          for (const p of this.puddles) for (const v of E.inRadius(p.x, p.y, p.r || PUDDLE_R)) {
+            if (p.mildew) { E.applySlow(v, p.slow, 1); continue; }
+            // (a Bramble Warden's snare patch: slows, and snares once in 3 s)
+            if (p.snare) { E.applySlow(v, p.slow, 1); if (E.snareT[v] <= 0) { E.stun(v, 0.4); E.snareT[v] = 3; } continue; }
+            E.poison(v, p.dps, 1); if (G.state.mod("miasma") > 0) E.applySlow(v, 0.25, 1); if (p.slow) E.applySlow(v, p.slow, 1);
+          }
+        }
       }
     }
     arrive(i) {
       this.alive[i] = 0; this.free.push(i);
-      const E = this.enemies, t = this.target[i], kind = this.kind[i], lv = this.lv[i], o = i * 3, B = this.bond[i];
+      const E = this.enemies, t = this.target[i], kind = this.kind[i], br = this.br[i], o = i * 3, B = this.bond[i];
+      // (a Bramblecrown's seed leaves no barbs: it strikes as level II)
+      const lv = br && kind === "thorn" ? Math.min(2, this.lv[i]) : this.lv[i];
       // a bomb bursts where it lands, its creature gone or not
       if (kind === "toad") { this.splash([this.aimP[o], this.aimP[o + 1], this.aimP[o + 2]], this.dmg[i], lv, false, B); return; }
       if (!E.isValid(t, this.tuid[i])) return;
@@ -18851,15 +18959,23 @@ function MA_DSP() {
       const killed = this.strike(t, this.dmg[i], D.elementOf(kind), kind, true, false, false, lv);
       // (Sunseed: a linked Thornbloom's seed sets the creature smouldering)
       if (B.burn && !killed) E.ignite(t, (this.dmg[i] * B.burn) / 2);
+      // (a Bramble Warden's seed roots a snare patch where it lands; one already there is renewed)
+      if (B.warden && kind === "thorn") {
+        const p = this.puddles.find((q) => q.snare && (q.x - at[0]) ** 2 + (q.y - at[1]) ** 2 < SNARE_R * SNARE_R);
+        if (p) p.t = 2; else this.puddles.push({ x: at[0], y: at[1], z: at[2], t: 2, dps: 0, slow: 0.3, r: SNARE_R, snare: true });
+      }
+      // a Bramblecrown's seed shatters as it strikes (Defs.FORKS.thorn.b: 3 shards at 65%), at the creatures nearest the Heart Tree
+      if (br && kind === "thorn" && (BR.onHit || killed)) for (const v of E.pickTargets(at[0], at[1], CHAIN_RANGE, "first", BR.shards, [t])) this.fire(at, v, this.dmg[i] * BR.mult, this.speed[i], this.col[i], kind, 0, [t], 1, B);
       // a level II Thornbloom's seed goes on through to the creature behind
       if (kind === "thorn" && lv >= 2) { const next = E.pickTarget(at[0], at[1], 1.0, "first", [t]); if (next >= 0) this.strike(next, this.dmg[i] * 0.5, D.elementOf(kind), kind, true, false, false, lv); }
       // a level III Willow Wisp lures the first creature its light strikes
-      if (kind === "wisp" && lv >= 3 && this.hitList[i].length === 1) E.lure(t, 0.8);
+      if (kind === "wisp" && lv >= 3 && !br && this.hitList[i].length === 1) E.lure(t, 0.8);
       if (this.chains[i] > 0) {
         const next = E.pickTarget(at[0], at[1], CHAIN_RANGE, "first", this.hitList[i]);
-        // (a wisp's light fades as it leaps, unless at level II or with Kodama Choir; a Will-o'-Thorn seed leaps at its share)
-        const k = kind === "thorn" ? B.pierceChain || 0.85 : G.state.mod("choir") > 0 || lv >= 2 ? 1 : 0.85;
-        if (next >= 0) this.fire(at, next, this.dmg[i] * k, this.speed[i], this.col[i], kind, this.chains[i] - 1, this.hitList[i], lv, B);
+        // (a wisp's light fades as it leaps, unless at level II or with Kodama Choir, and a Lantern Choir's grows;
+        // a Will-o'-Thorn seed leaps at its share)
+        const k = kind === "thorn" ? B.pierceChain || 0.85 : br ? 1.15 : G.state.mod("choir") > 0 || lv >= 2 ? 1 : 0.85;
+        if (next >= 0) this.fire(at, next, this.dmg[i] * k, this.speed[i], this.col[i], kind, this.chains[i] - 1, this.hitList[i], this.lv[i], B, br);
       }
     }
   }
@@ -18880,6 +18996,7 @@ function MA_DSP() {
   // `pow`, so a call at once pays far more than one late in the wave (Game.earlyBonus; the sim tunes them)
   const EARLY_MAX = 3;
   const PICKS_MAX = G.PICKS_MAX = 2; // (extra picks a run: Game.buyPick)
+  const DEEPEN_COST = G.DEEPEN_COST = 150; // (a link deepened: Game.deepen)
   G.EARLY = { pay: 2, pow: 1.5 };
 
   class Game {
@@ -18891,6 +19008,8 @@ function MA_DSP() {
       this.shots = new G.Shots(this.enemies);
       this.blight = new G.Blight(this.world);
       this.towers = [];
+      // the linked pairs deepened (Game.deepen), as Game.pairKey
+      this.deep = new Set();
       // the waves still spawning, one stream each ({ wave, queue of [kind, delay], timer, hpMult, trait }: more
       // than one when the next wave is called early), how many waves run since the last clear, and the gifts
       // still owed for them (one draft per wave, chained)
@@ -18898,9 +19017,8 @@ function MA_DSP() {
       this.heartShock = 0; this.plans = new Map(); this.hitsSeen = 0; this.lastCount = -1; this.wavesT = 0;
       this.time = 0;
       // boon timers: the brambles' next scratch, the fireflies' next zap, the Heart Tree's next pulse, the
-      // spore clouds' next sting and the wildfire's next leap
-      this.brambleT = 0; this.flyT = 0; this.pulseT = 0; this.flyK = 0; this.cloudT = 0; this.fireT = 0;
-      // the gifts on offer while the phase is CHOOSE_BOON
+      // spore clouds' next sting and the wildfire's next leap, and Bloom Burst's time left (Game.rite)
+      this.brambleT = 0; this.flyT = 0; this.pulseT = 0; this.flyK = 0; this.cloudT = 0; this.fireT = 0; this.bloomT = 0; S.riteRate = 1;
       // the gifts on offer while the phase is CHOOSE_BOON; whether this screen was drawn again (a reroll, once a
       // screen) and whether a second pick from it is paid for (Game.buyPick)
       this.offer = null; this.rerolled = false; this.extra = false;
@@ -18914,8 +19032,9 @@ function MA_DSP() {
       // per plant, dew spent on plants, the most dew held, and the frames drawn in play (main.js, the mean fps)
       this.stats = { kills: {}, byElement: [0, 0, 0, 0], leaked: 0, planted: {}, grown: 0, uprooted: 0, dew: 0,
         leakedBy: {}, lastLeak: "", grownBy: {}, soldBy: {}, spent: 0, peakDew: 0, frames: 0, frameT: 0,
-        // the dew sinks (rerolls and extra picks bought, the dew they took: Game.reroll, Game.buyPick)
-        rerolls: 0, picks: 0, sunk: 0 };
+        // the dew sinks (rerolls, extra picks, links deepened, grafts, rites by id and waves skipped, the dew they
+        // took: Game.reroll, Game.buyPick, Game.deepen, Game.graft, Game.rite, Game.skipWave)
+        rerolls: 0, picks: 0, deepened: 0, sunk: 0, forked: 0, grafted: 0, rites: {}, skipped: 0 };
       const st = this.stats, add = (o, k) => { o[k] = (o[k] || 0) + 1; };
       this.unsub = [
         G.on("leaked", (e) => { this.chalFail("untouched"); this.heartShock = Math.min(0.5, this.heartShock + 0.25); st.leaked++; add(st.leakedBy, e.kind); st.lastLeak = e.kind; }),
@@ -18954,39 +19073,53 @@ function MA_DSP() {
       G.emit("tower_placed", { kind, pos: [t.X, t.Y, t.Z], tower: t });
       return t;
     }
-    upgrade(t) {
+    // (to level III, on a branch: "a" or "b", Defs.FORKS; a free growth takes "a")
+    upgrade(t, branch = "a") {
       const cost = t.upgradeCost();
       if (t.level >= D.MAX_LEVEL || !S.spend(cost)) return false;
-      t.invested += cost; t.upgrade(); this.stats.grown++; this.stats.spent += cost;
-      G.emit("tower_upgraded", { kind: t.kind, level: t.level, pos: [t.X, t.Y, t.Z], tower: t });
+      t.invested += cost; t.upgrade(branch); this.stats.grown++; this.stats.spent += cost;
+      if (t.forked) this.stats.forked++;
+      G.emit("tower_upgraded", { kind: t.kind, level: t.level, pos: [t.X, t.Y, t.Z], tower: t, branch: t.branch });
       return true;
     }
     sell(t) {
       S.earnRaw(t.sellValue(), "refund", [t.X, t.Y, t.Z]);
       this.world.occupied.delete(this.world.idx(t.cx, t.cy));
       this.towers = this.towers.filter((x) => x !== t); this.stats.uprooted++;
+      // (its deepened links go with it: half of each one's price went into each plant's refund, Game.deepen)
+      const i = this.world.idx(t.cx, t.cy);
+      for (const k of this.deep) if (k.split(":").some((c) => +c === i)) this.deep.delete(k);
       this.relink();
       G.emit("tower_sold", { pos: [t.X, t.Y, t.Z], tower: t });
     }
     towerAt(cx, cy) { return this.world.towerAt(cx, cy); }
-    // Links (Defs.LINKS): the plants a plant of `kind` at a cell would link with, as { link, other }
+    // Links (Defs.LINKS): the plants a plant of `kind` at a cell would link with, as { link, other } (a graft
+    // links as both its kinds)
     linksAt(kind, cx, cy) {
       const out = [];
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-        const o = (dx || dy) && this.world.towerAt(cx + dx, cy + dy), link = o && D.linkOf(kind, o.kind);
-        if (link) out.push({ link, other: o });
+        const o = (dx || dy) && this.world.towerAt(cx + dx, cy + dy);
+        if (!o) continue;
+        for (const k of o.twin ? [o.kind, o.twin.kind] : [o.kind]) { const link = D.linkOf(kind, k); if (link) out.push({ link, other: o }); }
       }
       return out;
     }
     // every plant's links (tower.links) and the bonus they add up to (tower.bond: each link counted once,
-    // however many partners give it); after any planting, uprooting or restore. Emits "links".
+    // however many partners give it, and twice over where it is deepened with any of them: tower.deep, the
+    // links that are); after any planting, uprooting, deepening, graft or restore. Emits "links". A graft's
+    // two parents each take theirs from the one cell, and the link they made with each other and the graft's
+    // own gift on top (Defs.GRAFTS).
     relink() {
-      for (const t of this.towers) {
-        t.links = this.linksAt(t.kind, t.cx, t.cy); t.bond = {};
-        for (const link of new Set(t.links.map((l) => l.link))) { const g = link.gives[t.kind]; for (const k in g) t.bond[k] = (t.bond[k] || 0) + g[k]; }
+      for (const t of this.towers) for (const p of t.twin ? [t, t.twin] : [t]) {
+        p.links = this.linksAt(p.kind, p.cx, p.cy); p.bond = {};
+        p.deep = new Set(p.links.filter((l) => this.deep.has(this.pairKey(p, l.other))).map((l) => l.link));
+        const g = t.graft, own = new Set(p.links.map((l) => l.link));
+        if (g) own.add(D.LINKS.find((l) => l.id === g.link));
+        for (const link of own) { const gv = link.gives[p.kind], m = p.deep.has(link) ? 2 : 1; for (const k in gv) p.bond[k] = (p.bond[k] || 0) + gv[k] * m; }
+        if (g && g.gives[p.kind]) for (const k in g.gives[p.kind]) p.bond[k] = (p.bond[k] || 0) + g.gives[p.kind][k];
         // and the plot's placement zone (D.ZONES), on top
-        t.zone = this.world.zoneAt(t.cx, t.cy);
-        if (t.zone) for (const k in t.zone.gives) t.bond[k] = (t.bond[k] || 0) + t.zone.gives[k];
+        p.zone = this.world.zoneAt(p.cx, p.cy);
+        if (p.zone) for (const k in p.zone.gives) p.bond[k] = (p.bond[k] || 0) + p.zone.gives[k];
       }
       G.emit("links", { count: this.towers.reduce((n, t) => n + t.links.length, 0) / 2 });
     }
@@ -19081,8 +19214,11 @@ function MA_DSP() {
       return true;
     }
     // per wave, so a restore sees the same: the Midsummer Flare's beam count, Spore Storm's clouds, a
-    // Puffcap's burst count (its sleep), a Ghost Lily's beams (the creature held, the heat)
-    restPlants() { for (const t of this.towers) { t.beams = 0; t.cloudT = 0; t.bursts = 0; for (const r of t.rays) { r.t = -1; r.uid = -1; r.hold = 0; } } }
+    // Puffcap's burst count (its sleep), a Ghost Lily's beams (the creature held, the heat),
+    // a Mildew's cloud and a Burning Glass's heat
+    // every plant that plays, a graft's twin with it (Tower.twin)
+    plants() { return this.towers.flatMap((t) => (t.twin ? [t, t.twin] : [t])); }
+    restPlants() { for (const t of this.plants()) { t.beams = 0; t.cloudT = 0; t.bursts = 0; t.cloud = null; t.glass = { uid: -1, wave: -1, hold: 0 }; for (const r of t.rays) { r.t = -1; r.uid = -1; r.hold = 0; } } }
     chooseBoon(b) {
       const rest = this.offer ? this.offer.filter((o) => o !== b) : [];
       const lv = S.applyBoon(b); this.offer = null;
@@ -19107,7 +19243,7 @@ function MA_DSP() {
       // (the challenge first: Hoard reads the dew before the clear's bonus)
       this.chalSettle();
       this.shots.reset(); this.enemies.reset(); this.restPlants();
-      this.brambleT = 0; this.flyT = 0; this.pulseT = 0; this.flyK = 0; this.cloudT = 0; this.fireT = 0;
+      this.brambleT = 0; this.flyT = 0; this.pulseT = 0; this.flyK = 0; this.cloudT = 0; this.fireT = 0; this.bloomT = 0; S.riteRate = 1;
       // (every wave run since the last clear is paid its bonus; the interest once)
       const n = Math.max(1, this.running);
       this.streams = []; this.running = 0;
@@ -19169,6 +19305,115 @@ function MA_DSP() {
       G.emit("offer"); G.emit("boons_offered", { boons: this.offer, again: true });
       return true;
     }
+    // Deepen a link (the same design, C): a linked pair of plants, paid once (DEEPEN_COST), doubles that link's
+    // bonus on both (Game.relink). A pair is kept by its two cells, the lower first.
+    pairKey(a, b) { const i = this.world.idx(a.cx, a.cy), j = this.world.idx(b.cx, b.cy); return i < j ? `${i}:${j}` : `${j}:${i}`; }
+    // the link of plant t worth deepening, as { link, other }: a partner pair not deepened yet whose link is
+    // not deepened on one of the two (on both first); null if none
+    deepenable(t) {
+      let best = null, most = 0;
+      for (const l of t.links) {
+        if (this.deep.has(this.pairKey(t, l.other))) continue;
+        const n = !t.deep.has(l.link) + !l.other.deep.has(l.link);
+        if (n > most) { best = l; most = n; }
+      }
+      return best;
+    }
+    deepenBlocked(t) {
+      if (S.phase === G.Phase.GAME_OVER) return "The garden has fallen";
+      if (!this.deepenable(t)) return t.links.length ? "Deepened" : "No links";
+      return S.dew < DEEPEN_COST ? "Not enough dew" : "";
+    }
+    deepen(t) {
+      if (this.deepenBlocked(t)) return false;
+      const l = this.deepenable(t);
+      this.stats.deepened++;
+      this.deep.add(this.pairKey(t, l.other));
+      t.invested += DEEPEN_COST / 2; l.other.invested += DEEPEN_COST / 2;
+      this.relink();
+      this.sink("deepen", DEEPEN_COST); // last: its "sunk" saves the game (Save.watch)
+      return true;
+    }
+    // Graft (the same design, E): two linked plants of a listed pair (Defs.GRAFTS), both at level III, become
+    // one plant on the tapped one's cell that plays as both (Tower.twin) with the graft's gift on top, and the
+    // other's plot is freed; for a fee (twice their two base prices). Uprooting it refunds 60% of everything.
+    graftCost(a, b) { return S.towerCost(D.GRAFT_FEE * (D.TOWERS[a.kind].cost + D.TOWERS[b.kind].cost)); }
+    // the plants t can be grafted with, as { other, graft, cost }
+    graftPartners(t) {
+      if (t.level < 3 || t.twin) return [];
+      const out = [];
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const o = (dx || dy) && this.world.towerAt(t.cx + dx, t.cy + dy), g = o && D.graftOf(t.kind, o.kind);
+        if (g && o.level >= 3 && !o.twin) out.push({ other: o, graft: g, cost: this.graftCost(t, o) });
+      }
+      return out;
+    }
+    graftBlocked(t, o) {
+      if (S.phase === G.Phase.GAME_OVER) return "The garden has fallen";
+      const p = this.graftPartners(t).find((x) => x.other === o);
+      if (!p) return "Can't graft these";
+      return S.dew < p.cost ? "Not enough dew" : "";
+    }
+    graft(t, o) {
+      if (this.graftBlocked(t, o)) return false;
+      const fee = this.graftCost(t, o);
+      this.towers = this.towers.filter((x) => x !== o);
+      const i = this.world.idx(o.cx, o.cy);
+      this.world.occupied.delete(i);
+      for (const k of this.deep) if (k.split(":").some((c) => +c === i)) this.deep.delete(k);
+      this.makeGraft(t, o.kind, o.branch);
+      t.invested += o.invested + fee; this.stats.grafted++;
+      this.relink();
+      G.emit("tower_grafted", { pos: [t.X, t.Y, t.Z], tower: t, other: o, graft: t.graft });
+      this.sink("graft", fee); // last: its "sunk" saves the game (Save.watch)
+      return true;
+    }
+    // One-shot rites (the same design, F): bought only while a wave runs, each acts once on the whole garden
+    // (Defs.RITES), priced by the wave and by how often that rite was used this run (stats.rites, by id).
+    // Bloom Burst's timer (bloomT) holds S.riteRate up and goes with the wave (waveCleared).
+    riteCost(id) { return Math.round((60 + 6 * S.wave) * Math.pow(1.5, this.stats.rites[id] || 0)); }
+    riteBlocked(id) {
+      if (S.phase !== G.Phase.WAVE) return "Only while a wave runs";
+      if (!D.RITES.some((r) => r.id === id)) return "No such rite";
+      return S.dew < this.riteCost(id) ? "Not enough dew" : "";
+    }
+    rite(id) {
+      if (this.riteBlocked(id)) return false;
+      const r = D.RITES.find((x) => x.id === id), cost = this.riteCost(id), E = this.enemies;
+      if (id === "frost") E.forEachLive((i) => E.applySlow(i, r.slow, r.secs));
+      else if (id === "downpour") E.forEachLive((i) => E.wash(i, r.cells));
+      else if (id === "bloom") { this.bloomT = r.secs; S.riteRate = r.rate; }
+      this.stats.rites[id] = (this.stats.rites[id] || 0) + 1;
+      G.emit("rite", { id, cost });
+      this.sink("rite", cost); // last: a hand on the garden (Hands-off)
+      return true;
+    }
+    // The wave skip (the same design, G), opt in: between waves the coming wave is passed over for 15 dew a
+    // wave number. Nothing comes, so it gives no dew, gift or challenge (no clear: chalSettle, offerBoons);
+    // the run is flagged (stats.skipped, S.offBoard) and keeps no best wave, on the device or the board. A
+    // boss wave is fought, never skipped.
+    skipCost() { return 15 * (S.wave + 1); }
+    skipBlocked() {
+      if (S.phase !== G.Phase.BUILD) return "Only between waves";
+      if (this.plan(S.wave + 1).boss) return "A boss is fought";
+      return S.dew < this.skipCost() ? "Not enough dew" : "";
+    }
+    skipWave() {
+      if (this.skipBlocked()) return false;
+      const cost = this.skipCost();
+      S.nextWave(); this.stats.skipped++; S.offBoard = true;
+      G.emit("wave_skipped", { wave: S.wave, cost });
+      this.sink("skip", cost); // last: its "sunk" saves the game (Save.watch)
+      G.emit("waves");
+      return true;
+    }
+    // (the twin itself: also Save's restore)
+    makeGraft(t, kind, branch) {
+      const w = new G.Tower(kind, t.cx, t.cy, this.world, this.body);
+      w.level = 3; w.branch = D.FORKS[kind] && branch === "b" ? "b" : "a"; w.host = t; w.refresh();
+      t.twin = w; t.graft = D.graftOf(t.kind, kind);
+      return w;
+    }
 
     update(dt) {
       this.time += dt; S.time = this.time;
@@ -19187,6 +19432,7 @@ function MA_DSP() {
       for (const t of this.towers) t.update(dt, this);
       this.shots.update(dt);
       if (S.phase === G.Phase.WAVE) this.boonsAct(dt);
+      if (this.bloomT > 0 && (this.bloomT -= dt) <= 0) { this.bloomT = 0; S.riteRate = 1; }
       this.popPuffballs();
       this.blight.update(dt, this.enemies);
       if (S.phase === G.Phase.WAVE && !this.streams.length && this.enemies.count === 0) this.waveCleared();
@@ -19205,11 +19451,11 @@ function MA_DSP() {
       const bramble = S.mod("bramble"), wildfire = S.mod("wildfire") > 0;
       if (bramble > 0 && (this.brambleT -= dt) <= 0) {
         this.brambleT += 0.5;
-        for (const t of this.towers) {
+        for (const t of this.plants()) {
           if (t.kind !== "thorn") continue;
           const near = E.inRadius(t.X, t.Y, 1.6);
           if (!near.length) continue;
-          G.emit("bramble", { pos: [t.X, t.Y, t.Z], tower: t });
+          G.emit("bramble", { pos: [t.X, t.Y, t.Z], tower: t.host || t });
           for (const v of near) { sh.strike(v, t.damage() * t.rate() * bramble * 0.5, t.element, "bramble"); if (wildfire) E.ignite(v, t.damage() * 0.5); }
         }
       }
@@ -19221,7 +19467,7 @@ function MA_DSP() {
       }
       if ((this.cloudT -= dt) <= 0) {
         this.cloudT += 0.5;
-        for (const t of this.towers) {
+        for (const t of this.plants()) {
           if (t.kind !== "puff" || t.cloudT <= 0) continue;
           for (const v of E.inRadius(t.X, t.Y, t.range() * 0.75)) { E.applySlow(v, t.def.slow, 1); sh.strike(v, t.damage() * 0.3, t.element, "cloud"); }
         }
@@ -19311,12 +19557,17 @@ function MA_DSP() {
   // 2: boons with levels (the modifiers are rebuilt from them). A v1 save is migrated as it is read
   // (migrate): two boons were renamed, and a boon taken more than three times stays at III. A change to a
   // save's shape (the exact block's included) bumps it. 3: the level names how many roads it has (Corn Moon
-  // has two entrances); a v2 save was taken on a one-road garden and goes on as it is.
-  const KEY = "mossheart.run", VERSION = 3;
+  // has two entrances); a v2 save was taken on a one-road garden and goes on as it is. 4: a plant names its
+  // branch at level III (Defs.FORKS), a 6th field; a v3 save's plants all grew the one way ("a"). 5: a graft
+  // names its other parent's kind and branch, a 7th and 8th field (Game.graft), and the exact block its
+  // cooldown; a v4 save has no grafts.
+  const KEY = "mossheart.run", VERSION = 5;
   const RENAMED_V1 = { thorn_split: "twin_seeds", wisp_chain: "kindred_wisps" };
   const migrate = (d) => {
     d = migrate1(d);
-    return d && d.v === 2 && Array.isArray(d.level) ? Object.assign({}, d, { v: 3, level: [...d.level.slice(0, 3), 1] }) : d;
+    if (d && d.v === 2 && Array.isArray(d.level)) d = Object.assign({}, d, { v: 3, level: [...d.level.slice(0, 3), 1] });
+    if (d && d.v === 3 && Array.isArray(d.towers)) d = Object.assign({}, d, { v: 4, towers: d.towers.map((t) => [...t.slice(0, 5), "a"]) });
+    return d && d.v === 4 ? Object.assign({}, d, { v: 5 }) : d;
   };
   const migrate1 = (d) => {
     if (!d || d.v !== 1) return d;
@@ -19343,11 +19594,16 @@ function MA_DSP() {
     const x = d.exact;
     if (x && (unb64(x.blight.level).length !== n * 4 || unb64(x.blight.scar).length !== n * 4 || unb64(x.blight.active).length % 4 || x.cooldown.length !== d.towers.length || x.live.length !== 5)) return false;
     const seen = new Set();
-    for (const [kind, cx, cy, level] of d.towers) {
+    if (x && x.twin && x.twin.length !== d.towers.length) return false;
+    for (const [kind, cx, cy, level, , branch = "a", twin = null, twinBranch = "a"] of d.towers) {
       const k = w.idx(cx, cy);
       if (!D.TOWERS[kind] || !w.inside(cx, cy) || w.blocked[k] || seen.has(k) || !(level >= 1 && level <= D.MAX_LEVEL)) return false;
+      if (branch !== "a" && !(branch === "b" && D.FORKS[kind] && level === 3)) return false;
+      if (twin !== null && !(level === 3 && D.graftOf(kind, twin) && (twinBranch === "a" || (twinBranch === "b" && D.FORKS[twin])))) return false;
       seen.add(k);
     }
+    // (a deepened pair is two plants of the save: none before C)
+    if (d.deep && !d.deep.every((p) => /^\d+:\d+$/.test(p) && p.split(":").every((c) => seen.has(+c)))) return false;
     return d.boons.every((id) => D.boon(id) && d.boons.filter((x) => x === id).length <= D.boon(id).levels.length);
   };
 
@@ -19368,7 +19624,10 @@ function MA_DSP() {
         owed: S.phase === P.CHOOSE_BOON ? game.owed : 0,
         // (and on the screen: drawn again already, a second pick paid for: Game.reroll, Game.buyPick)
         sink: S.phase === P.CHOOSE_BOON ? [game.rerolled, game.extra] : null,
-        towers: game.towers.map((t) => [t.kind, t.cx, t.cy, t.level, t.invested]),
+        // (a graft: its other parent's kind and branch, Game.graft)
+        towers: game.towers.map((t) => (t.twin ? [t.kind, t.cx, t.cy, t.level, t.invested, t.branch, t.twin.kind, t.twin.branch] : [t.kind, t.cx, t.cy, t.level, t.invested, t.branch])),
+        // (the linked pairs deepened, by their cells: Game.deepen)
+        deep: [...game.deep],
         blight: { level: b64(quantise(b.level)), scar: b64(quantise(b.scar)) },
         stats: JSON.parse(JSON.stringify(game.stats)), time: +game.time.toFixed(2),
         // what a restore needs to go on exactly as the run would have (tools/sim.html ?save=1 checks it): the
@@ -19376,7 +19635,7 @@ function MA_DSP() {
         // tick's carry, the clock, every plant's cooldown, and the battle readings the music follows (with
         // the Heart Tree's shock from the last creature that reached it)
         exact: {
-          time: game.time, cooldown: game.towers.map((t) => t.cooldown),
+          time: game.time, cooldown: game.towers.map((t) => t.cooldown), twin: game.towers.map((t) => (t.twin ? t.twin.cooldown : null)),
           blight: { level: b64(new Uint8Array(b.level.buffer.slice(0))), scar: b64(new Uint8Array(b.scar.buffer.slice(0))), active: b64(new Uint8Array(Int32Array.from(b.active).buffer)), accum: b.accum },
           live: [S.intensity, S.combat, S.danger, S.corruption, game.heartShock],
         },
@@ -19406,9 +19665,10 @@ function MA_DSP() {
         S.wave = d.wave; S.dew = d.dew; S.heartHp = d.heart[0]; S.heartMax = d.heart[1];
         S.boons = d.boons.slice(); S.rebuildMods(); S.best = Math.max(S.best, d.best || 0);
         const w = game.world;
-        for (const [kind, cx, cy, level, invested] of d.towers) {
+        for (const [kind, cx, cy, level, invested, branch = "a", twin = null, twinBranch = "a"] of d.towers) {
           const t = new G.Tower(kind, cx, cy, w, game.body);
-          t.level = level; t.invested = invested; t.refresh();
+          t.level = level; t.invested = invested; t.branch = branch; t.refresh();
+          if (twin) game.makeGraft(t, twin, twinBranch);
           game.towers.push(t); w.occupied.set(w.idx(cx, cy), t);
         }
         const b = game.blight, lv = unb64(d.blight.level), sc = unb64(d.blight.scar);
@@ -19417,8 +19677,10 @@ function MA_DSP() {
           if (b.level[i] > b.scar[i] + 0.001) b.active.add(i);
         }
         b.dirty = true;
+        game.deep = new Set(d.deep || []);
         game.relink();
         game.stats = Object.assign(game.stats, JSON.parse(JSON.stringify(d.stats || {})));
+        S.offBoard = game.stats.skipped > 0;
         game.time = d.time || 0; game.plans.clear();
         // (a save from before the exact block restores as before: close, not exact)
         const x = d.exact;
@@ -19427,7 +19689,7 @@ function MA_DSP() {
           for (let i = 0; i < b.level.length; i++) b.bytes[i] = (b.level[i] * 255) | 0;
           b.active = new Set(new Int32Array(unb64(x.blight.active).buffer)); b.accum = x.blight.accum;
           game.time = x.time;
-          game.towers.forEach((t, i) => { t.cooldown = x.cooldown[i]; });
+          game.towers.forEach((t, i) => { t.cooldown = x.cooldown[i]; if (t.twin && x.twin) t.twin.cooldown = x.twin[i]; });
           [S.intensity, S.combat, S.danger, S.corruption, game.heartShock] = x.live;
         }
         G.emit("dew"); G.emit("heart"); G.emit("wave"); G.emit("mods");
@@ -19451,7 +19713,7 @@ function MA_DSP() {
         const d = Save.capture(g);
         if (d) Save.write(d);
       };
-      for (const ev of ["phase", "offer", "tower_placed", "tower_upgraded", "tower_sold", "restored"]) G.on(ev, save);
+      for (const ev of ["phase", "offer", "tower_placed", "tower_upgraded", "tower_sold", "restored", "sunk"]) G.on(ev, save);
       G.on("game_over", () => Save.clear());
     },
   });
@@ -19676,6 +19938,30 @@ function MA_DSP() {
     };
     // wispling spots: front first, then to either side, then round the back-left
     const spots = (rr, z, a0 = FR) => [0, 0.95, -0.95, 1.9].map((d) => pol(a0 + d, rr, z));
+    // the Snapbud's trap (briar, warden) at hp, size s, its jaws th apart, held open toward the viewer; the lure glows on the main one
+    const dt = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const snap = (p, hp, s, th, glow) => {
+      const UP = [0, 0, 1], md = norm(add(mul(FWD, 0.15), UP)), h = norm(add(FWD, [0, 0, -0.15])), w = norm(cross(h, md)), nl = HI > 1 ? 8 : HI ? 6 : 0;
+      p.push(S(hp, 0.03 * s, "twPlum", { k2: 0.01 }));
+      for (const sg of [1, -1]) {
+        const dk = norm(add(mul(md, Math.cos(th / 2)), mul(w, sg * Math.sin(th / 2))));
+        let ni = norm(cross(h, dk)); if (dt(ni, w) * sg > 0) ni = mul(ni, -1);
+        const c = add(hp, mul(dk, 0.07 * s)), R = orient(ni, dk);
+        p.push(E(c, [0.075 * s, 0.07 * s, 0.022 * s], "twPlum", { R, k2: 0.006 }), E(add(c, mul(ni, 0.008 * s)), [0.068 * s, 0.064 * s, 0.016 * s], "twPeach", { R }));
+        for (let j = 0; j < nl; j++) {
+          const a = -1.25 + (2.5 * j) / (nl - 1), e = add(c, add(mul(dk, 0.072 * s * Math.cos(a)), mul(h, 0.068 * s * Math.sin(a))));
+          p.push(C(e, add(e, mul(norm(add(add(mul(dk, Math.cos(a)), mul(h, Math.sin(a))), mul(ni, 0.5))), 0.04 * s)), 0.009 * s, 0.006 * s, "twCream"));
+        }
+      }
+      p.push(S(add(hp, mul(md, 0.035 * s)), 0.022 * s, glow ? "twLure" : "twAmber"));
+    };
+    // a graft's tints: after its parents' builders, remaps the prims' materials by RM (so their glows light in the new
+    // colour too), and the decals' results
+    const tint = (p, D, RM) => {
+      for (const q of p) if (RM[q.m]) q.m = RM[q.m];
+      const d0 = D.splice(0);
+      D.push((x, y, z, m, nx, ny, nz) => { let r = null; for (const d of d0) if ((r = d(x, y, z, m, nx, ny, nz))) break; return r && (RM[r] || r); });
+    };
 
     // ---- the plant tops: TOP[kind](L, p, z, D) grows the plant from the vessel's moss at height z and
     // returns the model's height
@@ -19744,7 +20030,6 @@ function MA_DSP() {
       },
       briar(L, p, z) { // the Snapbud: a flytrap on a tall plum stalk out of the cleft, two round plum lobes held open toward the viewer, soft peach inside, a row of cream lashes round each rim, a glowing amber lure bead between them; from 2 the jaws half shut (the snare); at 3 a second small trap, shut, on a side stalk
         const H = [0.44, 0.48, 0.52][L - 1], UP = [0, 0, 1], SIDE = [-Math.sin(FR), Math.cos(FR), 0], FWD = [Math.cos(FR), Math.sin(FR), 0];
-        const dt = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
         const bz = (a, b, c, d, t) => { const s = 1 - t; return add(add(mul(a, s * s * s), mul(b, 3 * s * s * t)), add(mul(c, 3 * s * t * t), mul(d, t * t * t))); };
         const bzs = (a, b, c, d, n) => { const o = []; for (let k = 0; k <= n; k++) o.push(bz(a, b, c, d, k / n)); return o; };
         // capsules along pts, the radius from r0 to r1; f(q, t, i) at each joint
@@ -19754,22 +20039,7 @@ function MA_DSP() {
         // teal strap leaves out of the cleft's open ends (toward and away from the viewer) round the stalk's foot
         p.push(E([0, 0, z], [0.05, 0.05, 0.04], "twTeal", { k2: 0.02 }));
         for (const [a, k] of [[FR - 0.35, 1], [FR + 0.4, 0.9], [FR + Math.PI - 0.3, 0.85], [FR + Math.PI + 0.35, 0.8]]) leaf(pol(a, 0.03, z + 0.02), norm(pol(a, 0.5, 1)), pol(a, 1, 0.3), 0.075 * k, 0.03 * k, k > 0.85 ? "twTealLt" : "twTeal");
-        // a trap at hp, size s, its jaws th apart; the lure glows on the main one
-        const trap = (hp, s, th, glow) => {
-          const md = norm(add(mul(FWD, 0.15), UP)), h = norm(add(FWD, [0, 0, -0.15])), w = norm(cross(h, md)), nl = HI > 1 ? 8 : HI ? 6 : 0;
-          p.push(S(hp, 0.03 * s, "twPlum", { k2: 0.01 }));
-          for (const sg of [1, -1]) {
-            const dk = norm(add(mul(md, Math.cos(th / 2)), mul(w, sg * Math.sin(th / 2))));
-            let ni = norm(cross(h, dk)); if (dt(ni, w) * sg > 0) ni = mul(ni, -1);
-            const c = add(hp, mul(dk, 0.07 * s)), R = orient(ni, dk);
-            p.push(E(c, [0.075 * s, 0.07 * s, 0.022 * s], "twPlum", { R, k2: 0.006 }), E(add(c, mul(ni, 0.008 * s)), [0.068 * s, 0.064 * s, 0.016 * s], "twPeach", { R }));
-            for (let j = 0; j < nl; j++) {
-              const a = -1.25 + (2.5 * j) / (nl - 1), e = add(c, add(mul(dk, 0.072 * s * Math.cos(a)), mul(h, 0.068 * s * Math.sin(a))));
-              p.push(C(e, add(e, mul(norm(add(add(mul(dk, Math.cos(a)), mul(h, Math.sin(a))), mul(ni, 0.5))), 0.04 * s)), 0.009 * s, 0.006 * s, "twCream"));
-            }
-          }
-          p.push(S(add(hp, mul(md, 0.035 * s)), 0.022 * s, glow ? "twLure" : "twAmber"));
-        };
+        const trap = (hp, s, th, glow) => snap(p, hp, s, th, glow);
         // the stalk out of the cleft, bowing back then forward to the trap, a pair of leaves at its third joint
         const hp = pol(FR, 0.04, z + H), st = bzs([0, 0, z - 0.02], pol(FR + Math.PI, 0.06, z + H * 0.35), add(hp, [-0.03, -0.03, -H * 0.3]), hp, 6);
         chain(st, 0.026, 0.02, "twPlum", (q, t, i) => { if (i === 3) for (const sg of [1, -1]) leaf(q, norm(add(FWD, UP)), add(mul(SIDE, sg), [0, 0, 0.6]), 0.065, 0.026, "twTealLt"); });
@@ -19830,6 +20100,47 @@ function MA_DSP() {
         for (let k = 0; k < L - 1; k++) p.push(S(add(c1, [0.03 * Math.sin(k * 2.3), 0.03 * Math.cos(k * 2.3), 0.18 + 0.1 * k]), 0.016, "twJadeGlow"));
         D.push((x, y, zz, m) => (m === "twLily" && blooms.some((c) => near([x, y, zz], c, 0.06)) ? "twJade" : null));
         return z + hb + 0.2;
+      },
+
+      // ---- the grafts (two level-3 plants grown into one): one parent's silhouette, the other's accents and glow
+      warden(L, p, z, D) { // Bramble Warden (thorn + briar): the thorn's vines up the stone lantern, its roses shut to plum buds and its firebox lit the lure's amber; a Snapbud on a plum stalk out of the roof, held open over the wisplings, teal leaves at its foot
+        const h = TOP.thorn(L, p, z), H = [0.2, 0.22, 0.24][L - 1], UP = [0, 0, 1];
+        const b = pol(FR + Math.PI, 0.05, z - 0.02), hp = pol(FR, 0.03, z + H), k = add(lerp3(b, hp, 0.5), pol(FR + Math.PI, 0.05, 0));
+        p.push(C(b, k, 0.022, 0.019, "twPlum", { k2: 0.006 }), C(k, hp, 0.019, 0.016, "twPlum", { k2: 0.006 }));
+        for (const sg of [1, -1]) { const d = add(mul(SIDE, sg), [0, 0, 0.5]); p.push(E(add(add(b, [0, 0, 0.03]), mul(norm(d), 0.06)), [0.065, 0.026, 0.011], sg > 0 ? "twTealLt" : "twTeal", { R: orient(norm(add(FWD, UP)), d), k2: 0.01 })); }
+        snap(p, hp, 1.3, L > 1 ? 0.8 : 1.75, true);
+        tint(p, D, { twRose: "twPlum", twRoseLt: "twPeach", scLitGreen: "twLure" });
+        return Math.max(h, z + H + 0.17);
+      },
+      eclipse(L, p, z, D) { // Eclipse Bloom (sun + moon): the sunflower turned up to the sky, every other petal the moon's blue, its heart a dark disc in the brass ring glinting blue; the crescent (level 3 the full moon) hung just over it
+        TOP.sun(L, p, z);
+        const hz = z + [0.28, 0.36, 0.42][L - 1], hr = [0.11, 0.13, 0.15][L - 1], mc = [0.06, 0.06, hz + hr + 0.13], mr = [0.07, 0.08, 0.085][L - 1], VR = [0.707, -0.707, 0];
+        if (L < 3) for (let k = 0; k <= 12; k++) { const b = Math.PI + (k / 12 - 0.5) * 3.6 - 0.3, r = mr * 0.42 * Math.sin(((k + 0.5) / 13) * Math.PI) + 0.01; p.push(S(add(mc, add(mul(VR, Math.cos(b) * mr), [0, 0, Math.sin(b) * mr])), r, "twMoon")); }
+        else { p.push(S(mc, mr, "twMoon")); ring(3, (a) => p.push(S(add(mc, pol(a, 0.17, 0.03 * Math.sin(a * 2))), 0.018, "twMoon")), 0.4); }
+        tint(p, D, { twPetalDk: "twMoonPetal", kgLens: "hsObsidian", hsGlowGold: "twMoon" });
+        return mc[2] + mr + 0.05;
+      },
+      mire(L, p, z, D) { // Mire Cap (puff + toad): the puffcap rising out of the stone well's dark mouth, a lattice veil in the stinkhorn's orange hung from under its cap, its spots, gills and spores glowing slime
+        const cr = [0.15, 0.18, 0.21][L - 1], cz = z + [0.2, 0.25, 0.3][L - 1], sr = [0.05, 0.06, 0.07][L - 1];
+        p.push(C([0, 0, z - 0.04], [0, 0, cz], sr * 1.15, sr, "kgStalk", { k2: 0.02 }), E([0, 0, cz], [cr, cr, cr * 0.55], "twCap", { k2: 0.04 }), E([0, 0, cz - cr * 0.25], [cr * 0.86, cr * 0.86, 0.04], "kgGill"));
+        // the veil: ribs flaring from under the cap down to just over the well's mouth (inside the wisplings on its rim), two rings across
+        const nm = (L === 3 ? 8 : 6) + (HI > 1 ? 2 : 0), th = 0.01 + 0.004 * L, z0 = cz - cr * 0.3, z1 = z + 0.06, r0 = sr * 1.3, r1 = cr * 0.55;
+        const q = (a, t) => pol(a, r0 + (r1 - r0) * t, z0 + (z1 - z0) * t);
+        ring(nm, (a) => p.push(C(q(a, 0), q(a, 1), th, th, "twStinkOr", { k2: 0.006 })));
+        for (const t of [0.45, 0.9]) ring(nm, (a) => p.push(C(q(a, t), q(a + TAU / nm, t), th * 0.9, th * 0.9, "twStinkOr")));
+        const top = cz + cr * 0.55;
+        for (let k = 0; k < L; k++) p.push(S(pol(k * 2.4 + 0.5, 0.06 + 0.04 * k, top + 0.07 + 0.09 * k), 0.026 - 0.004 * k, "kgSpore"));
+        D.push((x, y, zz, m, nx, ny, nz) => (m === "twCap" && nz > 0.1 && nz3(x, y, zz, 9, 8) > 0.64 ? "twStinkGlow" : null)); // DET's spots, glowing
+        tint(p, D, { kgSpore: "twStinkGlow", kgGill: "kgGleba" });
+        return top + 0.1 + 0.09 * (L - 1);
+      },
+      lantern(L, p, z, D) { // Ghost Lantern (lily + wisp): the white trumpet lilies on the altar lit from within, their throats and stamens the wisp's cyan, its spirit flame rising out of the main trumpet, orbs circling
+        const h = TOP.lily(L, p, z, D), hb = [0.26, 0.32, 0.36][L - 1], s = [0.85, 1, 1.05][L - 1], n = norm([0.55, 0.25, 0.8]);
+        const fc = add([0.02 + n[0] * 0.03, n[1] * 0.03, z - 0.02 + hb], mul(n, 0.15 * s)), fr = [0.035, 0.045, 0.055][L - 1]; // the main trumpet's mouth (TOP.lily's c1)
+        p.push(S(fc, fr, "hsGlowCyan"), C(fc, add(fc, [0.02, 0.02, fr * 2.3]), fr * 0.8, 0.004, "hsGlowCyan"));
+        ring(L === 3 ? 3 : L - 1, (a) => p.push(S(pol(a, 0.24, z + hb * 0.8 + 0.04 * Math.sin(a * 2)), 0.022, "hsGlowCyan")), 0.5);
+        tint(p, D, { twJade: "hsGlowCyan", twJadeGlow: "hsGlowCyan" });
+        return Math.max(h, fc[2] + fr * 2.4);
       },
     };
 
@@ -19972,6 +20283,8 @@ function MA_DSP() {
         drape(p, 0.17 * g, 0.31 * g, [FR + Math.PI - 0.3, FR + Math.PI + 0.9]);
         return { z, r: 0.34 * g, sp: [pol(FR, r * 0.6, z), pol(FR - 0.95, r * 0.62, z), pol(FR, 0.19 * g, 0)] };
       },
+      // the grafts keep their silhouette parent's vessel
+      warden: (L, p, D) => VES.thorn(L, p, D), eclipse: (L, p, D) => VES.sun(L, p, D), mire: (L, p, D) => VES.toad(L, p, D), lantern: (L, p, D) => VES.lily(L, p, D),
     };
 
     // moss creeping over the vessels' tops and along the roots, the mushroom's spots, the slime's glow; from 24
@@ -20075,6 +20388,8 @@ function MA_DSP() {
   G.TOWER_MODELS = {
     thorn: { name: "ms_tw_thorn", size: 0.72, frames: 1 }, sun: { name: "ms_tw_sun", size: 0.72, frames: 1 }, puff: { name: "ms_tw_puff", size: 0.72, frames: 1 }, wisp: { name: "ms_tw_wisp", size: 0.72, frames: 1 },
     briar: { name: "ms_tw_briar", size: 0.72, frames: 1 }, toad: { name: "ms_tw_toad", size: 0.72, frames: 1 }, moon: { name: "ms_tw_moon", size: 0.72, frames: 1 }, lily: { name: "ms_tw_lily", size: 0.72, frames: 1 },
+    // the grafts, only ever grown at level 3 (lvs: the levels baked; G.models.towerFrames gives level 3 for the others)
+    warden: { name: "ms_tw_warden", size: 0.72, frames: 1, lvs: [3] }, eclipse: { name: "ms_tw_eclipse", size: 0.72, frames: 1, lvs: [3] }, mire: { name: "ms_tw_mire", size: 0.72, frames: 1, lvs: [3] }, lantern: { name: "ms_tw_lantern", size: 0.72, frames: 1, lvs: [3] },
   };
   G.HEART_MODEL = { name: "ms_heart", size: 1.25 };
   // the asset models grow by level themselves; the instance adds only a touch
@@ -20173,8 +20488,9 @@ function MA_DSP() {
   G.bakeList = () => {
     const out = {};
     for (const k in G.CREATURE_MODELS) { if (!G.Defs.ENEMIES[k]) continue; const c = G.CREATURE_MODELS[k]; out["e_" + k] = [c.name, { scale: k0(c.name) * c.size, fine: G.heroFine() }, FRAMES]; }
-    // (only the plants the rules have: a model may land before its plant)
-    for (const k in G.TOWER_MODELS) { if (!G.Defs.TOWERS[k]) continue; const c = G.TOWER_MODELS[k]; for (let lv = 1; lv <= 3; lv++) out["t_" + k + lv] = [c.name, { lv, scale: k0(c.name) * c.size, fine: G.heroFine() }, c.frames || FRAMES]; }
+    // (only the plants the rules have, and the grafts' models, G.GRAFT_ART: a model may land before its plant)
+    const grafts = new Set(Object.values(G.GRAFT_ART || {}).map((a) => a.model));
+    for (const k in G.TOWER_MODELS) { if (!G.Defs.TOWERS[k] && !grafts.has(k)) continue; const c = G.TOWER_MODELS[k]; for (const lv of c.lvs || [1, 2, 3]) out["t_" + k + lv] = [c.name, { lv, scale: k0(c.name) * c.size, fine: G.heroFine() }, c.frames || FRAMES]; }
     for (const h of [1, 2]) out["heart" + h] = [G.HEART_MODEL.name, heartO(h), FRAMES]; // its crown's sway, as stage 0's
     out.rift0 = ["ms_rift", Object.assign(riftO(), { dim: true }), 1]; // a rift asleep (G.models.riftAt)
     return out;
@@ -20186,7 +20502,7 @@ function MA_DSP() {
     const gf = MB.extraFrames;
     const missing = G.Defs.ENEMY_ORDER.filter((k) => !gf["e_" + k]);
     if (missing.length) throw new Error("no creature model for " + missing.join(", "));
-    const towerFrames = (kind, lv) => gf["t_" + kind + lv];
+    const towerFrames = (kind, lv) => gf["t_" + kind + lv] || gf["t_" + kind + 3]; // a graft bakes level 3 only
     G.models = {
       creature: G.Defs.ENEMY_ORDER.map((k) => {
         const c = G.CREATURE_MODELS[k], frames = gf["e_" + k], m = MB.models[frames[0]];
@@ -20454,6 +20770,19 @@ function MA_DSP() {
   };
   G.LINK_ART = {};
   for (const id in LINK) { const [[a, b], color, color2, width, motes, mote] = LINK[id]; G.LINK_ART[id] = { color, color2, width, motes, mote, icon: pair(a, b) }; }
+
+  // --- the grafts (Defs.GRAFTS, game/graft), read by the view as G.GRAFT_ART[id]: { model: the plant it grows
+  // into (ms_tw_<model>, models.js), color: the seam (lights along the ground from an inspected Lv III plant to
+  // each partner it can graft with), color2: the pulse running along it, puddle: its puddle's tint, or null }
+  const GRAFT = {
+    //            model      seam colour          pulse colour        puddle
+    warden: ["warden", [1.0, 0.55, 0.22], [1.0, 0.82, 0.5], [0.5, 0.36, 0.2]], // the Snapbud's amber lure; the snare a root brown
+    eclipsebloom: ["eclipse", [0.55, 0.52, 1.0], [1.0, 0.88, 0.45], null], // moon blue, a sun-gold pulse
+    mirecap: ["mire", [0.94, 0.54, 0.13], [0.8, 0.62, 1.0], [0.62, 0.62, 0.22]], // the Stinkhorn's orange, a Puffcap pulse; the mire olive
+    lantern: ["lantern", [0.6, 1.0, 0.94], [0.88, 1.0, 1.0], null], // the wisp's cyan, a lily-white pulse
+  };
+  G.GRAFT_ART = {};
+  for (const id in GRAFT) { const [model, color, color2, puddle] = GRAFT[id]; G.GRAFT_ART[id] = { model, color, color2, puddle }; }
 })();
 
 </script>
@@ -21553,6 +21882,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       on("tower_placed", (e) => this.burst("plant", [e.pos[0], e.pos[1], e.pos[2] + 0.15]));
       on("tower_upgraded", (e) => this.burst("plant", [e.pos[0], e.pos[1], e.pos[2] + 0.25]));
       on("tower_sold", (e) => this.burst("plant", [e.pos[0], e.pos[1], e.pos[2] + 0.15]));
+      on("tower_grafted", (e) => { this.burst("plant", [e.other.X, e.other.Y, e.other.Z + 0.15]); this.burst("plant", [e.pos[0], e.pos[1], e.pos[2] + 0.15]); });
+      // (a rite: a wide ring round the Heart Tree in its colour, and its name over it)
+      on("rite", (e) => { const w = this.world, r = D.RITES.find((x) => x.id === e.id), at = [w.heart[0], w.heart[1], w.heartZ + 0.08]; this.ring(at, 7, r.color, 0.9, true); this.ring(at, 3.5, r.color, 0.6, true); this.floatText([at[0], at[1], at[2] + 3], r.name, r.color); });
     }
     // a new run: forget the old one's effects
     reset(world) {
@@ -21980,13 +22312,27 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const G = window.MG, D = G.Defs, ME = window.ME;
   const K = ME.SPRITE, TAU = Math.PI * 2, MAXP = 900;
   const col = (kind) => D.TOWERS[kind].color, mul = (c, f) => [c[0] * f, c[1] * f, c[2] * f], mix = (a, b, u = 0.5) => a.map((v, k) => v + (b[k] - v) * u);
-  const STAR = [1.0, 0.92, 0.55], LURE = [0.45, 0.75, 1.0], BARB = [1.0, 0.35, 0.3], POISON = [0.65, 0.95, 0.35];
+  const STAR = [1.0, 0.92, 0.55], LURE = [0.45, 0.75, 1.0], BARB = [1.0, 0.35, 0.3], POISON = [0.65, 0.95, 0.35], SNARE = [0.55, 0.42, 0.22];
+  // a puddle's colour: poison, a Mildew cloud, a Bramble Warden's snare patch or a Mire Cap's mire (Shots.puddles;
+  // Art's tints, G.GRAFT_ART; a mire puddle is the only one with slow and neither mildew nor snare, towers.js)
+  const graftPuddle = (id, c) => (G.GRAFT_ART && G.GRAFT_ART[id] && G.GRAFT_ART[id].puddle) || c;
+  const puddleTint = (p) => (p.mildew ? G.branchTint("puff", "b") : p.snare ? graftPuddle("warden", SNARE) : p.slow ? graftPuddle("mirecap", POISON) : POISON);
   const MOTE = { orb: K.ORB, puff: K.PUFF, streak: K.STREAK, ring: K.RING };
   G.linkLook = (id) => {
     const a = (G.LINK_ART && G.LINK_ART[id]) || {};
     return { color: a.color || null, color2: a.color2 || null, width: a.width || 1, motes: Math.max(1, Math.min(4, a.motes || 1)), mote: MOTE[a.mote] || K.ORB };
   };
   G.linkIcon = (id) => (G.LINK_ART && G.LINK_ART[id] && G.LINK_ART[id].icon) || null;
+  // The level III branches' tints (Defs.FORKS), Art's (2026-11-05): each plant keeps its hue, the branches part
+  // in lightness. B tints the glow under a plant grown on it, its effects (a Mildew cloud, a Burning Glass's
+  // heat) and its HUD tile; A only its tile, so a Lv III A looks as it always did.
+  G.BRANCH_TINTS = {
+    thorn: { a: [0.69, 0.06, 0.37], b: [1.0, 0.6, 0.85] }, // Barbed #b0105e, Bramblecrown #ff9ad8
+    puff: { a: [0.33, 0.19, 0.69], b: [0.78, 0.66, 0.96] }, // Slumber #5530b0, Mildew #c8a8f4
+    sun: { a: [1.0, 0.96, 0.69], b: [0.88, 0.44, 0.05] }, // Dazzle #fff4b0, Burning Glass #e0700c
+    wisp: { a: [0.09, 0.66, 0.75], b: [0.75, 0.98, 1.0] }, // Lure #18a8c0, Lantern Choir #c0faff
+  };
+  G.branchTint = (kind, branch) => (G.BRANCH_TINTS[kind] || {})[branch] || null;
 
   class PlantFx {
     constructor(scene) {
@@ -22017,6 +22363,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (e.kind === "puff" && e.level >= 2) this.fx.ring([e.base[0], e.base[1], e.base[2] + 0.08], e.radius * 1.15, [0.95, 0.9, 1.0], 0.35, true);
         else if (e.kind === "toad") this.spray(e.pos, 5, col("toad"), K.PUFF, 0.6, 0.5, 0.05, 0.5);
         else if (e.kind === "lily" && e.target) this.spray(e.target, 6, col("lily"), K.ORB, 0.8, 0.4, 0.03, 0);
+        else if (e.kind === "sun" && e.target && e.tower.forked && e.tower.glass.hold > 1) this.spray(e.target, Math.min(8, Math.round(e.tower.glass.hold * 1.5)), G.branchTint("sun", "b"), K.ORB, 0.7, 0.4, 0.03, -1); // Burning Glass: hotter, more sparks
       });
     }
     reset() { this.n = 0; }
@@ -22052,7 +22399,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (E.poisonT[k] > 0 && Math.random() < 0.6) this.add(c[0] + (Math.random() - 0.5) * 0.25, c[1] + (Math.random() - 0.5) * 0.25, c[2], 0, 0, 0.5, 0.6, 0.03, POISON, K.ORB, 0);
         if (E.backT[k] > 0) this.add(c[0], c[1], c[2], (Math.random() - 0.5) * 0.4, (Math.random() - 0.5) * 0.4, 0.2, 0.5, 0.035, LURE, K.ORB, 0);
       }
-      for (const p of game.shots.puddles) if (Math.random() < 0.8) { const a = Math.random() * TAU, r = Math.sqrt(Math.random()) * 0.65; this.add(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r, p.z + 0.05, 0, 0, 0.3, 0.7, 0.04, POISON, K.ORB, 0); }
+      for (const p of game.shots.puddles) if (Math.random() < 0.8) { const a = Math.random() * TAU, r = Math.sqrt(Math.random()) * (p.r ? p.r * 0.87 : 0.65); this.add(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r, p.z + 0.05, 0, 0, 0.3, 0.7, 0.04, puddleTint(p), p.mildew ? K.PUFF : K.ORB, 0); }
     }
 
     // a link's vine from a to b, coloured ca at a and cb at b (or in Art's colour), with its motes running
@@ -22070,6 +22417,22 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
     }
 
+    // a graft's seam from plant a to partner b (G.GRAFT_ART): an arc of small lights from crown to crown over both,
+    // a pulse running a to b along it, a light on b's crown and a soft glow round b's foot
+    seam(sp, a, b, id, t) {
+      const L = (G.GRAFT_ART && G.GRAFT_ART[id]) || {}, c = L.color || mix(col(a.kind), col(b.kind)), c2 = L.color2 || c;
+      const H = this.scene.game.body, ha = a.Z + H.towerH(a.kind, a.level) + 0.08, hb = b.Z + H.towerH(b.kind, b.level) + 0.08;
+      const top = Math.max(ha, hb) + 0.35, head = (t * 0.6) % 1;
+      const at = (u) => [a.X + (b.X - a.X) * u, a.Y + (b.Y - a.Y) * u, ha + (hb - ha) * u + (top - Math.max(ha, hb)) * 4 * u * (1 - u)];
+      for (let j = 0; j <= 10; j++) {
+        const u = j / 10, f = 0.3 + 0.7 * Math.max(0, 1 - Math.abs(u - head) * 6), p = at(u);
+        sp.put(p[0], p[1], p[2], 0.045, 0, 0, 0, K.ORB, ...mul(c, 1.5 * f), 1);
+      }
+      const p = at(head), s = 0.5 + 0.5 * Math.sin(t * 3);
+      sp.put(p[0], p[1], p[2], 0.08, 0, 0, 0, K.ORB, ...mul(c2, 2.4), 1);
+      sp.put(b.X, b.Y, hb, 0.14, 0, 0, 0, K.ORB, ...mul(c, 0.9 + 0.5 * s), 1);
+      sp.put(b.X, b.Y, b.Z + 0.03, 0.75, 0, 0, 0, K.GROUND, ...mul(c, 0.3 + 0.12 * s), 1);
+    }
     write(sp) {
       const game = this.scene.game, t = game.time, E = game.enemies, P = this.P;
       for (let i = 0; i < this.n; i++) {
@@ -22077,7 +22440,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (k === K.STREAK) sp.put(P[o], P[o + 1], P[o + 2], P[o + 8], P[o] - P[o + 3] * 0.12, P[o + 1] - P[o + 4] * 0.12, P[o + 2] - P[o + 5] * 0.12, K.STREAK, P[o + 9] * 1.6 * a, P[o + 10] * 1.6 * a, P[o + 11] * 1.6 * a, 1);
         else sp.put(P[o], P[o + 1], P[o + 2], P[o + 8] * (0.6 + 0.4 * u) * 2.4, 0, 0, 0, k, P[o + 9] * 1.8 * a, P[o + 10] * 1.8 * a, P[o + 11] * 1.8 * a, 1);
       }
-      for (const tw of game.towers) {
+      for (const tw of game.plants()) {
         if (tw.kind === "briar") {
           // the vine out to each patch, and the patch: a dark red disc set with thorns
           const c = col("briar");
@@ -22112,8 +22475,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         const [X, Y, Z] = w.cellCentre(hv.cell[0], hv.cell[1]);
         for (const l of game.linksAt(sc.seed, hv.cell[0], hv.cell[1])) this.vine(sp, [X, Y, Z + 0.14], [l.other.X, l.other.Y, l.other.Z + 0.14], col(sc.seed), col(l.other.kind), t * 1.5, 0.5 + 0.25 * Math.sin(t * 4), l.link);
       }
-      // poison puddles, fading as they dry
-      for (const p of game.shots.puddles) sp.put(p.x, p.y, p.z + 0.04, 0.75, 0, 0, 0, K.GROUND, ...mul(POISON, 0.45 * Math.min(1, p.t)), 1);
+      // the inspected plant's graft partners (Game.graftPartners): a seam to each
+      if (sc.selected && sc.selected.level >= 3) for (const p of game.graftPartners(sc.selected)) this.seam(sp, sc.selected, p.other, p.graft.id, t);
+      // poison puddles, fading as they dry (and Mildew clouds)
+      for (const p of game.shots.puddles) sp.put(p.x, p.y, p.z + 0.04, p.r || 0.75, 0, 0, 0, K.GROUND, ...mul(puddleTint(p), 0.45 * Math.min(1, p.t)), 1);
+      // under a plant grown on level III's other branch: a glow in its tint (on the first, the plant as it always was)
+      for (const tw of game.towers) { const c = tw.forked && G.branchTint(tw.kind, "b"); if (c) sp.put(tw.X, tw.Y, tw.Z + 0.03, 0.55, 0, 0, 0, K.GROUND, ...mul(c, 0.35 + 0.1 * Math.sin(t * 2 + tw.cx)), 1); }
       // on the creatures: stars over the stunned, a moon ring over the marked, barbs
       const moon = col("moon");
       for (let k = 0; k < G.ENEMY_CAPACITY; k++) {
@@ -22255,7 +22622,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const LIGHT = {
     wisp: [[0.5, 0.95, 1.0], 1.9, 1.5], sun: [[1.0, 0.85, 0.45], 1.4, 0.9], puff: [[0.72, 0.5, 1.0], 1.2, 0.8], thorn: [[1.0, 0.45, 0.85], 0.9, 0.35],
     briar: [[1.0, 0.32, 0.26], 0.8, 0.3], toad: [[1.0, 0.6, 0.3], 1.1, 0.6], moon: [[0.48, 0.64, 1.0], 1.6, 1.0], lily: [[0.8, 1.0, 0.9], 1.7, 1.2],
+    // a graft (Defs.GRAFTS), by the model it grows into (modelKind), lights as its host for now (Art's placeholder pick, 2026-11-06)
+    warden: [[1.0, 0.45, 0.85], 0.9, 0.35], eclipse: [[1.0, 0.85, 0.45], 1.4, 0.9], mire: [[1.0, 0.6, 0.3], 1.1, 0.6], lantern: [[0.8, 1.0, 0.9], 1.7, 1.2],
   };
+  // the model a plant is drawn and lit as: a graft's own (G.GRAFT_ART), else its kind's
+  const modelKind = (t) => (t.graft && G.GRAFT_ART && G.GRAFT_ART[t.graft.id] && G.GRAFT_ART[t.graft.id].model) || t.kind;
   const elastic = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : Math.pow(2, -10 * u) * Math.sin((u * 10 - 0.75) * ((2 * Math.PI) / 3)) + 1);
   const backOut = (u) => { const c = 1.70158; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); };
   // the Heart Tree's beat, only when it is hit (the user, 2026-10-24: no constant pulse): BEATS lub-dubs
@@ -22303,6 +22674,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       on("tower_placed", (e) => { this.anim.set(e.tower, this.newAnim()); this.updateCells(); this.updateLights(); });
       on("tower_upgraded", (e) => { const a = this.anim.get(e.tower); if (a) a.bounce = 0; this.updateLights(); });
       on("tower_sold", (e) => { this.crumble(e.tower); this.anim.delete(e.tower); if (this.selected === e.tower) this.selected = null; this.updateCells(); this.updateLights(); });
+      // (a graft: the other parent goes from its plot, crumbling as if uprooted, Game.graft)
+      on("tower_grafted", (e) => { this.crumble(e.other); this.anim.delete(e.other); if (this.selected === e.other) this.selected = e.tower; this.updateCells(); this.updateLights(); });
       on("kill", (e) => this.burst(e.kind, e.pos));
       on("hit", (e) => { if (!e.shot) return; const z = this.waterAt(e.pos[0], e.pos[1]); if (z !== null) this.phys.splash([e.pos[0], e.pos[1], z], 0.3); });
       // the boss comes through its rift: the banks beside it give way
@@ -22359,7 +22732,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     updateLights() {
       const list = [];
       for (const t of this.game.towers) {
-        const L = LIGHT[t.kind], o = t.origin();
+        const L = LIGHT[modelKind(t)], o = t.origin();
         list.push({ p: o, r: L[1] * (1 + 0.15 * (t.level - 1)), col: L[0], k: L[2] * (0.8 + 0.2 * t.level) });
       }
       this.R.setLights(list);
@@ -22573,7 +22946,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
     }    // a plant is uprooted: it crumbles where it stood, with a little of the soil it grew in
     crumble(t) {
-      this.emitModel(G.models.towerFrames(t.kind, t.level)[0], [t.X, t.Y, t.Z], 0, { n: 80, speed: 0.6, life: 4 });
+      this.emitModel(G.models.towerFrames(modelKind(t), t.level)[0], [t.X, t.Y, t.Z], 0, { n: 80, speed: 0.6, life: 4 });
       this.phys.explode([t.X, t.Y, t.Z], 0.32, 30, { speed: 1.1, life: 3 });
     }
     // the garden is lost: the Heart Tree falls apart
@@ -22625,9 +22998,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       for (const t of game.towers) {
         this.plantsDrawn.push(t);
         const a = this.anim.get(t), sc = this.plantScale(t, a);
-        const fr = MD.towerFrames(t.kind, t.level), f = fr[Math.floor((((time * 1.1 + a.phase) % 1) + 1) % 1 * fr.length) % fr.length];
+        const mk = modelKind(t), fr = MD.towerFrames(mk, t.level), f = fr[Math.floor((((time * 1.1 + a.phase) % 1) + 1) % 1 * fr.length) % fr.length];
         const sway = Math.sin(time * 0.9 + a.phase) * 0.025, k = 1 / this.MB.models[f].fine; // (a fine plant is drawn at 1/fine)
-        sim.put(i++, f, t.X, t.Y, t.Z, 0, false, [sc[0] * k, sc[1] * k, sc[2] * k], [a.lean[0] + sway, a.lean[1] - sway * 0.5], 1, 0, (t === sel ? MARK.SELECTED : 0) | G.plantMark(t.kind), 0);
+        sim.put(i++, f, t.X, t.Y, t.Z, 0, false, [sc[0] * k, sc[1] * k, sc[2] * k], [a.lean[0] + sway, a.lean[1] - sway * 0.5], 1, 0, (t === sel ? MARK.SELECTED : 0) | G.plantMark(mk), 0);
       }
       const hv = this.hover, w = game.world;
       if (this.seed && hv && hv.cell && !game.towerAt(hv.cell[0], hv.cell[1]) && w.inside(hv.cell[0], hv.cell[1])) {
@@ -23041,13 +23414,59 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       // a gift chip tapped: its card, until tapped again (or the meadow is); a creature of the almanac: its card
       this.boonArr = null; this.boonN = 0; this.chips = null;
       $("boonbar").addEventListener("click", (e) => { const c = e.target.closest("[data-boon]"); if (c) this.inspectGift(c.dataset.boon === this.gift ? "" : c.dataset.boon); });
-      $("almbody").addEventListener("click", (e) => { const c = e.target.closest("[data-foe]"); if (c) this.inspectFoe(-1, c.dataset.foe); });
+      $("almbody").addEventListener("click", (e) => {
+        const c = e.target.closest("[data-foe]"), k = e.target.closest("[data-skip]");
+        if (c) this.inspectFoe(-1, c.dataset.foe);
+        // (the wave skip, Game.skipWave: two taps, the first asks, as Uproot does)
+        else if (k && !k.disabled) {
+          if (this.skipArmed !== S.wave) { this.armSkip(S.wave); return; }
+          this.armSkip(-1); this.game.skipWave();
+        }
+      });
+      this.skipArmed = -1; this.skipTimer = 0;
       // The inspector's buttons ignore taps for a moment after it opens on a plant (the tap that opened it,
       // or a double tap, can land on a button that appears under the finger), and Uproot takes two taps:
       // the first asks, the second (within a few seconds) uproots.
       this.openedAt = 0; this.armed = null; this.armTimer = 0;
       const settled = () => performance.now() - this.openedAt >= GRACE_MS;
-      $("grow").addEventListener("click", () => { if (settled()) this.act.upgrade(); });
+      // (Grow at Lv II on a plant that forks opens the choice of its two Lv III branches on the card, D.FORKS;
+      // a branch's tile grows it, and Grow, then "Back", shuts the choice)
+      $("grow").addEventListener("click", () => {
+        if (!settled()) return;
+        const t = this.inspected;
+        if (t && this.forkable(t)) { this.forking = this.forking === t ? null : t; this.inspect(t); return; }
+        this.act.upgrade();
+      });
+      $("inspector").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-branch]"), t = this.inspected;
+        if (!b || b.disabled || !t || !settled()) return;
+        this.forking = null; this.act.upgrade(b.dataset.branch);
+        if (this.inspected === t) this.inspect(t);
+      });
+      // (Deepen: one of its links doubled, Game.deepen; the card is drawn again on the "links" that follows)
+      $("deepen").addEventListener("click", () => { if (settled() && this.inspected) this.game.deepen(this.inspected); });
+      // (Graft: a row per partner, Game.graftPartners; the first tap asks, saying what the two become, the
+      // second grafts; the card is drawn again on the "links" that follows)
+      this.graftArmed = null;
+      $("grafts").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-graft]"), t = this.inspected;
+        if (!b || b.disabled || !t || !settled()) return;
+        const p = this.game.graftPartners(t)[+b.dataset.graft];
+        if (!p) return;
+        if (this.graftArmed !== p.other) { this.graftArmed = p.other; this.inspect(t); return; }
+        this.graftArmed = null; this.game.graft(t, p.other);
+        if (this.inspected === t) this.inspect(t);
+      });
+      // (Rites, while a wave runs: the button opens a tile per rite on the card, Defs.RITES; a tile performs
+      // it, and the button, then "Back", shuts them; the tiles' prices and greying follow the dew, refresh)
+      this.riting = false;
+      $("rites").addEventListener("click", () => { if (!settled() || !this.inspected) return; this.riting = !this.riting; this.inspect(this.inspected); });
+      $("inspector").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-rite]"), t = this.inspected;
+        if (!b || b.disabled || !t || !settled()) return;
+        this.riting = false; this.game.rite(b.dataset.rite);
+        if (this.inspected === t) this.inspect(t);
+      });
       $("uproot").addEventListener("click", () => {
         if (!settled() || !this.inspected) return;
         if (this.armed !== this.inspected) { this.arm(this.inspected); return; }
@@ -23130,6 +23549,25 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.armed = t;
       if (t) this.armTimer = setTimeout(() => { if (this.armed === t) this.arm(null); }, ARM_MS);
       if (this.inspected) this.uprootLabel(this.inspected);
+    }
+    // the wave skip asks first too: armed on wave w (-1 disarms) for ARM_MS
+    armSkip(w) {
+      clearTimeout(this.skipTimer);
+      this.skipArmed = w;
+      if (w >= 0) this.skipTimer = setTimeout(() => { if (this.skipArmed === w) this.armSkip(-1); }, ARM_MS);
+      this.skipBtn();
+    }
+    // The almanac's skip, under the coming wave between waves (Game.skipWave): its price, or why not; armed,
+    // what it costs the run. Kept up to date on every dew (refresh).
+    skipBtn() {
+      const b = $("almbody").querySelector("[data-skip]");
+      if (!b) return;
+      const why = this.game.skipBlocked(), armed = this.skipArmed === S.wave && !why;
+      const html = armed ? `Tap again to skip <small>no dew, gift or challenge · off the leaderboard</small>`
+        : `Skip Wave ${S.wave + 1} <small>${why || `${this.game.skipCost()} dew · off the leaderboard`}</small>`;
+      b.disabled = !!why;
+      b.classList.toggle("armed", armed);
+      if (b.innerHTML !== html) b.innerHTML = html;
     }
     uprootLabel(t) {
       const armed = this.armed === t;
@@ -23276,7 +23714,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       box.classList.remove("tower", "seedinfo", "foe", "gift");
       box.classList.add(kind); box.classList.toggle("open", this.moreOpen);
       $("insptitle").innerHTML = head;
-      $("inspbody").innerHTML = `<div class="chips">${chips.map(([l, v]) => `<span class="chip"><small>${l}</small><b>${v}</b></span>`).join("")}</div>` +
+      $("inspbody").innerHTML = (chips.length ? `<div class="chips">${chips.map(([l, v]) => `<span class="chip"><small>${l}</small><b>${v}</b></span>`).join("")}</div>` : "") +
         (tips.length ? `<div class="tips">${tips.map((t) => `<div>${t}</div>`).join("")}</div>` : "") +
         (more ? `<div class="more">${more}</div><span class="tomore" role="button">More</span>` : "");
       queueMicrotask(() => this.fitCard()); // (once the caller has shown it)
@@ -23307,40 +23745,103 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // A plant's card: its level; damage, reach, rate and what it aims at; its links (or the plants it could
     // link with) and what it is strong against; under More what each level does and what growing it would
     // add, its links in full and its matchups. Grow and Uproot under it, with their grace and Uproot's second tap.
+    // at Lv II with two Lv III branches to choose from
+    forkable(t) { return t.level === D.MAX_LEVEL - 1 && !!D.FORKS[t.kind]; }
     inspect(t) {
       const box = $("inspector");
+      if (this.forking && (this.forking !== t || !this.forkable(t))) this.forking = null;
       if (!t) {
-        box.classList.remove("show", "anchored"); this.inspected = null; this.foe = null; this.gift = "";
+        box.classList.remove("show", "anchored"); this.inspected = null; this.foe = null; this.gift = ""; this.riting = false;
         this.arm(null); this.almOver = false; this.showAlmanac(); this.seedInfo(); return;
       }
       if (t !== this.inspected || !this.showing("tower")) { this.openedAt = performance.now(); this.arm(null); }
       this.seedKey = ""; this.foe = null; this.gift = "";
       const def = D.TOWERS[t.kind];
       // what it does at its level, and what growing it would change
-      const now = def.levels.slice(0, t.level).map((s, k) => `<span class="lvl">${ROMAN[k + 1]}</span> ${esc(s)}`).join("<br>");
-      const next = t.level < D.MAX_LEVEL ? `<br><span class="dim"><span class="lvl">${ROMAN[t.level + 1]}</span> ${esc(def.levels[t.level])}</span>` : "";
+      // (Lv III on its branch, by name; the next level of a plant that forks lists both)
+      const fork = D.FORKS[t.kind], bname = (b) => `<b style="color:${G.css(G.branchTint(t.kind, b) || def.color)}">${esc(fork[b].name)}</b> `;
+      const now = def.levels.slice(0, t.level).map((s, k) => `<span class="lvl">${ROMAN[k + 1]}</span> ${k + 1 >= 3 && fork ? bname(t.branch) : ""}${esc(D.levelText(t.kind, k + 1, t.branch))}`).join("<br>");
+      const next = t.level >= D.MAX_LEVEL ? "" : this.forkable(t)
+        ? ["a", "b"].map((b) => `<br><span class="dim"><span class="lvl">${ROMAN[t.level + 1]}</span> ${bname(b)}${esc(fork[b].text)}</span>`).join("")
+        : `<br><span class="dim"><span class="lvl">${ROMAN[t.level + 1]}</span> ${esc(def.levels[t.level])}</span>`;
       // its links (each once, with the plants that give it), or the plants it could link with
       const by = new Map();
       for (const l of t.links) { if (!by.has(l.link)) by.set(l.link, new Set()); by.get(l.link).add(D.TOWERS[l.other.kind].name); }
       const partners = [...new Set(D.LINKS.filter((l) => l.kinds.includes(t.kind) && l.kinds.every((k) => S.plants.includes(k))).map((l) => D.TOWERS[l.kinds[0] === t.kind ? l.kinds[1] : l.kinds[0]].name))];
-      const links = [...by].map(([l, names]) => `<span class="lnk">${G.linkIcon(l.id) || "⟡"} ${esc(l.name)}</span> <span class="dim">with ${esc([...names].join(", "))}</span>: ${esc(l.desc)}`).join("<br>");
+      const x2 = (l) => (t.deep.has(l) ? " ×2" : "");
+      const links = [...by].map(([l, names]) => `<span class="lnk">${G.linkIcon(l.id) || "⟡"} ${esc(l.name)}${x2(l)}</span> <span class="dim">with ${esc([...names].join(", "))}</span>: ${esc(l.desc)}`).join("<br>");
       const el = D.elementOf(t.kind), strong = D.ENEMY_ORDER.filter((e) => D.affinity(e, null)[el] > D.WEAK_ABOVE).map((e) => D.ENEMIES[e].name);
-      const tips = [by.size ? [...by.keys()].map((l) => `<span class="lnk">${G.linkIcon(l.id) || "⟡"} ${esc(l.name)}</span>`).join(" ")
+      const tips = [by.size ? [...by.keys()].map((l) => `<span class="lnk">${G.linkIcon(l.id) || "⟡"} ${esc(l.name)}${x2(l)}</span>`).join(" ")
         : `<span class="dim">${partners.length ? `Links with ${esc(partners.join(", "))}: plant beside it` : "No links"}</span>`];
       if (strong.length) tips.push(`Strong vs <b>${esc(strong.slice(0, 3).join(", "))}</b>`);
       // (and the placement zone it stands in, first: D.ZONES)
       const zone = t.zone ? `<b style="color:${G.css(t.zone.rgb)}">${esc(t.zone.name)}</b> ${esc(t.zone.desc)}` : "";
       if (zone) tips.unshift(zone);
+      if (t.level >= 3 && fork) tips.unshift(`${bname(t.branch)}<span class="dim">${esc(fork[t.branch].chip.join(" "))}</span>`);
+      // (a graft, first: what it plays as and its gift; or the graft asked about, what the two would become)
+      const ga = this.graftArmed && this.game.graftPartners(t).find((p) => p.other === this.graftArmed);
+      if (t.graft) tips.unshift(`<span class="lnk">✦ ${esc(t.graft.name)}</span> <span class="dim">plays as ${esc(def.name)} and ${esc(D.TOWERS[t.twin.kind].name)}:</span> ${esc(t.graft.desc)}`);
+      else if (ga) tips.unshift(`<span class="lnk">✦ ${esc(ga.graft.name)}</span> <span class="dim">one plant here, as both (their links kept), the other plot freed:</span> ${esc(ga.graft.desc)}`);
       this.inspected = t;
+      if (this.forking === t) {
+        // the choice: a tile for each branch (its name, what it does, its figure), in its branch's tint
+        const cost = t.upgradeCost(), can = S.canAfford(cost);
+        const tile = (b) => `<button class="fork" data-branch="${b}" style="--acc:${G.css(G.branchTint(t.kind, b) || def.color)}"${can ? "" : " disabled"}><b>${esc(fork[b].name)}</b><span>${esc(fork[b].text)}</span><small>${esc(fork[b].chip.join(" "))}</small></button>`;
+        this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, `Lv ${ROMAN[t.level]} ▸ ${ROMAN[t.level + 1]}`), [],
+          [`<div class="forks">${tile("a")}${tile("b")}</div>`, `<span class="dim">${can ? `Choose a branch: ${cost} dew, for good` : "Not enough dew"}</span>`], "");
+        label($("grow"), "Back"); $("grow").disabled = false;
+        $("deepen").style.display = "none"; $("grafts").innerHTML = ""; $("rites").style.display = "none";
+        this.uprootLabel(t);
+        box.classList.add("show"); this.showAlmanac();
+        return;
+      }
+      $("grow").style.display = $("uproot").style.display = "";
+      if (this.riting && S.phase !== G.Phase.WAVE) this.riting = false;
+      if (this.riting) {
+        // the rites: a tile for each (its name, what it does, its price now), in its colour; Rites, now "Back",
+        // shuts them (the card's other buttons wait)
+        const tile = (r) => `<button class="fork" data-rite="${r.id}" style="--acc:${G.css(r.color)}"><b>${esc(r.name)}</b><span>${esc(r.desc)}</span><small></small></button>`;
+        this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, "Rites"), [],
+          [`<div class="forks rites">${D.RITES.map(tile).join("")}</div>`, `<span class="dim">Once each, on the whole garden; dearer each time this run</span>`], "");
+        $("grow").style.display = $("uproot").style.display = $("deepen").style.display = "none"; $("grafts").innerHTML = "";
+        label($("rites"), "Back"); $("rites").style.display = "";
+        this.riteTiles();
+        box.classList.add("show"); this.showAlmanac();
+        return;
+      }
+      // (Rites: the button, while a wave runs, with the cheapest price)
+      $("rites").style.display = S.phase === G.Phase.WAVE ? "" : "none";
+      if (S.phase === G.Phase.WAVE) label($("rites"), `Rites ▸  (from ${Math.min(...D.RITES.map((r) => this.game.riteCost(r.id)))} dew)`);
       this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, `Lv ${ROMAN[t.level]}`),
         [["Damage", t.damage().toFixed(0)], ["Reach", t.range().toFixed(1)], ["Rate", `${t.rate().toFixed(2)}/s`], ["Aims", AIMS[t.kind] || "nearest"]],
         tips, `${now}${next}${links ? "<br>" + links : ""}${zone ? "<br>" + zone : ""}<br>Aims at ${esc(TARGETS[t.kind] || "the creature nearest the Heart Tree")}<br><span class="dim">${esc(this.matchupsOf(t.kind))}</span>`);
       const grow = $("grow");
       if (t.level >= D.MAX_LEVEL) { label(grow, "Fully grown"); grow.disabled = true; }
-      else { label(grow, `Grow  (${t.upgradeCost()} dew)`); grow.disabled = !S.canAfford(t.upgradeCost()); }
+      else { label(grow, `Grow${this.forkable(t) ? " ▸ choose" : ""}  (${t.upgradeCost()} dew)`); grow.disabled = !S.canAfford(t.upgradeCost()); }
+      // (Deepen: the link it would double, shown while it has one not yet deepened, Game.deepenable; "for this
+      // plant" or "for its partner" when the other already has that link ×2 through another pair)
+      const deep = $("deepen"), dl = this.game.deepenable(t), why = this.game.deepenBlocked(t);
+      deep.style.display = dl ? "" : "none";
+      if (dl) { const one = t.deep.has(dl.link) ? " for its partner" : dl.other.deep.has(dl.link) ? " for this plant" : ""; label(deep, `Deepen ${dl.link.name} ×2${one}  (${why || G.DEEPEN_COST + " dew"})`); deep.disabled = !!why; }
+      // (Graft: a row per partner it could be grafted with; the one asked about says what the two become)
+      const gp = this.game.graftPartners(t);
+      if (!gp.some((p) => p.other === this.graftArmed)) this.graftArmed = null;
+      $("grafts").innerHTML = gp.slice(0, 8).map((p, i) => {
+        const why = this.game.graftBlocked(t, p.other), armed = p.other === this.graftArmed;
+        const text = armed ? `Tap again: ${p.graft.name}  (${p.cost} dew)` : `Graft ✦ ${D.TOWERS[p.other.kind].name}  (${why || p.cost + " dew"})`;
+        return `<button class="btn${armed ? " armed" : ""}" data-graft="${i}"${why ? " disabled" : ""}><span class="lb">${esc(text)}</span></button>`;
+      }).join("");
       this.uprootLabel(t);
       box.classList.add("show");
       this.showAlmanac();
+    }
+    // the rite tiles' prices and greying, as the dew stands (in place, so a tap mid-press still lands)
+    riteTiles() {
+      for (const b of $("inspbody").querySelectorAll("[data-rite]")) {
+        const id = b.dataset.rite, why = this.game.riteBlocked(id), txt = why || `${this.game.riteCost(id)} dew`;
+        b.disabled = !!why;
+        if (b.lastChild.textContent !== txt) b.lastChild.textContent = txt;
+      }
     }
 
     // The seed in hand, on the card while nothing else is on it (no buttons): its cost; damage, reach and rate
@@ -23478,9 +23979,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const running = Object.keys(left).length > 0;
       let tag = "coming";
       if (running) tag = `now · ${Object.values(left).reduce((a, b) => a + b, 0)} left`;
-      const html = this.waveHtml(first, tag, running ? left : null) + this.waveHtml(second, running ? "next" : "after", null) +
+      const skip = S.phase === G.Phase.BUILD ? `<button class="btn skip" data-skip></button>` : "";
+      const html = this.waveHtml(first, tag, running ? left : null) + skip + this.waveHtml(second, running ? "next" : "after", null) +
         this.giftsHtml() + `<div class="legend">halo = resists · pulsing veins = weak spot</div>`;
-      if (html !== this.almHtml) { this.almHtml = html; $("almbody").innerHTML = html; }
+      if (html !== this.almHtml) { this.almHtml = html; $("almbody").innerHTML = html; this.skipBtn(); }
       this.matchup = this.matchups(first, running ? left : null);
       // the folded tab's line: the wave on the field (or coming) and how many creatures it still holds
       const n = running ? Object.values(left).reduce((a, b) => a + b, 0) : first.groups.reduce((a, g) => a + g.count, 0);
@@ -23599,9 +24101,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       else label("wavebtn", `Begin Wave ${S.wave + 1}`);
       $("hint").style.display = S.wave === 0 && building && !this.selected ? "" : "none"; // (a picked seed's info says what to do)
       if (S.phase === G.Phase.GAME_OVER && $("inspector").classList.contains("show")) this.inspect(null);
+      // (a plant's card as a wave starts or ends: its Rites come or go; the rite tiles follow the dew)
+      else if (this.inspected && this.showing("tower") && !this.forking) {
+        const wave = S.phase === G.Phase.WAVE;
+        if (this.riting && wave) this.riteTiles();
+        else if (this.riting || ($("rites").style.display !== "none") !== wave) this.inspect(this.inspected);
+      }
       this.seedInfo();
       this.boonBar();
       this.chalPill();
+      this.skipBtn();
     }
     // #chal: the running wave's challenge (live, met or failed), else between waves the next wave's; none
     // before wave 2 or once the run is over
@@ -23644,10 +24153,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
    opens the rest (the build, every boon at its level, the plants, the date).
    The run log: every run that ends (end: death, a quit for a new run, or alive when the page is left) sends
    one anonymous line to the proxy's /api/run (kills, time and fps in play, dew earned and spent, plants
-   placed, grown and sold, the boons in order, the seed, density, mobile, the GPU's vendor): the device id
-   goes with it only to be hashed to the tag there, no nickname. Not from a page driven by a script
-   (navigator.webdriver) or headless (the checks: their Edge has no webdriver flag) unless ?runlog=1, nor
-   with ?runlog=0; main.js leaves out the bot, self-test and bench.
+   placed, grown and sold, the boons in order, the waves skipped (a run off the board: 0 when none), the seed,
+   density, mobile, the GPU's vendor): the device id goes with it only to be hashed to the tag there, no
+   nickname. Not from a page driven by a script (navigator.webdriver) or headless (the checks: their Edge
+   has no webdriver flag) unless ?runlog=1, nor with ?runlog=0; main.js leaves out the bot, self-test and
+   bench.
    The device id (mossheart.device) is a random secret kept on the device; the board shows its tag, a short
    hash of it, so the player's own row is found without the id being readable. The nickname is remembered
    (mossheart.nickname), and so is the best this device has on the board per garden (mossheart.board). */
@@ -23856,6 +24366,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     const nickname = clean(run.nickname);
     if (!nickname || bad(nickname)) return { ok: false, why: "nick" };
     if (!GARDEN.test(run.garden) || !(run.wave >= 1)) return { ok: false, why: "invalid" };
+    if (run.skipped) return { ok: false, why: "skipped" };
     const body = {
       garden: run.garden, wave: Math.min(500, run.wave | 0), nickname, device: device(),
       seed: Number.isFinite(run.seed) ? run.seed >>> 0 : null,
@@ -23914,6 +24425,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       dew: { earned: int(st.dew, 1e8), spent: int(st.spent, 1e8), peak: int(st.peakDew, 1e8) },
       towers: { placed: counts(st.planted, TOWERS, 9999), upgraded: counts(st.grownBy, TOWERS, 9999), sold: counts(st.soldBy, TOWERS, 9999) },
       boons: boonsOf(S.boons, 96), diedTo: end === "death" && ENEMIES.includes(st.lastLeak) ? st.lastLeak : null,
+      skipped: int(st.skipped, 500),
     };
     game.runLog = { end, wave };
     const url = `${c.proxy}/api/run`, s = JSON.stringify(body);
@@ -23931,6 +24443,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     soon: "One moment: try again in a few seconds.",
     nick: "Pick another nickname: letters, digits, spaces and _ . - (up to 16).",
     invalid: "The board did not take this run.",
+    skipped: "A wave was skipped: this run stays off the board.",
     denied: "The board turned the request away (check its setup in the README).",
     setup: "The board is not set up yet (README, Leaderboard).",
     error: "The board could not be reached just now.",
@@ -24026,13 +24539,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     const S = G.state || {}, st = (game && game.stats) || {};
     const run = {
       garden, wave, seed: S.seed, boons: (S.boons || []).slice(), density: window.ME ? ME.VS : null, version: version(),
-      maxDew: st.peakDew, towers: st.planted, diedTo: st.lastLeak || null,
+      maxDew: st.peakDew, towers: st.planted, diedTo: st.lastLeak || null, skipped: !!S.offBoard,
     };
-    const best = bestOf(garden);
+    // (a run that skipped a wave, Game.skipWave, goes on no board: no form, the note says why)
+    const best = S.offBoard ? Infinity : bestOf(garden);
     el.style.display = "";
     el.innerHTML = `<h3 class="lbh">Leaderboard · every garden</h3>
       ${best >= wave ? "" : `<form class="lbform" autocomplete="off"><input class="lbnick" name="nickname" maxlength="16" placeholder="Your nickname" aria-label="Nickname" spellcheck="false" autocapitalize="off" enterkeyhint="send" value="${esc(nick())}"><button class="btn lbsend" type="submit">Submit</button></form>`}
-      <p class="lbnote lbsay" role="status">${best >= wave ? `Your best on the board in ${esc(gardenName(garden))}: wave ${best}.` : `Submit wave ${wave | 0} in ${esc(gardenName(garden))} to the board?`}</p>
+      <p class="lbnote lbsay" role="status">${S.offBoard ? say("skipped") : best >= wave ? `Your best on the board in ${esc(gardenName(garden))}: wave ${best}.` : `Submit wave ${wave | 0} in ${esc(gardenName(garden))} to the board?`}</p>
       <ol class="lblist"></ol><p class="lbnote lbstat"></p>`;
     const form = el.querySelector(".lbform"), sayEl = el.querySelector(".lbsay");
     fill(el, "all", TOP);
@@ -27599,10 +28113,15 @@ function MG_SFX(L) {
    It plays through the rules alone, so the same bot drives the full game (main.js) and the rules-only
    balance sim (tools/sim.html). With hooks.early (0-1) it also calls the next wave early (Game.callEarly)
    once what is left of the running one falls to that share (1: as soon as it may). Everything else comes through hooks: { maxWaves, early, now(), log(line),
-   deselect(), hideBoons(), setSpeed(x), finish(report), sinks }. With hooks.sinks it also spends dew on the gifts
-   screen (Game.reroll, Game.buyPick: Bot.sinks). */
+   deselect(), hideBoons(), setSpeed(x), finish(report), sinks, deepen, branch }. With hooks.sinks it also spends dew on the gifts
+   screen (Game.reroll, Game.buyPick: Bot.sinks); with hooks.deepen it deepens links before it sows (Game.deepen:
+   Bot.deepen; "boss" only in the build after a boss wave's clear); with hooks.branch(kind) true it grows that kind into its Lv III branch B (D.FORKS); with hooks.graft it grafts pairs (Bot.graft); with hooks.rite (ids of D.RITES) it
+   casts one rite a wave once a creature is RITE_AT (or hooks.riteAt) of the way in, with hooks.riteHp only while the
+   heart is under that share (Bot.rite); with hooks.skip [n, from] it skips up
+   to n waves from wave `from` on (Bot.skip). */
 (function () {
   const G = window.MG, D = G.Defs, S = G.state;
+  const RITE_AT = 0.7; // (Bot.rite)
 
   class Bot {
     constructor(game, hooks) {
@@ -27639,6 +28158,7 @@ function MG_SFX(L) {
         this.hooks.log(`  boon: ${b.name}`);
         this.game.chooseBoon(b);
       }
+      if (S.phase === G.Phase.WAVE && this.hooks.rite) this.rite();
       if (S.phase === G.Phase.WAVE && this.early >= 0 && S.wave < this.maxWaves && this.game.canCallEarly() && this.game.earlyShare() <= this.early) {
         this.hooks.log(`  called wave ${S.wave + 1} early for ${this.game.earlyBonus()} dew`);
         this.game.startWave();
@@ -27646,6 +28166,7 @@ function MG_SFX(L) {
       }
       if (S.phase !== G.Phase.BUILD) return;
       if (S.wave >= this.maxWaves) { this.hooks.log(`reached wave ${S.wave}, heart ${S.heartHp}/${S.heartMax}, dew ${S.dew}, plants ${this.game.towers.length}`); this.finish(false); return; }
+      if (this.hooks.skip && this.skip()) return;
       this.spend();
       // (what the garden could not spend: the dew left after this build's sowing and growing)
       const last = this.rows[this.rows.length - 1];
@@ -27656,10 +28177,63 @@ function MG_SFX(L) {
     }
     afterFrame() { this.frames++; }
 
+    // a wave skipped (Game.skipWave), hooks.skip = [n, from]: up to n of them, from wave `from` on, while each
+    // leaves dew to build with; true when it skipped (the next frame builds for the wave after)
+    skip() {
+      const g = this.game, [n, from] = this.hooks.skip;
+      if (g.stats.skipped >= n || S.wave + 1 < from || g.skipBlocked() || S.dew - g.skipCost() < 50) return false;
+      this.hooks.log(`  skipped wave ${S.wave + 1} for ${g.skipCost()} dew`);
+      return g.skipWave();
+    }
+
+    // links deepened, the ones that double for both plants first, while each leaves dew to build with
+    deepen() {
+      const g = this.game;
+      if (this.hooks.deepen === "boss" && (S.wave === 0 || S.wave % 5)) return;
+      for (let n = 0; n < 20; n++) {
+        let best = null, most = 0;
+        for (const t of g.towers) { const l = g.deepenable(t); if (!l) continue; const k = !t.deep.has(l.link) + !l.other.deep.has(l.link); if (k > most) { best = t; most = k; } }
+        if (!best || S.dew - G.DEEPEN_COST < 50) return;
+        const l = g.deepenable(best);
+        if (!g.deepen(best)) return;
+        this.hooks.log(`  deepened ${l.link.name} for ${G.DEEPEN_COST} dew`);
+      }
+    }
+
+    // grafts (Game.graft): every pair it can, while each leaves dew to build with
+    graft() {
+      const g = this.game;
+      for (let n = 0; n < 20; n++) {
+        const t = g.towers.find((x) => g.graftPartners(x).some((p) => S.dew - p.cost >= 50));
+        if (!t) return;
+        const p = g.graftPartners(t).find((x) => S.dew - x.cost >= 50);
+        if (!g.graft(t, p.other)) return;
+        this.hooks.log(`  grafted ${p.graft.name} for ${p.cost} dew`);
+      }
+    }
+
+    // a rite (Game.rite), once a wave, when a creature is RITE_AT of the way to the Heart Tree (hooks.riteAt, and
+    // with hooks.riteHp the heart under that share): the cheapest of
+    // hooks.rite's it can pay for (the list's order breaks a tie)
+    rite() {
+      const g = this.game;
+      if (this.riteWave === S.wave || g.enemies.maxProgress() < (this.hooks.riteAt || RITE_AT)) return;
+      if (this.hooks.riteHp && S.heartRatio() >= this.hooks.riteHp) return;
+      let best = null;
+      for (const id of this.hooks.rite) if (!g.riteBlocked(id) && (!best || g.riteCost(id) < g.riteCost(best))) best = id;
+      if (!best) return;
+      const cost = g.riteCost(best);
+      if (!g.rite(best)) return;
+      this.riteWave = S.wave;
+      this.hooks.log(`  rite ${best} for ${cost} dew`);
+    }
+
     spend() {
       const game = this.game;
+      if (this.hooks.deepen && S.phase === G.Phase.BUILD) this.deepen();
+      if (this.hooks.graft && S.phase === G.Phase.BUILD) this.graft();
       // grow existing plants sometimes
-      for (const t of game.towers) if (t.level < D.MAX_LEVEL && S.dew > t.upgradeCost() + 80 && this.rng.f() < 0.5) game.upgrade(t);
+      for (const t of game.towers) if (t.level < D.MAX_LEVEL && S.dew > t.upgradeCost() + 80 && this.rng.f() < 0.5) game.upgrade(t, this.hooks.branch && this.hooks.branch(t.kind) ? "b" : "a");
       // lead with the plant (of those the garden grows, State.plants) the coming wave is most weak to, then mostly that with some variety
       const coming = game.plan(S.wave + 1);
       // (and toward the plants its gifts favour, as a player who took Kindred Wisps sows wisps: as likely
@@ -27996,7 +28570,7 @@ function MG_SFX(L) {
       startWave,
       speed: () => setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]),
       sound: () => (audio ? audio.toggle() : false),
-      upgrade: () => { if (selected && game.upgrade(selected)) select(selected); },
+      upgrade: (branch) => { if (selected && game.upgrade(selected, branch)) select(selected); },
       sell: () => { if (selected) { game.sell(selected); deselect(); } },
       restart: () => restart(),
       turn: (dir) => cam.snap(dir),
@@ -28125,7 +28699,7 @@ function MG_SFX(L) {
       else if (e.key === "Escape") { pending = null; hud.clearSeed(); scene.seed = ""; deselect(); }
       else if (ME.keys.is(e, "KeyF")) document.getElementById("speed").click();
       else if (ME.keys.is(e, "KeyM")) document.getElementById("sound").click();
-      else if (ME.keys.is(e, "KeyU") && selected) { if (game.upgrade(selected)) select(selected); }
+      else if (ME.keys.is(e, "KeyU") && selected) { if (hud.forkable(selected)) { hud.forking = selected; hud.inspect(selected); } else if (game.upgrade(selected)) select(selected); } // (at a fork, U opens the choice)
     });
     // the help line names the keys the player's layout shows
     const helpEl = document.querySelector(".help"), helpText = () => { helpEl.textContent = ME.keys.text(`drag pan · wheel zoom · {KeyQ}/{KeyE} turn · 1–${S.plants.length} seeds · space wave`); };
