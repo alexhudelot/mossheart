@@ -19598,11 +19598,14 @@ function MG_SFX(L) {
                                      board height
    A piece's traits show as parts, small models baked beside the pieces (dcp_*) and drawn as instances over
    it: its tier (from its traits' rarities) adds a collar (1), a crest (2), an inlay band (3) and gems in its
-   rarest trait's hue (4; tier 5 draws as 4 until its silhouettes come), and each trait adds its cue.
+   rarest trait's hue (4), and each trait adds its cue. A tier 5 knight, bishop or rook is drawn as its own
+   silhouette (dc5_*: the base with the collar, crest and inlay built in, and a shape of its own) with the
+   gems and cues over it; a pawn or queen cannot reach tier 5 under the rules.
      DC.pieces.CUES[id]           { hue, rarity, idx }   (idx 1..12, a gem's hue in HUES)
      DC.pieces.tierOf(ids), gemOf(ids)
      DC.pieces.RAMPS, MATS        the parts' materials, for the board's style
-     DC.pieces.bindParts(MB)      -> { layout(color, type, ids) -> { tier, gem, list: [{ f, off, sc, hue }] } } */
+     DC.pieces.bindParts(MB)      -> { layout(color, type, ids) -> { tier, gem, list: [{ f, off, sc, hue }],
+                                     sil? } }: sil { f, fine } the tier 5 silhouette, drawn in place of the base */
 (function () {
   const C = (window.DC = window.DC || {});
   const FRAMES = 1;
@@ -19696,7 +19699,7 @@ function MG_SFX(L) {
   const CUES = [
     ["ward", "#9fd6ff"], ["vanguard", "#e5483d"], ["glide", "#1fa89a"], ["rally", "#4fbf5a"],
     ["anointed", "#e8b33a"], ["stride", "#f39a1e"], ["pike", "#a8b3c1"], ["squire", "#f2cc4d"],
-    ["ember", "#ff6a1a"], ["leap", "#3cc3db"], ["sanctuary", "#a383f2"], ["phoenix", "#ff7a2a"],
+    ["ember", "#ff6a1a"], ["leap", "#3cc3db"], ["sanctuary", "#a383f2"], ["phoenix", "#ee3f86"],
   ];
   const CUE = {}, RULES = window.DG.TRAITS;
   CUES.forEach(([id, hue], i) => (CUE[id] = { id, hue, rarity: RULES.find((t) => t.id === id).rarity, idx: i + 1 }));
@@ -19714,12 +19717,13 @@ function MG_SFX(L) {
   };
   // where the parts sit on each piece (P N B R Q; model units, X forward): the collar [x, z, r], the inlay band
   // [x, z, r], the top [x, z] a crest stands on, the body [x, z, r] (a sash, the cracks), the foot's radius, the
-  // crest, the back [x, z] (wings), the head [x, z] (a pawn's)
+  // crest, the back [x, z] (wings), the head [x, z] (a pawn's); on a tier 5 silhouette the top and the head
+  // where they move (top5, head5)
   const SLOT = [null,
     { collar: [0, 0.14, 0.14], inlay: [0, 0.2075, 0.107], top: [0, 0.52], body: [0, 0.2, 0.112], foot: 0.24, crest: "orb", back: [-0.1, 0.22], head: [0, 0.415] },
     { collar: [-0.028, 0.125, 0.165], inlay: [-0.019, 0.218, 0.14], top: [-0.075, 0.6], body: [-0.012, 0.27, 0.135], foot: 0.26, crest: "mane", back: [-0.13, 0.32], head: [0.04, 0.5] },
-    { collar: [0, 0.13, 0.155], inlay: [0, 0.2975, 0.108], top: [0, 0.78], body: [0, 0.27, 0.118], foot: 0.26, crest: "spire", back: [-0.11, 0.3], head: [0, 0.62] },
-    { collar: [0, 0.13, 0.2], inlay: [0, 0.31, 0.176], top: [0, 0.58], body: [0, 0.27, 0.183], foot: 0.27, crest: "spike", back: [-0.18, 0.32], head: [0, 0.51] },
+    { collar: [0, 0.13, 0.155], inlay: [0, 0.2975, 0.108], top: [0, 0.78], body: [0, 0.27, 0.118], foot: 0.26, crest: "spire", back: [-0.11, 0.3], head: [0, 0.62], top5: [0, 0.84], head5: [0, 0.66] },
+    { collar: [0, 0.13, 0.2], inlay: [0, 0.31, 0.176], top: [0, 0.58], body: [0, 0.27, 0.183], foot: 0.27, crest: "spike", back: [-0.18, 0.32], head: [0, 0.51], top5: [0, 0.64] },
     { collar: [0, 0.135, 0.177], inlay: [0, 0.3475, 0.124], top: [0, 0.895], body: [0, 0.32, 0.133], foot: 0.28, crest: "orb", back: [-0.13, 0.36], head: [0, 0.78] },
   ];
   // how high each crest stands over the top (a finial goes on it)
@@ -19836,14 +19840,121 @@ function MG_SFX(L) {
         const g = 0.35 + j * 0.32, l = 0.06 + j * 0.012, d = [-0.4, sd * Math.cos(g), Math.sin(g)], dl = Math.hypot(d[0], d[1], d[2]);
         const u = [d[0] / dl, d[1] / dl, d[2] / dl], root = [0, sd * 0.04, 0];
         p.push(E([root[0] + u[0] * l, root[1] + u[1] * l, root[2] + u[2] * l], [l, 0.024, 0.01], "dcPhoenix", { R: orient([1, 0, 0.3], u) }));
-        p.push(S([root[0] + u[0] * l * 1.9, root[1] + u[1] * l * 1.9, root[2] + u[2] * l * 1.9], 0.014, "dcEmber"));
+        p.push(S([root[0] + u[0] * l * 1.9, root[1] + u[1] * l * 1.9, root[2] + u[2] * l * 1.9], 0.014, "dcPhoenixFire"));
       }
       return { r: 0.2, h: 0.2, prims: p };
     });
   };
   parts();
+
+  // ---------------------------------------------------------------- tier 5's silhouettes
+  // A tier 5 piece is drawn as its own model in place of the base and the tier's parts: the base with the
+  // collar, the inlay band and a metal trim round the plinth carved in, and a crown of its own in place of the
+  // crest. Only knights, bishops and rooks can reach tier 5 (the rules allow three traits; a promotion clears
+  // them), so only they have one. Each is authored at its base's scale and drawn at its base's fit, so SLOT
+  // holds for its gems and cues.
+  const SIL = [null, null, "dc5_knight", "dc5_bishop", "dc5_rook"];
+  const skey = (c, t) => "wb"[c] + "5" + t;
+  const silhouettes = () => {
+    const K = window.ME.assetKit, { S, E, C: Cap, B, Y, model, ry, rz, orient } = K;
+    // one fn for the three, by o.type (o.t is a flipbook's time), so its helpers are in each bake key (a key
+    // reads only the fn's source)
+    const sil5 = (o) => {
+      const m = o.c ? "dcEbony" : "dcIvory", mt = o.c ? "dcSilver" : "dcGold";
+      // the foot as the base's, with a metal band round the plinth
+      const foot = (R) => [
+        Y([0, 0, 0.008], R * 0.96, 0.008, "dcFelt"),
+        Y([0, 0, 0.045], R, 0.03, m, { round: 0.016 }),
+        Y([0, 0, 0.088], R * 0.8, 0.016, m, { round: 0.01, k2: 0.02 }),
+        Y([0, 0, 0.047], R + 0.006, 0.008, mt, { round: 0.004 }),
+      ];
+      // the collar [x, z, r] with six metal beads round its rim (tier 4's gems sit between them), and the inlay
+      // band [x, z, r] in metal with dark diamonds
+      const collar = ([x, z, r]) => {
+        const p = [Y([x, 0, z], r, 0.022, m, { round: 0.01 })];
+        for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; p.push(S([x + Math.cos(a) * r, Math.sin(a) * r, z], 0.017, mt)); }
+        return p;
+      };
+      const inlay = ([x, z, r]) => {
+        const p = [Y([x, 0, z], r, 0.018, mt, { round: 0.006 })];
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2, n = [Math.cos(a), Math.sin(a), 0];
+          p.push(B([x + n[0] * (r + 0.004), n[1] * (r + 0.004), z], [0.011, 0.011, 0.008], 0, "dcInlayDk", { R: orient(n, [-n[1], n[0], 1]) }));
+        }
+        return p;
+      };
+      // the knight, a warhorse: a fuller chest, a bridle, and a crest of six fins from the poll down the mane
+      if (o.type === 2) {
+        const p = foot(0.26);
+        p.push(
+          Cap([-0.03, 0, 0.1], [0.0, 0, 0.42], 0.15, 0.1, m, { k2: 0.05 }),
+          E([0.05, 0, 0.36], [0.08, 0.09, 0.1], m, { k2: 0.04 }), // the chest, under the muzzle
+          E([0.02, 0, 0.5], [0.1, 0.08, 0.1], m, { k2: 0.04 }),
+          Cap([0.04, 0, 0.49], [0.19, 0, 0.39], 0.085, 0.06, m, { k2: 0.03 }),
+          E([-0.09, 0, 0.38], [0.055, 0.04, 0.17], m, { k2: 0.03 }),
+        );
+        for (const sd of [-1, 1]) p.push(Cap([-0.02, sd * 0.04, 0.57], [-0.045, sd * 0.035, 0.68], 0.028, 0.01, m, { k2: 0.01 }));
+        // the crest: fins along the back of the neck, from the poll down, each raking back
+        for (let i = 0; i < 6; i++) {
+          const s = i / 5, z = 0.6 - s * 0.36, x = -0.145 + 0.075 * Math.max(0, (z - 0.45) / 0.15); // on the back of the neck
+          p.push(Cap([x + 0.015, 0, z], [x - 0.04, 0, z + 0.04], 0.022, 0.006, m, { k2: 0.008 }));
+        }
+        // the bridle: a noseband round the muzzle, the cheek straps up to the brow and a boss on each
+        const ax = [0.15, 0, -0.1], M = [0.14, 0, 0.425];
+        p.push(Y(M, 0.074, 0.01, mt, { R: orient(ax, [0, 0, 1]) }));
+        for (const sd of [-1, 1]) {
+          p.push(Cap([0.12, sd * 0.06, 0.44], [0.0, sd * 0.072, 0.54], 0.008, 0.008, mt), S([0.06, sd * 0.074, 0.49], 0.017, mt));
+        }
+        p.push(...collar([-0.028, 0.125, 0.165]), ...inlay([-0.019, 0.218, 0.146]));
+        return { r: 0.31, h: 0.7, prims: p };
+      }
+      // the bishop, a cardinal: a fluted stem, a taller mitre banded in metal with its lappets down the back, and a
+      // metal finial
+      if (o.type === 3) {
+        const p = foot(0.26);
+        p.push(Cap([0, 0, 0.1], [0, 0, 0.42], 0.15, 0.07, m, { k2: 0.05 }));
+        for (let i = 0; i < 8; i++) {
+          const a = ((i + 0.5) / 8) * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
+          p.push(Cap([c * 0.142, s * 0.142, 0.13], [c * 0.08, s * 0.08, 0.39], 0.012, 0.008, m, { k2: 0.01 }));
+        }
+        p.push(
+          Y([0, 0, 0.43], 0.12, 0.016, m, { round: 0.01 }),
+          E([0, 0, 0.585], [0.115, 0.115, 0.175], m, { k2: 0.02 }),
+          B([0.075, 0, 0.625], [0.014, 0.2, 0.055], 0, m, { sub: true, R: ry(0.65) }),
+          Y([0, 0, 0.47], 0.094, 0.012, mt, { round: 0.005 }),
+          S([0, 0, 0.775], 0.03, mt), Cap([0, 0, 0.79], [0, 0, 0.84], 0.016, 0.004, mt),
+        );
+        for (const sd of [-1, 1]) p.push(B([-0.09, sd * 0.035, 0.405], [0.01, 0.022, 0.06], 0.006, m, { R: ry(-0.25) }));
+        p.push(...collar([0, 0.13, 0.155]), ...inlay([0, 0.2975, 0.118]));
+        return { r: 0.31, h: 0.86, prims: p };
+      }
+      // the rook, a keep: corbels under a wider top, eight merlons standing round it, a metal band, a door and
+      // arrow slits
+      {
+        const p = foot(0.27);
+        p.push(
+          Cap([0, 0, 0.1], [0, 0, 0.44], 0.19, 0.155, m, { k2: 0.04 }),
+          Y([0, 0, 0.5], 0.205, 0.07, m, { round: 0.012, k2: 0.02 }),
+          Y([0, 0, 0.6], 0.13, 0.05, m, { sub: true }),
+          Y([0, 0, 0.5], 0.211, 0.008, mt, { round: 0.004 }),
+        );
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
+          p.push(B([c * 0.168, s * 0.168, 0.6], [0.036, 0.042, 0.04], 0.008, m, { R: rz(a) })); // a merlon
+          p.push(B([c * 0.17, s * 0.17, 0.418], [0.02, 0.022, 0.022], 0.006, m, { R: rz(a), k2: 0.01 })); // a corbel
+        }
+        // the door on the front in a metal frame, slits on the other sides
+        p.push(B([0.174, 0, 0.2], [0.014, 0.05, 0.06], 0.01, mt), B([0.18, 0, 0.196], [0.012, 0.04, 0.052], 0.008, "dcInlayDk"));
+        for (const a of [Math.PI * 0.6, Math.PI, Math.PI * 1.4]) p.push(B([Math.cos(a) * 0.168, Math.sin(a) * 0.168, 0.37], [0.012, 0.009, 0.032], 0.004, "dcInlayDk", { R: rz(a) }));
+        p.push(...collar([0, 0.13, 0.2]), ...inlay([0, 0.31, 0.176]));
+        return { r: 0.32, h: 0.68, prims: p };
+      }
+    };
+    for (let t = 2; t <= 4; t++) model(SIL[t], 1, sil5);
+  };
+  silhouettes();
   // the parts' materials (style() in art/boards.js adds them to the board's): metals, the gems' crystal, the
-  // glowing ones (Ward, Ember, Sanctuary) and a colour per cue
+  // glowing ones (Ward, Ember, Sanctuary, the Phoenix's wing tips) and a colour per cue
   const EM = { em: 1, flat: 1 }, cue = (hex) => [hex, 6, 0.25, 0.85, 0.2];
   const RAMPS = {
     dcGold: ["#d8a838", 6, 0.3, 0.88, 0.25], dcSilver: ["#c4ccd6", 6, 0.3, 0.92, 0.1], dcInlayDk: ["#2a2018", 3, 0.05, 0.3],
@@ -19852,9 +19963,9 @@ function MG_SFX(L) {
     dcSanct: ["#8a68e0", "#a383f2", "#bea4f8", "#d8c8fc"],
     dcVanguard: cue("#e5483d"), dcGlide: cue("#1fa89a"), dcRally: cue("#4fbf5a"), dcAnoint: cue("#e8b33a"),
     dcStride: cue("#f39a1e"), dcPike: cue("#a8b3c1"), dcSquire: cue("#f2cc4d"), dcLeap: cue("#3cc3db"),
-    dcPhoenix: cue("#ff7a2a"), dcPole: ["#6b4a32", 4, 0.15, 0.6],
+    dcPhoenix: cue("#ee3f86"), dcPhoenixFire: ["#ff5c9a", "#ff7fb0", "#ffa6c8", "#ffd0e2"], dcPole: ["#6b4a32", 4, 0.15, 0.6],
   };
-  const MATS = { dcCrystal: { bias: 0.25 }, dcWard: EM, dcEmber: EM, dcSanct: EM };
+  const MATS = { dcCrystal: { bias: 0.25 }, dcWard: EM, dcEmber: EM, dcSanct: EM, dcPhoenixFire: EM };
 
   C.pieces = {
     SET, HEIGHT, FRAMES, CUES: CUE, SLOT, RAMPS, MATS, tierOf, gemOf,
@@ -19868,11 +19979,14 @@ function MG_SFX(L) {
       }
       for (let c = 0; c < 2; c++) for (const n of SIDED) out[pkey(n, c)] = ["dcp_" + n, { scale: 1, fine, c }, 1];
       for (const n of SHARED) out[pkey(n)] = ["dcp_" + n, { scale: 1, fine }, 1];
+      for (let c = 0; c < 2; c++) for (let t = 1; t <= 6; t++) if (SIL[t]) out[skey(c, t)] = [SIL[t], { scale: 1, fine, c, type: t }, 1];
       return out;
     },
     // the parts bound to the bake: layout(c, t, ids) -> { tier, gem, list: [{ f, off: [x, y, z], sc: [x, y, z],
     // hue }] }: each part's model id, its offset from the piece's anchor (model units, before the piece's facing
     // and its fit) and its scale (at 1 / fine), hue the gem's index (0 for the other parts). Kings get none.
+    // A tier 5 knight, bishop or rook also gets sil: { f, fine }, the silhouette drawn in place of its base (at
+    // the base's fit), and its list leaves out the collar, crest and inlay the silhouette carries.
     bindParts(MB) {
       const id = {};
       const get = (k) => {
@@ -19883,19 +19997,27 @@ function MG_SFX(L) {
       };
       for (let c = 0; c < 2; c++) for (const n of SIDED) id[pkey(n, c)] = get(pkey(n, c));
       for (const n of SHARED) id[pkey(n)] = get(pkey(n));
-      const part = (list, k, x, z, sx, hue = 0, y = 0) => { const q = id[k]; list.push({ f: q.f, off: [x, y, z], sc: [sx / q.fine, sx / q.fine, 1 / q.fine], hue }); };
+      const sil = [[], []];
+      for (let c = 0; c < 2; c++) for (let t = 1; t <= 6; t++) if (SIL[t]) sil[c][t] = get(skey(c, t));
+      const part =(list, k, x, z, sx, hue = 0, y = 0) => { const q = id[k]; list.push({ f: q.f, off: [x, y, z], sc: [sx / q.fine, sx / q.fine, 1 / q.fine], hue }); };
       return {
         count: Object.keys(id).length,
+        sils: SIL.filter(Boolean).length * 2,
         layout(c, t, ids) {
-          const out = { tier: 0, gem: 0, list: [] }, sl = SLOT[t];
+          const out = { tier: 0, gem: 0, list: [] };
+          let sl = SLOT[t];
           if (!sl || !ids.length) return out;
           const tier = tierOf(ids), L = out.list, R0 = AUTH_R, has = (n) => ids.includes(n);
           out.tier = tier;
+          const five = tier === 5 && !!sil[c][t];
+          if (five) { out.sil = sil[c][t]; sl = Object.assign({}, sl, { top: sl.top5 || sl.top, head: sl.head5 || sl.head }); }
           const [cx, cz, cr] = sl.collar, [bx, bz, br] = sl.body, fr = sl.foot;
-          if (tier >= 1) part(L, pkey("collar", c), cx, cz, cr / R0.collar);
           let topZ = sl.top[1];
-          if (tier >= 2) { part(L, pkey(sl.crest, c), sl.top[0], topZ, 1); topZ += CREST_H[sl.crest]; }
-          if (tier >= 3) part(L, pkey("inlay", c), sl.inlay[0], sl.inlay[1], sl.inlay[2] / R0.inlay);
+          if (!five) {
+            if (tier >= 1) part(L, pkey("collar", c), cx, cz, cr / R0.collar);
+            if (tier >= 2) { part(L, pkey(sl.crest, c), sl.top[0], topZ, 1); topZ += CREST_H[sl.crest]; }
+            if (tier >= 3) part(L, pkey("inlay", c), sl.inlay[0], sl.inlay[1], sl.inlay[2] / R0.inlay);
+          }
           if (tier >= 4) { const g = gemOf(ids); out.gem = g ? g.idx : 0; part(L, pkey("gems"), cx, cz, cr / R0.gems, out.gem); }
           // the cues
           if (has("ward")) part(L, pkey("ward"), 0, 0, fr / R0.ward);
@@ -20685,7 +20807,7 @@ function MG_SFX(L) {
      new DG.Stars(seed)
      stars.write(R, cam, w, h, time, dpr)   between R.sprites.begin() and end(); the stars drawn */
 (function () {
-  const ME = window.ME, M4 = ME.m4, G = (window.DG = window.DG || {});
+  const ME = window.ME, G = (window.DG = window.DG || {});
   const N = 1500, BAND = 800, WIDE = 1.15; // stars, the band's, the projection's scale (NDC per unit tangent)
 
   class Stars {
@@ -20715,16 +20837,18 @@ function MG_SFX(L) {
     }
     write(R, cam, w, h, time, dpr = 1) {
       const { ivp } = cam.matrices(w, h), { right, up, fwd } = cam.basis();
-      const asp = h / w, per = 1 / Math.max(1e-6, cam.zoom), S = ME.SPRITE.ORB;
+      const asp = h / w, per = 1 / Math.max(1e-6, cam.zoom), S = ME.SPRITE.ORB, Z = 0.003;
       let n = 0;
       for (const s of this.list) {
         const d = s.d, f = d[0] * fwd[0] + d[1] * fwd[1] + d[2] * fwd[2];
         if (f < 0.12) continue;
         const x = ((d[0] * right[0] + d[1] * right[1] + d[2] * right[2]) / f) * WIDE * asp, y = ((d[0] * up[0] + d[1] * up[1] + d[2] * up[2]) / f) * WIDE;
         if (x < -1.05 || x > 1.05 || y < -1.05 || y > 1.05) continue;
-        const p = M4.apply(ivp, [x, y, 0.003]), tw = s.tw ? 0.75 + 0.25 * Math.sin(time * s.tw + s.ph) : 1;
+        // ME.m4.apply(ivp, [x, y, Z]) inlined in its order, so bit-identical: it allocated 4 objects a star (audit PERF-D1)
+        const px = ivp[0] * x + ivp[4] * y + ivp[8] * Z + ivp[12], py = ivp[1] * x + ivp[5] * y + ivp[9] * Z + ivp[13];
+        const pz = ivp[2] * x + ivp[6] * y + ivp[10] * Z + ivp[14], tw = s.tw ? 0.75 + 0.25 * Math.sin(time * s.tw + s.ph) : 1;
         const k = Math.min(1, (f - 0.12) * 4) * tw;
-        R.sprites.put(p[0], p[1], p[2], s.px * dpr * per, 0, 0, 0, S, s.col[0] * k, s.col[1] * k, s.col[2] * k, 1);
+        R.sprites.put(px, py, pz, s.px * dpr * per, 0, 0, 0, S, s.col[0] * k, s.col[1] * k, s.col[2] * k, 1);
         n++;
       }
       return n;
@@ -21071,7 +21195,8 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
                             piece goes or comes back): the app repaints the tiles they mark, then clears it
      partStats()            how many parts the pieces draw and each tier's count of pieces
    With parts (DC.pieces.bindParts) each piece with traits (game.tr) also draws its tier's and its traits'
-   parts, offset from its anchor and turned with it; a gem's mark carries its hue (G.MARK.HUE_SHIFT).
+   parts, offset from its anchor and turned with it; a gem's mark carries its hue (G.MARK.HUE_SHIFT). A tier 5
+   knight, bishop or rook draws its silhouette (the layout's sil) in place of its base.
    The input sets selected (a square or -1), hover (a square or -1) and check (the king's square or -1).
    drawn[i] is the piece this layer drew as its i-th instance last frame (R.pick's index). */
 (function () {
@@ -21201,8 +21326,10 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       this.drawn.length = 0;
       for (const p of this.list) {
         if (p.s <= 0) continue;
-        const m = this.models[p.c][p.t], f = m.frames[Math.floor(time * FPS + p.phase * m.frames.length) % m.frames.length];
-        const k = (m.fit / m.fine) * p.s;
+        const m = this.models[p.c][p.t], l = this.layout(p), s5 = l && l.sil;
+        // a tier 5 piece draws its silhouette in place of its base, at the base's fit
+        const f = s5 ? s5.f : m.frames[Math.floor(time * FPS + p.phase * m.frames.length) % m.frames.length];
+        const k = (m.fit / (s5 ? s5.fine : m.fine)) * p.s;
         let Z = p.P[2], mark = p.c ? MK.BLACK : 0;
         if (p.sq === this.selected && !p.walk) { mark |= MK.SELECTED; Z += 0.05 + Math.sin(time * 4) * 0.02; }
         if (p.sq === this.check && p.t === G.PIECE.KING && !p.walk) mark |= MK.CHECK;
@@ -21211,7 +21338,6 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         this.drawn.push(p);
         sim.put(i++, f, p.P[0], p.P[1], Z, YAW[p.c], false, [k, k, k], [0, 0], 1, 0, mark, p.flash);
         // its parts: each offset from its anchor in model units, turned with it, at its fit
-        const l = this.layout(p);
         if (!l) continue;
         const ks = m.fit * p.s, yc = Math.cos(YAW[p.c]), ys = Math.sin(YAW[p.c]);
         for (const q of l.list) {
@@ -21580,7 +21706,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.21.0", name: "DeckChess", commit: "135a1e0" };
+  G.VERSION = { v: "0.22.0", name: "DeckChess", commit: "41d4527" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -22432,24 +22558,25 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
           (van.tileMid & G.CELL_B.WARD) === 0 && (van.tileAfter & G.CELL_B.WARD) !== 0;
         ctl.fen = null; ctl.newGame(hud.settings); ctl.you = [0];
         // the part kit (art/pieces.js bindParts): a deck position's tiers and parts as the rules give them (two
-        // tier 1, eight tier 2, three tier 3; 54 parts), tiers 4 and 5 and every cue laid out on each piece (the
-        // rules can't give them yet: 4 parts and 12 cues, the gem the rarest trait's), and the frames with the
+        // tier 1, eight tier 2, three tier 3, a tier 5 knight on its silhouette; 58 parts), tiers 4 and 5 and every
+        // cue laid out on each piece (4 parts and 12 cues, the gem the rarest trait's; a tier 5 knight, bishop or rook
+        // on its silhouette, without the collar, crest and inlay), and the frames with the
         // parts against the classic game's (the frame time; the bake's bricks are in out.models)
         const pk = { models: parts.count, tiers: [], parts: 0, layouts: [] };
         const timed = async (n) => { const a = ints.length, b = cpus.length; nFrames += await frames(n); return { ms: avg(ints.slice(a + 5)), cpu: avg(cpus.slice(b + 5)), gpu: R.gpuMs }; };
         pk.classic = await timed(120);
-        ctl.newGame(hud.settings, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 b1:WVS,c1:WS,d1:WVR,a1:G,h1:WGR,e2:WPA,d2:P,f2:W,b8:WVS,g8:S,d8:WR,a7:PA,h7:WP");
-        { const s = pieces.partStats(); pk.tiers = s.tiers.join(); pk.parts = s.parts; }
+        ctl.newGame(hud.settings, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 b1:WVS,c1:WS,d1:WVR,a1:G,h1:WGR,e2:WPA,d2:P,f2:W,b8:WVS,g8:S,d8:WR,a7:PA,h7:WP,g1:XSE");
+        { const s = pieces.partStats(), l = pieces.layout(pieces.pieceAt(sq("g1"))); pk.tiers = s.tiers.join(); pk.parts = s.parts; pk.g1sil = !!(l && l.sil); }
         pk.traited = await timed(120);
         const ALL = Object.keys(C.pieces.CUES), CU = C.pieces.CUES;
         for (let t = 1; t <= 5; t++) {
           const a = parts.layout(t & 1, t, ALL), q = parts.layout(0, t, ["leap", "sanctuary"]);
-          pk.layouts.push([a.tier, a.list.length, a.gem, q.tier, q.list.length, q.gem].join());
+          pk.layouts.push([a.tier, a.list.length, a.gem, q.tier, q.list.length, q.gem, a.sil ? 1 : 0, q.sil ? 1 : 0].join());
         }
         ctl.fen = null; ctl.newGame(hud.settings); ctl.you = [0];
         pk.heapMB = performance.memory ? +(performance.memory.usedJSHeapSize / 1048576).toFixed(1) : -1;
-        const lay = [5, 16, CU.phoenix.idx, 4, 6, CU.leap.idx].join();
-        const partsOk = pk.tiers === "0,2,8,3,0,0" && pk.parts === 54 && pk.layouts.every((l) => l === lay);
+        const lay = (t) => (t >= 2 && t <= 4 ? [5, 13, CU.phoenix.idx, 4, 6, CU.leap.idx, 1, 0] : [5, 16, CU.phoenix.idx, 4, 6, CU.leap.idx, 0, 0]).join();
+        const partsOk = pk.tiers === "0,2,8,3,0,1" && pk.parts === 58 && pk.g1sil && pk.layouts.every((l, i) => l === lay(i + 1));
         // the pieces' baked sizes and their heights on the board (tiles)
         const sizes = {};
         for (const c of [0, 1]) for (let t = 1; t <= 6; t++) { const m = models[c][t]; sizes["wb"[c] + " PNBRQK"[t]] = { model: m.name, h: +m.h.toFixed(2), r: +m.r.toFixed(2), fit: +m.fit.toFixed(2), height: m.height }; }
