@@ -17325,6 +17325,381 @@ function MG_SFX(L) {
 })();
 
 </script>
+<script>/* src/audio/chill-score.js */
+/* DeckChess's own score: chill-step (the user's words, 2026-11-07: "make new chill-step music for
+   deckchess"). The material the director (chill.js) plays: the harmony, the drum and bass bars, the
+   motifs, the levels and the stingers. Everything here is data; chill.js decides when it plays.
+
+   Half-time at 140 bpm (it reads as 70): the kick on the one, the snare on the three, a gently swung
+   hat, a soft sub under it, warm pads and a Rhodes, a little vinyl air. D minor, minor ninths and a
+   suspended dominant, nothing major-bright and nothing harsh up top (the music bus's lowpass stays
+   under 7 kHz, chill.js tone()).
+
+   Levels are Liquid's (Mossheart's score.js, LIQUID) a few dB softer: the same buses and the same
+   master, so DeckChess sits at Mossheart's level and the mute and volume work as they do there. */
+(function () {
+  const G = window.MG;
+  // a chord: the bass (MIDI) and the voicing over it
+  const C = (bass, notes) => ({ bass, notes });
+  const CH = {
+    Dm9: C(38, [53, 57, 60, 64]), // D: F A C E
+    Bbmaj9: C(46, [50, 53, 57, 60]), // Bb: D F A C
+    Gm9: C(43, [53, 57, 58, 62]), // G: F A Bb D
+    Asus: C(45, [52, 55, 57, 62]), // A7sus4: E G A D
+    Ebmaj7: C(39, [51, 55, 58, 62]), // Eb: Eb G Bb D, the flat second's colour for the tense bars
+    Fmaj7: C(41, [52, 57, 60, 64]), // F: E A C E, the relative major's warmth, once per calm phrase
+  };
+  // the progressions: one chord per bar, eight bars a phrase (chill.js picks the next phrase's on its
+  // first bar from the tension: calm, then tense once the game has turned)
+  const PROG = {
+    calm: ["Dm9", "Dm9", "Bbmaj9", "Bbmaj9", "Gm9", "Fmaj7", "Asus", "Asus"],
+    calm2: ["Dm9", "Dm9", "Gm9", "Gm9", "Bbmaj9", "Bbmaj9", "Asus", "Asus"],
+    tense: ["Dm9", "Bbmaj9", "Gm9", "Asus", "Dm9", "Ebmaj7", "Gm9", "Asus"],
+  };
+
+  // the drum lanes (16 steps a bar): "x" a hit at the lane's level, "o" 6 dB under, "X" 2 dB over, "." a rest.
+  // `base` is deck A's (the groove that comes in after the opening), `more` deck B's (the ghosts, the
+  // shuffle and the shaker the tension adds); `fill` the last bar of a phrase (the second kick left out)
+  const DRUMS = {
+    base: { k: "x.........x.....", s: "........x.......", h: "x.o.x.o.x.o.x.oo" },
+    alt: { k: "x......o..x.....", s: "........x.......", h: "x.o.x.o.x.o.x.o." },
+    fill: { k: "x...............", s: "........x.....o.", h: "x.o.x.o.x.o.o.o." },
+    more: { g: "...o.......o..o.", sh: "......x.......x.", p: ".o.o.o.o.o.o.o.o" },
+  };
+  // the lanes' instruments and levels (dB): Liquid's outro half-time a little under its build break
+  const LANES = { k: ["lkick", -11], s: ["snare", -13], h: ["lhat", -23], g: ["ghost", -26], sh: ["shuf", -26], p: ["shaker", -29] };
+
+  // the sub: [step, semitones over the root, length in 16ths]; calm holds the root, tense moves
+  const SUB = {
+    calm: [[0, 0, 10], [10, 0, 6]],
+    tense: [[0, 0, 7], [10, 0, 3], [13, 7, 1], [14, 12, 2]],
+  };
+  // the Rhodes re-strikes: [step, which of the voicing's notes (from the top)], a bar's worth, by turns
+  const STRIKES = [[[6, [0, 1]]], [[11, [0, 2]], [14, [1]]]];
+  // the lead motifs (deck B, into the lead's delay taps): [step, index into the chord's notes an octave
+  // up]; one every other bar once the tension is high
+  const MOTIFS = [[[3, 3], [6, 2], [11, 1]], [[2, 2], [7, 3], [10, 2], [14, 0]], [[3, 1], [8, 2], [11, 3]]];
+
+  // the levels (dB)
+  const LV = { silk: -28, breath: -34, keys: -25, strike: -29, sub: -18, lead: -27, rev: -31, vinyl: -35 };
+
+  // the stingers, all on the grid (chill.js): a capture's stab on the next eighth, a check's low boom and
+  // bell on the next beat, a promotion's music-box run, a mate's sting on the next bar
+  const STING = { bass: 38, notes: [62, 65, 69, 76], bell: 74 };
+
+  // the tone: the music bus's lowpass and reverb from calm to tense, the outro's after a mate
+  const TONE = { lp: [4500, 7000], outroLp: 3000, wet: [0.28, 0.34], pan: 0.35, taps: [3, 6, 9], phase: 0.1, leadLp: 6500 };
+
+  // the layers: which deck sub-bus each turns up (deck, index in Pads Keys Lead Perc Throw Drum Bass) and
+  // the tension it comes in at (it goes out 0.08 under); "groove" waits for the opening instead
+  const LAYERS = [
+    { id: "groove", subs: [[0, 5], [0, 6]] },
+    { id: "air", subs: [[1, 0]], at: 0.2 },
+    { id: "ghosts", subs: [[1, 5]], at: 0.35 },
+    { id: "shaker", subs: [[1, 3]], at: 0.45 },
+    { id: "lead", subs: [[1, 2]], at: 0.6 },
+  ];
+
+  G.ChillScore = { BPM: 140, SWING: 0.17, CH, PROG, DRUMS, LANES, SUB, STRIKES, MOTIFS, LV, STING, TONE, LAYERS, OPENING_BARS: 8, OPENING_PLIES: 2 };
+})();
+
+</script>
+<script>/* src/audio/chill.js */
+/* DeckChess's chill-step director (the user's words, 2026-11-07: "make new chill-step music for
+   deckchess"). It takes the place of Mossheart's ambient score (MG.Music, which audio.js builds) before
+   audio.js loads, so it plays on Mossheart's audio engine, buses and master with no change to them;
+   ?music=moss keeps Mossheart's score (MG.MossMusic) instead.
+
+   The score (chill-score.js) plays on the sequencer's 16th grid at 140 bpm in half-time:
+   - the opening: a soft unison pad and a Rhodes on each chord and a little vinyl air, nothing else, until
+     each side has moved (or eight bars have passed);
+   - then the groove (deck A's Drum and Bass sub-buses swell in over a bar): the kick on the one and the
+     and-of-three, the snare on the three, eighth hats with the odd 16ths swung late, a soft sub on the
+     root ducked by each kick, the pads pumping a little under it, a reverse swell into each phrase;
+   - the tension layers on deck B, each turned up on a bar line as the game's tension passes its mark and
+     down again 0.08 under it: a breath an octave and a fifth over the bass, ghost snares and a swung
+     shuffle hat, a shaker, and a Rhodes motif up high into the lead's delay taps. The tense progression
+     changes chord every bar and takes in the flat second (Eb), and the sub moves under it.
+   The tension: the material swing (|white - black| in centipawns over 900, at most 0.4), the game's
+   length (up to 0.2 by the 80th ply), a check on the board, and the bumps a capture (0.25) and a check
+   (0.5) give, which fade over a dozen seconds. It rises in a few seconds and settles more slowly.
+
+   The stingers sit inside the groove, on its grid: a capture a Rhodes stab thrown into the ping-pong
+   delay on the next eighth, a check a low boom and a bell into the taps on the next beat with the bus's
+   lowpass dipping, a promotion a short run of music-box notes, a mate the sting (a low D, the D minor
+   chord rolled on the Rhodes and a bell) on the next bar line. After a mate the drums and the tension
+   layers fade out and the pads and the Rhodes play on, darker, until a new game ("start", phase 0).
+
+   It reads the game through the cues main.js emits (its CUES: tower_placed a move, kill a capture,
+   heart_hit a check, tower_upgraded a promotion, wave_clear a mate, phase 0 a new game) and the board
+   (DG.app.game) once a bar. The same interface as Mossheart's Music for audio.js's update() and stats(). */
+(function () {
+  const G = window.MG, MA = window.MA, SC = G.ChillScore, LOW = !!G.AUDIO_LOW;
+  // (Mossheart's music.js: how far ahead notes are scheduled, the control rate, the voices per bus)
+  const LOOKAHEAD = LOW ? 0.5 : 0.35, CTL_HZ = LOW ? 15 : 30;
+  const POOL = LOW ? { MusicPads: 4, MusicKeys: 6, MusicLead: 7, MusicPerc: 3, MusicThrow: 3 } : { MusicPads: 6, MusicKeys: 8, MusicLead: 10, MusicPerc: 4, MusicThrow: 4 };
+  for (const d of ["A", "B"]) Object.assign(POOL, LOW ? { ["MusicPads" + d]: 10, ["MusicKeys" + d]: 7, ["MusicLead" + d]: 9, ["MusicPerc" + d]: 8, ["MusicThrow" + d]: 4, ["MusicDrum" + d]: 10, ["MusicBass" + d]: 4 }
+    : { ["MusicPads" + d]: 16, ["MusicKeys" + d]: 10, ["MusicLead" + d]: 14, ["MusicPerc" + d]: 12, ["MusicThrow" + d]: 6, ["MusicDrum" + d]: 16, ["MusicBass" + d]: 6 });
+  const posmod = (a, n) => ((a % n) + n) % n, rr = (a, b) => a + (b - a) * Math.random();
+  const lerp = (a, b, u) => a + (b - a) * u, clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+  // a drum bar per lane: null a rest, else the hit's dB over the lane's ("o" -6, "X" +2)
+  const lanes = (p) => { const o = {}; for (const k in p) o[k] = [...p[k]].map((c) => (c === "x" ? 0 : c === "o" ? -6 : c === "X" ? 2 : null)); return o; };
+  const BARS = { base: lanes(SC.DRUMS.base), alt: lanes(SC.DRUMS.alt), fill: lanes(SC.DRUMS.fill), more: lanes(SC.DRUMS.more) };
+  // the pieces' values (centipawns) by type (DeckChess's chess.js: PAWN 1 .. KING 6, BLACK 8)
+  const VAL = [0, 100, 300, 300, 500, 900, 0];
+  const CUE_EVENTS = { tower_placed: "move", kill: "capture", heart_hit: "check", tower_upgraded: "promo", wave_clear: "mate" };
+  // the grid a stinger waits for, in 16ths
+  const UNIT = { capture: 2, check: 4, promo: 2, mate: 16 };
+
+  class ChillMusic {
+    constructor(mixer, mix) {
+      this.mixer = mixer; this.mix = mix; this.seq = null; this.ready = false;
+      this.lastCtx = -1; this.late = 0; this.skipped = 0; this.ctlT = 0; this.tapKey = "";
+      this.on = true; this.style = "chill"; this.cueLog = [];
+      this.phr = { phrases: 0, stings: 0, layers: 0 }; // (phrases begun, stingers played, layers turned up; for the checks)
+      this.hits = { k: 0, s: 0, g: 0, h: 0, sh: 0, p: 0 }; // (drum hits struck, by lane)
+      this.layers = {}; this.offBar = {};
+      for (const L of SC.LAYERS) { this.layers[L.id] = false; this.offBar[L.id] = -99; }
+      this.pending = []; this.pads = []; this.keys = [];
+      this.reset();
+      for (const ev in CUE_EVENTS) G.on(ev, (d) => this.onEvent(CUE_EVENTS[ev], d));
+      G.on("phase", (d) => { if (d && d.phase === 0) this.onEvent("start", d); });
+    }
+    // a new game: the opening, calm
+    reset() {
+      this.tension = 0; this.base = 0; this.bump = 0; this.dip = 0; this.plies = 0; this.check = false;
+      this.outro = false; this.matePly = -1; this.bars = -1; this.lastStab = -10;
+      this.progName = "calm"; this.prog = SC.PROG.calm; this.chord = null;
+    }
+    start(instruments) {
+      const m = this.mixer, now = m.ctx.currentTime, q = (this.seq = new MA.Sequencer(m, instruments, POOL, { lookahead: LOOKAHEAD }));
+      q.bpm = SC.BPM;
+      q.onStep = (s, t) => this.onStep(s, t);
+      q.start(0.1);
+      this.ready = true;
+      this.vinyl = G.devFlag && !G.devFlag("vinyl", 1) ? null : m.voice("vinyl", "MusicWash", SC.LV.vinyl, 1, 0, null, true);
+      const mx = this.mix, T = SC.TONE;
+      // the opening's sub-buses (deck A's pads and keys) up, every other one down; the score fades in over four seconds
+      mx.decks.forEach((d, k) => d.forEach((g, i) => g.gain.setValueAtTime(k === 0 && i < 2 ? 1 : 0, now)));
+      mx.gate.gain.setValueAtTime(1, now);
+      mx.fade.gain.setValueAtTime(0.01, now); mx.fade.gain.exponentialRampToValueAtTime(1, now + 4);
+      // the lead's tone, the pads' phaser and the delays don't move (tone() moves the rest)
+      mx.leadLp.frequency.setValueAtTime(T.leadLp, now); mx.leadLp.Q.setValueAtTime(-3, now);
+      if (mx.phase) mx.phase.gain.setValueAtTime(T.phase, now);
+    }
+    get bpm() { return this.seq ? this.seq.bpm : SC.BPM; }
+    get notes() { return this.seq ? this.seq.played : 0; }
+    // what plays: the opening, the groove's mood and the tension layers up ("tense+air+ghosts")
+    get mood() {
+      if (this.outro) return "outro";
+      if (!this.layers.groove) return "opening";
+      return (this.progName === "tense" ? "tense" : "calm") + SC.LAYERS.filter((L) => L.at && this.layers[L.id]).map((L) => "+" + L.id).join("");
+    }
+    setStyle() {} // (one style; the settings' Music style is Mossheart's)
+    cue(name, p) { this.onEvent(name, p || {}); }
+    logCue(what) { this.cueLog.push(what + "@" + Math.round(this.mixer.ctx.currentTime)); if (this.cueLog.length > 60) this.cueLog.shift(); }
+    sixteenth() { return this.seq.sixteenth(); }
+    ctxTime(t) { return this.mixer.ctx.currentTime + Math.max(0, t - this.seq.clock); }
+    // the voice struck, if one was
+    play(inst, note, db, bus, at) {
+      if (!this.ready) return null;
+      const q = this.seq, n = q.played; q.play(inst, note, db, bus, at);
+      return q.played > n ? q.voices[bus][q.voices[bus].length - 1] : null;
+    }
+    // the kick's sidechain: the pads duck a little and the sub more, back within the beat
+    pump(at) {
+      const g = this.mix.pump.gain, b = this.mix.bassPump.gain;
+      g.setTargetAtTime(0.92, at, 0.01); g.setTargetAtTime(1, at + 0.04, this.sixteenth());
+      b.setTargetAtTime(0.7, at, 0.004); b.setTargetAtTime(1, at + 0.05, 0.06);
+    }
+    ramp(g, v, at, tc) {
+      const p = g.gain, now = this.mixer.ctx.currentTime;
+      p.cancelScheduledValues(now); p.setValueAtTime(p.value, now); p.setTargetAtTime(v, Math.max(at, now), tc);
+    }
+
+    // --- the game
+    // the board's material swing, the plies played and whether the side to move is in check (null before a game)
+    readGame() {
+      try {
+        const app = window.DG && window.DG.app, g = app && app.game;
+        if (!g || !g.at) return null;
+        let w = 0, b = 0;
+        for (let s = 0; s < 64; s++) { const p = g.at(s); if (p) { if (p & 8) b += VAL[p & 7]; else w += VAL[p & 7]; } }
+        return { mat: Math.abs(w - b), plies: g.history ? g.history.length : 0, check: !!(g.inCheck && g.inCheck()) };
+      } catch (e) { return null; }
+    }
+    onEvent(name) {
+      if (name === "start") { this.reset(); this.pending = []; this.logCue("start"); return; }
+      if (name === "move") return; // (the board is read on the bar line)
+      if (name === "capture") this.bump = Math.min(0.6, this.bump + 0.25);
+      if (name === "check") this.bump = Math.min(0.6, this.bump + 0.5);
+      if (!this.ready || this.outro) return;
+      if (name === "capture" && this.seq.clock - this.lastStab < 0.8) return;
+      if (name === "capture") this.lastStab = this.seq.clock;
+      if (!this.pending.some((p) => p.name === name)) this.pending.push({ name, unit: UNIT[name] });
+    }
+
+    // --- clock (real time; Mossheart's music.js update())
+    update(dt) {
+      if (!this.ready) return;
+      dt = Math.min(dt, 0.1);
+      const q = this.seq, now = this.mixer.ctx.currentTime;
+      this.bump *= Math.exp(-dt / 12); this.dip = Math.max(0, this.dip - dt * 1.4);
+      const goal = clamp(this.base + this.bump, 0, 1);
+      this.tension += (goal - this.tension) * (1 - Math.exp(-dt * (goal > this.tension ? 0.6 : 0.12)));
+      this.ctlT -= dt;
+      if (this.ctlT <= 0 || this.dip > 0) {
+        this.ctlT = 1 / CTL_HZ;
+        // a slow tape wow, barely there
+        const rate = 1 + Math.sin(q.clock * Math.PI * 2 * 0.5) * 0.0012;
+        if (Math.abs(rate - q.rate) > 2e-5) q.setRate(rate);
+        this.tone(now);
+      }
+      let adt = this.lastCtx < 0 ? dt : Math.min(1, now - this.lastCtx);
+      this.lastCtx = now;
+      if (adt > LOOKAHEAD) {
+        const on = q.onStep;
+        this.late++; q.onStep = (s, t) => { if (s === 0) on(s, t); else this.skipped++; };
+        q.advance(adt - LOOKAHEAD, 1);
+        q.onStep = on; adt = LOOKAHEAD;
+      }
+      q.advance(adt, 1);
+    }
+    // the music bus opens with the tension (and closes after a mate), dips on a check
+    tone(now) {
+      const q = this.seq, mx = this.mix, T = SC.TONE, i = this.tension;
+      const cut = (this.outro ? T.outroLp : lerp(T.lp[0], T.lp[1], i)) * (1 - 0.45 * this.dip);
+      mx.lp.frequency.setTargetAtTime(clamp(cut, 900, 16000), now, this.dip > 0 ? 0.05 : 0.6);
+      mx.wet.gain.setTargetAtTime(lerp(T.wet[0], T.wet[1], i), now, 0.4);
+      mx.keysPan.pan.setTargetAtTime(Math.sin(q.clock * 0.4) * T.pan, now, 0.1);
+      mx.leadPan.pan.setTargetAtTime(Math.sin(q.clock * 0.27) * 0.25, now, 0.1);
+      const key = q.sixteenth().toFixed(5);
+      if (key !== this.tapKey) {
+        this.tapKey = key;
+        T.taps.forEach((n, k) => mx.taps[k] && mx.taps[k].delayTime.setTargetAtTime(q.sixteenth() * n, now, 0.1));
+        mx.throw.forEach((d) => d.delayTime.setTargetAtTime(q.sixteenth() * T.taps[0], now, 0.1));
+      }
+    }
+
+    // --- the grid
+    barStart(t) {
+      this.bars++;
+      const g = this.readGame();
+      if (g) {
+        if (this.outro && g.plies < this.matePly) { this.reset(); this.bars = 0; this.logCue("newgame"); }
+        this.plies = g.plies; this.check = g.check;
+        this.base = Math.min(0.4, g.mat / 900) + Math.min(0.2, (g.plies / 80) * 0.2) + (g.check ? 0.15 : 0);
+      }
+      // a mate turns the music on this bar line: the phrase starts over, calm and dark
+      if (this.pending.some((p) => p.name === "mate")) { this.outro = true; this.matePly = this.plies; this.bars = 0; }
+      const pb = posmod(this.bars, 8);
+      if (pb === 0) {
+        const name = this.outro ? "calm" : this.tension > 0.55 ? "tense" : this.phr.phrases % 2 ? "calm2" : "calm";
+        if (name !== this.progName) this.logCue(name);
+        this.progName = name; this.prog = SC.PROG[name]; this.phr.phrases++;
+      }
+      const ch = SC.CH[this.prog[pb]];
+      this.changed = ch !== this.chord || pb === 0; this.chord = ch; this.pb = pb;
+      this.turnLayers(t);
+    }
+    // each layer up or down on the bar line: the groove once each side has moved (or the opening is over),
+    // the tension's own at their marks; all of them down after a mate
+    turnLayers(t) {
+      const at = this.ctxTime(t), bar = this.sixteenth() * 16;
+      for (const L of SC.LAYERS) {
+        const was = this.layers[L.id];
+        const want = this.outro ? false : L.id === "groove" ? was || this.bars >= SC.OPENING_BARS || this.plies >= SC.OPENING_PLIES : this.layers.groove && this.tension >= L.at - (was ? 0.08 : 0);
+        if (want === was) continue;
+        this.layers[L.id] = want;
+        if (!want) this.offBar[L.id] = this.bars;
+        else this.phr.layers++;
+        for (const [d, i] of L.subs) this.ramp(this.mix.decks[d][i], want ? 1 : 0, at, want ? bar / 3 : bar * 0.6);
+        this.logCue(L.id + (want ? "+" : "-"));
+      }
+    }
+    // whether a layer plays: up, or fading out for two more bars
+    sounds(id) { return this.layers[id] || this.bars - this.offBar[id] < 2; }
+
+    onStep(s, t) {
+      if (s === 0) this.barStart(t);
+      const q = this.seq, sx = q.sixteenth(), at = t + (s % 2 ? SC.SWING * sx : 0), ch = this.chord, pb = this.pb;
+      if (!ch) return;
+      // the bed: on a chord change the pads and the Rhodes roll in (the last chord's let go under them)
+      if (s === 0 && this.changed) {
+        for (const v of this.pads) this.mixer.stop(v, this.ctxTime(t), 0.5);
+        for (const v of this.keys) this.mixer.stop(v, this.ctxTime(t), 0.25);
+        this.pads = []; this.keys = [];
+        ch.notes.forEach((n, k) => { const v = this.play("silk", n, SC.LV.silk - k * 0.5, "MusicPadsA", t + k * 0.09); if (v) this.pads.push(v); });
+        ch.notes.forEach((n, k) => { const v = this.play("keys", n, SC.LV.keys - k * 0.6, "MusicKeysA", t + k * 0.03); if (v) this.keys.push(v); });
+        if (this.sounds("air")) {
+          const a = this.play("breath", ch.bass + 12, SC.LV.breath, "MusicPadsB", t), b = this.play("breath", ch.bass + 19, SC.LV.breath - 4, "MusicPadsB", t + 0.4);
+          for (const v of [a, b]) if (v) this.pads.push(v);
+        }
+      }
+      // the Rhodes re-strikes, by turns, a bar's worth (none on the chord's own downbeat)
+      const top = [...ch.notes].sort((a, b) => b - a);
+      for (const [st, idx] of SC.STRIKES[posmod(this.bars, 2)]) if (st === s) for (const k of idx) { const v = this.play("keys", top[k], SC.LV.strike - k, "MusicKeysA", at + k * 0.02); if (v) this.keys.push(v); }
+      if (this.keys.length > 12) this.keys.splice(0, this.keys.length - 12);
+      if (this.sounds("groove")) this.groove(s, t, at, pb, top);
+      if (this.sounds("lead") && posmod(this.bars, 2) === 0) {
+        const M = SC.MOTIFS[posmod(this.bars >> 1, SC.MOTIFS.length)];
+        for (const [st, idx] of M) if (st === s) this.play("keys", ch.notes[idx] + 12, SC.LV.lead, "MusicLeadB", at);
+      }
+      // the stingers waiting for this step of the grid
+      if (this.pending.length) this.pending = this.pending.filter((p) => { if (s % p.unit) return true; this.sting(p.name, t); return false; });
+    }
+    groove(s, t, at, pb, top) {
+      const q = this.seq, sx = q.sixteenth(), ch = this.chord, L = SC.LANES;
+      const bar = pb === 7 ? BARS.fill : pb % 2 ? BARS.alt : BARS.base;
+      for (const lane of ["k", "s", "h"]) {
+        const d = bar[lane][s];
+        if (d === null) continue;
+        const [inst, db] = L[lane], v = this.play(inst, lane === "k" ? 36 : 60 + rr(-0.15, 0.15), db + d + (lane === "k" ? 0 : rr(-1.5, 0)), "MusicDrumA", at);
+        if (v) { this.hits[lane]++; if (lane === "k") this.pump(this.ctxTime(at)); }
+      }
+      for (const [lane, id, bus] of [["g", "ghosts", "MusicDrumB"], ["sh", "ghosts", "MusicDrumB"], ["p", "shaker", "MusicPercB"]]) {
+        const d = BARS.more[lane][s];
+        if (d === null || !this.sounds(id)) continue;
+        const [inst, db] = L[lane];
+        if (this.play(inst, 60 + rr(-0.15, 0.15), db + d + rr(-1.5, 0), bus, at)) this.hits[lane]++;
+      }
+      // the sub on the root (tense: moving to the fifth and the octave), held for its length
+      for (const [st, n, len] of SC.SUB[this.progName === "tense" ? "tense" : "calm"]) {
+        if (st !== s) continue;
+        const v = this.play("lsub", 28 + posmod(ch.bass - 28, 12) + n, SC.LV.sub, "MusicBassA", at);
+        if (v) this.mixer.stop(v, this.ctxTime(at + len * sx), 0.015);
+      }
+      // a reverse swell into the next phrase, its top on the bar line
+      if (pb === 7 && s === 0) {
+        const nx = SC.CH[this.prog[0]], n = Math.max(...nx.notes), len = 1.6 / (Math.pow(2, (n - q.instruments.rev[0]) / 12) * q.rate);
+        this.play("rev", n, SC.LV.rev, "MusicPadsA", Math.max(t, t + 16 * sx - len));
+      }
+    }
+    // a stinger at `t`, in the chord playing
+    sting(name, t) {
+      const ch = this.chord, sx = this.sixteenth(), up = [...ch.notes].sort((a, b) => a - b), top = up.slice(-3);
+      this.phr.stings++; this.logCue(name);
+      if (name === "capture") top.forEach((n, k) => this.play("stab", n, -26 - k * 0.5, "MusicThrow", t + k * 0.012));
+      else if (name === "check") {
+        this.dip = 1;
+        this.play("bass", 33 + posmod(ch.bass - 33, 12), -17, "MusicPerc", t);
+        this.play("bell", ch.bass + 24, -21, "MusicLead", t + sx * 2);
+      } else if (name === "promo") up.slice(1).forEach((n, k) => this.play("celesta", n + 12, -22 - k, "MusicLead", t + k * sx * 3));
+      else if (name === "mate") {
+        const S = SC.STING;
+        this.play("lsub", S.bass, -17, "MusicPads", t);
+        S.notes.forEach((n, k) => this.play("keys", n, -23 - k, "MusicKeys", t + k * 0.06));
+        this.play("bell", S.bell, -20, "MusicPads", t + sx * 8);
+      }
+    }
+  }
+  G.MossMusic = G.Music;
+  const want = window.ME && ME.params ? ME.params.get("music") : new URLSearchParams(location.search).get("music");
+  if (want !== "moss") G.Music = ChillMusic;
+  G.ChillMusic = ChillMusic;
+})();
+
+</script>
 <script>/* ../Mossheart/src/audio/audio.js */
 /* The game's audio: the bus layout of the Godot build, built from the audio engine's mixer (MA.Mixer),
    with the game's two sound banks (instruments.js, sfx.js), the music director (music.js) and the
@@ -21810,7 +22185,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.23.0", name: "DeckChess", commit: "6e434f4" };
+  G.VERSION = { v: "0.24.0", name: "DeckChess", commit: "dfb63fb" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
