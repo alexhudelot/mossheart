@@ -7133,7 +7133,8 @@ window.addEventListener("error", (e) => {
 <script>/* ../MossheartEngine/src/grass.js */
 /* Grass bake: tufts of voxel blades on the moss carpet, drawn by the grass pass and bent by the wind.
    Thicker along lane edges, cliff feet and banks; reeds (taller, darker) where moss meets water.
-   One vec4 per blade: x, y, z (ground), w = material << 8 | height in voxels << 4 | seed. */
+   A kind's grass is true (these tufts) or an option, { h, density, blade }: tall grass (the Corn Moon's E3).
+   One vec4 per blade: x, y, z (ground), w = material << 12 | height in voxels (8 bits) << 4 | seed. */
 (function () {
   const ME = window.ME, P = window.PX;
 
@@ -7144,6 +7145,11 @@ window.addEventListener("error", (e) => {
     const C = ME.content || {}, id = st && (st.map && st.map.id !== undefined ? st.map.id : st.id);
     return (C.mapGrass && id !== undefined && C.mapGrass[id]) || C.grass;
   };
+
+  // the blade budget of a map with tall grass, [desktop, phone], in blades at 16 voxels a tile (times the
+  // tufts' scale above 16), unless the map's set gives its own (budget: [desktop, phone]). Over it the blades
+  // are thinned evenly. The numbers are Engine's, measured on the grass pass (Corn Moon, desktop and -Mobile)
+  ME.GRASS_TALL = [16000, 8000];
 
   ME.bakeGrass = function (T, st, pal) {
     const t0 = ME.now(), VS = T.VS, { NX, NY, O, grid, top } = T, PLANE = NX * NY, H = P.hash, TL = T.tiles;
@@ -7160,9 +7166,27 @@ window.addEventListener("error", (e) => {
     // ground and blade materials from the content
     const ok = new Set((GR.ground || []).map((n) => pal.ids[n]).filter((i) => i !== undefined));
     const M = { grass: pal.id(GR.blade), grass2: pal.id(GR.blade2), reed: pal.id(GR.reed), dry: pal.id(GR.dry) };
-    const geo = T.geo, out = [];
+    // a tile's option, when its kind's grass is one (else null: the tufts above): h the blades' height in
+    // tiles, density times the tufts a tile, blade the blade material or materials (else the map's set). The
+    // terrain key hashes the kinds whole (cache.js), so the option is in it; the blades are baked at each load
+    const KD = (ME.content && ME.content.kinds) || {}, opts = new Map();
+    const optAt = (t) => {
+      const n = TL.name && TL.name[t], g = n != null && KD[n] && KD[n].grass;
+      if (!g || typeof g !== "object") return null;
+      if (!opts.has(g)) opts.set(g, { h: g.h || 0, density: g.density ?? 1, mats: g.blade ? [].concat(g.blade).map((b) => pal.id(b)) : null });
+      return opts.get(g);
+    };
+    let tall = false;
+    for (let t = 0; t < TL.grass.length && !tall; t++) tall = !!TL.grass[t] && optAt(t) !== null;
+    // the budget: a map with an option (or a set with a budget) gets one, and its blades over it are thinned
+    // evenly, one hash a blade, so a field keeps its shape; any other map keeps the cap (the last rows go bare)
+    const BU = GR.budget || (tall ? ME.GRASS_TALL : null), budget = BU ? Math.round(BU[ME.phone && ME.phone() ? 1 : 0] * FT) : 0;
+    const LIM = budget ? budget * 4 : CAP, keep = [];
+    const geo = T.geo;
+    let out = [];
     for (let cy = 0; cy < TL.H; cy++) for (let cx = 0; cx < TL.W; cx++) {
       if (!TL.grass[cy * TL.W + cx] || (geo && Math.hypot(cx + 0.5 - geo.C, cy + 0.5 - geo.C) > geo.RI - 0.4)) continue;
+      const op = optAt(cy * TL.W + cx);
       let lane = 0, water = 0, cliff = 0;
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const t = recipe(cx + dx, cy + dy);
@@ -7171,7 +7195,7 @@ window.addEventListener("error", (e) => {
         if (hgt(cx + dx, cy + dy) > hgt(cx, cy)) cliff = 1;
       }
       const patch = P.fbm(cx * 0.35, cy * 0.35, 0, 77);
-      const n = Math.round((2 + 3 * lane + 4 * water + 3 * cliff) * (0.45 + patch) * (H(cx, cy, 0, 71) > 0.2 ? 1 : 0.3) * FT);
+      const n = Math.round((2 + 3 * lane + 4 * water + 3 * cliff) * (0.45 + patch) * (H(cx, cy, 0, 71) > 0.2 ? 1 : 0.3) * FT * (op ? op.density : 1));
       for (let k = 0; k < n; k++) {
         const r = (s) => H(cx * 31 + k, cy * 17 + s, 0, 73);
         // tufts lean towards the feature that feeds them
@@ -7182,15 +7206,26 @@ window.addEventListener("error", (e) => {
           if (i < 1 || j < 1 || i >= NX - 1 || j >= NY - 1) continue;
           const col = j * NX + i, kt = top[col];
           if (kt < 1 || !ok.has(grid.at((kt - 1) * PLANE + col)) || grid.at(kt * PLANE + col)) continue;
-          const hv = Math.max(1, Math.round(KV * (reed ? 6 + Math.floor(H(i, j, b, 76) * 7) : 2 + Math.floor(H(i, j, b, 76) * 4) + (cliff ? 1 : 0))));
-          const mat = reed ? M.reed : H(i, j, b, 77) > 0.82 ? M.dry : H(i, j, b, 78) > 0.5 ? M.grass : M.grass2;
-          out.push(O[0] + (i + 0.5) / VS, O[1] + (j + 0.5) / VS, O[2] + kt / VS, (mat << 8) | (Math.min(15, hv) << 4) | Math.floor(H(i, j, b, 79) * 16));
-          if (out.length >= CAP * 4) break;
+          // a tall blade is 0.7-1 of its option's h; the others keep today's heights, capped at 15 voxels
+          const hi = !reed && op && op.h > 0;
+          const hv = Math.max(1, Math.round(hi ? op.h * VS * (0.7 + 0.3 * H(i, j, b, 76)) : KV * (reed ? 6 + Math.floor(H(i, j, b, 76) * 7) : 2 + Math.floor(H(i, j, b, 76) * 4) + (cliff ? 1 : 0))));
+          const om = !reed && op && op.mats;
+          const mat = reed ? M.reed : om ? om[Math.min(om.length - 1, Math.floor(H(i, j, b, 78) * om.length))] : H(i, j, b, 77) > 0.82 ? M.dry : H(i, j, b, 78) > 0.5 ? M.grass : M.grass2;
+          out.push(O[0] + (i + 0.5) / VS, O[1] + (j + 0.5) / VS, O[2] + kt / VS, (mat << 12) | (Math.min(hi ? 255 : 15, hv) << 4) | Math.floor(H(i, j, b, 79) * 16));
+          if (budget) keep.push(H(i, j, b, 80));
+          if (out.length >= LIM * 4) break;
         }
       }
     }
+    const all = out.length / 4;
+    if (budget && all > budget) {
+      // thinned to the budget: a blade stays when its hash is under budget / all
+      const f = budget / all, kept = [];
+      for (let b = 0; b < all; b++) if (keep[b] < f) kept.push(out[b * 4], out[b * 4 + 1], out[b * 4 + 2], out[b * 4 + 3]);
+      out = kept;
+    }
     const blades = new Float32Array(out.length ? out : [0, 0, -99, 0]);
-    return { blades, count: out.length / 4, ms: Math.round(ME.now() - t0) };
+    return { blades, count: out.length / 4, ms: Math.round(ME.now() - t0), all, budget };
   };
 })();
 
@@ -7371,14 +7406,18 @@ window.addEventListener("error", (e) => {
       const C = ME.content, src = (k, v) => (typeof v === "function" ? String(v) : v);
       const v1 = st.map && st.map.v !== undefined, kinds = {};
       if (v1 && C && C.kinds) for (const n of Object.values(st.map.legend || {})) if (n !== null && C.kinds[n]) kinds[n] = C.kinds[n];
-      const content = C ? JSON.stringify([C.terrain, kinds, C.defaultMaterial, ME.grassFor ? ME.grassFor(st) : C.grass, C.critters, C.walkers, C.groundLamps, C.edgeRound, ME.qn("edgebreak", 1) === 0 ? null : C.edgeBreak, C.sand], src) : "";
+      const gs = C && (ME.grassFor ? ME.grassFor(st) : C.grass);
+      const content = C ? JSON.stringify([C.terrain, kinds, C.defaultMaterial, gs, C.critters, C.walkers, C.groundLamps, C.edgeRound, ME.qn("edgebreak", 1) === 0 ? null : C.edgeBreak, C.sand], src) : "";
+      // a map with tall grass (a kind's grass option, or a set's budget) bakes fewer blades on a phone (grass.js)
+      const tall = Object.values(kinds).some((k) => k.grass && typeof k.grass === "object") || !!(gs && gs.budget);
+      const dev = tall && ME.phone && ME.phone() ? "|phone" : "";
       const lists = C ? JSON.stringify([C.volumeDeco, C.flipbookFrames, C.modelScale, C.critterScale, C.primLights, C.sunShadeHalf], src) : "";
       // a v1 map names the bake, and its game block (route, cover, spawns) is not baked, but for its lane
       // kinds (game.lane: the edge breakup keeps their borders straight, bake-terrain.js)
       const game = v1 && st.map.game ? { lane: st.map.game.lane } : undefined;
       const s = v1 ? Object.assign({}, st, { map: Object.assign({}, st.map, { game }) }) : st, id = v1 ? st.map.id : st.id;
       const slot = encodeURIComponent(o.app ?? pageApp()) + "/" + encodeURIComponent(id) + "/";
-      return { slot, id, own: content + JSON.stringify(s) + extra, lists };
+      return { slot, id, own: content + JSON.stringify(s) + extra + dev, lists };
   };
 
   // E3 (the vs64 load study's PR 2): the bake in parts that outlive a release. A terrain record per app and map
@@ -7388,7 +7427,8 @@ window.addEventListener("error", (e) => {
   // BAKE_REV does, one number per part, raised by hand whenever the code changes what that part bakes.
   // Mossheart's tools\bake-rev.ps1 bakes every map at vs12 and fails when a part's output changed and its
   // number didn't (warns on a raise with no change). The parts are written after R.init (flush), one at a time.
-  ME.BAKE_REV = { terrain: 1, models: 1 };
+  // terrain 2: a grass blade's word holds 8 bits of height (material << 12, was << 8) and a kind's tall grass (grass.js)
+  ME.BAKE_REV = { terrain: 2, models: 1 };
   // ?bakerev=1: hashes of what the parts would store (ME.bakeCache.trace: terrain, models by key), for bake-rev.ps1;
   // with or without the cache. Timings (stats, ms, *Ms, a worker's idle and first) are left out; fields: each model record's top-level parts hashed, by key
   const trace = ME.qn("bakerev", 0) ? { terrain: null, models: {}, fields: {} } : null, TIMING = /^(stats|ms|idle|first)$|Ms$/;
@@ -7912,7 +7952,7 @@ window.addEventListener("error", (e) => {
   ME.wgsl = ME.wgsl || {};
 
   // float offsets into the uniform buffer (vec4 aligned)
-  ME.UOFF = { vp: 0, ivp: 16, vdir: 32, sun: 36, res: 40, grid: 44, dims: 48, cgrid: 52, cdims: 56, look: 60, look2: 64, look3: 68, fog: 72, beamCol: 76, canopy: 80, canopy2: 84, shadow: 88, shadow2: 92, beams: 96, beamK: 128, ids: 136, misc: 140, outres: 144, part: 148, psrc: 152, geo: 156, misc2: 160, look4: 164, wind: 168, canopy3: 172, water2: 176, lgrid: 180, field: 184, weather: 188, weather2: 192, weather3: 196, wclear: 200, weather4: 216, user: 220 };
+  ME.UOFF = { vp: 0, ivp: 16, vdir: 32, sun: 36, res: 40, grid: 44, dims: 48, cgrid: 52, cdims: 56, look: 60, look2: 64, look3: 68, fog: 72, beamCol: 76, canopy: 80, canopy2: 84, shadow: 88, shadow2: 92, beams: 96, beamK: 128, ids: 136, misc: 140, outres: 144, part: 148, psrc: 152, geo: 156, misc2: 160, look4: 164, wind: 168, canopy3: 172, water2: 176, lgrid: 180, field: 184, weather: 188, weather2: 192, weather3: 196, wclear: 200, weather4: 216, key: 220, key2: 224, sky: 228, sky2: 232, user: 236 };
   // vec4 slots of app data at the end of the block (u.user[k], Renderer.user) for the shader hooks
   ME.USER_SLOTS = 6;
   ME.USIZE = ME.UOFF.user + 4 * ME.USER_SLOTS;
@@ -7921,7 +7961,11 @@ window.addEventListener("error", (e) => {
   // Mirrored exactly by WGSL gust() so trees (CPU) and grass, moss and canopy (GPU) move together.
   // gs (R.set.gust, 0..1) is how much of the wind comes in fronts: a breeze of 0.6*(1 - gs) under fronts of
   // 0.9*(0.5 + gs), so 0.5 is the original mix. ME.gustOf reads it from a settings object (0.5 if unset).
-  ME.WIND_DIR = [0.85, -0.527];
+  // A level's look.windAz (degrees, atan2(y, x) of the downwind direction) replaces it for that level:
+  // the Renderer rewrites ME.WIND_DIR in place (back to ME.WIND_DIR0 for a level without one).
+  ME.WIND_DIR0 = [0.85, -0.527];
+  ME.WIND_DIR = ME.WIND_DIR0.slice();
+  ME.windDir = (az) => { const r = (az * Math.PI) / 180; return [Math.cos(r), Math.sin(r)]; };
   ME.gustOf = (s) => { const v = s.gust == null ? 0.5 : +s.gust; return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.5; };
   ME.gust = (x, y, t, k, gs = 0.5) => {
     const [wx, wy] = ME.WIND_DIR, a = x * wx + y * wy, c = -x * wy + y * wx, ph = a * 0.45 - t * 1.1;
@@ -7969,6 +8013,10 @@ struct U {
   weather3: vec4f, // fog base z, low fog, petals, wind channel
   wclear: array<vec4f, 4>, // fog clearings: x, y, radius, softness (radius 0 = unused)
   weather4: vec4f, // rain streak layers (R.rainLayers: 3; 2 on compat, 1 on a phone), -, -, -
+  key: vec4f,     // the key light's colour (look.sunCol, linear), w = 1 when the level tints its light
+  key2: vec4f,    // the ambient's colour (look.ambCol, linear; the key colour without), w = 1 for the night backdrop
+  sky: vec4f,     // night backdrop: zenith colour (linear), star density
+  sky2: vec4f,    // night backdrop: horizon colour (linear), moon disc radius (fraction of the screen height)
   user: array<vec4f, ${ME.USER_SLOTS}>, // app data for the shader hooks (Renderer.user)
 };
 @group(0) @binding(0) var<uniform> u: U;
@@ -8004,6 +8052,11 @@ fn beamKOf(i: i32) -> f32 {
   let v = u.beamK[i / 4]; let j = i % 4;
   return select(select(select(v.w, v.z, j == 2), v.y, j == 1), v.x, j == 0);
 }
+// A level's key light (look.sunCol, look.ambCol): k = 1 in full key light, 0 in its shade, where the
+// ambient colour takes over. White (no change) for a level without them.
+fn keyTint(k: f32) -> vec3f { return select(vec3f(1.0), mix(u.key2.rgb, u.key.rgb, clamp(k, 0.0, 1.0)), u.key.w > 0.5); }
+// A sun glint's colour c, or the level's key light colour.
+fn keyC(c: vec3f) -> vec3f { return select(c, u.key.rgb, u.key.w > 0.5); }
 // Breeze plus gust fronts (ME.gust mirrors this); u.wind.w is the gust share (R.set.gust).
 fn gust(p: vec2f, t: f32) -> f32 {
   let wd = u.wind.xy; let a = dot(p, wd); let c = dot(p, vec2f(-wd.y, wd.x)); let ph = a * 0.45 - t * 1.1;
@@ -8409,7 +8462,7 @@ const BOX = array<vec3f, 30>(
 const FN = array<vec3f, 5>(vec3f(1,0,0), vec3f(-1,0,0), vec3f(0,1,0), vec3f(0,-1,0), vec3f(0,0,1));
 @vertex fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VO {
   let B = blades[ii]; let pk = u32(B.w);
-  let mat = pk >> 8u; let hv = f32((pk >> 4u) & 15u); let sd = f32(pk & 15u) / 16.0;
+  let mat = pk >> 12u; let hv = f32((pk >> 4u) & 255u); let sd = f32(pk & 15u) / 16.0;
   // 3 segments x (the x side and the y side facing the view) + the top: blades are axis-aligned boxes
   // and the camera orthographic, so the other two sides are never visible
   var seg = 2u; var face = 4u; var kv = vi - 36u;
@@ -8611,11 +8664,40 @@ fn forest(uv: vec2f) -> f32 {
   }
   return s;
 }
+// A level's night backdrop (look.backdrop "night"): the sky from u.sky (zenith, top of the screen) down to
+// u.sky2 (the horizon), twinkling stars (u.sky.w: density) and the moon's disc (u.sky2.w: radius, a share of
+// the screen height) high on the side of the screen L's azimuth points to, with a halo, in the key's colour.
+fn night(fc: vec2f, uv: vec2f) -> vec3f {
+  var col = mix(u.sky2.rgb, u.sky.rgb, sstep(0.05, 0.95, 1.0 - uv.y));
+  let h = u.res.y; let mr = max(u.sky2.w, 1e-4);
+  let sd = (u.vp * vec4f(u.sun.xy, 0.0, 0.0)).xy; // the sun's azimuth on the screen (NDC, y up)
+  let mc = vec2f(0.5 + 0.36 * sd.x / max(length(sd), 1e-4), 0.15) * u.res.xy;
+  let md = (fc - mc) / h; let ml = length(md);
+  let moonC = mix(keyC(vec3f(0.85, 0.9, 1.0)), vec3f(1.0), 0.55);
+  col += moonC * 0.06 * exp(-ml / (mr * 2.5)); // halo
+  // stars: one candidate per cell of ~1.2% of the screen height, fewer near the horizon and the moon
+  let cs = h * 0.012; let q = fc / cs; let c = floor(q);
+  let r = hash12(c + 7.0);
+  if (r < 0.22 * u.sky.w) {
+    let o = vec2f(0.2) + 0.6 * vec2f(hash12(c + 13.0), hash12(c + 29.0));
+    let dp = length(q - c - o) * cs;
+    let tw = 0.65 + 0.35 * sin(u.vdir.w * (1.3 + 2.0 * hash12(c + 3.0)) + r * 40.0);
+    let b = (0.25 + 0.75 * pow(hash12(c + 41.0), 3.0)) * tw * exp(-dp * dp * 1.6);
+    col += vec3f(0.8, 0.86, 1.0) * b * 0.55 * sstep(0.95, 0.4, uv.y) * sstep(mr * 1.5, mr * 4.0, ml);
+  }
+  // the disc, soft-edged, with faint maria
+  let disc = 1.0 - sstep(mr * 0.92, mr, ml);
+  let mar = 0.82 + 0.18 * vnoise(md / mr * 2.2 + 3.0);
+  return mix(col, moonC * 1.6 * mar, disc);
+}
 @fragment fn fs(@builtin(position) fc: vec4f) -> @location(0) vec4f {
   let px = vec2i(fc.xy);
   let uv = fc.xy * u.res.zw;
   let d = textureLoad(gD, px, 0);
-  if (d <= 0.0) { return vec4f(rampC(u32(u.ids.x), forest(uv)), 1.0); }
+  if (d <= 0.0) {
+    if (u.key2.w > 0.5) { return vec4f(night(fc.xy, uv), 1.0); }
+    return vec4f(rampC(u32(u.ids.x), forest(uv)), 1.0);
+  }
   let p = (u.ivp * vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, d, 1.0)).xyz;
   let A = textureLoad(gA, px, 0); let N = textureLoad(gN, px, 0);
   let n = octDec(N.xy); let mat = u32(N.z + 0.5); let aux = N.w;
@@ -8672,6 +8754,8 @@ fn forest(uv: vec2f) -> f32 {
     col = A.rgb * (vec3f(1.0, 0.85, 0.6) * 2.4 * (lam * vis * (0.15 + 0.85 * cook) + trans) + vec3f(0.18, 0.3, 0.2) * ao * 0.8);
   }
   col *= 1.0 + max(0.0, s - 0.9) * 1.8;
+  // a level's key light (look.sunCol, look.ambCol): the key's colour where it reaches, the ambient's in its shade
+  col *= keyTint(vis * (0.6 + 0.4 * cook) * sstep(0.0, 0.5, lam));
   // rain (Weather 2) on the terrain and the models, not the sim's instances: wet darkens where the sky reaches
   // (sv.g), moss less, with a faint sheen on wet walls; the up-facing open ground splashes, a hashed point per
   // 0.25 cell crowning for 0.15 s once a cycle (1.4 s in a drizzle to 0.5 s in a downpour) at its own phase
@@ -8905,17 +8989,19 @@ fn waves(p: vec2f, fl: vec2f, st: f32, t: f32, rough: f32) -> Wv {
   let cook = canopyS(i.w);
   let L = u.sun.xyz; let V = -u.vdir.xyz;
   let s = 0.5 - u.look.x * 0.6 + (u.look.x + u.look.y) * cook * sv * 0.75 - 0.2 * clamp(thick * 2.2, 0.0, 1.0) + (n.z - 0.97) * 2.5 - rough * 0.05;
-  var col = rampC(u32(u.ids.y), s);
+  // a level's key light (look.sunCol) tints the body and the foam; on a night backdrop the water mirrors its
+  // sky (u.sky, u.sky2) and the glint takes the key's colour; without a look all three stay as they were
+  var col = rampC(u32(u.ids.y), s) * keyTint(sv * (0.6 + 0.4 * cook));
   let fres = 0.04 + 0.96 * pow(1.0 - max(dot(n, V), 0.0), 5.0);
-  col = mix(col, rampC(u32(u.ids.x), 0.5), fres * (0.6 - rough * 0.2));
-  col += vec3f(1.0, 0.88, 0.62) * pow(max(dot(reflect(-V, n), L), 0.0), mix(110.0, 40.0, rough)) * sv * (0.2 + cook) * 7.0;
+  col = mix(col, select(rampC(u32(u.ids.x), 0.5), mix(u.sky2.rgb, u.sky.rgb, 0.3), u.key2.w > 0.5), fres * (0.6 - rough * 0.2));
+  col += keyC(vec3f(1.0, 0.88, 0.62)) * pow(max(dot(reflect(-V, n), L), 0.0), mix(110.0, 40.0, rough)) * sv * (0.2 + cook) * 7.0;
   // flow lines: thin streaks carried by the current, broken up so they read as moving water
   let fd = normalize(fl + vec2f(1e-4, 0.0)); let fm = length(fl);
   let streak = vnoise(vec2f(dot(i.w.xy, vec2f(-fd.y, fd.x)) * 15.0, dot(i.w.xy, fd) * 2.2 - t * mix(0.4, 2.0, stream)));
   let lines = sstep(0.68, 0.88, streak) * min(fm, 1.0) * (0.12 + 0.3 * stream);
   let shore = sstep(0.05, 0.0, thick) * (0.5 + 0.5 * vnoise(i.w.xy * 22.0 + vec2f(t * 0.7)));
   let foam = clamp(shore + lines + W0.foam, 0.0, 1.0);
-  col = mix(col, rampC(u32(u.ids.z), 0.86 + 0.14 * cook * sv) * (1.0 + cook * sv * 0.4), foam);
+  col = mix(col, rampC(u32(u.ids.z), 0.86 + 0.14 * cook * sv) * (1.0 + cook * sv * 0.4) * keyTint(sv * (0.6 + 0.4 * cook)), foam);
   let alpha = clamp(0.3 + 0.55 * (1.0 - exp(-thick * 2.2)) + fres * 0.3, 0.0, 0.9);
   return vec4f(col, max(alpha, foam));
 }
@@ -8973,9 +9059,9 @@ fn lake(i: VO, li: u32) -> vec4f {
   let fres = 0.02 + 0.98 * pow(1.0 - max(dot(n, V), 0.0), 5.0);
   let absb = 1.0 - exp(-thick / absorb);
   let body = clamp(absb + (1.0 - clar) * 0.35 * (1.0 - absb), 0.0, 1.0);
-  let deep = L1.rgb * (0.35 + 0.65 * clamp(0.4 + 0.6 * cook * sv, 0.0, 1.0));
-  let sky = rampC(u32(u.ids.x), 0.5);
-  let spec = vec3f(1.0, 0.88, 0.62) * pow(max(dot(reflect(-V, n), L), 0.0), mix(160.0, 60.0, rough)) * sv * (0.2 + cook) * 7.0 * glint;
+  let deep = L1.rgb * (0.35 + 0.65 * clamp(0.4 + 0.6 * cook * sv, 0.0, 1.0)) * keyTint(sv * (0.6 + 0.4 * cook));
+  let sky = select(rampC(u32(u.ids.x), 0.5), mix(u.sky2.rgb, u.sky.rgb, 0.3), u.key2.w > 0.5);
+  let spec = keyC(vec3f(1.0, 0.88, 0.62)) * pow(max(dot(reflect(-V, n), L), 0.0), mix(160.0, 60.0, rough)) * sv * (0.2 + cook) * 7.0 * glint;
   let fd = normalize(fl + vec2f(1e-4, 0.0)); let fm = length(fl);
   let streak = vnoise(vec2f(dot(i.w.xy, vec2f(-fd.y, fd.x)) * 15.0, dot(i.w.xy, fd) * 2.2 - t * mix(0.4, 2.0, stream)));
   let lines = sstep(0.68, 0.88, streak) * min(fm, 1.0) * (0.12 + 0.3 * stream) * (1.0 - 0.8 * calm);
@@ -8984,7 +9070,7 @@ fn lake(i: VO, li: u32) -> vec4f {
   // premultiplied: the body and the reflection over the floor, the glint added; the blend multiplies back by a
   let a = clamp(body * (1.0 - fres) + fres * 0.9, 0.0, 0.98);
   var col = (deep * body * (1.0 - fres) + sky * fres * 0.9 + spec) / max(a, 1e-3);
-  col = mix(col, rampC(u32(u.ids.z), 0.86 + 0.14 * cook * sv) * (1.0 + cook * sv * 0.4), foam);
+  col = mix(col, rampC(u32(u.ids.z), 0.86 + 0.14 * cook * sv) * (1.0 + cook * sv * 0.4) * keyTint(sv * (0.6 + 0.4 * cook)), foam);
   return vec4f(col, max(a, foam));
 }
 @fragment fn fs(i: VO) -> @location(0) vec4f {
@@ -10056,6 +10142,14 @@ fn boxOf(V: Vox) -> Box {
     morning: { shade: 0.46, amb: 0.22, shaftK: 0.28, haze: 0.1, bloomK: 1.1, glassK: 0.45, sunEl: 8, sunAz: -20 },
     clear: { shade: 0.4, pool: 0.55, amb: 0.2, shaftK: 0.16, bloomK: 1, glassK: 0.35, mottle: 1.4 },
   };
+  // A level's own look (style.look, from ME.content.mapLight[id].look; docs/decisions/2026-10-24-corn-moon.md):
+  // its values of these R.set keys are the level's base (set0) and lie over every preset (applyPreset), so the
+  // dusk blend and a game's mood start from them. Its other fields: sunCol, ambCol (the key light's and the
+  // ambient's colour, linear RGB; ambCol defaults to sunCol, one tint for both), dusk (the dusk targets over
+  // ME.DUSK: R.duskTo), windAz (ME.WIND_DIR), and backdrop "night" (a night sky with stars and the moon at
+  // L's azimuth; skyTop, skyLow, stars, moon tune it).
+  ME.LOOK_SET = ["shade", "pool", "amb", "aoK", "shaftK", "bloomK", "exposure", "haze", "vignette", "mottle", "windK", "gust"];
+  ME.NIGHT_SKY = { skyTop: [0.010, 0.012, 0.045], skyLow: [0.060, 0.074, 0.120], stars: 1, moon: 0.035 };
 
   // Every pipeline depends only on the device and the canvas format, so they compile (async, in parallel,
   // in the GPU process) while the CPU bake runs: slow phone shader compilers hide behind it. An app's
@@ -10243,6 +10337,19 @@ fn boxOf(V: Vox) -> Box {
         beamDrift: 1, moonK: 5, // the sun pools wander this far (units); the moon beams' gain at full night
       };
       this.shaftMul = hd.shaftMul ?? 1; // a map's own shaft gain (style.hd.shaftMul): out of set, so presets and moods stay relative to it
+      // the level's look (ME.LOOK_SET above): its base values, wind, key light, dusk targets and backdrop
+      const look = st.look || {};
+      this.lookSet = {};
+      for (const k of ME.LOOK_SET) if (typeof look[k] === "number") this.lookSet[k] = look[k];
+      Object.assign(this.set, this.lookSet);
+      const wd = look.windAz != null ? ME.windDir(+look.windAz) : ME.WIND_DIR0;
+      ME.WIND_DIR[0] = wd[0]; ME.WIND_DIR[1] = wd[1]; // in place: the sim, the critters and content hold the array
+      this.duskTo = Object.assign({}, ME.DUSK || {}, look.dusk || {});
+      const ns = ME.NIGHT_SKY, c3 = (v, d) => (Array.isArray(v) && v.length >= 3 ? [+v[0], +v[1], +v[2]] : d);
+      this.key = look.sunCol ? c3(look.sunCol, [1, 1, 1]).concat(1) : [1, 1, 1, 0];
+      this.key2 = c3(look.ambCol, this.key.slice(0, 3)).concat(look.backdrop === "night" ? 1 : 0);
+      this.sky = c3(look.skyTop, ns.skyTop).concat(look.stars ?? ns.stars);
+      this.sky2 = c3(look.skyLow, ns.skyLow).concat(look.moon ?? ns.moon);
       this.set0 = Object.assign({}, this.set);
       this.L0 = st.L.slice();
       // app extension points (see the header); all empty for the plain engine scene
@@ -10267,7 +10374,7 @@ fn boxOf(V: Vox) -> Box {
       const p = ME.PRESETS[name];
       if (!p) return false;
       for (const q of Object.values(ME.PRESETS)) for (const k in q) this.set[k] = this.set0[k];
-      Object.assign(this.set, p);
+      Object.assign(this.set, p, this.lookSet);
       return true;
     }
 
@@ -11088,6 +11195,7 @@ fn boxOf(V: Vox) -> Box {
       u.set(Wx.clear, O.wclear);
       if (this.rainLayers == null) this.rainLayers = ME.phone && ME.phone() ? 1 : ME.compat ? 2 : 3; // (read once; a probe may set it)
       set4(u, O.weather4, this.rainLayers, 0, 0, 0);
+      u.set(this.key, O.key); u.set(this.key2, O.key2); u.set(this.sky, O.sky); u.set(this.sky2, O.sky2);
       u.set(this.user, O.user);
       this.dev.queue.writeBuffer(this.ubuf, 0, u);
     }
@@ -14721,7 +14829,8 @@ fn boxOf(V: Vox) -> Box {
 
 </script>
 <script>/* ../MossheartEngine/src/daycycle.js */
-/* Day and dusk: blends the lighting settings from the current (day) values toward ME.DUSK.
+/* Day and dusk: blends the lighting settings from the current (day) values toward ME.DUSK, or toward
+   R.duskTo on a level whose look has its own dusk targets (look.dusk over ME.DUSK: src/passes.js).
    set.dusk (0..1) holds a fixed blend; set.cycle (seconds, 0 = off) loops day -> dusk -> day instead.
    The day values are captured when the blend leaves 0 and again after a preset, so presets and ?set=
    still define the day look; at dusk the emissive towers and point lights carry the scene.
@@ -14742,14 +14851,15 @@ fn boxOf(V: Vox) -> Box {
       this.day = null;
     }
     update(time) {
+      const D = this.R.duskTo || ME.DUSK;
       const s = this.R.set, d = s.cycle > 0 ? 0.5 - 0.5 * Math.cos((time / s.cycle) * Math.PI * 2) : Math.max(0, Math.min(1, s.dusk));
       this.dusk = d;
       if (!this.day) {
         if (d <= 0) return;
         this.day = {};
-        for (const k in ME.DUSK) this.day[k] = s[k];
+        for (const k in D) this.day[k] = s[k];
       }
-      for (const k in ME.DUSK) s[k] = this.day[k] + (ME.DUSK[k] - this.day[k]) * d;
+      for (const k in D) s[k] = this.day[k] + (D[k] - this.day[k]) * d;
       if (d <= 0) this.day = null; // back to the exact day values
     }
   };
@@ -17967,10 +18077,11 @@ function MG_SFX(L) {
       if (kind === "steady") this.renderPanel(); else this.roll();
     }
     setLook(name) { this.look = ME.PRESETS[name] ? name : "cosy"; }
-    // the settings the view's mood() blends from: the style's defaults, the mood's look preset, its overrides
+    // the settings the view's mood() blends from: the style's defaults, the mood's look preset, the level's
+    // own look values over it (R.lookSet: a preset doesn't undo a night level's base), the mood's overrides
     base() {
       const m = MOODS[this.moodNow] || MOODS.auto;
-      return Object.assign({}, this.R.set0, ME.PRESETS[m.look || this.look] || {}, m.set || {});
+      return Object.assign({}, this.R.set0, ME.PRESETS[m.look || this.look] || {}, this.R.lookSet || {}, m.set || {});
     }
 
     // ------------------------------------------------------------------ every frame
@@ -18048,7 +18159,8 @@ function MG_SFX(L) {
     // and the mood's factors on what the dusk blend wrote
     apply(s) {
       const b = this.scene.base, c = this.cur;
-      for (const p of Object.values(ME.PRESETS)) for (const key in p) if (!(key in ME.DUSK) && key !== "haze") s[key] = b[key];
+      const D = this.R.duskTo || ME.DUSK;
+      for (const p of Object.values(ME.PRESETS)) for (const key in p) if (!(key in D) && key !== "haze") s[key] = b[key];
       for (const key of ["shaftK", "pool", "exposure", "bloomK", "amb"]) s[key] *= c[key];
       s.haze += c.haze; s.vignette += c.vignette;
       // (the wind: the engine scales R.set.windK by its own wind channel once it draws the wind, R.windNow)
@@ -19385,8 +19497,8 @@ function MG_SFX(L) {
       // the content pack's and the asset kit's materials, then ours, on copies (the shared style keeps its own)
       st.ramps = Object.assign({}, st.ramps); st.mats = Object.assign({}, st.mats);
       ME.content.addMaterials(st);
-      Object.assign(st.ramps, ME.assetKit.RAMPS, RAMPS);
-      Object.assign(st.mats, ME.assetKit.MATS);
+      Object.assign(st.ramps, ME.assetKit.RAMPS, RAMPS, C.pieces ? C.pieces.RAMPS : {}); // with the pieces' parts
+      Object.assign(st.mats, ME.assetKit.MATS, C.pieces ? C.pieces.MATS : {});
       return { st, map, region: Object.assign(regionOf(), { z: TOP * H_STEP }) };
     },
   };
@@ -19402,7 +19514,14 @@ function MG_SFX(L) {
      DC.pieces.bakeList(fine)     -> { key: [model, o, 1] } for ME.bakeModels(..., { models })
      DC.pieces.bind(MB)           -> models[color][type] = { frames, h, r, fine, fit }: the model ids, the baked
                                      height and radius (tiles at 1 / fine) and the scale that sets it to its
-                                     board height */
+                                     board height
+   A piece's traits show as parts, small models baked beside the pieces (dcp_*) and drawn as instances over
+   it: its tier (from its traits' rarities) adds a collar (1), a crest (2), an inlay band (3) and gems in its
+   rarest trait's hue (4; tier 5 draws as 4 until its silhouettes come), and each trait adds its cue.
+     DC.pieces.CUES[id]           { hue, rarity, idx }   (idx 1..12, a gem's hue in HUES)
+     DC.pieces.tierOf(ids), gemOf(ids)
+     DC.pieces.RAMPS, MATS        the parts' materials, for the board's style
+     DC.pieces.bindParts(MB)      -> { layout(color, type, ids) -> { tier, gem, list: [{ f, off, sc, hue }] } } */
 (function () {
   const C = (window.DC = window.DC || {});
   const FRAMES = 1;
@@ -19486,15 +19605,234 @@ function MG_SFX(L) {
   };
   models(); // registered at load, before any bake reads ME.ASSET_SRC
 
+  // ---------------------------------------------------------------- the part kit
+  // A piece's traits show as parts drawn over it, each its own instance of a small model: the tier's (a
+  // collar, a crest, an inlay band, gems) and one cue per trait. Each part is authored round its own origin
+  // (the slot it sits in) in model units and set on a piece by SLOT below. The bake's key takes a model's own
+  // source only, so each part's data sits inside its function.
+  // the traits in the catalogue's order: hue, rarity (1 Common .. 4 Legendary); index + 1 is a gem's hue in the
+  // shader's table (HUES)
+  const CUES = [
+    ["ward", "#9fd6ff", 1], ["vanguard", "#e5483d", 1], ["glide", "#1fa89a", 1], ["rally", "#4fbf5a", 1],
+    ["anointed", "#e8b33a", 1], ["stride", "#f39a1e", 2], ["pike", "#a8b3c1", 2], ["squire", "#f2cc4d", 2],
+    ["ember", "#ff6a1a", 2], ["leap", "#3cc3db", 3], ["sanctuary", "#a383f2", 3], ["phoenix", "#ff7a2a", 4],
+  ];
+  const CUE = {};
+  CUES.forEach(([id, hue, rarity], i) => (CUE[id] = { id, hue, rarity, idx: i + 1 }));
+  // the tier from the traits' rarities: U their sum; a Legendary with U >= 6, or U >= 8, is tier 5
+  const tierOf = (ids) => {
+    let u = 0, leg = false;
+    for (const id of ids) { const q = CUE[id]; if (q) { u += q.rarity; if (q.rarity === 4) leg = true; } }
+    return u >= 8 || (leg && u >= 6) ? 5 : u >= 6 ? 4 : u >= 4 ? 3 : u >= 2 ? 2 : u >= 1 ? 1 : 0;
+  };
+  // the gems' trait: the rarest, the first in the catalogue on a tie
+  const gemOf = (ids) => {
+    let b = null;
+    for (const id of ids) { const q = CUE[id]; if (q && (!b || q.rarity > b.rarity || (q.rarity === b.rarity && q.idx < b.idx))) b = q; }
+    return b;
+  };
+  // where the parts sit on each piece (P N B R Q; model units, X forward): the collar [x, z, r], the inlay band
+  // [x, z, r], the top [x, z] a crest stands on, the body [x, z, r] (a sash, the cracks), the foot's radius, the
+  // crest, the back [x, z] (wings), the head [x, z] (a pawn's)
+  const SLOT = [null,
+    { collar: [0, 0.14, 0.14], inlay: [0, 0.2075, 0.107], top: [0, 0.52], body: [0, 0.2, 0.112], foot: 0.24, crest: "orb", back: [-0.1, 0.22], head: [0, 0.415] },
+    { collar: [-0.028, 0.125, 0.165], inlay: [-0.019, 0.218, 0.14], top: [-0.075, 0.6], body: [-0.012, 0.27, 0.135], foot: 0.26, crest: "mane", back: [-0.13, 0.32], head: [0.04, 0.5] },
+    { collar: [0, 0.13, 0.155], inlay: [0, 0.2975, 0.108], top: [0, 0.78], body: [0, 0.27, 0.118], foot: 0.26, crest: "spire", back: [-0.11, 0.3], head: [0, 0.62] },
+    { collar: [0, 0.13, 0.2], inlay: [0, 0.31, 0.176], top: [0, 0.58], body: [0, 0.27, 0.183], foot: 0.27, crest: "spike", back: [-0.18, 0.32], head: [0, 0.51] },
+    { collar: [0, 0.135, 0.177], inlay: [0, 0.3475, 0.124], top: [0, 0.895], body: [0, 0.32, 0.133], foot: 0.28, crest: "orb", back: [-0.13, 0.36], head: [0, 0.78] },
+  ];
+  // how high each crest stands over the top (a finial goes on it)
+  const CREST_H = { orb: 0.06, spike: 0.12, spire: 0.07, mane: 0 };
+  // the models: per side (in its material) and shared; the radii they're authored at (a slot's radius over
+  // this is its scale across)
+  const SIDED = ["collar", "inlay", "orb", "mane", "spike", "spire"], SHARED = ["gems", ...CUES.map((q) => q[0])];
+  const AUTH_R = { collar: 0.16, gems: 0.16, vanguard: 0.16, inlay: 0.12, glide: 0.12, ember: 0.12, ward: 0.26, stride: 0.26, sanctuary: 0.26 };
+  const pkey = (name, c) => "p_" + name + (c === undefined ? "" : "_" + "wb"[c]);
+
+  const parts = () => {
+    const K = window.ME.assetKit, { S, E, C: Cap, B, Y, model, rz, ry, orient } = K;
+    // ---- the tiers' parts, in the side's material
+    model("dcp_collar", 1, (o) => {
+      const m = o.c ? "dcEbony" : "dcIvory", p = [Y([0, 0, 0], 0.16, 0.022, m, { round: 0.01 })];
+      // six notches carved round its rim
+      for (let i = 0; i < 6; i++) {
+        const a = ((i + 0.5) / 6) * Math.PI * 2;
+        p.push(B([Math.cos(a) * 0.16, Math.sin(a) * 0.16, 0], [0.012, 0.012, 0.03], 0, m, { sub: true, R: rz(a) }));
+      }
+      return { r: 0.18, h: 0.05, prims: p };
+    });
+    model("dcp_inlay", 1, (o) => {
+      // gold on ivory, silver on ebony, with dark diamonds round it
+      const p = [Y([0, 0, 0], 0.12, 0.018, o.c ? "dcSilver" : "dcGold", { round: 0.006 })];
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2, n = [Math.cos(a), Math.sin(a), 0], tg = [-Math.sin(a), Math.cos(a), 0];
+        p.push(B([n[0] * 0.124, n[1] * 0.124, 0], [0.011, 0.011, 0.008], 0, "dcInlayDk", { R: orient(n, [tg[0], tg[1], 1]) }));
+      }
+      return { r: 0.14, h: 0.04, prims: p };
+    });
+    model("dcp_orb", 1, (o) => ({ r: 0.05, h: 0.07, prims: [S([0, 0, 0.025], 0.035, o.c ? "dcEbony" : "dcIvory")] }));
+    model("dcp_spike", 1, (o) => ({ r: 0.05, h: 0.13, prims: [Cap([0, 0, 0], [0, 0, 0.12], 0.035, 0.005, o.c ? "dcEbony" : "dcIvory")] }));
+    model("dcp_spire", 1, (o) => ({ r: 0.04, h: 0.08, prims: [Cap([0, 0, 0], [0, 0, 0.07], 0.022, 0.004, o.c ? "dcEbony" : "dcIvory")] }));
+    model("dcp_mane", 1, (o) => {
+      const m = o.c ? "dcEbony" : "dcIvory";
+      // three fins down the back of the head
+      return {
+        r: 0.14, h: 0.09, prims: [
+          Cap([0, 0, 0], [-0.02, 0, 0.07], 0.025, 0.008, m), Cap([-0.04, 0, -0.04], [-0.07, 0, 0.03], 0.025, 0.008, m),
+          Cap([-0.07, 0, -0.1], [-0.1, 0, -0.04], 0.025, 0.008, m),
+        ],
+      };
+    });
+    // ---- tier 4's gems: six round the collar, pale crystal the shader tints in the trait's hue
+    model("dcp_gems", 1, () => {
+      const p = [];
+      for (let i = 0; i < 6; i++) { const a = ((i + 0.5) / 6) * Math.PI * 2; p.push(S([Math.cos(a) * 0.16, Math.sin(a) * 0.16, 0], 0.026, "dcCrystal")); }
+      return { r: 0.2, h: 0.04, prims: p };
+    });
+    // ---- the cues, one per trait
+    // Ward: a halo ring of ice light round the foot, on the board
+    model("dcp_ward", 1, () => ({ r: 0.34, h: 0.03, prims: [Y([0, 0, 0.01], 0.335, 0.008, "dcWard"), Y([0, 0, 0.01], 0.3, 0.02, "dcWard", { sub: true })] }));
+    // Vanguard: three short spikes out of the collar's front
+    model("dcp_vanguard", 1, () => {
+      const p = [];
+      for (const a of [-0.52, 0, 0.52]) { const c = Math.cos(a), s = Math.sin(a); p.push(Cap([c * 0.15, s * 0.15, 0.03], [c * 0.21, s * 0.21, 0.04], 0.02, 0.004, "dcVanguard")); }
+      return { r: 0.24, h: 0.06, prims: p };
+    });
+    // Glide: a sash slanting round the body
+    model("dcp_glide", 1, () => ({ r: 0.16, h: 0.08, prims: [Y([0, 0, 0], 0.13, 0.014, "dcGlide", { R: ry(0.45) }), Y([0, 0, 0], 0.112, 0.03, "dcGlide", { sub: true, R: ry(0.45) })] }));
+    // Rally: a small banner on a pole, flying back
+    model("dcp_rally", 1, () => ({
+      r: 0.1, h: 0.18, prims: [
+        Cap([0, 0, 0], [0, 0, 0.16], 0.011, 0.009, "dcPole"), S([0, 0, 0.165], 0.014, "dcRally"),
+        B([-0.042, 0, 0.125], [0.038, 0.006, 0.028], 0.003, "dcRally"), B([-0.088, 0, 0.12], [0.012, 0.006, 0.022], 0.003, "dcRally", { R: ry(-0.25) }),
+      ],
+    }));
+    // Anointed: a gold circlet round a pawn's head, with five prongs
+    model("dcp_anointed", 1, () => {
+      const p = [Y([0, 0, 0], 0.12, 0.012, "dcAnoint", { round: 0.004 }), Y([0, 0, 0], 0.09, 0.03, "dcAnoint", { sub: true })];
+      for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2; p.push(S([Math.cos(a) * 0.112, Math.sin(a) * 0.112, 0.022], 0.017, "dcAnoint")); }
+      return { r: 0.14, h: 0.05, prims: p };
+    });
+    // Stride: four studs round the plinth
+    model("dcp_stride", 1, () => {
+      const p = [];
+      for (let i = 0; i < 4; i++) { const a = ((i + 0.5) / 4) * Math.PI * 2; p.push(S([Math.cos(a) * 0.26, Math.sin(a) * 0.26, 0.05], 0.032, "dcStride")); }
+      return { r: 0.3, h: 0.09, prims: p };
+    });
+    // Pike: a spike forward out of a pawn's head
+    model("dcp_pike", 1, () => ({ r: 0.14, h: 0.04, prims: [Cap([0, 0, 0], [0.12, 0, 0], 0.03, 0.006, "dcPike")] }));
+    // Squire: a star nub on the top
+    model("dcp_squire", 1, () => {
+      const p = [S([0, 0, 0.03], 0.02, "dcSquire")];
+      for (const d of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1]]) p.push(Cap([0, 0, 0.03], [d[0] * 0.04, d[1] * 0.04, 0.03 + d[2] * 0.04], 0.012, 0.003, "dcSquire"));
+      return { r: 0.06, h: 0.08, prims: p };
+    });
+    // Ember: glowing cracks up the body on three sides
+    model("dcp_ember", 1, () => {
+      const p = [];
+      for (let k = 0; k < 3; k++) {
+        const a0 = (k / 3) * Math.PI * 2 + 0.4, at = (da, z) => [Math.cos(a0 + da) * 0.122, Math.sin(a0 + da) * 0.122, z];
+        const pts = [at(-0.12, -0.075), at(0.1, -0.025), at(-0.06, 0.025), at(0.12, 0.075)];
+        for (let i = 0; i < 3; i++) p.push(Cap(pts[i], pts[i + 1], 0.011, 0.011, "dcEmber"));
+        p.push(Cap(pts[1], at(0.3, -0.005), 0.009, 0.006, "dcEmber"));
+      }
+      return { r: 0.14, h: 0.09, prims: p };
+    });
+    // Leap: two horse-ear points on the mitre, leaning out
+    model("dcp_leap", 1, () => ({
+      r: 0.1, h: 0.11, prims: [-1, 1].map((sd) => Cap([0, sd * 0.04, 0], [-0.01, sd * 0.085, 0.1], 0.026, 0.006, "dcLeap")),
+    }));
+    // Sanctuary: a ring of violet light round the plinth's top and four small domes
+    model("dcp_sanctuary", 1, () => {
+      const p = [Y([0, 0, 0.08], 0.25, 0.008, "dcSanct"), Y([0, 0, 0.08], 0.22, 0.02, "dcSanct", { sub: true })];
+      for (let i = 0; i < 4; i++) { const a = (i / 4) * Math.PI * 2; p.push(S([Math.cos(a) * 0.235, Math.sin(a) * 0.235, 0.085], 0.022, "dcSanct")); }
+      return { r: 0.27, h: 0.11, prims: p };
+    });
+    // Phoenix: a pair of wings, four feathers each fanning up and back, their tips burning
+    model("dcp_phoenix", 1, () => {
+      const p = [];
+      for (const sd of [-1, 1]) for (let j = 0; j < 4; j++) {
+        const g = 0.35 + j * 0.32, l = 0.06 + j * 0.012, d = [-0.4, sd * Math.cos(g), Math.sin(g)], dl = Math.hypot(d[0], d[1], d[2]);
+        const u = [d[0] / dl, d[1] / dl, d[2] / dl], root = [0, sd * 0.04, 0];
+        p.push(E([root[0] + u[0] * l, root[1] + u[1] * l, root[2] + u[2] * l], [l, 0.024, 0.01], "dcPhoenix", { R: orient([1, 0, 0.3], u) }));
+        p.push(S([root[0] + u[0] * l * 1.9, root[1] + u[1] * l * 1.9, root[2] + u[2] * l * 1.9], 0.014, "dcEmber"));
+      }
+      return { r: 0.2, h: 0.2, prims: p };
+    });
+  };
+  parts();
+  // the parts' materials (style() in art/boards.js adds them to the board's): metals, the gems' crystal, the
+  // glowing ones (Ward, Ember, Sanctuary) and a colour per cue
+  const EM = { em: 1, flat: 1 }, cue = (hex) => [hex, 6, 0.25, 0.85, 0.2];
+  const RAMPS = {
+    dcGold: ["#d8a838", 6, 0.3, 0.88, 0.25], dcSilver: ["#c4ccd6", 6, 0.3, 0.92, 0.1], dcInlayDk: ["#2a2018", 3, 0.05, 0.3],
+    dcCrystal: ["#f2f6ff", 4, 0.7, 0.98],
+    dcWard: ["#7cc4f4", "#9fd6ff", "#bfe4ff", "#dff2ff"], dcEmber: ["#e8501a", "#ff6a1a", "#ff8c40", "#ffb070"],
+    dcSanct: ["#8a68e0", "#a383f2", "#bea4f8", "#d8c8fc"],
+    dcVanguard: cue("#e5483d"), dcGlide: cue("#1fa89a"), dcRally: cue("#4fbf5a"), dcAnoint: cue("#e8b33a"),
+    dcStride: cue("#f39a1e"), dcPike: cue("#a8b3c1"), dcSquire: cue("#f2cc4d"), dcLeap: cue("#3cc3db"),
+    dcPhoenix: cue("#ff7a2a"), dcPole: ["#6b4a32", 4, 0.15, 0.6],
+  };
+  const MATS = { dcCrystal: { bias: 0.25 }, dcWard: EM, dcEmber: EM, dcSanct: EM };
+
   C.pieces = {
-    SET, HEIGHT, FRAMES,
+    SET, HEIGHT, FRAMES, CUES: CUE, SLOT, RAMPS, MATS, tierOf, gemOf,
+    // the gems' hues by index (1..12; 0 none), for the shader's table
+    HUES: CUES.map((q) => q[1]),
     bakeList(fine) {
       const out = {};
       for (let c = 0; c < 2; c++) for (let t = 1; t <= 6; t++) {
         const s = SET[c][t];
         out[key(c, t)] = [s.name, Object.assign({ scale: 1, fine }, s.o), FRAMES];
       }
+      for (let c = 0; c < 2; c++) for (const n of SIDED) out[pkey(n, c)] = ["dcp_" + n, { scale: 1, fine, c }, 1];
+      for (const n of SHARED) out[pkey(n)] = ["dcp_" + n, { scale: 1, fine }, 1];
       return out;
+    },
+    // the parts bound to the bake: layout(c, t, ids) -> { tier, gem, list: [{ f, off: [x, y, z], sc: [x, y, z],
+    // hue }] }: each part's model id, its offset from the piece's anchor (model units, before the piece's facing
+    // and its fit) and its scale (at 1 / fine), hue the gem's index (0 for the other parts). Kings get none.
+    bindParts(MB) {
+      const id = {};
+      const get = (k) => {
+        const fr = MB.extraFrames[k];
+        if (!fr) throw new Error("no baked part " + k);
+        const m = MB.models[fr[0]];
+        return { f: fr[0], fine: m.fine || 1 };
+      };
+      for (let c = 0; c < 2; c++) for (const n of SIDED) id[pkey(n, c)] = get(pkey(n, c));
+      for (const n of SHARED) id[pkey(n)] = get(pkey(n));
+      const part = (list, k, x, z, sx, hue = 0, y = 0) => { const q = id[k]; list.push({ f: q.f, off: [x, y, z], sc: [sx / q.fine, sx / q.fine, 1 / q.fine], hue }); };
+      return {
+        count: Object.keys(id).length,
+        layout(c, t, ids) {
+          const out = { tier: 0, gem: 0, list: [] }, sl = SLOT[t];
+          if (!sl || !ids.length) return out;
+          const tier = tierOf(ids), L = out.list, R0 = AUTH_R, has = (n) => ids.includes(n);
+          out.tier = tier;
+          const [cx, cz, cr] = sl.collar, [bx, bz, br] = sl.body, fr = sl.foot;
+          if (tier >= 1) part(L, pkey("collar", c), cx, cz, cr / R0.collar);
+          let topZ = sl.top[1];
+          if (tier >= 2) { part(L, pkey(sl.crest, c), sl.top[0], topZ, 1); topZ += CREST_H[sl.crest]; }
+          if (tier >= 3) part(L, pkey("inlay", c), sl.inlay[0], sl.inlay[1], sl.inlay[2] / R0.inlay);
+          if (tier >= 4) { const g = gemOf(ids); out.gem = g ? g.idx : 0; part(L, pkey("gems"), cx, cz, cr / R0.gems, out.gem); }
+          // the cues
+          if (has("ward")) part(L, pkey("ward"), 0, 0, fr / R0.ward);
+          if (has("vanguard")) part(L, pkey("vanguard"), cx, cz, cr / R0.vanguard);
+          if (has("glide")) part(L, pkey("glide"), bx, bz, br / R0.glide);
+          if (has("ember")) part(L, pkey("ember"), bx, bz, br / R0.ember);
+          if (has("stride")) part(L, pkey("stride"), 0, 0, fr / R0.stride);
+          if (has("sanctuary")) part(L, pkey("sanctuary"), 0, 0, fr / R0.sanctuary);
+          if (has("anointed")) part(L, pkey("anointed"), sl.head[0], sl.head[1] + 0.03, 1);
+          if (has("pike")) part(L, pkey("pike"), sl.head[0] + 0.07, sl.head[1], 1);
+          if (has("leap")) part(L, pkey("leap"), sl.head[0], sl.head[1], 1);
+          if (has("phoenix")) part(L, pkey("phoenix"), sl.back[0], sl.back[1], 1);
+          // the finials stack on the top: the squire's star, then the rally's banner
+          if (has("squire")) { part(L, pkey("squire"), sl.top[0], topZ, 1); topZ += 0.07; }
+          if (has("rally")) part(L, pkey("rally"), sl.top[0], topZ, 1);
+          return out;
+        },
+      };
     },
     bind(MB) {
       const models = [[], []];
@@ -19932,16 +20270,19 @@ function MG_SFX(L) {
 <script>/* src/view/shaders.js */
 /* The board's look in the engine's shader hooks (ME.SHADER_HOOKS; spliced in by the Renderer):
      mark     pieces: a faint rim in its side's colour, a pulsing glow when selected, red when its king is
-              in check, a soft glow under the pointer, a white flash as a promoted pawn lands
+              in check, a soft glow under the pointer, a white flash as a promoted pawn lands or a Ward
+              breaks; a gem (a part, art/pieces.js) tinted and glowing in its trait's hue (mark bits 4..7)
      overlay  on the board's squares only (their top, at the board's height): a parquet grain in the wood,
               each side's territory (the squares it controls: a wash of its colour, dots for white and
               hatching for black, stronger the more it outnumbers the other side there), a faint grid, the
               last move in amber, the selected square, the king in check (a red pulse spreading from it),
               dots on the squares a move can reach and rings on the pieces it can take, the hovered
               square; light rippling out from a move square by square, the board's glow as it rumbles,
-              and the wave of red that runs across it from a mated king
+              and the wave of red that runs across it from a mated king; a Ward's square ringed in ice
+              light, a Sanctuary's ground washed lilac
    Ground map (written by BoardView.paint, Renderer.setCells, one texel per world tile):
-     r = 255 selected, 128 king in check;  g = 255 a move's square, 128 a capture's;  b = 255 last move;
+     r = 255 selected, 128 king in check;  g = 255 a move's square, 128 a capture's;
+     b = bits (G.CELL_B): 128 last move, 64 a warded piece's square, 32 a Sanctuary's ground;
      a = 0 off the board, else 1 + round(127 + 127 t): the territory, t in [-1, 1] (white's control minus
          black's, 0 a square nobody holds or both hold equally)
    Renderer.user slots:
@@ -19956,14 +20297,30 @@ function MG_SFX(L) {
   const G = (window.DG = window.DG || {});
 
   // instance mark bits (sim.put mark)
-  G.MARK = { BLACK: 1, SELECTED: 2, CHECK: 4, HOVER: 8 };
+  // (bits HUE_SHIFT.. : a gem's hue, 1 + its index in the hues shaderHooks takes; 0 none)
+  G.MARK = { BLACK: 1, SELECTED: 2, CHECK: 4, HOVER: 8, HUE_SHIFT: 4 };
   // the ripple's kinds (user[2].w)
   G.RIPPLE = { MOVE: 0, CAPTURE: 1, PROMO: 2 };
+  // the ground map's b bits
+  G.CELL_B = { LAST: 128, WARD: 64, SANCT: 32 };
 
-  G.shaderHooks = () => ({
+  const lin = (h) => [1, 3, 5].map((i) => Math.pow(parseInt(h.slice(i, i + 2), 16) / 255, 2.2).toFixed(4));
+  // opts.hues: the gems' hues ("#rrggbb", at most 15), by the index a part's mark carries
+  G.shaderHooks = (opts = {}) => {
+    const hues = (opts.hues || []).slice(0, 15);
+    const table = ["vec3f(0.0)"].concat(hues.map((h) => "vec3f(" + lin(h).join(", ") + ")"));
+    return {
     mark: /* wgsl */ `
 fn hookMark(m: u32, flash: f32, n: vec3f, lp: vec3f, hc: f32, seed: f32) -> Mark {
   var g = Mark(vec4f(0.0), vec3f(0.0));
+  // a gem: tinted in its trait's hue and glowing in it
+  let hi = (m >> ${G.MARK.HUE_SHIFT}u) & 15u;
+  if (hi != 0u && hi < ${table.length}u) {
+    var hues = array<vec3f, ${table.length}>(${table.join(", ")});
+    let gc = hues[hi];
+    g.tint = vec4f(gc, 0.85);
+    g.emit += gc * 1.2;
+  }
   let tm = u.vdir.w;
   let rim = pow(1.0 - clamp(dot(n, -u.vdir.xyz), 0.0, 1.0), 2.4);
   let tc = select(u.user[4].rgb, u.user[5].rgb, (m & ${G.MARK.BLACK}u) != 0u);
@@ -19973,7 +20330,7 @@ fn hookMark(m: u32, flash: f32, n: vec3f, lp: vec3f, hc: f32, seed: f32) -> Mark
   if ((m & ${G.MARK.SELECTED}u) != 0u) { g.emit += tc * rim * (1.6 + 0.5 * sin(tm * 4.0)) + tc * 0.1; }
   if ((m & ${G.MARK.CHECK}u) != 0u) { g.emit += vec3f(1.0, 0.25, 0.2) * rim * (1.5 + 0.6 * sin(tm * 6.0)); }
   if ((m & ${G.MARK.HOVER}u) != 0u) { g.emit += tc * rim * 0.8; }
-  if (flash > 0.0) { g.tint = vec4f(1.0, 0.95, 0.9, flash); g.emit += vec3f(1.0, 0.8, 0.6) * flash; }
+  if (flash > 0.0) { g.tint = vec4f(mix(g.tint.rgb, vec3f(1.0, 0.95, 0.9), select(1.0, flash, g.tint.a > 0.0)), max(g.tint.a, flash)); g.emit += vec3f(1.0, 0.8, 0.6) * flash; }
   return g;
 }`,
 
@@ -20018,10 +20375,18 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     if (at > 0.01) { col += select(u.user[5].rgb, u.user[4].rgb, t > 0.0) * 0.05 * at * gg * top; }
   }
   let sel = select(u.user[4].rgb, u.user[5].rgb, u.user[1].y > 0.5);
-  if (cell.b > 0.5) { col = mix(col, vec3f(1.0, 0.78, 0.3), (0.22 + 0.35 * line) * top); }
+  let bb = u32(round(cell.b * 255.0));
+  let d = length(f - 0.5);
+  // a Sanctuary's ground: a lilac wash, its lines lit
+  if ((bb & ${G.CELL_B.SANCT}u) != 0u) { col = mix(col, vec3f(0.64, 0.51, 0.95), (0.16 + 0.3 * line) * top); col += vec3f(0.2, 0.12, 0.35) * line * 0.4 * top; }
+  if ((bb & ${G.CELL_B.LAST}u) != 0u) { col = mix(col, vec3f(1.0, 0.78, 0.3), (0.22 + 0.35 * line) * top); }
+  // a Ward's square: a ring of ice light round the piece, breathing
+  if ((bb & ${G.CELL_B.WARD}u) != 0u) {
+    let wr = (1.0 - sstep(0.015, 0.045, abs(d - 0.43))) * (0.75 + 0.25 * sin(tm * 2.2 + dcHash(cc) * 6.28));
+    col = mix(col, vec3f(0.62, 0.84, 1.0) * 1.35, wr * top);
+  }
   if (cell.r > 0.75) { col = mix(col, sel * 1.2, (0.3 + 0.55 * line) * top); }
   else if (cell.r > 0.25) { col = mix(col, vec3f(1.0, 0.22, 0.15), (0.35 + 0.5 * line) * top * (0.8 + 0.2 * sin(tm * 6.0))); }
-  let d = length(f - 0.5);
   if (cell.g > 0.75) { col = mix(col, sel * 1.3, (1.0 - sstep(0.1, 0.14, d)) * 0.85 * top); }
   else if (cell.g > 0.25) {
     let ring = (1.0 - sstep(0.03, 0.06, abs(d - 0.4))) * 0.9;
@@ -20060,7 +20425,8 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
   if (rb > 0.0) { col *= 1.0 + rb * (0.25 * dcHash(cc + floor(tm * 24.0)) + 0.1) * top; }
   return col;
 }`,
-  });
+    };
+  };
 })();
 
 </script>
@@ -20143,9 +20509,11 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
      sqOfRay(ray)        a view ray (cam.ray) -> the square it crosses the board's top on, or -1: the
                          input picks by the grid alone, so a piece never hides the square behind it
      centre(sq)          the world point at a square's centre on the board's top
-     paint({ selected, check, dots, caps, last, terr })   the overlay's ground map (Renderer.setCells): squares
+     paint({ selected, check, dots, caps, last, terr, ward, sanct })   the overlay's ground map
+                         (Renderer.setCells): squares
                          0..63 (selected, check: one or -1; dots, caps: lists; last: [from, to] or null;
-                         terr: 64 numbers in [-1, 1], each square's territory: white's control minus black's)
+                         terr: 64 numbers in [-1, 1], each square's territory: white's control minus black's;
+                         ward: the squares of warded pieces; sanct: the squares a Sanctuary covers)
      territory(game)     -> those 64 numbers: how many pieces of each side attack a square (a piece on it counts
                          for its side), squashed so two or three attackers more is full control */
 (function () {
@@ -20197,7 +20565,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       }
       return out;
     }
-    paint({ selected = -1, check = -1, dots = [], caps = [], last = null, terr = null } = {}) {
+    paint({ selected = -1, check = -1, dots = [], caps = [], last = null, terr = null, ward = [], sanct = [] } = {}) {
       const c = this.cells;
       c.fill(0);
       const at = (s) => { const [x, y] = this.tile(s); return (y * this.WW + x) * 4; };
@@ -20206,7 +20574,11 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       if (check >= 0) c[at(check)] = 128;
       for (const s of dots) c[at(s) + 1] = 255;
       for (const s of caps) c[at(s) + 1] = 128;
-      if (last) for (const s of last) c[at(s) + 2] = 255;
+      // b is bits (G.CELL_B)
+      const B = G.CELL_B;
+      if (last) for (const s of last) c[at(s) + 2] |= B.LAST;
+      for (const s of ward) c[at(s) + 2] |= B.WARD;
+      for (const s of sanct) c[at(s) + 2] |= B.SANCT;
       this.R.setCells(c);
     }
   }
@@ -20225,7 +20597,11 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
                             into its new piece as it lands (onLand); a strike on a Ward lunges and comes back
      onCapture(victim)      set by the app: a taken piece at the moment it goes (its voxels burst, main.js)
      onLand(piece, info)    set by the app: the moving piece (not castling's rook) on its new square
+     onWardBreak(piece)     set by the app: a struck piece as its Ward breaks (its shards, main.js)
      busy                   a move is still on its way
+     partStats()            how many parts the pieces draw and each tier's count of pieces
+   With parts (DC.pieces.bindParts) each piece with traits (game.tr) also draws its tier's and its traits'
+   parts, offset from its anchor and turned with it; a gem's mark carries its hue (G.MARK.HUE_SHIFT).
    The input sets selected (a square or -1), hover (a square or -1) and check (the king's square or -1).
    drawn[i] is the piece this layer drew as its i-th instance last frame (R.pick's index). */
 (function () {
@@ -20234,14 +20610,17 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
   // facing: toward the other side (heads point +X; white sits at the larger y)
   const YAW = [-Math.PI / 2, Math.PI / 2];
   const SLIDE = 0.32, PER_TILE = 0.05, GONE = 0.1, FPS = 5;
+  // a square's trait mask (0..63; the rules keep them by 0x88 square)
+  const trAt = (game, s) => (game.tr ? game.tr[(s >> 3) * 16 + (s & 7)] : 0);
 
   class PiecesView {
-    constructor(board, models) {
-      this.board = board; this.models = models;
+    constructor(board, models, parts = null) {
+      this.board = board; this.models = models; this.parts = parts;
       this.list = []; this.drawn = [];
       this.selected = -1; this.hover = -1; this.check = -1;
       this.ids = 0;
-      this.onCapture = null; this.onLand = null;
+      this.onCapture = null; this.onLand = null; this.onWardBreak = null;
+      this.layouts = new Map();
     }
     get busy() { return this.list.some((p) => p.walk || p.die); }
     pieceAt(sq) { return this.list.find((p) => p.sq === sq && !p.die) || null; }
@@ -20249,10 +20628,23 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       this.list = [];
       for (let s = 0; s < 64; s++) {
         const v = game.at(s);
-        if (v) this.list.push(this.make(s, v & 8 ? 1 : 0, v & 7));
+        if (v) this.list.push(this.make(s, v & 8 ? 1 : 0, v & 7, trAt(game, s)));
       }
     }
-    make(sq, c, t) { return { id: this.ids++, sq, c, t, P: this.board.centre(sq), s: 1, flash: 0, walk: null, die: null, phase: (this.ids * 0.37) % 1 }; }
+    make(sq, c, t, tr = 0) { return { id: this.ids++, sq, c, t, tr, P: this.board.centre(sq), s: 1, flash: 0, walk: null, die: null, phase: (this.ids * 0.37) % 1 }; }
+    // a piece's parts (DC.pieces.bindParts: its tier's and its traits' cues), by its side, type and trait mask
+    layout(p) {
+      if (!this.parts || !p.tr) return null;
+      const k = p.c * 7 + p.t + p.tr * 16;
+      let l = this.layouts.get(k);
+      if (!l) {
+        const ids = [];
+        for (let i = 0; i < G.TRAITS.length; i++) if (p.tr & (1 << i)) ids.push(G.TRAITS[i].id);
+        l = this.parts.layout(p.c, p.t, ids);
+        this.layouts.set(k, l);
+      }
+      return l;
+    }
     slide(p, to, delay, hop, info = null) {
       const from = p.P.slice(), P1 = this.board.centre(to);
       const d = Math.hypot(P1[0] - from[0], P1[1] - from[1]);
@@ -20269,9 +20661,10 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         // a strike on a Ward: nothing moves, so the attacker lunges at the target and comes back to its square;
         // the target flashes as its Ward breaks
         const from = p.P.slice(), to = this.board.centre(info.to);
-        p.walk = { from, to: from, at: to, t: 0, dur: SLIDE * 1.5, hop: 0.12, info, victim };
+        p.walk = { from, to: from, at: to, t: 0, dur: SLIDE * 1.5, hop: 0.12, info, victim, victimTr: trAt(game, info.to) };
         return;
       }
+      p.tr = trAt(game, info.to);
       this.slide(p, info.to, 0, knight ? 0.75 : 0.12, info);
       if (victim) victim.die = { t: -p.walk.dur * (knight ? 0.85 : 0.6), burst: false };
       if (info.promo) p.promo = info.promo;
@@ -20279,7 +20672,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         // the rook from its corner to the king's other side
         const rank = info.from & 56, kingSide = info.to > info.from;
         const rook = this.pieceAt(rank + (kingSide ? 7 : 0));
-        if (rook) this.slide(rook, rank + (kingSide ? 5 : 3), 0.12, 0.3);
+        if (rook) { rook.tr = trAt(game, rank + (kingSide ? 5 : 3)); this.slide(rook, rank + (kingSide ? 5 : 3), 0.12, 0.3); }
       }
     }
     update(dt) {
@@ -20291,7 +20684,12 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
           if (w.t > 0) {
             const k = Math.min(1, w.t / w.dur), e = w.at ? Math.sin(k * Math.PI) * 0.45 : ease(k), T = w.at || w.to;
             p.P = [lerp(w.from[0], T[0], e), lerp(w.from[1], T[1], e), lerp(w.from[2], T[2], e) + Math.sin(k * Math.PI) * w.hop];
-            if (w.victim && k >= 0.5) { w.victim.flash = 1; w.victim = null; }
+            if (w.victim && k >= 0.5) {
+              // the Ward breaks: its parts go with it (onWardBreak: its shards)
+              const v = w.victim;
+              v.flash = 1; v.tr = w.victimTr; w.victim = null;
+              if (this.onWardBreak) this.onWardBreak(v);
+            }
             if (k >= 1) {
               p.P = w.to.slice(); p.walk = null;
               if (p.promo) { p.t = p.promo; p.promo = 0; p.flash = 1; }
@@ -20308,7 +20706,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     }
     // the engine Sim's instance layer
     writeInstances(time, sim, i) {
-      const MK = G.MARK;
+      const MK = G.MARK, cap = sim.MB.statics.length + sim.capacity; // (the slots: the statics' and the capacity)
       this.drawn.length = 0;
       for (const p of this.list) {
         if (p.s <= 0) continue;
@@ -20318,10 +20716,28 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         if (p.sq === this.selected && !p.walk) { mark |= MK.SELECTED; Z += 0.05 + Math.sin(time * 4) * 0.02; }
         if (p.sq === this.check && p.t === G.PIECE.KING && !p.walk) mark |= MK.CHECK;
         if (p.sq === this.hover && !p.die) mark |= MK.HOVER;
+        if (i >= cap) break;
         this.drawn.push(p);
         sim.put(i++, f, p.P[0], p.P[1], Z, YAW[p.c], false, [k, k, k], [0, 0], 1, 0, mark, p.flash);
+        // its parts: each offset from its anchor in model units, turned with it, at its fit
+        const l = this.layout(p);
+        if (!l) continue;
+        const ks = m.fit * p.s, yc = Math.cos(YAW[p.c]), ys = Math.sin(YAW[p.c]);
+        for (const q of l.list) {
+          if (i >= cap) break;
+          const [ox, oy, oz] = q.off;
+          this.drawn.push(p);
+          sim.put(i++, q.f, p.P[0] + (ox * yc - oy * ys) * ks, p.P[1] + (ox * ys + oy * yc) * ks, Z + oz * ks, YAW[p.c], false,
+            [q.sc[0] * ks, q.sc[1] * ks, q.sc[2] * ks], [0, 0], 1, 0, mark | (q.hue << MK.HUE_SHIFT), p.flash);
+        }
       }
       return i;
+    }
+    // how many parts the pieces draw, and each tier's count of pieces (the self-test)
+    partStats() {
+      const out = { parts: 0, tiers: [0, 0, 0, 0, 0, 0] };
+      for (const p of this.list) { const l = this.layout(p); if (l) { out.parts += l.list.length; out.tiers[l.tier]++; } }
+      return out;
     }
     // the world point of a piece's middle (the self-test's picking)
     middle(p) { const m = this.models[p.c][p.t]; return [p.P[0], p.P[1], p.P[2] + m.height * 0.5]; }
@@ -20661,7 +21077,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.18.0", name: "DeckChess", commit: "3f8bec2" };
+  G.VERSION = { v: "0.19.0", name: "DeckChess", commit: "a246c5b" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -20720,7 +21136,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     ME.onDeviceLost = () => { const l = document.getElementById("lost"); if (l) l.style.display = "grid"; };
     const gpu = await ME.initGPU(canvas);
     ME.log("ADAPTER", gpu.info, "features", [...gpu.features]);
-    const hooks = G.shaderHooks(), pipelines = ME.compilePipelines(gpu, hooks);
+    const hooks = G.shaderHooks({ hues: C.pieces.HUES }), pipelines = ME.compilePipelines(gpu, hooks);
     pipelines.then(() => ME.log("PIPELINES", { ms: Math.round(ME.now() - t0) }), () => {});
 
     // the board's world and the piece set, baked (or the engine's cached copy of the bake)
@@ -20743,11 +21159,11 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       grass = ME.bakeGrass(T, st, pal);
       ME.bakeCache.put(key, { palNames: pal.names, T: Object.assign({}, T, { groundAt: null }), mesh, MB: Object.assign({}, MB, { voxel: null }), grass });
     }
-    const models = C.pieces.bind(MB);
+    const models = C.pieces.bind(MB), parts = C.pieces.bindParts(MB);
     const tables = pal.build();
     if (pal.missing.size) ME.log("WARN materials without ramps:", [...pal.missing].join(","));
     ME.progress("uploading", 0.85); await ME.tick();
-    const sim = new ME.Sim(T, st, MB, { capacity: 64 });
+    const sim = new ME.Sim(T, st, MB, { capacity: 224 });
     sim.setCount(0);
     const R = new ME.Renderer(gpu, { T, mesh, MB, pal, st, sim, tables, ids, grass, hooks, pipelines, fieldRes: 1 });
     // Mossheart's look (its default preset), without its critters (the game makes none)
@@ -20800,16 +21216,18 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     lights.set(hud.settings.light);
 
     // ------------------------------------------------------------------ board, pieces, the game
-    const board = new G.BoardView({ st, T, R }, region), pieces = new G.PiecesView(board, models);
+    const board = new G.BoardView({ st, T, R }, region), pieces = new G.PiecesView(board, models, parts);
     sim.layers.push(pieces);
     const stars = new G.Stars(7);
     const TEAM = [[1, 0.9, 0.65], [0.6, 0.45, 1]];
     for (const c of [0, 1]) R.user.set([...TEAM[c], 1], (4 + c) * 4);
     const seed0 = ME.params.has("seed") || selftest || match ? ME.qn("seed", 1) >>> 0 : (Date.now() ^ (Math.random() * 1e9)) >>> 0;
     const kingSq = (game, c) => { const k = game.king[c]; return (k >> 4) * 8 + (k & 7); };
+    // the traits' bits that mark board tiles (G.TRAITS index; -1 not in the rules yet)
+    const TI = { ward: G.TRAITS.findIndex((t) => t.id === "ward"), sanctuary: G.TRAITS.findIndex((t) => t.id === "sanctuary") };
     // the effects: the camera's trauma (the board rumbles), the last ripple through the squares, the mate's
     // start, the frame clock (s, the shaders' u.vdir.w); what the self-test counts
-    const fx = { trauma: 0, ripple: [0, 0, 0, 0], mateT: 0, clock: 0, shattered: 0, voxels: 0, landed: 0, cues: {} };
+    const fx = { trauma: 0, ripple: [0, 0, 0, 0], mateT: 0, clock: 0, shattered: 0, voxels: 0, landed: 0, wardBreaks: 0, cues: {} };
     const shake = (k) => { fx.trauma = Math.min(1, fx.trauma + k); };
 
     // a taken piece bursts into its own voxels, flung out from its middle onto the board (a sample of them,
@@ -20837,6 +21255,18 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       fx.shattered++; fx.voxels += n;
       shake(0.3);
       cue("capture", p.P);
+    };
+    // a struck piece's Ward breaks: its ice ring at the foot (art/pieces.js dcp_ward, radius 0.335 at its foot's
+    // 0.26) flies apart in shards, up and out
+    const wardMat = pal.id("dcWard");
+    pieces.onWardBreak = (p) => {
+      const m = models[p.c][p.t], r = (0.335 / 0.26) * C.pieces.SLOT[p.t].foot * m.fit;
+      for (let k = 0; k < 40; k++) {
+        const a = (k / 40) * Math.PI * 2 + Math.random() * 0.1, ca = Math.cos(a), sa = Math.sin(a), sp = 1.2 * (0.5 + 0.5 * Math.random());
+        phys.emitMat(p.P[0] + ca * r, p.P[1] + sa * r, p.P[2] + 0.03, ca * sp, sa * sp, 1.4 + Math.random() * 0.8, wardMat, 1.6 * (0.7 + 0.6 * Math.random()));
+      }
+      fx.wardBreaks++;
+      shake(0.15);
     };
     // the moving piece lands: light ripples out from its square (red for a capture, gold for a promotion),
     // the music and the sounds follow, and check, mate and a promotion make the board rumble
@@ -20928,7 +21358,18 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         pieces.check = st.check ? kingSq(g, g.turn) : -1;
         const dots = [], caps = [];
         for (const m of this.targets) { const i = G.info(m); (i.capture ? caps : dots).push(i.to); }
-        board.paint({ selected: this.sel, check: pieces.check, dots, caps, last: this.last ? [this.last.from, this.last.to] : null, terr: board.territory(g) });
+        // the tiles the traits mark: a Warded piece's square, and a Sanctuary's ground (it and the squares round it)
+        const ward = [], sanct = [];
+        for (let s = 0; s < 64; s++) {
+          const tr = g.tr ? g.tr[(s >> 3) * 16 + (s & 7)] : 0;
+          if (!tr) continue;
+          if (tr & 1 << TI.ward) ward.push(s);
+          if (TI.sanctuary >= 0 && tr & 1 << TI.sanctuary) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+            const x = (s & 7) + dx, y = (s >> 3) + dy;
+            if (x >= 0 && x < 8 && y >= 0 && y < 8 && !sanct.includes(y * 8 + x)) sanct.push(y * 8 + x);
+          }
+        }
+        board.paint({ selected: this.sel, check: pieces.check, dots, caps, last: this.last ? [this.last.from, this.last.to] : null, terr: board.territory(g), ward, sanct });
         hud.show({ game: g, status: st, thinking: this.thinking, you: this.you, canUndo: this.canUndo() });
       },
       // a human's move to take back (with the AI's answer to it)
@@ -21434,25 +21875,51 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         const deckOk = dk.open && dk.sel === "b1" && dk.stride && dk.ward && dk.pts.join() === "43,44,45" && dk.over === "Over budget" && dk.refused && dk.queen === "1 Q max" && dk.boardSel && dk.round && dk.bad && dk.oppCells === 16 && dk.preview === 32 && dk.lens >= 3 && dk.playing && dk.traits.includes("b1:WS") && dk.traits.includes("e2:V") && dk.card.includes("Stride");
         // a strike (exd5 onto a Warded pawn): the rules leave both pawns where they are, and so does the screen;
         // black's answer from d5 then moves black's pawn, not white's
+        // ... and the Ward's look: its square ringed and its parts (a collar and the ice ring) before, and after the
+        // strike none, its shards flung once
         const st = { san: "", from: "", to: "", reply: "" };
         ctl.newGame(hud.settings, "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2 d5:W"); ctl.you = [0, 1];
+        const cellB = (s) => { const [x, y] = board.tile(s); return board.cells[(y * board.WW + x) * 4 + 2]; };
+        const wb0 = fx.wardBreaks;
+        st.partsBefore = pieces.partStats().parts; st.tileBefore = cellB(sq("d5"));
         const sm = ctl.game.find(sq("e4"), sq("d5"), 0);
         st.strike = !!sm && G.info(sm).strike;
         ctl.play(sm); nFrames += await frames(120, () => !pieces.busy);
         const pc = (s) => { const p = pieces.pieceAt(sq(s)); return p ? "wb"[p.c] + " PNBRQK"[p.t] : "-"; };
         st.san = ctl.game.sans[0] || ""; st.from = pc("e4"); st.to = pc("d5");
+        st.partsAfter = pieces.partStats().parts; st.tileAfter = cellB(sq("d5")); st.breaks = fx.wardBreaks - wb0;
         ctl.play(ctl.game.find(sq("d5"), sq("d4"), 0)); nFrames += await frames(120, () => !pieces.busy);
         st.reply = pc("d4") + "," + pc("e4");
         ctl.fen = null; ctl.newGame(hud.settings); ctl.you = [0];
-        const strikeOk = st.strike && st.from === "wP" && st.to === "bP" && st.reply === "bP,wP";
+        const strikeOk = st.strike && st.from === "wP" && st.to === "bP" && st.reply === "bP,wP" && st.partsBefore === 2 && st.partsAfter === 0 &&
+          (st.tileBefore & G.CELL_B.WARD) !== 0 && (st.tileAfter & G.CELL_B.WARD) === 0 && st.breaks === 1;
+        // the part kit (art/pieces.js bindParts): a deck position's tiers and parts as the rules give them (two
+        // tier 1, eight tier 2, three tier 3; 54 parts), tiers 4 and 5 and every cue laid out on each piece (the
+        // rules can't give them yet: 4 parts and 12 cues, the gem the rarest trait's), and the frames with the
+        // parts against the classic game's (the frame time; the bake's bricks are in out.models)
+        const pk = { models: parts.count, tiers: [], parts: 0, layouts: [] };
+        const timed = async (n) => { const a = ints.length, b = cpus.length; nFrames += await frames(n); return { ms: avg(ints.slice(a + 5)), cpu: avg(cpus.slice(b + 5)), gpu: R.gpuMs }; };
+        pk.classic = await timed(120);
+        ctl.newGame(hud.settings, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 b1:WVS,c1:WS,d1:WVR,a1:G,h1:WGR,e2:WPA,d2:P,f2:W,b8:WVS,g8:S,d8:WR,a7:PA,h7:WP");
+        { const s = pieces.partStats(); pk.tiers = s.tiers.join(); pk.parts = s.parts; }
+        pk.traited = await timed(120);
+        const ALL = Object.keys(C.pieces.CUES), CU = C.pieces.CUES;
+        for (let t = 1; t <= 5; t++) {
+          const a = parts.layout(t & 1, t, ALL), q = parts.layout(0, t, ["leap", "sanctuary"]);
+          pk.layouts.push([a.tier, a.list.length, a.gem, q.tier, q.list.length, q.gem].join());
+        }
+        ctl.fen = null; ctl.newGame(hud.settings); ctl.you = [0];
+        pk.heapMB = performance.memory ? +(performance.memory.usedJSHeapSize / 1048576).toFixed(1) : -1;
+        const lay = [5, 16, CU.phoenix.idx, 4, 6, CU.leap.idx].join();
+        const partsOk = pk.tiers === "0,2,8,3,0,0" && pk.parts === 54 && pk.layouts.every((l) => l === lay);
         // the pieces' baked sizes and their heights on the board (tiles)
         const sizes = {};
         for (const c of [0, 1]) for (let t = 1; t <= 6; t++) { const m = models[c][t]; sizes["wb"[c] + " PNBRQK"[t]] = { model: m.name, h: +m.h.toFixed(2), r: +m.r.toFixed(2), fit: +m.fit.toFixed(2), height: m.height }; }
         out.board = { id: boardId, region, z: +board.z.toFixed(3), zSpread: board.zSpread, pieces: sizes };
         ME.log("BOARD", JSON.stringify({ id: boardId, z: out.board.z, zSpread: board.zSpread, region }));
-        out.pick = pick; out.turned = turned; out.script = script; out.capture = cap; out.camera = camT; out.lighting = lightT; out.deck = dk; out.strike = st;
+        out.pick = pick; out.turned = turned; out.script = script; out.capture = cap; out.camera = camT; out.lighting = lightT; out.deck = dk; out.strike = st; out.parts = pk;
         out.sky = { stars: starsDrawn, atmos: atmos.state(), cues: fx.cues, audio: audio ? audio.stats() : null };
-        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2 && capOk && camOk && lightOk && deckOk && strikeOk && starsDrawn > 100 && !mg.length;
+        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2 && capOk && camOk && lightOk && deckOk && strikeOk && partsOk && starsDrawn > 100 && !mg.length;
       }
       Object.assign(out, { frames: nFrames, avgFrameIntervalMs: avg(ints.slice(5)), avgCpuMs: avg(cpus.slice(5)), gpuMs: R.gpuMs, errors: ME.errors });
       report(out);
