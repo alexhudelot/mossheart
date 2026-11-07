@@ -297,6 +297,9 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 #insptitle .cfig { margin-left: auto; flex: none; font-size: 0.7em; font-weight: 800; color: #6a8a3a; white-space: nowrap; }
 #insptitle .cfig.short { color: #b0402a; }
 #insptitle .cfig.tier { text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.6em; }
+/* the Lv III choice's "II ▸ III" (hud.js inspect, this.forking): the plant's name wins, the step wraps under it
+   when the two do not fit on one line (a long name, Larger text) */
+#insptitle:has(.cfig.step) { flex-wrap: wrap; row-gap: 0; }
 #insptitle .cfig.r-common { color: #6f9a4a; } #insptitle .cfig.r-rare { color: #3d5f9e; }
 #insptitle .cfig.r-epic { color: #b07f1a; } #insptitle .cfig.r-fused { color: #b5486e; } #insptitle .cfig.r-legendary { color: #c24a18; } #insptitle .cfig.r-exquisite { color: #7a5ab8; }
 #inspbody .chips { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-bottom: 6px; }
@@ -17654,7 +17657,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.79.0", name: "Mossheart", commit: "b1d05fb" };
+  G.VERSION = { v: "0.80.0", name: "Mossheart", commit: "135a1e0" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -17750,7 +17753,7 @@ function MA_DSP() {
   // (Their tints, Art's, in the view: plantfx.js G.BRANCH_TINTS)
   D.FORKS = {
     thorn: { a: { name: "Barbed", chip: ["Barbs", "+4% a hit"] },
-      b: { name: "Bramblecrown", text: "Each seed it lands shatters into 3 shards at 65% damage", chip: ["Shards", "3 × 65%"], shards: 3, mult: 0.65, onHit: true } },
+      b: { name: "Bramblecrown", text: "Each seed it lands shatters into 3 shards at 65% damage on other creatures nearby", chip: ["Shards", "3 × 65%"], shards: 3, mult: 0.65, onHit: true } },
     puff: { a: { name: "Slumber", chip: ["Sleep", "0.7 s, every 3rd"] },
       b: { name: "Mildew", text: "Bursts leave a mildew cloud that slows 30% for 3 s", chip: ["Cloud", "30% slow"] } },
     sun: { a: { name: "Dazzle", chip: ["Stun", "0.5 s"] },
@@ -17783,7 +17786,7 @@ function MA_DSP() {
     { id: "thicket", kinds: ["thorn", "thorn"], name: "Thicket", gives: { thorn: { rate: 0.15 } }, desc: "Both fire 15% faster" },
     { id: "sunseed", kinds: ["thorn", "sun"], name: "Sunseed", gives: { thorn: { burn: 0.15 }, sun: { range: 0.05 } }, desc: "Thornbloom seeds smoulder (15% of the hit); the Lens reaches 5% further" },
     { id: "seedpods", kinds: ["thorn", "puff"], name: "Seed Pods", gives: { puff: { seeds: 1 }, thorn: { dmg: 0.05 } }, desc: "Puffcap bursts throw a thorn seed; the Thornbloom hits 5% harder" },
-    { id: "willothorn", kinds: ["thorn", "wisp"], name: "Will-o'-Thorn", gives: { thorn: { pierceChain: 0.6 }, wisp: { dmg: 0.1 } }, desc: "Thornbloom seeds leap on once (60%); the Wisp hits 10% harder" },
+    { id: "willothorn", kinds: ["thorn", "wisp"], name: "Will-o'-Thorn", gives: { thorn: { pierceChain: 0.6 }, wisp: { dmg: 0.1 } }, desc: "Thornbloom seeds leap on once (60%, 100% deepened); the Wisp hits 10% harder" },
     { id: "twinlens", kinds: ["sun", "sun"], name: "Twin Lenses", gives: { sun: { range: 0.12 } }, desc: "Both reach 12% further" },
     { id: "sporeglow", kinds: ["sun", "puff"], name: "Spore Glow", gives: { sun: { vsSlow: 0.15 }, puff: { range: 0.05 } }, desc: "The Lens hits slowed creatures 15% harder; the Puffcap reaches 5% further" },
     { id: "spiritprism", kinds: ["sun", "wisp"], name: "Spirit Prism", gives: { sun: { prism: 1 }, wisp: { dmg: 0.1 } }, desc: "The Lens beam splits to 1 more creature; the Wisp hits 10% harder" },
@@ -19091,8 +19094,8 @@ function MA_DSP() {
       if (this.chains[i] > 0) {
         const next = E.pickTarget(at[0], at[1], CHAIN_RANGE, "first", this.hitList[i]);
         // (a wisp's light fades as it leaps, unless at level II or with Kodama Choir, and a Lantern Choir's grows;
-        // a Will-o'-Thorn seed leaps at its share)
-        const k = kind === "thorn" ? B.pierceChain || 0.85 : br ? 1.15 : G.state.mod("choir") > 0 || lv >= 2 ? 1 : 0.85;
+        // a Will-o'-Thorn seed leaps at its share, never past the hit: deepened, 0.6 × 2 leaps at 1, not 1.2)
+        const k = kind === "thorn" ? Math.min(B.pierceChain || 0.85, 1) : br ? 1.15 : G.state.mod("choir") > 0 || lv >= 2 ? 1 : 0.85;
         if (next >= 0) this.fire(at, next, this.dmg[i] * k, this.speed[i], this.col[i], kind, this.chains[i] - 1, this.hitList[i], this.lv[i], B, br);
       }
     }
@@ -19205,8 +19208,7 @@ function MA_DSP() {
       this.world.occupied.delete(this.world.idx(t.cx, t.cy));
       this.towers = this.towers.filter((x) => x !== t); this.stats.uprooted++;
       // (its deepened links go with it: half of each one's price went into each plant's refund, Game.deepen)
-      const i = this.world.idx(t.cx, t.cy);
-      for (const k of this.deep) if (k.split(":").some((c) => +c === i)) this.deep.delete(k);
+      for (const k of this.deepAt(t)) this.deep.delete(k);
       this.relink();
       G.emit("tower_sold", { pos: [t.X, t.Y, t.Z], tower: t });
     }
@@ -19426,6 +19428,9 @@ function MA_DSP() {
     // Deepen a link (the same design, C): a linked pair of plants, paid once (DEEPEN_COST), doubles that link's
     // bonus on both (Game.relink). A pair is kept by its two cells, the lower first.
     pairKey(a, b) { const i = this.world.idx(a.cx, a.cy), j = this.world.idx(b.cx, b.cy); return i < j ? `${i}:${j}` : `${j}:${i}`; }
+    // the deepened pairs that name plant t's cell, as pairKey: those its uproot or a graft that frees its plot
+    // drops (half of each one's price stays in each plant's refund, Game.deepen)
+    deepAt(t) { const i = String(this.world.idx(t.cx, t.cy)); return [...this.deep].filter((k) => k.split(":").includes(i)); }
     // the link of plant t worth deepening, as { link, other }: a partner pair not deepened yet whose link is
     // not deepened on one of the two (on both first); null if none
     deepenable(t) {
@@ -19476,9 +19481,9 @@ function MA_DSP() {
       if (this.graftBlocked(t, o)) return false;
       const fee = this.graftCost(t, o);
       this.towers = this.towers.filter((x) => x !== o);
-      const i = this.world.idx(o.cx, o.cy);
-      this.world.occupied.delete(i);
-      for (const k of this.deep) if (k.split(":").some((c) => +c === i)) this.deep.delete(k);
+      this.world.occupied.delete(this.world.idx(o.cx, o.cy));
+      // o's deepened links go with its plot, one between the two too (their dew stays in the refund, below)
+      for (const k of this.deepAt(o)) this.deep.delete(k);
       this.makeGraft(t, o.kind, o.branch);
       t.invested += o.invested + fee; this.stats.grafted++;
       this.relink();
@@ -23902,14 +23907,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (t.level >= 3 && fork) tips.unshift(`${bname(t.branch)}<span class="dim">${esc(fork[t.branch].chip.join(" "))}</span>`);
       // (a graft, first: what it plays as and its gift; or the graft asked about, what the two would become)
       const ga = this.graftArmed && this.game.graftPartners(t).find((p) => p.other === this.graftArmed);
+      // (the deepened links the graft undoes said too: those of the plot it frees, Game.graft)
+      const lost = ga && this.game.deepAt(ga.other).length, undone = lost > 1 ? `, ${lost} deepened links undone` : lost ? ", a deepened link undone" : "";
       if (t.graft) tips.unshift(`<span class="lnk">✦ ${esc(t.graft.name)}</span> <span class="dim">plays as ${esc(def.name)} and ${esc(D.TOWERS[t.twin.kind].name)}:</span> ${esc(t.graft.desc)}`);
-      else if (ga) tips.unshift(`<span class="lnk">✦ ${esc(ga.graft.name)}</span> <span class="dim">one plant here, as both (their links kept), the other plot freed:</span> ${esc(ga.graft.desc)}`);
+      else if (ga) tips.unshift(`<span class="lnk">✦ ${esc(ga.graft.name)}</span> <span class="dim">one plant here, as both (their links kept${undone}), the other plot freed:</span> ${esc(ga.graft.desc)}`);
       this.inspected = t;
       if (this.forking === t) {
         // the choice: a tile for each branch (its name, what it does, its figure), in its branch's tint
         const cost = t.upgradeCost(), can = S.canAfford(cost);
         const tile = (b) => `<button class="fork" data-branch="${b}" style="--acc:${G.css(G.branchTint(t.kind, b) || def.color)}"${can ? "" : " disabled"}><b>${esc(fork[b].name)}</b><span>${esc(fork[b].text)}</span><small>${esc(fork[b].chip.join(" "))}</small></button>`;
-        this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, `Lv ${ROMAN[t.level]} ▸ ${ROMAN[t.level + 1]}`), [],
+        this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, `${ROMAN[t.level]} ▸ ${ROMAN[t.level + 1]}`, "step"), [],
           [`<div class="forks">${tile("a")}${tile("b")}</div>`, `<span class="dim">${can ? `Choose a branch: ${cost} dew, for good` : "Not enough dew"}</span>`], "");
         label($("grow"), "Back"); $("grow").disabled = false;
         $("deepen").style.display = "none"; $("grafts").innerHTML = ""; $("rites").style.display = "none";
