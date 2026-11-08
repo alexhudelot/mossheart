@@ -17667,7 +17667,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.83.0", name: "Mossheart", commit: "0343f06" };
+  G.VERSION = { v: "0.84.0", name: "Mossheart", commit: "bc7aaf8" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -20012,8 +20012,10 @@ function MA_DSP() {
 
   // The heroes' density, one rule for every creature, plant, wisp and the Heart Tree: 64 voxels per tile edge over
   // any terrain, under G.HERO_MAX (32 on phones), as a factor of the terrain's VS, drawn at 1 / fine. Scenery
-  // statics stay at the terrain's density.
-  G.heroFine = () => Math.min(64, G.HERO_MAX || 64) / (ME.VS || 32);
+  // statics stay at the terrain's density. top: a level-3 plant, which bakes at G.HERO_MAX up to 128 when
+  // ?heromax lifts it past 64 (desktop only, menu.js; the vs128 study's H1: the other heroes wait for H2, the pool
+  // can't hold them all at 128). G.hero128Off: the pool's fallback put them back at 64 (main.js)
+  G.heroFine = (top) => Math.min(top && !G.hero128Off ? 128 : 64, G.HERO_MAX || 64) / (ME.VS || 32);
 
   // What the game bakes. Creatures: size = world scale relative to the asset's own, fwd = the angle of the model's
   // forward (heads point +X), hover = how high the model already floats (in tiles, after scaling), gait = flipbook
@@ -20112,7 +20114,7 @@ function MA_DSP() {
       { m: WS, sprout: 1, face: { ex: 0.34, ey: 0.1, er: 0.21 } }, // Sprout: a two-leaf sprout on its head
     ];
     const SIDE = [-Math.sin(FR), Math.cos(FR), 0], FWD = [Math.cos(FR), Math.sin(FR), 0], VUP = [-0.408, -0.408, 0.816];
-    let wi = 0, WK = 1, WT = 1, WVS = 32; // set per build: the next variant, the growth and the head piece's height, ME.VS
+    let wi = 0, WK = 1, WT = 1, WVS = 32; // set per build: the next variant, the growth and the head piece's height, the density thin parts keep to
     const wth = (r) => Math.max(r, 0.3 / WVS);
     const curl = (p, b, s, m, sd = 0) => {
       const w = WT > 1 ? 0.034 : 0.026, o = mul(SIDE, sd * w * s), q0 = add(b, add(o, [0, 0, 0.038 * s])), q1 = add(b, add(mul(o, 1.6), [-0.022 * s, -0.022 * s, 0.092 * s * WT])), q2 = add(b, add(mul(o, 1.9), [-0.004 * s, -0.004 * s, 0.118 * s * WT]));
@@ -20333,7 +20335,7 @@ function MA_DSP() {
         return mc[2] + mr + 0.06;
       },
       lily(L, p, z, D) { // white trumpet lilies, jade throats and glowing stamens, strap leaves at the back
-        const hb = [0.26, 0.32, 0.36][L - 1], s = [0.85, 1, 1.05][L - 1], blooms = [], ns = HI > 1 ? 5 : 3;
+        const hb = [0.26, 0.32, 0.36][L - 1], s = [0.85, 1, 1.05][L - 1], blooms = [], ns = HI > 1 ? 5 : 3, t3 = T3 && T3.kind === "lily" ? T3 : null; // t3: HI 3's (its stamens replace these)
         for (const [a, i] of [[3.0, 0], [3.9, 1], [4.8, 0], [5.5, 1], [2.3, 0]].slice(0, 2 + L)) {
           const d = [Math.cos(a), Math.sin(a)];
           p.push(C([d[0] * 0.03, d[1] * 0.03, z], [d[0] * 0.12, d[1] * 0.12, z + 0.14], 0.018, 0.014, "hsLeaf"), C([d[0] * 0.12, d[1] * 0.12, z + 0.14], [d[0] * 0.22, d[1] * 0.22, z + 0.1 + 0.04 * i], 0.014, 0.004, "hsLeafLt"));
@@ -20347,9 +20349,10 @@ function MA_DSP() {
             const d2 = norm(add(mul(n, 0.1), d)), tip = add(add(c, mul(dp, 0.15 * sc)), mul(d2, 0.025 * sc));
             p.push(E(tip, [0.04 * sc, 0.024 * sc, 0.008], "twLily", { R: orient(norm(cross(d2, tg)), d2) }));
           }
-          for (let k = 0; k < ns; k++) { const a = (k / ns) * TAU, e = add(add(c, mul(n, 0.12 * sc)), add(mul(u, Math.cos(a) * 0.022), mul(v, Math.sin(a) * 0.022))); p.push(C(c, e, 0.004, 0.003, "twJade"), S(e, 0.013, "twJadeGlow")); }
+          for (let k = 0; k < (t3 ? 0 : ns); k++) { const a = (k / ns) * TAU, e = add(add(c, mul(n, 0.12 * sc)), add(mul(u, Math.cos(a) * 0.022), mul(v, Math.sin(a) * 0.022))); p.push(C(c, e, 0.004, 0.003, "twJade"), S(e, 0.013, "twJadeGlow")); }
           p.push(S(add(c, mul(n, 0.02)), 0.02 * sc, "twJadeGlow"));
           blooms.push(c);
+          if (t3) t3.blooms.push({ c, n, u, v, sc });
           return c;
         };
         const c1 = trumpet([0.02, 0, z - 0.02], hb, norm([0.55, 0.25, 0.8]), s);
@@ -20565,13 +20568,89 @@ function MA_DSP() {
       for (const o of [-1.25, -0.6, 0, 0.6, 1.25]) p.push(E(add(c, pol(b + o, 0.026 - 0.006 * Math.abs(o), 0)), [0.03 - 0.006 * Math.abs(o), 0.012, 0.012], "twMaple", { R: rz(b + o) }));
       p.push(C(c, add(c, pol(b + Math.PI, 0.025, 0)), 0.006, 0.005, "twMaple"));
     };
+    // ---- HI 3, the vs128 tier: a level-3 plant baked at 128 voxels per tile (?heromax=128, G.heroFine) gets the parts
+    // too thin for 64 (under ~0.6 voxel there). One entry per kind, added a plant at a time, the others keeping HI 2's
+    // look: prims(p, z, t3) after TOP (z the vessel's top, t3 what TOP noted for the tier; TOP may drop the parts the
+    // tier replaces while T3 names its kind), paint(X, Y, Z, m, r, t3) over the detail's answer r (unscaled, as D's
+    // coordinates), null to keep it
+    let T3 = null;
+    const HI3 = {
+      // the Ghost Lily, the Architect's redesign (vs128 study): six arching stamens with crosswise anthers and a
+      // three-lobed pistil (for TOP's), recurved petal tips, dew on three leaves, sporophytes on the moss cap and
+      // fiddleheads at the foot toward the viewer; painted, petal veins, throat speckles and a wave band on the drum
+      lily: {
+        prims(p, z, t3) {
+          for (const { c, n, u, v, sc } of t3.blooms) {
+            for (let k = 0; k < 6; k++) {
+              const b = (k / 6) * TAU + TAU / 12, rk = add(mul(u, Math.cos(b)), mul(v, Math.sin(b)));
+              const m1 = add(add(c, mul(n, 0.07 * sc)), mul(rk, 0.016)), e = add(add(c, mul(n, 0.125 * sc)), mul(rk, 0.03));
+              p.push(C(c, m1, 0.0035, 0.0032, "twJade"), C(m1, e, 0.0032, 0.003, "twJade"));
+              p.push(E(e, [0.012 * sc, 0.0045, 0.0045], "twJadeGlow", { R: orient(norm(add(e, mul(m1, -1))), cross(n, rk)) }));
+            }
+            p.push(C(c, add(c, mul(n, 0.13 * sc)), 0.0045, 0.004, "hsLeafLt"));
+            for (let j = 0; j < 3; j++) { const a = (j / 3) * TAU, rj = add(mul(u, Math.cos(a)), mul(v, Math.sin(a))); p.push(S(add(add(c, mul(n, 0.135 * sc)), mul(rj, 0.005)), 0.0045, "twJadeGlow")); }
+            for (let i = 0; i < 6; i++) { // each petal's tip rolls back under itself
+              const a = (i / 6) * TAU, d = add(mul(u, Math.cos(a)), mul(v, Math.sin(a))), tg = cross(n, d);
+              const d2 = norm(add(mul(n, 0.1), d)), dp = norm(add(mul(n, 0.8), mul(d, 0.55))), tip = add(add(c, mul(dp, 0.15 * sc)), mul(d2, 0.025 * sc)), rd = norm(add(d2, mul(n, -0.6)));
+              p.push(E(add(add(tip, mul(d2, 0.035 * sc)), mul(n, -0.015 * sc)), [0.022 * sc, 0.014 * sc, 0.006], "twLily", { R: orient(norm(cross(rd, tg)), rd) }));
+            }
+          }
+          for (const a of [3.0, 4.8, 2.3]) { // dew on TOP's first three leaves, on their outer segment
+            const d = [Math.cos(a), Math.sin(a)];
+            p.push(S(add(lerp3([d[0] * 0.12, d[1] * 0.12, z + 0.14], [d[0] * 0.22, d[1] * 0.22, z + 0.1], 0.45), [0, 0, 0.0135]), 0.0055, "wDewGlow"));
+          }
+          const zt = z - 0.02, SA = [1.45, 1.75, 2.0, -0.9, -1.15, -1.4], SR = [0.105, 0.12, 0.11, 0.115, 0.1, 0.125], SH = [0.05, 0.042, 0.055, 0.046, 0.04, 0.052];
+          SA.forEach((a, i) => { // sporophytes: thin red setae on the cap, each with a brown capsule
+            const r = SR[i], zc = zt + 0.008 + 0.026 * Math.sqrt(Math.max(0, 1 - (r / 0.1496) ** 2));
+            const b = pol(a, r, zc - 0.012), t = pol(a, r * 1.06, zc + SH[i]), dir = norm(add(t, mul(b, -1)));
+            p.push(C(b, t, 0.0034, 0.003, "twMaple"), E(add(t, mul(dir, 0.004)), [0.0045, 0.0045, 0.0068], "twBark", { R: orient(dir, [1, 0, 0]) }));
+          });
+          for (const [a, rho, s, hs] of [[0.115, 0.325, 1, 0.055], [0.33, 0.33, 0.75, 0.04]]) { // fiddleheads: a stalk and a tightening coil
+            const B0 = pol(FR + a, rho, 0), top = add(B0, [0, 0, hs]), Q = add(top, mul(SIDE, 0.02 * s)), n = 22;
+            p.push(C(add(B0, [0, 0, -0.01]), top, 0.005 * s, 0.0045 * s, "hsLeaf"));
+            for (let i = 0; i <= n; i++) {
+              const ph = (i / n) * 3.5 * Math.PI, R = 0.02 * s * Math.exp(-0.17 * ph);
+              p.push(S(add(Q, add(mul(SIDE, -Math.cos(ph) * R), [0, 0, Math.sin(ph) * R])), (0.0075 - (0.004 * i) / n) * s, i === n ? "hsLeafLt" : "hsLeaf"));
+            }
+          }
+        },
+        paint(X, Y, Z, m, r, t3) {
+          for (const { c, u, v, sc } of t3.blooms) {
+            const q = [X - c[0], Y - c[1], Z - c[2]], rho = Math.hypot(q[0], q[1], q[2]);
+            if (rho > 0.2 * sc) continue;
+            if (rho >= 0.035 && rho < 0.07 && (r === "twLily" || r === "twJade") && nz3(X, Y, Z, 80, 7) > 0.68) return rho < 0.06 ? "twJadeGlow" : "twJade"; // throat speckles
+            if (m === "twLily" && r === "twLily" && rho >= 0.06) { // veins, every third one longer and jade at its root
+              const qu = q[0] * u[0] + q[1] * u[1] + q[2] * u[2], qv = q[0] * v[0] + q[1] * v[1] + q[2] * v[2];
+              const s = (Math.atan2(qv, qu) * 18) / TAU, k = Math.round(s), f = Math.abs(s - k), mid = ((k % 3) + 3) % 3 === 0;
+              const t = (rho - 0.06) / ((mid ? 0.155 : 0.115) * sc - 0.06);
+              if (t <= 1 && f < (mid ? 0.24 : 0.16) * (1 - 0.55 * t)) return mid && t < 0.5 ? "twJade" : "twLichen";
+            }
+          }
+          if ((r === SN || r === SL || r === "twLichen") && Z > 0.215 && Z < 0.3) { // the drum's carved wave band, toward the viewer
+            const rr = Math.hypot(X, Y), ph = Math.atan2(Y, X), DR = 0.16 * G3[2];
+            if (rr > DR - 0.035 && rr < DR + 0.03 && ph > FR - 0.35 && ph < FR + 1.0) {
+              const w = Z - 0.2575;
+              if (Math.abs(w - 0.012 * Math.sin((TAU * ph * 0.1696) / 0.04)) < 0.0035 || Math.abs(Math.abs(w) - 0.024) < 0.003) return SD;
+            }
+          }
+          return null;
+        },
+      },
+    };
     // o.lv 1..3; o.hi forces the detail level (the check). wi, the first wispling's variant, hashes kind, so each
     // plant starts on its own one and its next wisplings cycle on from it; it depends on kind alone, so bakes repeat
+    // HI and wth's floor follow dv, the density the plant bakes at (VS x o.fine), once ?heromax lifts the heroes past
+    // 64 (the vs128 study's H0, under H1's query only: today's look stays the user's call, decide a70bcad); WK and WT,
+    // the wisplings' size at the play zoom, stay on ME.VS
     const build = (kind, o) => {
-      HI = o.hi ?? (ME.VS >= 32 ? 2 : ME.VS >= 24 ? 1 : 0); chips = 0; wi = (kind.charCodeAt(0) * 3 + kind.length) % 8;
-      WVS = ME.VS || 32; WK = Math.min(2.2, Math.max(1, (28 / WVS) ** 0.85)); WT = WVS < 24 ? 1.2 : 1;
+      const vs = ME.VS || 32, dv = (G.HERO_MAX || 64) > 64 ? vs * (o.fine ?? G.heroFine(o.lv === 3)) : vs;
+      HI = o.hi ?? (dv >= 128 ? 3 : dv >= 32 ? 2 : dv >= 24 ? 1 : 0); chips = 0; wi = (kind.charCodeAt(0) * 3 + kind.length) % 8;
+      WVS = dv; WK = Math.min(2.2, Math.max(1, (28 / vs) ** 0.85)); WT = vs < 24 ? 1.2 : 1;
       const hi = HI, L = Math.max(1, Math.min(3, o.lv || 2)), s = LS[L - 1], p = [], F = [], D = [];
+      const t3 = (T3 = HI > 2 && L === 3 && HI3[kind] ? { kind, blooms: [] } : null), h3 = t3 && HI3[kind];
       const v = VES[kind](L, p, D), h = TOP[kind](L, p, v.z, D), n = kind === "wisp" ? [1, 3, 4][L - 1] : L;
+      if (h3) h3.prims(p, v.z, t3);
+      T3 = null;
       for (let i = 0; i < n && i < v.sp.length; i++) wispling(p, F, v.sp[i], [0.92, 1, 1.04][L - 1] * (i ? 0.9 : 1));
       for (let i = 0; i < L; i++) { // the level: a fallen leaf each at the foot, screen-right of the wisplings, kept in the wide vessels' reach and, once scaled, on the tile (its lobes within 0.5)
         const a = FR + 1.15 + 0.38 * i, cap = Math.min(0.42, 0.43 / (Math.max(Math.abs(Math.cos(a)), Math.abs(Math.sin(a))) * s));
@@ -20587,6 +20666,7 @@ function MA_DSP() {
           let r = null;
           for (const d of D) if ((r = d(X, Yy, Z, m, nx, ny, nz))) break;
           r = r || DET(X, Yy, Z, m, nz, hi) || m;
+          if (h3) r = h3.paint(X, Yy, Z, m, r, t3) || r;
           return hi && r === "moss" && nz > 0.2 && nz3(X, Yy, Z, 20, 17) > 0.62 ? "twMossLt" : r; // lighter moss tips
         },
       };
@@ -20595,7 +20675,7 @@ function MA_DSP() {
     // builds each plant at each level and detail level and runs its detail over a coarse grid: { errs, stats }
     const check = () => {
       const errs = [], stats = [];
-      for (const k of KINDS) for (const hi of [0, 1, 2]) for (const lv of [1, 2, 3]) {
+      for (const k of KINDS) for (const hi of [0, 1, 2, 3]) for (const lv of [1, 2, 3]) {
         try {
           const md = build(k, { lv, hi });
           for (const q of md.prims) for (const f in q) if (typeof q[f] === "number" && !isFinite(q[f])) throw new Error("bad prim " + f);
@@ -20751,7 +20831,7 @@ function MA_DSP() {
     for (const k in G.CREATURE_MODELS) { if (!G.Defs.ENEMIES[k]) continue; const c = G.CREATURE_MODELS[k]; out["e_" + k] = [c.name, { scale: k0(c.name) * c.size, fine: G.heroFine() }, FRAMES]; }
     // (only the plants the rules have, and the grafts' models, G.GRAFT_ART: a model may land before its plant)
     const grafts = new Set(Object.values(G.GRAFT_ART || {}).map((a) => a.model));
-    for (const k in G.TOWER_MODELS) { if (!G.Defs.TOWERS[k] && !grafts.has(k)) continue; const c = G.TOWER_MODELS[k]; for (const lv of c.lvs || [1, 2, 3]) out["t_" + k + lv] = [c.name, { lv, scale: k0(c.name) * c.size, fine: G.heroFine() }, c.frames || FRAMES]; }
+    for (const k in G.TOWER_MODELS) { if (!G.Defs.TOWERS[k] && !grafts.has(k)) continue; const c = G.TOWER_MODELS[k]; for (const lv of c.lvs || [1, 2, 3]) out["t_" + k + lv] = [c.name, { lv, scale: k0(c.name) * c.size, fine: G.heroFine(lv === 3) }, c.frames || FRAMES]; }
     for (const h of [1, 2]) out["heart" + h] = [G.HEART_MODEL.name, heartO(h), FRAMES]; // its crown's sway, as stage 0's
     out.rift0 = ["ms_rift", Object.assign(riftO(), { dim: true }), 1]; // a rift asleep (G.models.riftAt)
     return out;
@@ -23872,7 +23952,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
     // the game's speed on its button (main.js steps it: 1x, 2x, 3x)
     showSpeed(s) { label("speed", `${s}x`); $("speed").classList.toggle("on", s > 1); }
-    setFps(fps, scale) { $("fpsn").textContent = `${Math.round(fps)} fps · ${Math.round(scale * 100)}%`; }
+    // ft: ?frametime's { ms, cpu, gpu } (main.js), shown even with the fps setting off
+    setFps(fps, scale, ft) {
+      $("fpsn").textContent = `${Math.round(fps)} fps · ${Math.round(scale * 100)}%` + (ft ? ` · ${ft.ms} ms (cpu ${ft.cpu}${ft.gpu != null ? `, gpu ${ft.gpu}` : ""})` : "");
+      if (ft) $("fps").style.visibility = "";
+    }
     // and the density beside it, set once a load (main.js, G.vsLabel), marked when it came out coarser
     setDensity({ text, down }) { const v = $("vox"); v.textContent = text; v.classList.toggle("down", down); }
 
@@ -25401,8 +25485,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // the ground at 48 and 64 (the user, 2026-11-04). At vs40 and below the cap stays (fine 0.8 at 40): phones default
   // to 40 and load time is their one complaint, so the default phone load must not grow.
   // A getter, as the density can change before a bake (ME.setVS); G.heroFine (src/art/models.js) reads it.
-  // ?heromax= sets the cap, under the same floor (?heromax=32: the phone cap, to test it on a desktop).
-  const HERO_CAP = ME.qn("heromax", mobile || mem <= 4 ? 32 : 64);
+  // ?heromax= sets the cap, under the same floor (?heromax=32: the phone cap, to test it on a desktop), up to 64 on
+  // those devices and 128 elsewhere: ?heromax=128 bakes the level-3 plants at 128 (the vs128 study's H1, G.heroFine).
+  const HERO_CAP = Math.min(mobile || mem <= 4 ? 64 : 128, ME.qn("heromax", mobile || mem <= 4 ? 32 : 64));
   Object.defineProperty(G, "HERO_MAX", { configurable: true, get: () => ((ME.VS || 32) > 40 ? Math.max(HERO_CAP, ME.VS) : HERO_CAP) });
   const VS_NAMES = { 8: "Chunky (8)", 12: "Coarse (12)", 16: "Standard (16)", 20: "Fine (20)", 24: "Superfine (24)", 32: "Extreme (32)", 40: "Ultimate (40)", 48: "Epic (48)", 64: "Maximum (64)" };
   G.vsChoices = () => ME.VS_LEVELS.filter((v) => v <= VS_MAX);
@@ -28714,7 +28799,19 @@ function MG_SFX(L) {
       // (the coarse grid copied: the model bake splats into it, and adds its splat again on a hit)
       ME.bakeCache.later(tkey, { palNames: pal.names.slice(), T: Object.assign({}, T, { groundAt: null, coarse: T.coarse.slice(), splat: undefined }), mesh, grass });
     }
-    MB = await ME.bakeModels(T, st, pal, bakeOpts, early);
+    // (?heromax=128, the vs128 study's H1: the level-3 plants bake at 128, G.heroFine. Where they don't fit the
+    // pool, they go back to 64 and the models bake again rather than the load dying; HERO128 says which it was)
+    const at128 = () => Object.values(bakeOpts.models).filter((e) => e[1] && e[1].fine * ME.VS > 64).length;
+    const n128 = G.HERO_MAX > 64 ? at128() : 0;
+    try {
+      MB = await ME.bakeModels(T, st, pal, bakeOpts, early);
+    } catch (e) {
+      if (!n128 || !/volume pool needs/.test(e && e.message)) throw e;
+      ME.log("HERO128", { over: e.message });
+      G.hero128Off = true; bakeOpts.models = G.bakeList();
+      MB = await ME.bakeModels(T, st, pal, bakeOpts);
+    }
+    if (n128) ME.log("HERO128", { models128: n128, fallbacks: G.hero128Off ? n128 : 0, bricks: MB.stats.bricks, budget: MB.stats.budget, bakeMs: MB.stats.ms });
     ME.log("MODELS", MB.stats); ME.stage("models");
     // The rules record (core/rules.js; progressive density, R1): the rules read every garden at vs16, whatever
     // the density the view draws at. At vs16 it is read off this bake (view/level.js). Above, off the engine's
@@ -29011,12 +29108,15 @@ function MG_SFX(L) {
     const flashEl = document.getElementById("flash");
 
     // ------------------------------------------------------------------ fps readout (the render scale
-    // is the engine's dynamic resolution, ME.DynRes)
-    const perf = { acc: 0, n: 0, t: ME.now(), fps: 60 };
-    const fpsMeter = (dt) => {
-      perf.acc += dt; perf.n++;
+    // is the engine's dynamic resolution, ME.DynRes). ?frametime=1 adds the frame's mean ms, the CPU's in R.frame
+    // and the GPU's (its timestamps, where the device has them), shown whatever the fps setting: G.frameTime
+    const perf = { acc: 0, cpu: 0, n: 0, t: ME.now(), fps: 60 }, ftOn = !!ME.qn("frametime", 0);
+    const fpsMeter = (dt, cpu) => {
+      perf.acc += dt; perf.cpu += cpu; perf.n++;
       if (ME.now() - perf.t < 2000) return;
-      perf.fps = perf.n / Math.max(1e-3, perf.acc); perf.acc = 0; perf.n = 0; perf.t = ME.now();
+      perf.fps = perf.n / Math.max(1e-3, perf.acc);
+      if (ftOn) { const g = R.gpuMs; G.frameTime = { ms: +((perf.acc / perf.n) * 1000).toFixed(2), cpu: +(perf.cpu / perf.n).toFixed(2), gpu: g ? g.total : null }; }
+      perf.acc = 0; perf.cpu = 0; perf.n = 0; perf.t = ME.now();
     };
 
     hud.setDensity(G.vsLabel(T.VS)); // (what this load's terrain really holds, baked or from the cache)
@@ -29088,10 +29188,10 @@ function MG_SFX(L) {
       scene.fx.place(cam, canvas);
       scene.armed = pending; scene.ghostTag(cam, canvas); hud.frame(cam, canvas, scene.hover && scene.hover.cell);
       if (audio) audio.update(rdt, listener());
-      fpsMeter(rdt);
+      fpsMeter(rdt, cpu);
       // the frames of play, for the run's mean fps in the run log (not paused, hidden or over)
       if (!app.paused && !document.hidden && S.phase !== G.Phase.GAME_OVER && rdt < 1) { game.stats.frames++; game.stats.frameT += rdt; }
-      hud.setFps(perf.fps, R.set.scale);
+      hud.setFps(perf.fps, R.set.scale, ftOn && G.frameTime);
       return cpu;
     };
 
