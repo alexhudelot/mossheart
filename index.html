@@ -36,11 +36,11 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 .btn:disabled { opacity: 0.5; cursor: default; }
 .btn.pink { border-color: var(--blossom); }
 .btn.pink.armed { outline: 3px solid #e2405a; outline-offset: 2px; } /* Uproot asking for its second tap (an outline: the skin owns the face) */
-.btn.small { width: 54px; height: 48px; font-size: calc(20px * var(--ts)); padding: 0; }
+.btn.small { width: 46px; height: 42px; font-size: calc(20px * var(--ts)); padding: 0; }
 .btn.small.on { background: #e3f0d6; }
 .btn.small.off { color: #9a8f7a; }
 
-#top { position: fixed; left: calc(12px + var(--sl)); top: calc(12px + var(--st)); display: flex; gap: 20px; align-items: center; padding: 8px 16px; }
+#top { position: fixed; left: calc(12px + var(--sl)); top: calc(12px + var(--st)); display: flex; gap: 14px; align-items: center; padding: 5px 12px; }
 #hearttxt { font-size: calc(16px * var(--ts)); }
 .hbar { width: 150px; height: 12px; background: #d9d1b8; border-radius: 7px; overflow: hidden; margin-top: 3px; }
 #heartfill { height: 100%; width: 100%; background: var(--blossom); border-radius: 7px; transition: width 0.25s; }
@@ -52,7 +52,7 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 @property --la { syntax: "<color>"; inherits: true; initial-value: #4f93c2; }
 @property --lb { syntax: "<color>"; inherits: true; initial-value: #8fd0f2; }
 @property --lc { syntax: "<color>"; inherits: true; initial-value: #5aa5d2; }
-#dewgauge { position: fixed; right: calc(4px + var(--sr)); width: 52px; top: calc(120px + var(--st)); bottom: calc(22px + 104px * var(--ts) + 12px + var(--sb));
+#dewgauge { position: fixed; right: calc(4px + var(--sr)); width: 52px; top: calc(120px + var(--st)); bottom: calc(22px + 88px * var(--ts) + 12px + var(--sb));
   display: flex; flex-direction: column; align-items: center; pointer-events: none; }
 /* (the user, 2026-11-04: "have dew bar liquid match rarity level color and become increasingly agitée with higher
    levels": the water is the colour of the gifts the tier opens, the cards' own (common moss, rare blue, legendary
@@ -249,9 +249,9 @@ body.calm .coach-spot { animation: none; }
 
 /* eight seed cards: they shrink to stay clear of the wave button, and wrap to two rows on phones */
 #seeds { position: fixed; left: calc(12px + var(--sl)); right: calc(234px + var(--sr)); /* (clear of the wave button) */ bottom: calc(12px + var(--sb)); display: flex; gap: 8px; pointer-events: none; }
-.seed { position: relative; flex: 0 1 130px; min-width: 0; height: calc(104px * var(--ts)); padding: 8px 8px 6px; pointer-events: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+.seed { position: relative; flex: 0 1 130px; min-width: 0; height: calc(88px * var(--ts)); padding: 8px 8px 6px; pointer-events: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
   font: inherit; color: var(--ink); background: var(--paper); border: 3px solid var(--acc); border-radius: 16px; box-shadow: var(--shadow); cursor: pointer; touch-action: manipulation; }
-.seed b { max-width: calc(100% - 12px); font-size: calc(14px * var(--ts)); line-height: 1.12; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seed b { flex: none; max-width: calc(100% - 12px); font-size: calc(14px * var(--ts)); line-height: 1.12; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .seed .el { font-size: calc(11.5px * var(--ts)); color: #6b7560; }
 .seed .cost { color: var(--dewc); font-size: calc(14px * var(--ts)); }
 .seed .tag { font-size: calc(13px * var(--ts)); }
@@ -266,7 +266,7 @@ body.calm .coach-spot { animation: none; }
    and shakes the counter); the toast sits over the cards */
 .seed.poor { filter: grayscale(0.85); opacity: 0.6; border-color: #a9a69c; }
 .seed.poor .cost { color: #c0304a; font-weight: 800; }
-#toast { position: fixed; left: 50%; bottom: calc(12px + 104px * var(--ts) + 22px + var(--sb)); transform: translate(-50%, 8px); z-index: 4; max-width: calc(var(--vw) - 24px - var(--sl) - var(--sr));
+#toast { position: fixed; left: 50%; bottom: calc(12px + 88px * var(--ts) + 22px + var(--sb)); transform: translate(-50%, 8px); z-index: 4; max-width: calc(var(--vw) - 24px - var(--sl) - var(--sr));
   padding: 8px 14px; border-radius: 12px; background: rgba(40, 22, 30, 0.88); color: #ffd9e0; font-size: calc(17px * var(--ts)); font-weight: 800; text-align: center;
   pointer-events: none; opacity: 0; transition: opacity 0.18s, transform 0.18s; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
@@ -281,7 +281,7 @@ body.calm .coach-spot { animation: none; }
 .ghosttag i.short { color: #ffb3c0; }
 @keyframes tagpulse { 50% { opacity: 0.8; } }
 body.calm .ghosttag, body.calm #dew.short { animation: none; }
-#wavebtn { position: fixed; right: calc(12px + var(--sr)); bottom: calc(12px + var(--sb)); width: 210px; height: calc(104px * var(--ts)); font-size: calc(24px * var(--ts)); }
+#wavebtn { position: fixed; right: calc(12px + var(--sr)); bottom: calc(12px + var(--sb)); width: 210px; height: calc(88px * var(--ts)); font-size: calc(24px * var(--ts)); }
 /* (while a wave runs: the next one called early, Game.callEarly, with the dew it pays) */
 #wavebtn.early { border-color: var(--moss); }
 #wavebtn small { display: block; font-size: 0.62em; font-weight: 500; margin-top: 2px; }
@@ -310,15 +310,15 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 #inspbody .tips .ei { white-space: nowrap; margin-right: 4px; font-weight: 800; }
 #inspbody .tips .ei svg { width: 1em; height: 1em; vertical-align: -0.15em; }
 /* the choice of a Lv III branch (hud.js inspect, this.forking): two tiles, each in its branch's tint */
-#inspbody .forks { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 2px 0 4px; }
-#inspbody .fork { display: flex; flex-direction: column; gap: 2px; text-align: left; font: inherit; color: #38452e; background: #efe4c4; border: 2px solid var(--acc); border-left-width: 6px; border-radius: 10px; padding: 6px 7px; cursor: pointer; min-width: 0; }
-#inspbody .fork b { font-weight: 800; }
-#inspbody .fork span { font-size: 0.86em; line-height: 1.25; }
-#inspbody .fork small { font-size: 0.78em; font-weight: 800; color: #6a8a3a; }
-#inspbody .fork:disabled { opacity: 0.55; cursor: default; }
-/* the rites (hud.js inspect, this.riting): three tiles, each in its rite's colour */
-#inspbody .forks.rites { grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
-#inspbody .forks.rites .fork { padding: 5px 6px; border-left-width: 5px; }
+#inspbody .forks, #ritepanel .forks { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 2px 0 4px; }
+#inspbody .fork, #ritepanel .fork { display: flex; flex-direction: column; gap: 2px; text-align: left; font: inherit; color: #38452e; background: #efe4c4; border: 2px solid var(--acc); border-left-width: 6px; border-radius: 10px; padding: 6px 7px; cursor: pointer; min-width: 0; }
+#inspbody .fork b, #ritepanel .fork b { font-weight: 800; }
+#inspbody .fork span, #ritepanel .fork span { font-size: 0.86em; line-height: 1.25; }
+#inspbody .fork small, #ritepanel .fork small { font-size: 0.78em; font-weight: 800; color: #6a8a3a; }
+#inspbody .fork:disabled, #ritepanel .fork:disabled { opacity: 0.55; cursor: default; }
+/* the rites (hud.js openRites): three tiles in the floating panel, each in its rite's colour */
+#ritepanel .forks.rites { grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
+#ritepanel .forks.rites .fork { padding: 5px 6px; border-left-width: 5px; }
 #inspbody .more { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #cdbf98; }
 #inspbody .tglyph { letter-spacing: 0.08em; font-weight: 800; color: #8a5a2a; }
 #inspector:not(.open) .more { display: none; }
@@ -352,7 +352,7 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 /* (a touch screen wider than the phone layout, a phone on its side or a tablet: the card docks above the seeds on the
    left, its text scrolling, not in the middle of the field; hud.js frame anchors it only under a mouse) */
 @media (hover: none) and (min-width: 761px) {
-  #inspector { top: auto; bottom: calc(20px + 104px * var(--ts) + var(--sb)); transform: none; max-height: calc(var(--vh) - 104px - 104px * var(--ts) - var(--st) - var(--sb)); }
+  #inspector { top: auto; bottom: calc(20px + 88px * var(--ts) + var(--sb)); transform: none; max-height: calc(var(--vh) - 104px - 88px * var(--ts) - var(--st) - var(--sb)); }
   #inspbody { min-height: 0; overflow-y: auto; }
 }
 
@@ -594,31 +594,31 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   #sky { right: calc(6px + var(--sr)); top: calc(102px + var(--st)); width: calc(var(--vw) - 12px - var(--sl) - var(--sr)); padding: 8px 10px; }
   #sky .seg button { font-size: calc(12.5px * var(--ts)); padding: 5px 7px; }
   /* (as wide as the gap between the right-hand buttons, the music button and the turns, and their twin on the left) */
-  #hint { top: auto; bottom: calc(168px + 128px * var(--ts) + var(--sb)); font-size: calc(17px * var(--ts)); width: calc(var(--vw) - 112px - 2 * max(var(--sl), var(--sr))); }
-  .coach { top: auto; bottom: calc(168px + 128px * var(--ts) + var(--sb)); font-size: calc(14.5px * var(--ts)); padding: 10px 12px 8px; }
+  #hint { top: auto; bottom: calc(168px + 112px * var(--ts) + var(--sb)); font-size: calc(17px * var(--ts)); width: calc(var(--vw) - 112px - 2 * max(var(--sl), var(--sr))); }
+  .coach { top: auto; bottom: calc(168px + 112px * var(--ts) + var(--sb)); font-size: calc(14.5px * var(--ts)); padding: 10px 12px 8px; }
   /* (the card, docked at the bottom, covers the tip's place: the tip goes to the top, under the readouts, over the field) */
   body:has(#inspector.show) .coach { top: calc(96px + var(--st)); bottom: auto; }
   /* (the two bottom rows: the seeds in a grid, a garden's five three over two, eight five over three, and the
      wave button in the slot after them, hud.js's --seedcols; nothing floats over the field above them. They sit 11 px
      up, the build's tag, #version, under the wave button) */
   #seeds { left: calc(6px + var(--sl)); right: calc(6px + var(--sr)); bottom: calc(11px + var(--sb)); gap: 6px; display: grid; grid-template-columns: repeat(var(--seedcols, 3), minmax(0, 1fr));
-    grid-template-rows: repeat(2, calc(64px * var(--ts))); } /* (always two rows: three plants filled only one, the wave button's, and it sat on the third) */
-  .seed { height: calc(64px * var(--ts)); padding: 5px 6px 4px; border-radius: 13px; }
+    grid-template-rows: repeat(2, calc(56px * var(--ts))); } /* (always two rows: three plants filled only one, the wave button's, and it sat on the third) */
+  .seed { height: calc(56px * var(--ts)); padding: 5px 6px 4px; gap: 0; line-height: 1.15; border-radius: 13px; }
   .seed .el { display: none; }
   .seed b { font-size: calc(12.5px * var(--ts)); max-width: calc(100% - 18px); } /* (clear of the plant's icon) */
   .seed .cost, .seed .tag { font-size: calc(11.5px * var(--ts)); }
-  #toast { bottom: calc(11px + 128px * var(--ts) + 6px + 16px + var(--sb)); font-size: calc(15px * var(--ts)); } /* (over the two rows of cards) */
+  #toast { bottom: calc(11px + 112px * var(--ts) + 6px + 16px + var(--sb)); font-size: calc(15px * var(--ts)); } /* (over the two rows of cards) */
   .ghosttag { font-size: calc(12.5px * var(--ts)); }
   .seed .dot { width: 9px; height: 9px; right: 6px; top: 6px; }
   .seed .picon { width: 14px; height: 14px; right: 5px; top: 5px; }
-  #wavebtn { right: calc(6px + var(--sr)); bottom: calc(11px + var(--sb)); width: calc((var(--vw) - 12px - var(--sl) - var(--sr) - (var(--seedcols, 3) - 1) * 6px) / var(--seedcols, 3)); height: calc(64px * var(--ts)); padding: 2px 4px; font-size: calc(16px * var(--ts)); line-height: 1.1; border-radius: 13px; }
+  #wavebtn { right: calc(6px + var(--sr)); bottom: calc(11px + var(--sb)); width: calc((var(--vw) - 12px - var(--sl) - var(--sr) - (var(--seedcols, 3) - 1) * 6px) / var(--seedcols, 3)); height: calc(56px * var(--ts)); padding: 2px 4px; font-size: calc(16px * var(--ts)); line-height: 1.1; border-radius: 13px; }
   #wavebtn.early { font-size: calc(14.5px * var(--ts)); }
   body[data-seedcols="4"] .seed b, body[data-seedcols="5"] .seed b { font-size: calc(11px * var(--ts)); max-width: calc(100% - 14px); }
   body[data-seedcols="4"] #wavebtn, body[data-seedcols="5"] #wavebtn { font-size: calc(13px * var(--ts)); }
   body[data-seedcols="4"] #wavebtn.early, body[data-seedcols="5"] #wavebtn.early { font-size: calc(12px * var(--ts)); }
   /* (the dew gauge: under the turn buttons, against the edge, from under the almanac to above the seed rows,
      clear of the hint on its left; the open almanac reaches down over it, so it hides) */
-  #dewgauge { right: calc(3px + var(--sr)); width: 44px; top: calc(160px + var(--st)); bottom: calc(27px + 128px * var(--ts) + var(--sb)); }
+  #dewgauge { right: calc(3px + var(--sr)); width: 44px; top: calc(160px + var(--st)); bottom: calc(27px + 112px * var(--ts) + var(--sb)); }
   body.alm-open #dewgauge, body:has(#inspector.show) #dewgauge { visibility: hidden; } /* (and under the docked card, which spans its place) */
   #dew { width: 40px; padding: 7px 1px 6px; font-size: calc(15px * var(--ts)); gap: 1px; }
   #dew::before { width: 24px; height: 8px; margin-left: -12px; clip-path: path("M5 0H19C19 4 22 6 24 8H0C2 6 5 4 5 0Z"); }
@@ -626,7 +626,7 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   #dewbar .bub:nth-child(2) { left: 8px; }
   #dewbar .luck { font-size: calc(11px * var(--ts)); padding: 1px 5px; }
   /* (the card, a plant's or a seed's while placing, docks just above the two rows at their width: the field stays clear) */
-  #inspector { left: calc(6px + var(--sl)); right: calc(6px + var(--sr)); top: auto; bottom: calc(23px + 128px * var(--ts) + var(--sb)); max-height: calc(var(--vh) - 55px - 204px * var(--ts) - var(--st) - var(--sb)); transform: none; width: auto; padding: 10px 12px; gap: 6px; }
+  #inspector { left: calc(6px + var(--sl)); right: calc(6px + var(--sr)); top: auto; bottom: calc(23px + 112px * var(--ts) + var(--sb)); max-height: calc(var(--vh) - 55px - 184px * var(--ts) - var(--st) - var(--sb)); transform: none; width: auto; padding: 10px 12px; gap: 6px; }
   /* (a long label, Deepen's or a Graft row's, takes two lines in a taller button rather than spill out of it) */
   #inspector .btn, #inspector #grafts .btn { flex: none; height: auto; min-height: 44px; padding: 3px 8px; line-height: 1.15; }
   #inspector .btn { font-size: calc(16px * var(--ts)); }
@@ -635,7 +635,7 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   /* (up to eight graft rows: they give way first, down to one row, and scroll; the padding keeps an armed row's outline) */
   #grafts { flex: 0 4 auto; min-height: 54px; overflow-y: auto; overscroll-behavior: contain; padding: 5px; margin: -5px; }
   /* (More on a phone: the card grows into a sheet up to the top bar, its detail scrolling, Grow and Uproot in view; a big tap target) */
-  #inspector.open { max-height: calc(var(--vh) - 85px - 128px * var(--ts) - var(--st) - var(--sb)); box-shadow: 0 -6px 24px #0006; }
+  #inspector.open { max-height: calc(var(--vh) - 85px - 112px * var(--ts) - var(--st) - var(--sb)); box-shadow: 0 -6px 24px #0006; }
   #inspbody .tomore { display: block; padding: 9px 0 3px; margin-top: 0; }
   .boon { width: min(320px, calc(var(--vw) - 32px)); min-height: 0; padding: 12px; gap: 6px; }
   .boon b { font-size: calc(18px * var(--ts)); }
@@ -719,12 +719,12 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
   html.tight #setbody div.row .seg { flex: 1 0 auto; max-width: 100%; }
   html.tight #setbody .note { margin-bottom: 3px; }
   html.tight #setbody .note.dim:not(:has(.btn)):not(.open) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-  /* (and the card's tiles, a Lv III branch's two and the three rites, one under the other: in columns a long
-     name, as Bramblecrown or Downpour, is wider than its tile. A rite's price beside its name) */
-  html.tight #inspbody .forks, html.tight #inspbody .forks.rites { grid-template-columns: 1fr; }
-  html.tight #inspbody .forks.rites .fork { display: grid; grid-template-columns: 1fr auto; column-gap: 6px; align-items: baseline; }
-  html.tight #inspbody .forks.rites .fork span { grid-column: 1 / -1; }
-  html.tight #inspbody .forks.rites .fork small { grid-row: 1; grid-column: 2; }
+  /* (and the tiles, a Lv III branch's two in the card and the three rites in their panel, one under the other: in
+     columns a long name, as Bramblecrown or Downpour, is wider than its tile. A rite's price beside its name) */
+  html.tight #inspbody .forks, html.tight #ritepanel .forks.rites { grid-template-columns: 1fr; }
+  html.tight #ritepanel .forks.rites .fork { display: grid; grid-template-columns: 1fr auto; column-gap: 6px; align-items: baseline; }
+  html.tight #ritepanel .forks.rites .fork span { grid-column: 1 / -1; }
+  html.tight #ritepanel .forks.rites .fork small { grid-row: 1; grid-column: 2; }
   .howto p { font-size: calc(13.5px * var(--ts)); margin: 0 0 7px; line-height: 1.32; }
   #boonrow { gap: 10px; }
   .boon { padding: 13px 12px 10px; gap: 4px; }
@@ -825,11 +825,91 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   #insptitle { padding-right: 40px; }
   .coachtxt { margin-right: 36px; }
   /* (a minimised tip's tab waits where the tip was, and the hint steps up over it) */
-  #dztab { bottom: calc(168px + 128px * var(--ts) + var(--sb)); }
-  body:has(#dztab) #hint { bottom: calc(222px + 128px * var(--ts) + var(--sb)); }
+  #dztab { bottom: calc(168px + 112px * var(--ts) + var(--sb)); }
+  body:has(#dztab) #hint { bottom: calc(222px + 112px * var(--ts) + var(--sb)); }
   #boons .col > .x { top: -10px; right: -4px; background: rgba(20, 31, 15, 0.55); }
   /* (the gifts screen's draw-again and +1 gift buttons come down over the seed rows, which can't be used then) */
   body:has(#boons.show) #seeds { visibility: hidden; }
+}
+
+/* The in-run HUD as floating glass (the user, 2026-11-08: "hud needs to be revised to be more compact, especially on
+   mobile. more floating transparent overlays"): the readouts, the top row's buttons, the card, the almanac, the sky
+   panel, the gifts, the seeds, the wave button and the rites are smoked glass over the field (a low-alpha fill, a
+   blur, a thin light edge), their text cream with a shadow so it reads over snow, rain and the vs16 voxels. They
+   carry data-orn="none" (no skin ornaments); the ids in these selectors outrank the skin's boards and stones */
+#ui .glass, #ui #chal, #ui .seed, #ui .bchip { -webkit-backdrop-filter: blur(10px) saturate(1.3); backdrop-filter: blur(10px) saturate(1.3); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65); }
+#ui .glass { background: rgba(24, 20, 14, 0.5); border: 1px solid rgba(255, 240, 210, 0.22); border-image: none; border-radius: 12px; color: #f3e9cf; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  --ink: #f3e9cf; --mute: #cbbd98; --moss: #a9cc5c; --dewc: #9dd3ea; }
+#ui .glass.btn:hover { background: rgba(48, 40, 26, 0.62); filter: none; }
+#ui .glass.btn:focus-visible { outline: 2px solid #fff8; outline-offset: 2px; }
+#ui .btn.small.glass.on { background: rgba(110, 160, 60, 0.42); border-color: rgba(190, 230, 140, 0.5); }
+#ui .btn.small.glass.off { color: rgba(243, 233, 207, 0.5); }
+#ui .glass .hbar { background: rgba(0, 0, 0, 0.38); box-shadow: inset 0 0 0 1px rgba(255, 240, 210, 0.15); }
+#ui .glass .dim { color: #cbbd98; }
+/* (the wave button stays the call to act: warm amber glass; called early, a moss edge) */
+#ui #wavebtn.glass { background: rgba(120, 66, 22, 0.55); border: 1.5px solid rgba(255, 196, 120, 0.75); color: #fff1d6; font-weight: 800; }
+#ui #wavebtn.glass:hover { background: rgba(150, 84, 28, 0.66); }
+#ui #wavebtn.glass.early { border-color: rgba(190, 230, 140, 0.8); }
+#ui #wavebtn.glass:disabled { opacity: 0.55; }
+/* (the card and the almanac hold the most text: a deeper glass) */
+#ui #inspector.glass { background: rgba(22, 19, 13, 0.76); }
+#ui #almanac.glass { background: rgba(22, 19, 13, 0.62); padding: 4px 10px 6px; }
+#ui #almanac.glass.closed { background: rgba(22, 19, 13, 0.45); padding: 2px 10px; }
+#ui #sky.glass { background: rgba(22, 19, 13, 0.66); }
+#ui #inspector.glass .btn { background: rgba(255, 240, 210, 0.1); border: 1.5px solid rgba(169, 204, 92, 0.7); border-radius: 11px; color: #f3e9cf; box-shadow: none; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+#ui #inspector.glass .btn:hover { background: rgba(255, 240, 210, 0.18); }
+#ui #inspector.glass .btn.pink { background: rgba(180, 60, 90, 0.22); border-color: rgba(240, 140, 170, 0.75); }
+#ui #inspector.glass #insptitle .cfig, #ui #inspector.glass .lvl, #ui #inspector.glass .tomore, #ui .glass .fork small { color: #b8d878; }
+#ui #inspector.glass .short, #ui #inspector.glass #insptitle .cfig.short { color: #ff9e8a; }
+#ui #inspector.glass #insptitle .cfig.r-common { color: #a9d07a; } #ui #inspector.glass #insptitle .cfig.r-rare { color: #9cb8f0; }
+#ui #inspector.glass #insptitle .cfig.r-epic { color: #f0c860; } #ui #inspector.glass #insptitle .cfig.r-fused { color: #f08ab0; }
+#ui #inspector.glass #insptitle .cfig.r-legendary { color: #ff9a5a; } #ui #inspector.glass #insptitle .cfig.r-exquisite { color: #c8a8ff; }
+#ui #inspector.glass .lnk, #ui #inspector.glass .how, #ui #inspector.glass .tglyph { color: #f0b878; }
+#ui #inspector.glass .chip { background: rgba(255, 240, 210, 0.1); color: #f3e9cf; }
+#ui #inspector.glass .chip small { color: #cbbd98; }
+#ui #inspector.glass .more { border-top-color: rgba(255, 240, 210, 0.25); }
+#ui .glass .fork { background: rgba(255, 240, 210, 0.08); color: #f3e9cf; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+#ui .glass .fork:hover:not(:disabled) { background: rgba(255, 240, 210, 0.16); }
+#ui #grafts .btn.armed { outline-color: #b8d878; }
+/* (the wave's challenge and the gifts: the same glass, their rarity edges and glows kept) */
+#ui #chal { background: rgba(24, 20, 14, 0.5); border: 1px solid rgba(169, 204, 92, 0.6); color: #f3e9cf; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3); }
+#ui #chal .ci { color: #a9cc5c; }
+#ui #chal .cp { color: #9dd3ea; }
+#ui #chal.met { background: rgba(70, 52, 10, 0.55); border-color: #e0b84a; box-shadow: 0 0 10px #f0c04a88; }
+#ui #chal.met .ci, #ui #chal.met .cp { color: #f0c860; }
+#ui #chal.failed { border-color: rgba(200, 170, 170, 0.5); }
+#ui .bchip { background: rgba(24, 20, 14, 0.5); color: #f3e9cf; border-width: 1.5px; }
+#ui .bchip:not([class*="r-"]) { border-color: rgba(169, 204, 92, 0.6); box-shadow: none; }
+#ui .bchip em { filter: brightness(1.25); }
+/* (the seeds: glass edged in each plant's colour; the one in hand lifted with a gold ring, a too-dear one greyed) */
+#ui .seed { background: rgba(24, 20, 14, 0.5); border: 2px solid color-mix(in srgb, var(--acc) 75%, transparent); border-radius: 12px; color: #f3e9cf; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); }
+#ui .seed:hover { background: rgba(40, 33, 22, 0.6); filter: none; }
+#ui .seed .el { color: #cbbd98; }
+#ui .seed .cost { color: #9dd3ea; font-weight: 800; }
+#ui .seed .tag.up { color: #b8e08a; }
+#ui .seed .tag.down { color: #ffa3b4; }
+#ui .seed.on { background: rgba(70, 56, 24, 0.7); border-color: var(--acc); box-shadow: 0 0 0 2px #f0c860, 0 8px 16px rgba(0, 0, 0, 0.4); }
+#ui .seed.poor { border-color: rgba(170, 166, 156, 0.6); }
+#ui .seed.poor .cost { color: #ff8a9c; }
+
+/* the rites (hud.js openRites): a violet pill floating at the left over the seeds, while a wave runs (hud.js shows
+   it), and their panel of tiles above it */
+#rites { position: fixed; left: calc(12px + var(--sl)); bottom: calc(12px + 88px * var(--ts) + 10px + var(--sb)); min-height: 40px; padding: 0 14px; font-size: calc(15px * var(--ts)); font-weight: 800; white-space: nowrap; }
+#ui #rites.glass { background: rgba(70, 40, 110, 0.5); border-color: rgba(214, 180, 255, 0.55); border-radius: 20px; }
+#ui #rites.glass:hover { background: rgba(90, 54, 140, 0.6); }
+#ui #rites.glass.on { background: rgba(110, 70, 170, 0.66); border-color: #f0c860; }
+#ritepanel { position: fixed; z-index: 3; left: calc(12px + var(--sl)); bottom: calc(12px + 88px * var(--ts) + 10px + 40px + 8px + var(--sb)); width: min(460px, calc(var(--vw) - 24px - var(--sl) - var(--sr)));
+  max-height: calc(var(--vh) - 240px - 88px * var(--ts)); overflow-y: auto; overscroll-behavior: contain; padding: 8px; display: none; flex-direction: column; gap: 6px; font-size: calc(14px * var(--ts)); }
+#ritepanel.show { display: flex; }
+#ui #ritepanel.glass { background: rgba(22, 19, 13, 0.72); }
+#ritepanel .forks { margin: 0; }
+#ritepanel > .dim { font-size: 0.86em; }
+@media (max-width: 760px) {
+  #rites { left: calc(6px + var(--sl)); bottom: calc(11px + 112px * var(--ts) + 6px + 6px + var(--sb)); padding: 0 12px; font-size: calc(13.5px * var(--ts)); }
+  #ritepanel { left: calc(6px + var(--sl)); right: calc(6px + var(--sr)); width: auto; bottom: calc(11px + 112px * var(--ts) + 6px + 6px + 40px + 6px + var(--sb));
+    max-height: calc(var(--vh) * 0.5); font-size: calc(13px * var(--ts)); }
+  /* (the docked card spans the pill's place: it steps aside until the card shuts) */
+  body:has(#inspector.show) #rites { visibility: hidden; }
 }
 </style>
 </head>
@@ -839,20 +919,22 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 <div id="flash"></div>
 <div id="floats"></div>
 <div id="ui">
-  <div id="top" class="panel">
+  <div id="top" class="panel glass" data-orn="none">
     <div id="heart"><div id="hearttxt">Heart 20/20</div><div class="hbar"><div id="heartfill"></div></div></div>
     <div id="wave">Wave 0</div>
   </div>
-  <div id="topright"><span id="fps"><span id="fpsn"></span> · <span id="vox"></span></span><div id="viewctl"><button id="skybtn" class="btn small" title="mood and weather">☁</button><button id="turnl" class="btn small" title="turn left">↺</button><button id="turnr" class="btn small" title="turn right">↻</button></div><button id="sound" class="btn small" title="sound (M)"><span class="lb">♪</span></button><button id="musicbtn" class="btn small" title="music style"><span class="lb">♫</span><small id="musicname">Ambient</small></button><button id="speed" class="btn small" title="speed (F)"><span class="lb">1x</span></button><button id="pausebtn" class="btn small" title="menu (Esc)">☰</button></div>
+  <div id="topright"><span id="fps"><span id="fpsn"></span> · <span id="vox"></span></span><div id="viewctl"><button id="skybtn" class="btn small glass" data-orn="none" title="mood and weather">☁</button><button id="turnl" class="btn small glass" data-orn="none" title="turn left">↺</button><button id="turnr" class="btn small glass" data-orn="none" title="turn right">↻</button></div><button id="sound" class="btn small glass" data-orn="none" title="sound (M)"><span class="lb">♪</span></button><button id="musicbtn" class="btn small glass" data-orn="none" title="music style"><span class="lb">♫</span><small id="musicname">Ambient</small></button><button id="speed" class="btn small glass" data-orn="none" title="speed (F)"><span class="lb">1x</span></button><button id="pausebtn" class="btn small glass" data-orn="none" title="menu (Esc)">☰</button></div>
   <div id="giftbox"><div id="chal"></div><div id="boonbar"></div></div>
-  <div id="almanac"><button id="almtog">Almanac ▸</button><div id="almbody"></div></div>
-  <div id="sky" class="panel"><div class="skyrow"><b>Mood</b><div class="seg" id="moodseg"></div></div><div class="skyrow"><b>Weather</b><div class="seg" id="wxseg"></div></div></div>
+  <div id="almanac" class="glass" data-orn="none"><button id="almtog">Almanac ▸</button><div id="almbody"></div></div>
+  <div id="sky" class="panel glass" data-orn="none"><div class="skyrow"><b>Mood</b><div class="seg" id="moodseg"></div></div><div class="skyrow"><b>Weather</b><div class="seg" id="wxseg"></div></div></div>
   <div id="hint">Tap a seed, then tap the meadow twice to plant it</div>
-  <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspbody"></div><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="deepen" class="btn"><span class="lb">Deepen</span></button><div id="grafts"></div><button id="rites" class="btn"><span class="lb">Rites</span></button><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div>
+  <div id="inspector" class="panel glass" data-orn="none"><div id="insptitle"></div><div id="inspbody"></div><button id="grow" class="btn" data-orn="none"><span class="lb">Grow</span></button><button id="deepen" class="btn" data-orn="none"><span class="lb">Deepen</span></button><div id="grafts"></div><button id="uproot" class="btn pink" data-orn="none"><span class="lb">Uproot</span></button></div>
   <div id="seeds"></div>
   <div id="toast" role="status" aria-live="polite"></div>
   <div id="dewgauge"><div id="dewbar" role="meter" aria-label="Dew bank" aria-valuemin="0" aria-valuenow="0"><i class="tick" style="--at: 0.3"></i><i class="tick" style="--at: 0.55"></i><i class="tick" style="--at: 0.8"></i><i class="fill"><i class="bub"></i><i class="bub"></i><i class="bub"></i></i><b class="luck"></b></div><div id="dew" role="status" aria-label="Dew 0"><svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 .6C4.4 3.4 1 7.2 1 10.6a5 5 0 0 0 10 0C11 7.2 7.6 3.4 6 .6z"/><path class="glint" d="M3.6 10.2a2.6 2.6 0 0 0 1.9 3.1"/></svg><b id="dewn">0</b></div></div>
-  <button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button>
+  <button id="wavebtn" class="btn pink glass" data-orn="none"><span class="lb">Begin Wave 1</span></button>
+  <button id="rites" class="btn glass" data-orn="none" title="rites: once each, on the whole garden"><span class="lb">Rites</span></button>
+  <div id="ritepanel" class="glass"></div>
   <div id="boons" class="veil"><div class="col"><h2>The garden offers a gift</h2><div id="boonrow"></div><div id="boonbuy"><button id="reroll" class="btn"></button><button id="morepick" class="btn"></button></div></div></div>
   <div id="over" class="veil dark"><div class="panel card"><h2>The Heart Tree sleeps</h2><div class="cscroll"><p id="overtxt"></p><div id="oversum" class="oversum"></div><div id="overboard" class="lboard" style="display:none"></div></div><button id="again" class="btn pink">Plant anew</button></div></div>
   <div class="help">drag pan · wheel zoom · Q/E turn · 1–5 seeds · space wave</div>
@@ -4667,14 +4749,20 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       this.zoom = 30; this.pan = [0, 0];
       this.minZoom = 6; this.maxZoom = 400; // (canvas px per tile; a game scales them with its canvas DPR)
       this.D0 = D0; this.D1 = D1; this.foc = null;
+      this.locked = null; // the quarter turn lock() holds the view at, or null
     }
     snap(dir) {
+      if (this.locked !== null) return;
       this.k += dir;
       this.from = this.theta; this.to = (this.k * Math.PI) / 2; this.t0 = ME.now();
     }
     get turning() { return this.t0 !== null; }
     // jump to quarter turn k at once (no easing): a showroom or a saved view
-    turnTo(k) { this.k = k; this.theta = this.from = this.to = (k * Math.PI) / 2; this.t0 = null; }
+    turnTo(k) { if (this.locked !== null) return; this.k = k; this.theta = this.from = this.to = (k * Math.PI) / 2; this.t0 = null; }
+    // Hold the view at quarter turn k (it jumps there): snap() and turnTo() then do nothing, so Q/E and a game's
+    // turn buttons are ignored; pan, zoom, focus and fit stay. For a level whose picture holds at one turn only
+    // (the Ever Stair's loop: docs/designs/2026-11-08-escher-level-engine.md). lock(null) frees it.
+    lock(k) { this.locked = null; if (k != null) { this.turnTo(k); this.locked = k; } }
     // Ease the view to the world point p over o.s seconds (and the zoom to o.zoom, if given). The player's
     // drag or wheel, lookAt and fit cancel it; busy says whether the view still moves (a focus or a Q/E
     // turn). A turn on the way keeps p centred.
@@ -15987,7 +16075,7 @@ fn boxOf(V: Vox) -> Box {
 
     // world z of the top voxel of a static volume at local offset (dx, dy), or null
     crownTop(s, dx, dy) {
-      const MB = this.MB, m = MB.models[s.frames[0]], VS = this.T.VS, p = s.place;
+      const MB = this.MB, m = MB.models[s.frames[0]], VS = ME.VS, p = s.place; // the models' density: the terrain's may lag behind it while it streams
       const [rx, ry] = p.rot ? ME.rotQ(dx, dy, 4 - p.rot) : [dx, dy]; // world offset to the model's: undo the turn, then the mirror
       const [lx, ly] = p.flip ? [ry, rx] : [rx, ry], ix = Math.floor(lx * VS) - m.box[0], iy = Math.floor(ly * VS) - m.box[1];
       if (ix < 0 || iy < 0 || ix >= m.dims[0] || iy >= m.dims[1]) return null;
@@ -17878,7 +17966,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.85.0", name: "Mossheart", commit: "aaadc1c" };
+  G.VERSION = { v: "0.86.0", name: "Mossheart", commit: "c454776" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -20438,7 +20526,7 @@ function MA_DSP() {
     // returns the model's height
     const TOP = {
       thorn(L, p, z) { // two (three at level 3) slim green vines spiralling up the stone lantern (1, 1.5 and 2 turns), deep at the foot to fresh at the tips, pale thorns on alternate sides, a few leaves, small magenta roses (1, 2, 3); green sparks above
-        const g = GS[L - 1], CM = ["twCaneDk", "twCane", "twCaneLt"];
+        const g = GS[L - 1], CM = ["twCaneDk", "twCane", "twCaneLt"], t3 = T3 && T3.kind === "thorn" ? Object.assign(T3, { curls: [] }) : null; // t3: HI 3's anchors
         // the lantern's radius by height (VES.thorn), so the vines wind just off its stone
         const PR = [[0, 0.2], [0.07, 0.19], [0.115, 0.135], [0.15, 0.098], [0.44, 0.098], [0.465, 0.165], [0.51, 0.165], [0.53, 0.125], [0.62, 0.125], [0.645, 0.21], [0.69, 0.17]];
         const rAt = (zz) => { for (let i = 1; i < PR.length; i++) if (zz <= PR[i][0]) { const [z0, r0] = PR[i - 1], [z1, r1] = PR[i]; return (r0 + ((r1 - r0) * (zz - z0)) / (z1 - z0)) * g; } return PR[PR.length - 1][1] * g; };
@@ -20449,6 +20537,7 @@ function MA_DSP() {
           const R = orient(n), u = R.slice(0, 3), v = R.slice(3, 6);
           ring(5, (a) => { const d = add(mul(u, Math.cos(a)), mul(v, Math.sin(a))); p.push(E(add(add(c, mul(d, r * 0.5)), mul(n, r * 0.25)), [r * 0.5, r * 0.55, 0.012], "twRose", { R: orient(norm(add(mul(d, 0.75), mul(n, 0.66))), cross(n, d)) })); });
           p.push(S(add(c, mul(n, r * 0.4)), r * 0.3, "twRoseLt"));
+          if (t3) t3.blooms.push({ c, n, u, v, r });
         };
         for (let v = 0; v < nv; v++) {
           const a0 = FR + 0.5 + (v * TAU) / nv, he = ends[v];
@@ -20459,6 +20548,7 @@ function MA_DSP() {
             const out = [Math.cos(a), Math.sin(a), 0], tg = [-Math.sin(a), Math.cos(a), 0];
             if (i % 2 && i < ns) p.push(C(q, add(q, mul(norm(add(add(out, mul(tg, -0.4)), [0, 0, i % 4 === 1 ? 0.35 : -0.3])), 0.05)), 0.011, 0.002, "twSpike"));
             if (i % 7 === 3) p.push(E(add(q, mul(norm(add(out, [0, 0, 0.4])), 0.03)), [0.034, 0.016, 0.008], "kgLeaf", { R: orient(norm(add([0, 0, 1], mul(out, -0.6))), norm(add(out, tg))) }));
+            if (t3 && i % 7 === 5 && i < ns - 2) t3.curls.push({ q, out, tg });
             for (const [rv, rt] of RS) if (rv === v && i === Math.round(rt * ns)) rose(add(q, mul(out, 0.022)), norm(add(out, [0, 0, 0.8])), [0.042, 0.046, 0.05][L - 1]);
             prev = q;
           }
@@ -20486,6 +20576,7 @@ function MA_DSP() {
         }
         p.push(Y(hc, hr * 0.62, 0.03, "kgBrass", { R }), Y(add(hc, mul(n, 0.014)), hr * 0.5, 0.026, "kgLens", { R }), S(add(hc, mul(n, 0.045)), 0.02 + 0.004 * L, "hsGlowGold"));
         for (let k = 0; k < L - 1; k++) p.push(S(add(add(hc, mul(n, 0.16 + 0.1 * k)), mul(u, k ? -0.05 : 0.05)), 0.016, "hsGlowGold"));
+        if (T3 && T3.kind === "sun") Object.assign(T3, { hc, n, u, v, hr, np, sz }); // HI 3's anchors
         return hz + hr + 0.08;
       },
       wisp(L, p, z) { // the sapling and the cyan spirit flame, orbs circling
@@ -20528,12 +20619,13 @@ function MA_DSP() {
         return bc[2] + R * 1.4;
       },
       moon(L, p, z) { // a blue moonpetal bloom on a slender stem, the crescent (level 3 the full moon) hung above
-        const hb = z + [0.2, 0.25, 0.28][L - 1], br = [0.11, 0.13, 0.15][L - 1];
+        const hb = z + [0.2, 0.25, 0.28][L - 1], br = [0.11, 0.13, 0.15][L - 1], t3 = T3 && T3.kind === "moon" ? T3 : null; // t3: HI 3's anchors
         const bloom = (c, r, n) => {
           const R = orient(n), u = R.slice(0, 3), v = R.slice(3, 6);
           ring(5, (a) => { const d = add(mul(u, Math.cos(a)), mul(v, Math.sin(a))); p.push(E(add(add(c, mul(d, r * 0.62)), mul(n, 0.02)), [r * 0.62, r * 0.42, 0.013], "twMoonPetal", { R: orient(norm(add(n, mul(d, -0.35))), d) })); });
           if (HI > 1) ring(5, (a) => { const d = add(mul(u, Math.cos(a)), mul(v, Math.sin(a))); p.push(E(add(add(c, mul(d, r * 0.34)), mul(n, 0.034)), [r * 0.34, r * 0.24, 0.011], "twMoonPetalLt", { R: orient(norm(add(n, mul(d, -0.6))), d) })); }, TAU / 10);
           p.push(S(add(c, mul(n, 0.02)), r * 0.2, "twMoon"));
+          if (t3) t3.blooms.push({ c, n, u, v, r });
         };
         const bc = [0.03, 0.02, hb];
         p.push(C([0, 0, z - 0.02], bc, 0.022, 0.016, "kgStem"));
@@ -20543,6 +20635,7 @@ function MA_DSP() {
         const mc = [0.02, 0.02, hb + 0.24], mr = [0.08, 0.095, 0.095][L - 1], VR = [0.707, -0.707, 0];
         if (L < 3) for (let k = 0; k <= 12; k++) { const b = Math.PI + (k / 12 - 0.5) * 3.6 - 0.3, r = mr * 0.42 * Math.sin(((k + 0.5) / 13) * Math.PI) + 0.01; p.push(S(add(mc, add(mul(VR, Math.cos(b) * mr), [0, 0, Math.sin(b) * mr])), r, "twMoon")); }
         else { p.push(S(mc, mr, "twMoon")); ring(3, (a) => p.push(S(add(mc, pol(a, 0.19, 0.03 * Math.sin(a * 2))), 0.018, "twMoon")), 0.4); }
+        if (t3) Object.assign(t3, { mc, mr });
         return mc[2] + mr + 0.06;
       },
       lily(L, p, z, D) { // white trumpet lilies, jade throats and glowing stamens, strap leaves at the back
@@ -20785,6 +20878,8 @@ function MA_DSP() {
     // tier replaces while T3 names its kind), paint(X, Y, Z, m, r, t3) over the detail's answer r (unscaled, as D's
     // coordinates), null to keep it
     let T3 = null;
+    const dt3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const STRIA = { twCaneDk: "twCane", twCane: "twCaneLt", twCaneLt: "kgLeafLt" }; // the thorn's cane striations, a shade up
     const HI3 = {
       // the Ghost Lily, the Architect's redesign (vs128 study): six arching stamens with crosswise anthers and a
       // three-lobed pistil (for TOP's), recurved petal tips, dew on three leaves, sporophytes on the moss cap and
@@ -20845,6 +20940,96 @@ function MA_DSP() {
             }
           }
           return null;
+        },
+      },
+      // the Sunpetal Lens: disc florets in a golden-angle spiral on the brass rim; painted, a ring of seeds round the
+      // lens (two spiral families crossing), each petal's base in shade and a crease down it (the head faces the
+      // viewer, so nothing goes behind it)
+      sun: {
+        prims(p, z, t3) {
+          const { hc, n, u, v, hr } = t3;
+          for (let k = 0; k < 40; k++) { // 137.5 deg apart, outward from the lens's edge to the brass's
+            const a = k * 2.39996, d = add(mul(u, Math.cos(a)), mul(v, Math.sin(a)));
+            p.push(S(add(add(hc, mul(n, 0.03)), mul(d, hr * (0.52 + 0.08 * Math.sqrt((k + 0.5) / 40)))), 0.0045, k % 3 ? "kgPetalDk" : "twBarkLt"));
+          }
+        },
+        paint(X, Y, Z, m, r, t3) {
+          if (r !== m || (m !== "kgLens" && m !== "twPetal")) return null;
+          const { hc, n, u, v, hr, np, sz } = t3, q = [X - hc[0], Y - hc[1], Z - hc[2]], qn = dt3(q, n);
+          if (qn < -0.05 || qn > 0.06) return null;
+          const qu = dt3(q, u), qv = dt3(q, v), rho = Math.hypot(qu, qv), ph = Math.atan2(qv, qu);
+          if (m === "kgLens") { // seeds, where a 13- and a 21-spiral cross
+            const lr = 5 * Math.log(Math.max(rho, 1e-4) / hr);
+            return rho > 0.36 * hr && frac((13 * ph) / TAU + lr) < 0.4 && frac((21 * ph) / TAU - lr) < 0.4 ? "kgPetalDk" : null;
+          }
+          if (rho < 0.62 * hr) return null;
+          if (rho < 0.78 * hr) return "twPetalDk";
+          const s = (ph * np) / TAU, t = (rho - 0.78 * hr) / (0.22 * hr + 0.08 * sz); // the crease, narrowing to the tip
+          return Math.abs(rho * Math.sin(((s - Math.round(s)) * TAU) / np)) < 0.0035 * (1 - t) ? "twPetalDk" : null;
+        },
+      },
+      // the Moonpetal: stamens with pale beads in each bloom's heart, a hairline halo round the full moon turned to
+      // the viewer; painted, craters on the moon (dark floors in lighter rims) and a midrib down each petal
+      moon: {
+        prims(p, z, t3) {
+          for (const { c, n, u, v, r } of t3.blooms) ring(5, (a) => { // between the outer petals
+            const d = add(mul(u, Math.cos(a)), mul(v, Math.sin(a))), b = add(c, mul(n, 0.02)), e = add(add(b, mul(n, 0.36 * r)), mul(d, 0.14 * r));
+            p.push(C(b, e, 0.003, 0.0026, "twMoonPetalLt"), S(e, 0.0055, "kgMoonPetal"));
+          }, TAU / 10);
+          const { mc, mr } = t3, VR = [0.707, -0.707, 0];
+          let q0 = null;
+          for (let k = 0; k <= 64; k++) {
+            const a = (k / 64) * TAU, q = add(mc, add(mul(VR, Math.cos(a) * mr * 1.4), mul(VUP, Math.sin(a) * mr * 1.4)));
+            if (q0) p.push(C(q0, q, 0.003, 0.003, "twMoon"));
+            q0 = q;
+          }
+        },
+        paint(X, Y, Z, m, r, t3) {
+          if (r !== m) return null;
+          if (m === "twMoon") {
+            if (!near([X, Y, Z], t3.mc, t3.mr * 1.03)) return null; // the full moon only, not the hearts or the halo
+            const k = nz3(X, Y, Z, 30, 9);
+            return k > 0.72 ? "twMoonPetal" : k > 0.65 ? "twMoonPetalLt" : null;
+          }
+          if (m !== "twMoonPetal" && m !== "twMoonPetalLt") return null;
+          const o = m === "twMoonPetal" ? 0 : 0.5; // the inner petals sit half a step round
+          for (const { c, n, u, v, r: br } of t3.blooms) {
+            const q = [X - c[0], Y - c[1], Z - c[2]], qu = dt3(q, u), qv = dt3(q, v), rho = Math.hypot(qu, qv);
+            if (rho > br * 1.3 || Math.abs(dt3(q, n)) > 0.06) continue;
+            const s = (Math.atan2(qv, qu) * 5) / TAU - o;
+            if (rho > br * (o ? 0.12 : 0.3) && Math.abs(rho * Math.sin(((s - Math.round(s)) * TAU) / 5)) < 0.004) return o ? "kgMoonPetal" : "twMoonPetalLt";
+          }
+          return null;
+        },
+      },
+      // the Thornbloom: tendrils coiling off the vines, green sepals behind each rose; painted, the roses' rims a shade
+      // lighter and fine striations along the canes
+      thorn: {
+        prims(p, z, t3) {
+          for (const { c, n, u, v, r } of t3.blooms) ring(5, (a) => { // sepals between the petals, pointing out and back
+            const d = add(mul(u, Math.cos(a)), mul(v, Math.sin(a))), sd = norm(add(d, mul(n, -0.4)));
+            p.push(E(add(add(c, mul(n, -0.05 * r)), mul(sd, 0.5 * r)), [0.42 * r, 0.0065, 0.0035], "twCane", { R: orient(add(n, mul(d, 0.4)), sd) }));
+          }, TAU / 10);
+          t3.curls.forEach(({ q, out, tg }, j) => { // a wire out of the vine, then a coil tightening over a turn and a half, alternately left and right
+            const w = norm(add(out, [0, 0, 0.5])), e = mul(tg, j % 2 ? 1 : -1), b = add(q, mul(w, 0.035)), Q = add(b, mul(e, 0.012)), N = 16;
+            p.push(C(q, b, 0.0034, 0.0032, "twCaneLt"));
+            let q0 = b;
+            for (let i = 1; i <= N; i++) {
+              const ph = (i / N) * 3 * Math.PI, R = 0.012 * Math.exp(-0.2 * ph), q1 = add(Q, add(mul(e, -Math.cos(ph) * R), mul(w, Math.sin(ph) * R)));
+              p.push(C(q0, q1, 0.0032 - (0.0008 * (i - 1)) / N, 0.0032 - (0.0008 * i) / N, "twCaneLt"));
+              q0 = q1;
+            }
+          });
+        },
+        paint(X, Y, Z, m, r, t3) {
+          if (r !== m) return null;
+          if (m === "twRose") for (const { c, n, r: br } of t3.blooms) { // the petals' rims
+            const q = [X - c[0], Y - c[1], Z - c[2]], qn = dt3(q, n), q2 = dt3(q, q);
+            if (q2 < 1.44 * br * br && q2 - qn * qn > 0.5 * br * br) return "twRoseLt";
+          }
+          // striations: noise stretched round the lantern, so along the vines (its seam behind, away from the viewer)
+          const up = STRIA[m];
+          return up && nz3(Math.hypot(X, Y), 0.02 * Math.atan2(X * SIDE[0] + Y * SIDE[1], X * FWD[0] + Y * FWD[1]), Z, 110, 4) > 0.7 ? up : null;
         },
       },
     };
@@ -21486,6 +21671,8 @@ function MA_DSP() {
       momiji: { yaw0: 0, pan: [0, 0], blurb: "Maples and waterfalls down an autumn valley to the Heart Tree." },
       fernglass: { yaw0: 0, pan: [0, 0], blurb: "A Victorian fernery under glass, round a lily pond." },
       cornmoon: { yaw0: 0, pan: [0, 0], blurb: "A cornfield under the harvest moon, the farm track winding down to the apple tree." },
+      // its yaw stays 0: the stair's loop closes only in the level's one locked view
+      everstair: { yaw0: 0, pan: [0, 0], blurb: "A cloister drawn in ink, where the stair goes down round the well and comes back to where it began." },
     },
   };
 })();
@@ -23905,7 +24092,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.cards = {};
       for (const kind of S.plants) {
         const def = D.TOWERS[kind], b = document.createElement("button");
-        b.className = "seed"; b.style.setProperty("--acc", hex(def.color.map((v) => v * 0.75)));
+        b.className = "seed"; b.dataset.orn = "none"; b.style.setProperty("--acc", hex(def.color.map((v) => v * 0.75)));
         b.innerHTML = `${icon("PLANT_ICONS", kind) ? `<span class="picon" style="color:${ink(def.color)}">${icon("PLANT_ICONS", kind)}</span>` : `<span class="dot" style="background:${hex(def.color)}"></span>`}<b>${def.name}</b><span class="el">${D.ELEMENT_NAMES[D.elementOf(kind)]}</span><span class="cost"></span><span class="tag"></span>`;
         b.title = def.desc;
         b.addEventListener("click", () => { this.selected = this.selected === kind ? "" : kind; this.act.seed(this.selected); this.refresh(); });
@@ -23931,11 +24118,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       });
       this.showAlmanac();
       NARROW.addEventListener("change", () => this.showAlmanac());
-      // easy close (dismiss.js): the almanac on a phone closes on a tap outside it; the card by its ✕ or a swipe
-      // down (not by a tap outside: a meadow tap places or picks); the gifts and the run's end minimise to a tab
+      // easy close (dismiss.js): the almanac on a phone and the rites' panel close on a tap outside them; the
+      // card by its ✕ or a swipe down (not by a tap outside: a meadow tap places or picks); the gifts and the
+      // run's end minimise to a tab
       G.Dismiss.add($("almanac"), { outside: true, dir: "any", open: () => NARROW.matches && this.almOpen && !this.almFolded(), skip: (t) => !!t.closest("#almtog"),
         close: () => { if (this.almOver) this.almOver = false; else { this.almOpen = false; try { localStorage.setItem(HUD_KEY, JSON.stringify({ almanac: false })); } catch (e) { /* storage blocked */ } } this.showAlmanac(); } });
       G.Dismiss.add($("inspector"), { close: () => this.act.closeCard() });
+      G.Dismiss.add($("ritepanel"), { outside: true, dir: "any", x: false, open: () => this.riting, skip: (t) => !!t.closest("#rites"), close: () => this.closeRites() });
       G.Dismiss.add($("boons"), { veil: true, panel: $("boons").querySelector(".col"), hit: ".boon", dir: "any", tab: "Choose a gift" });
       G.Dismiss.add($("over"), { veil: true, panel: $("over").querySelector(".card"), dir: "any", tab: "The Heart Tree sleeps" });
       $("turnl").addEventListener("click", () => this.act.turn(-1));
@@ -23987,15 +24176,15 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         this.graftArmed = null; this.game.graft(t, p.other);
         if (this.inspected === t) this.inspect(t);
       });
-      // (Rites, while a wave runs: the button opens a tile per rite on the card, Defs.RITES; a tile performs
-      // it, and the button, then "Back", shuts them; the tiles' prices and greying follow the dew, refresh)
-      this.riting = false;
-      $("rites").addEventListener("click", () => { if (!settled() || !this.inspected) return; this.riting = !this.riting; this.inspect(this.inspected); });
-      $("inspector").addEventListener("click", (e) => {
-        const b = e.target.closest("[data-rite]"), t = this.inspected;
-        if (!b || b.disabled || !t || !settled()) return;
-        this.riting = false; this.game.rite(b.dataset.rite);
-        if (this.inspected === t) this.inspect(t);
+      // (Rites, while a wave runs, with or without a plant's card: the floating button opens a panel of tiles,
+      // one per rite, Defs.RITES; a tile performs it and shuts the panel, as do the button again, a tap outside
+      // or a swipe; the tiles' prices and greying follow the dew, refresh)
+      this.riting = false; $("rites").style.display = "none";
+      $("rites").addEventListener("click", () => { if (S.phase !== G.Phase.WAVE) return; if (this.riting) this.closeRites(); else this.openRites(); });
+      $("ritepanel").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-rite]");
+        if (!b || b.disabled || !this.riting) return;
+        this.closeRites(); this.game.rite(b.dataset.rite); this.riteLabel();
       });
       $("uproot").addEventListener("click", () => {
         if (!settled() || !this.inspected) return;
@@ -24294,7 +24483,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const box = $("inspector");
       if (this.forking && (this.forking !== t || !this.forkable(t))) this.forking = null;
       if (!t) {
-        box.classList.remove("show", "anchored"); this.inspected = null; this.foe = null; this.gift = ""; this.riting = false;
+        box.classList.remove("show", "anchored"); this.inspected = null; this.foe = null; this.gift = "";
         this.arm(null); this.almOver = false; this.showAlmanac(); this.seedInfo(); return;
       }
       if (t !== this.inspected || !this.showing("tower")) { this.openedAt = performance.now(); this.arm(null); }
@@ -24335,28 +24524,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, `${ROMAN[t.level]} ▸ ${ROMAN[t.level + 1]}`, "step"), [],
           [`<div class="forks">${tile("a")}${tile("b")}</div>`, `<span class="dim">${can ? `Choose a branch: ${cost} dew, for good` : "Not enough dew"}</span>`], "");
         label($("grow"), "Back"); $("grow").disabled = false;
-        $("deepen").style.display = "none"; $("grafts").innerHTML = ""; $("rites").style.display = "none";
+        $("deepen").style.display = "none"; $("grafts").innerHTML = "";
         this.uprootLabel(t);
         box.classList.add("show"); this.showAlmanac();
         return;
       }
       $("grow").style.display = $("uproot").style.display = "";
-      if (this.riting && S.phase !== G.Phase.WAVE) this.riting = false;
-      if (this.riting) {
-        // the rites: a tile for each (its name, what it does, its price now), in its colour; Rites, now "Back",
-        // shuts them (the card's other buttons wait)
-        const tile = (r) => `<button class="fork" data-rite="${r.id}" style="--acc:${G.css(r.color)}"><b>${esc(r.name)}</b><span>${esc(r.desc)}</span><small></small></button>`;
-        this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, "Rites"), [],
-          [`<div class="forks rites">${D.RITES.map(tile).join("")}</div>`, `<span class="dim">Once each, on the whole garden; dearer each time this run</span>`], "");
-        $("grow").style.display = $("uproot").style.display = $("deepen").style.display = "none"; $("grafts").innerHTML = "";
-        label($("rites"), "Back"); $("rites").style.display = "";
-        this.riteTiles();
-        box.classList.add("show"); this.showAlmanac();
-        return;
-      }
-      // (Rites: the button, while a wave runs, with the cheapest price)
-      $("rites").style.display = S.phase === G.Phase.WAVE ? "" : "none";
-      if (S.phase === G.Phase.WAVE) this.riteLabel();
       this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, `Lv ${ROMAN[t.level]}`),
         [["Damage", t.damage().toFixed(0)], ["Reach", t.range().toFixed(1)], ["Rate", `${t.rate().toFixed(2)}/s`], ["Aims", AIMS[t.kind] || "nearest"]],
         tips, `${now}${next}${links ? "<br>" + links : ""}${zone ? "<br>" + zone : ""}<br>Aims at ${esc(TARGETS[t.kind] || "the creature nearest the Heart Tree")}<br><span class="dim">${esc(this.matchupsOf(t.kind))}</span>`);
@@ -24375,21 +24548,33 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("grafts").innerHTML = gp.slice(0, 8).map((p, i) => {
         const why = this.game.graftBlocked(t, p.other), armed = p.other === this.graftArmed;
         const text = armed ? `Tap again: ${p.graft.name}  (${p.cost} dew)` : `Graft ✦ ${D.TOWERS[p.other.kind].name}  (${why && why !== "Not enough dew" ? why : p.cost + " dew"})`;
-        return `<button class="btn${armed ? " armed" : ""}" data-graft="${i}"${why ? " disabled" : ""}><span class="lb">${esc(text)}</span></button>`;
+        return `<button class="btn${armed ? " armed" : ""}" data-orn="none" data-graft="${i}"${why ? " disabled" : ""}><span class="lb">${esc(text)}</span></button>`;
       }).join("");
       this.uprootLabel(t);
       box.classList.add("show");
       this.showAlmanac();
     }
-    // the Rites button's cheapest price, which rises with the wave (one called early starts while the card
-    // stays up) and with each rite cast (in place, only when it changed)
+    // the Rites button's cheapest price, which rises with the wave (one called early starts at once) and with
+    // each rite cast (in place, only when it changed)
     riteLabel() {
       const txt = `Rites ▸  (from ${Math.min(...D.RITES.map((r) => this.game.riteCost(r.id)))} dew)`;
       if ($("rites").querySelector(".lb").textContent !== txt) label($("rites"), txt);
     }
+    // the rites' panel: a tile for each (its name, what it does, its price now), in its colour; built once per
+    // opening, then only its prices follow the dew (riteTiles); shut, it is emptied
+    openRites() {
+      const tile = (r) => `<button class="fork" data-rite="${r.id}" style="--acc:${G.css(r.color)}"><b>${esc(r.name)}</b><span>${esc(r.desc)}</span><small></small></button>`;
+      $("ritepanel").innerHTML = `<div class="forks rites">${D.RITES.map(tile).join("")}</div><span class="dim">Once each, on the whole garden; dearer each time this run</span>`;
+      this.riting = true; this.riteTiles();
+      $("ritepanel").classList.add("show"); $("rites").classList.add("on");
+    }
+    closeRites() {
+      this.riting = false;
+      $("ritepanel").classList.remove("show"); $("rites").classList.remove("on"); $("ritepanel").innerHTML = "";
+    }
     // the rite tiles' prices and greying, as the dew stands (in place, so a tap mid-press still lands)
     riteTiles() {
-      for (const b of $("inspbody").querySelectorAll("[data-rite]")) {
+      for (const b of $("ritepanel").querySelectorAll("[data-rite]")) {
         const id = b.dataset.rite, why = this.game.riteBlocked(id), txt = why || `${this.game.riteCost(id)} dew`;
         b.disabled = !!why;
         if (b.lastChild.textContent !== txt) b.lastChild.textContent = txt;
@@ -24657,14 +24842,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         : waving ? `Next wave <small>${this.game.earlyBlocked()}</small>` : `Begin Wave ${S.wave + 1}`);
       $("hint").style.display = S.wave === 0 && building && !this.selected ? "" : "none"; // (a picked seed's info says what to do)
       if (S.phase === G.Phase.GAME_OVER && $("inspector").classList.contains("show")) this.inspect(null);
-      // (a plant's card as a wave starts or ends: its Rites come or go; the rite tiles follow the dew, the
-      // button's price the wave)
-      else if (this.inspected && this.showing("tower") && !this.forking) {
-        const wave = S.phase === G.Phase.WAVE;
-        if (this.riting && wave) this.riteTiles();
-        else if (this.riting || ($("rites").style.display !== "none") !== wave) this.inspect(this.inspected);
-        else if (wave) this.riteLabel();
-      }
+      // (the Rites button comes and goes with the wave, its panel shut as it ends; the tiles follow the dew, the
+      // button's price the wave; each only written when it changed)
+      const riteWave = S.phase === G.Phase.WAVE;
+      if (($("rites").style.display !== "none") !== riteWave) $("rites").style.display = riteWave ? "" : "none";
+      if (!riteWave && this.riting) this.closeRites();
+      if (riteWave) { this.riteLabel(); if (this.riting) this.riteTiles(); }
       this.seedInfo();
       this.boonBar();
       this.chalPill();
