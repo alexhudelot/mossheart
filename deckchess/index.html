@@ -123,6 +123,29 @@ div.dk-cell { cursor: default; }
 #dk-code { flex: 1; min-width: 0; font: 12px ui-monospace, Consolas, monospace; color: var(--ink); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; user-select: text; -webkit-user-select: text; }
 #dk-play { font-size: 16px; padding: 10px; }
 #dk-friend { justify-content: center; }
+/* the kingdom wheel (view/wheel.js), the way in: over the board (its preview showing through), the centred card
+   big and the others smaller and fading either side; while it's open (#ui.wheel) only the gear shows with it.
+   In guided play the camera row steps aside (the gear has the camera; Q, E still turn) */
+#wheel { position: absolute; inset: 0; z-index: 1; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 64px 0 max(28px, env(safe-area-inset-bottom)); overflow: hidden; background: radial-gradient(ellipse at 50% 55%, rgba(7, 9, 12, 0.35), rgba(7, 9, 12, 0.85) 75%); touch-action: none; }
+#wheel.show { display: flex; }
+#ui.wheel > :not(#wheel):not(#lcorner):not(#view):not(#loading) { display: none; }
+#ui.wheel #lcorner { z-index: 2; }
+#views[data-m="guided"] { display: none; }
+.wh-head { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+.wh-head b { font-size: 22px; letter-spacing: 0.06em; color: var(--w); }
+.wh-head span, .wh-hint { font-size: 13px; color: var(--dim); }
+.wh-track { position: relative; width: 100%; height: min(360px, 52vh); }
+.wh-card { position: absolute; left: 50%; top: 50%; width: min(260px, 62vw); height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 18px 16px; font: var(--font); color: var(--ink); text-align: center; background: linear-gradient(180deg, rgba(36, 38, 30, 0.96), rgba(16, 18, 14, 0.96)); border: 1px solid var(--line); border-radius: 18px; cursor: pointer; touch-action: none; transition: transform 0.22s ease-out, opacity 0.22s ease-out; }
+.wh-track.drag .wh-card { transition: none; }
+.wh-card.mid { border-color: var(--w); box-shadow: 0 0 0 1px var(--w) inset, 0 0 28px rgba(243, 223, 168, 0.25); }
+.wh-em { font-size: min(88px, 13vh); line-height: 1.1; }
+.wh-name { font-size: 22px; letter-spacing: 0.04em; }
+.wh-pw { font-size: 13px; line-height: 1.4; color: var(--dim); min-height: 2.8em; }
+.wh-go { margin-top: 4px; padding: 8px 18px; border-radius: 999px; font-size: 15px; color: #1a160c; background: var(--w); visibility: hidden; }
+.wh-card.mid .wh-go { visibility: visible; }
+.wh-nav { display: flex; align-items: center; gap: 14px; }
+.wh-nav .btn.small { min-width: 48px; height: 48px; font-size: 26px; line-height: 1; border-radius: 50%; }
+.wh-note { min-height: 1.4em; font-size: 13px; color: var(--w); }
 /* a room (net/room.js, NET.md): its bar above the camera row and the bottom buttons (the invite link, how the friend is, the draw,
    resign and rematch buttons); a room has no New game (Rematch is the bar's) */
 #net { position: absolute; z-index: 2; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 94px); left: 50%; transform: translateX(-50%); width: min(420px, calc(100vw - 20px)); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
@@ -183,13 +206,13 @@ div.dk-cell { cursor: default; }
 <canvas id="wx"></canvas>
 <div id="ui">
   <div id="corner"><button id="skybtn" class="btn small" title="mood and weather">☁</button><button id="sound" class="btn small" title="sound">♪</button><button id="lensbtn" class="btn small" title="show the pieces' traits (T)">✦</button></div>
-  <div id="lcorner"><button id="viewbtn" class="btn small" title="lighting and camera">🎥</button></div>
-  <div id="view" class="panel"><div class="skyrow"><b>Theme</b><div class="seg" id="themeseg"></div></div><div class="skyrow"><b>Light</b><div class="seg" id="lightseg"></div></div><div class="skyrow"><b>Camera</b><div class="seg" id="camseg"></div></div><div class="skyrow"><b>View</b><div class="seg" id="viewseg"></div></div></div>
+  <div id="lcorner"><button id="viewbtn" class="btn small" title="settings: kingdoms, decks, a friend, the look and the camera">⚙</button></div>
+  <div id="view" class="panel"><div class="skyrow" id="gamerow"><b>Game</b><div class="seg" id="gameseg"><button data-a="kingdoms" title="back to the kingdom wheel">Kingdoms</button><button data-a="decks" title="build your own deck (?decks=1)">Deck builder</button><button data-a="friend" title="a new room: send your friend its link">Play a friend</button></div></div><div class="skyrow"><b>Theme</b><div class="seg" id="themeseg"></div></div><div class="skyrow"><b>Light</b><div class="seg" id="lightseg"></div></div><div class="skyrow"><b>Camera</b><div class="seg" id="camseg"></div></div><div class="skyrow"><b>View</b><div class="seg" id="viewseg"></div></div></div>
   <div id="sky" class="panel"><div class="skyrow"><b>Mood</b><div class="seg" id="moodseg"></div></div><div class="skyrow"><b>Weather</b><div class="seg" id="wxseg"></div></div></div>
   <div id="top" class="panel"><span id="where"></span><span id="turn"></span><span id="fps"></span></div>
   <div id="moves" class="panel"></div>
   <div id="tag" class="panel"></div>
-  <div id="views" class="seg"><span class="g"><button data-g="left" title="turn the board a quarter left (Q)">⟲</button><button data-g="cycle" id="g-pre" title="the next view: your side, top, low">Side</button><button data-g="right" title="turn the board a quarter right (E)">⟳</button></span><span class="q"><button data-v="top" title="from above">Top</button><button data-v="side" title="low, from your side">Side</button><button data-v="follow" title="behind the last move">Follow</button><button data-v="reset" title="back to the whole board">⌂</button></span><button data-g="mode" id="g-mode" title="guided or free camera">Free</button></div>
+  <div id="views" class="seg"><span class="g"><button data-g="left" title="turn the board a quarter left (Q)">⟲</button><button data-g="cycle" id="g-pre" title="the next view: play, your side, top, low">Play</button><button data-g="right" title="turn the board a quarter right (E)">⟳</button></span><span class="q"><button data-v="top" title="from above">Top</button><button data-v="side" title="low, from your side">Side</button><button data-v="follow" title="behind the last move">Follow</button><button data-v="reset" title="back to the whole board">⌂</button></span><button data-g="mode" id="g-mode" title="guided or free camera">Free</button></div>
   <div id="bottom">
     <button id="b-undo" class="btn">Undo</button>
     <button id="b-new" class="btn">New game</button>
@@ -207,6 +230,7 @@ div.dk-cell { cursor: default; }
     <button id="dk-oppbtn" class="chip wide" data-a="opp"></button><div id="dk-opp"></div>
     <button id="dk-play" class="btn on" data-a="play">Play</button>
     <button id="dk-friend" class="chip wide" data-a="friend" title="a new room: send your friend its link">Play a friend online</button></div>
+  <div id="wheel"></div>
   <div id="promo" class="veil"><div class="panel card"><h2>Promote to</h2><div id="p-pick" class="seg big"></div></div></div>
   <div id="end" class="veil"><div class="panel card"><h2 id="endtitle"></h2><p id="endtxt"></p>
     <div class="row end"><button id="e-look" class="btn">Look at the board</button><button id="e-again" class="btn on">New game</button></div></div></div>
@@ -5058,7 +5082,8 @@ window.addEventListener("error", (e) => {
 
   // ---- The bake's view of a map: per tile its top Z (tiles), its height (for comparing neighbours) and
   // its kind (null: no ground); the water distance (null: none, or whole tiles with wholeWater); the
-  // props as [model, options, x, y, at]; the frame; the bake box (tiles); the map's point lights.
+  // props as [model, options, x, y, at]; the frame; the bake box (tiles); the map's point lights. quiet: no
+  // warning lines (the rules' bake, whose map the load's bake has already checked)
   const FIXED_BOX = { o: [-1, -1, -2.5], size: [26, 26, 10] }; // a generator map's
   // st.area = [x, y, w, h, ring] (tiles, W0): the bake is a slice of the map, its box the area and ring tiles
   // round it within the map's box, with the map's z span; props and lamps outside it are left out
@@ -5077,13 +5102,13 @@ window.addEventListener("error", (e) => {
     const m = st.map, box = m.v !== undefined ? ME.validateMap(m, CT.kinds || {}).box : FIXED_BOX;
     return box && st.area ? areaBox(box, st.area) : box;
   };
-  const gridOf = (st, CT) => {
+  const gridOf = (st, CT, quiet) => {
     const m = st.map;
     if (m.v !== undefined) { // a versioned map (the validator refuses any version but 1)
       const kinds = CT.kinds || {}, v = ME.validateMap(m, kinds), f = m.frame || {};
       for (const p of m.props || []) if (Array.isArray(p) && !window.MODELS[p[0]]) v.errors.push("props: no model " + p[0] + " loaded");
       if (v.errors.length) throw new Error("map " + m.id + ": " + v.errors.join("; "));
-      for (const w of v.warnings) ME.log("WARN map " + m.id + ": " + w);
+      if (!quiet) for (const w of v.warnings) ME.log("WARN map " + m.id + ": " + w);
       const hs = heights(m), hStep = m.hStep ?? 0.5, z = new Float64Array(hs.length), names = kindNames(m);
       for (let i = 0; i < hs.length; i++) z[i] = hs[i] * hStep;
       const wd = ME.waterDist(m.water), flood = new Float64Array(hs.length).fill(NaN), floodKind = new Array(hs.length).fill(null);
@@ -5437,10 +5462,14 @@ window.addEventListener("error", (e) => {
 
   // P1: the bake goes by regions (?regions=1 at a density that is a multiple of 4); the terrain key (cache.js) and the
   // mesh (greedy.js, by T.stats.regions) follow it
-  ME.regionsOn = () => ME.VS % 4 === 0 && ME.qn("regions", 0) > 0;
+  ME.regionsOn = (vs = ME.VS) => vs % 4 === 0 && ME.qn("regions", 0) > 0;
 
-  ME.bakeTerrain = async function (st, pal) {
-    const t0 = ME.now(), VS = ME.VS, CT = ME.content || {}, G = gridOf(st, CT), F = G.frame, jar = F.type === "jar";
+  // o.vs: the density (ME.VS by default); o.rules: the rules' bake (P2, R1: ME.terrain16), the voxels, tops,
+  // water and tiles only, whole (no regions), quiet (no progress bar, no map warnings), with no mips and no
+  // coarse grid (T.mips, T.coarse, T.cdims, T.CPU null; T.stats.solid and .zTop null)
+  ME.bakeTerrain = async function (st, pal, o = {}) {
+    const RULES = !!o.rules, progress = RULES ? () => {} : ME.progress;
+    const t0 = ME.now(), VS = o.vs || ME.VS, CT = ME.content || {}, G = gridOf(st, CT, RULES), F = G.frame, jar = F.type === "jar";
     // the jar (Momiji's island): a circle of radius RI round (C, CY), over a strata drum and a wooden plinth
     const C = jar ? F.c[0] : 0, CY = jar ? F.c[1] : 0, RI = jar ? F.r : 0;
     const RG = RI + 0.35, DRUM = F.foot, PL_R = RG + 0.45, PL_ZB = -2.15, PL_ZT = -1.5, ZF = G.floorZ;
@@ -5726,7 +5755,7 @@ window.addEventListener("error", (e) => {
       const bx0 = ci0 >> 4, bx1 = (ci1 + 15) >> 4, s0 = bx0 * 16, s1 = Math.min(NX, bx1 * 16);
       if (box) pre.fill(0);
       for (let j = cj0; j < cj1; j++) {
-        if (!box && (j & 31) === 0) { ME.progress("terrain columns " + Math.round((j / NY) * 100) + "%", 0.05 + 0.15 * (j / NY)); await ME.tick(); }
+        if (!box && (j & 31) === 0) { progress("terrain columns " + Math.round((j / NY) * 100) + "%", 0.05 + 0.15 * (j / NY)); await ME.tick(); }
         const Y = O[1] + (j + 0.5) / VS;
         if ((j & 15) === 0 || j === cj0) {
           if (!box) band.fill(0);
@@ -5834,7 +5863,7 @@ window.addEventListener("error", (e) => {
 
       // Moss overhangs: where a column stands 4+ voxels above a neighbour, hang 0-3 voxels over the lip. A cell
       // takes the first lobe in j-major order, so a region (its sources in C, its cells in W) takes the same one
-      if (!box) { ME.progress("moss overhangs", 0.21); await ME.tick(); }
+      if (!box) { progress("moss overhangs", 0.21); await ME.tick(); }
       const W = box && box.W;
       for (let j = Math.max(1, cj0); j < Math.min(NY - 1, cj1); j++) for (let i = Math.max(1, ci0); i < Math.min(NX - 1, ci1); i++) {
         const col = j * NX + i, tk = top[col];
@@ -5855,7 +5884,7 @@ window.addEventListener("error", (e) => {
       if (box) { grid.clip = W; grid.own = R || [0, 0, 0, 0]; }
       for (const s of stamps) {
         if (box) { stamped += ME.stampModel(s.md || (s.md = ME.modelOf(s.name, s.o)), s.place, grid, pal); continue; }
-        if ((s.n & 7) === 0) { ME.progress("stamping props " + s.n + "/" + deco.length, 0.22 + 0.1 * (s.n / deco.length)); await ME.tick(); }
+        if ((s.n & 7) === 0) { progress("stamping props " + s.n + "/" + deco.length, 0.22 + 0.1 * (s.n / deco.length)); await ME.tick(); }
         stamped += ME.stampModel(ME.modelOf(s.name, s.o), s.place, grid, pal);
       }
       for (let n = 0; n < lampN; n++) {
@@ -5871,10 +5900,11 @@ window.addEventListener("error", (e) => {
     // region's mips are the whole bake's there). First the bricks the props and lobes split and left one material
     // fold back. Then one pass over the bricks: the solid count, the top (the highest k with a solid cell among
     // every 7th cell of its plane) and mip0, the occupancy (255 where solid) of each 2x2x2 averaged; a uniform brick
-    // is its size, its top and an 8^3 block of mip0 at once. Then mip1, mip0's 2x2x2 averaged
+    // is its size, its top and an 8^3 block of mip0 at once. Then mip1, mip0's 2x2x2 averaged. The rules' bake
+    // has none
     let solid = 0, kMax = 0;
-    const MX = NX >> 1, MY = NY >> 1, MZ = NZ >> 1, d1 = new Uint8Array(MX * MY * MZ);
-    const LX = MX >> 1, LY = MY >> 1, LZ = MZ >> 1, d2 = new Uint8Array(LX * LY * LZ);
+    const MX = NX >> 1, MY = NY >> 1, MZ = NZ >> 1, d1 = RULES ? null : new Uint8Array(MX * MY * MZ);
+    const LX = MX >> 1, LY = MY >> 1, LZ = MZ >> 1, d2 = RULES ? null : new Uint8Array(LX * LY * LZ);
     const s7 = (j, i0) => i0 + (7 - (j * NX + i0) % 7) % 7; // row j's first 7th cell from i0
     const mips = (G, I0, I1, J0, J1) => {
       G.compact([I0 << 4, J0 << 4, 0], [Math.min(NX, I1 << 4) - 1, Math.min(NY, J1 << 4) - 1, NZ - 1]);
@@ -5920,7 +5950,7 @@ window.addEventListener("error", (e) => {
     // regions: the count, the lamp pre-pass and each region's time (ms: its fill, mips and adoption; mipMs: its
     // mips), kept in T.stats.regions
     let regions = null;
-    if (!ME.regionsOn()) await fill(g, null, lamps.length);
+    if (RULES || !ME.regionsOn(VS)) await fill(g, null, lamps.length);
     else {
       const RT = 4 * VS, NRX = Math.ceil(NX / RT), NRY = Math.ceil(NY / RT), N = NRX * NRY, tl = ME.now();
       const grow = (b, d) => [Math.max(0, b[0] - d), Math.max(0, b[1] - d), Math.min(NX, b[2] + d), Math.min(NY, b[3] + d)];
@@ -5931,7 +5961,7 @@ window.addEventListener("error", (e) => {
       }
       regions = { n: N, rt: RT, size: [NRX, NRY], lamps: lamps.length, lampMs: Math.round(ME.now() - tl), ms: [], mipMs: [] };
       for (let r = 0; r < N; r++) {
-        ME.progress("terrain region " + (r + 1) + "/" + N, 0.05 + 0.27 * (r / N)); await ME.tick();
+        progress("terrain region " + (r + 1) + "/" + N, 0.05 + 0.27 * (r / N)); await ME.tick();
         const i0 = (r % NRX) * RT, j0 = Math.floor(r / NRX) * RT, R = [i0, j0, Math.min(NX, i0 + RT), Math.min(NY, j0 + RT)], rg = new BrickGrid(NX, NY, NZ), tr = ME.now();
         const I0 = R[0] >> 4, I1 = (R[2] + 15) >> 4, J0 = R[1] >> 4, J1 = (R[3] + 15) >> 4;
         await fill(rg, { C: grow(R, 2), W: grow(R, 1), R }, lamps.length);
@@ -6025,19 +6055,19 @@ window.addEventListener("error", (e) => {
     // The density mips over the whole grid (by regions, each region's came with it; mipMs: their time), then the
     // coarse occupancy (about 8 cells per tile at any VS, taller than the voxel grid so the tree canopies fit) that
     // feeds the sun volume.
-    ME.progress("density mips", 0.33); await ME.tick();
+    progress("density mips", 0.33); await ME.tick();
     let mipMs = 0;
     if (regions) mipMs = +regions.mipMs.reduce((s, x) => s + x, 0).toFixed(1);
-    else { const tm = ME.now(); mips(g, 0, g.BX, 0, g.BY); mipMs = +(ME.now() - tm).toFixed(1); }
+    else if (!RULES) { const tm = ME.now(); mips(g, 0, g.BX, 0, g.BY); mipMs = +(ME.now() - tm).toFixed(1); }
     // the coarse grid is 3 tiles taller than the box (13 tiles for a generator map), f voxels a cell
-    const f = ME.coarseStep(VS), CPU = VS / f, QX = NX / f, QY = NY / f, QZ = (B.size[2] + 3) * CPU, coarse = new Uint8Array(QX * QY * QZ);
+    const f = ME.coarseStep(VS), CPU = VS / f, QX = NX / f, QY = NY / f, QZ = (B.size[2] + 3) * CPU, coarse = RULES ? null : new Uint8Array(QX * QY * QZ);
 
     // Beams stand on the tile below their foot point (px3 P.lightAt needs bm.z).
     const beams = (st.light.beams || []).map((b) => Object.assign({}, b, { z: b.z ?? G.z[Math.min(G.H - 1, Math.floor(b.y)) * G.W + Math.min(G.W - 1, Math.floor(b.x))] }));
 
     // Walkable ground: first solid voxel scanning down from zFrom.
 
-    const stats = { dims: [NX, NY, NZ], solid, wetCols, lobes, props: propCount, lanterns: lights.length, stampedVoxels: stamped, water: water.length, falls: falls.length, flooded: G.flood ? water.filter((w) => fullAt(w.x, w.y)).length : 0, edgeBreak: EB ? Object.assign({ cols: ebCols, carved: ebCarved }, LW ? { waved: lwCols } : null) : null, zTop: O[2] + (kMax + 1) / VS, mipMs, ms: Math.round(ME.now() - t0) };
+    const stats = { dims: [NX, NY, NZ], solid: RULES ? null : solid, wetCols, lobes, props: propCount, lanterns: lights.length, stampedVoxels: stamped, water: water.length, falls: falls.length, flooded: G.flood ? water.filter((w) => fullAt(w.x, w.y)).length : 0, edgeBreak: EB ? Object.assign({ cols: ebCols, carved: ebCarved }, LW ? { waved: lwCols } : null) : null, zTop: RULES ? null : O[2] + (kMax + 1) / VS, mipMs, ms: Math.round(ME.now() - t0) };
     if (regions) stats.regions = regions; // regions mode only: the whole path's stats keep their keys
     if (st.area) stats.area = { area: st.area.slice(), box: { o: O.slice(), size: B.size.slice() } }; // a slice's (W0)
     // bounds: the world box in tiles; frame: the map's (jar or box); geo: the jar's measures (null in a box)
@@ -6045,9 +6075,9 @@ window.addEventListener("error", (e) => {
     // tiles: per tile of the map, its top (tiles), its kind's name (null on a generator map) and recipe (null:
     // no ground), and whether it grows grass (what the sim and the grass read instead of the map's letters)
     const tiles = { W: G.W, H: G.H, z: G.z, name: G.names, recipe: G.kinds.map((k) => (k ? k.recipe : null)), grass: Uint8Array.from(G.kinds, (k) => (k && k.grass ? 1 : 0)), wet: wetT, depth: depthT };
-    const T = { O, NX, NY, NZ, VS, grid: g, top, mips: [d1, d2], coarse, cdims: [QX, QY, QZ], CPU, volumes, walkers, water, looks, falls, beams, lights, stats, bounds, frame: F, tiles,
+    const T = { O, NX, NY, NZ, VS, grid: g, top, mips: RULES ? null : [d1, d2], coarse, cdims: RULES ? null : [QX, QY, QZ], CPU: RULES ? null : CPU, volumes, walkers, water, looks, falls, beams, lights, stats, bounds, frame: F, tiles,
       geo: jar ? { C, RI, RG, DRUM, PL_R, PL_ZB, PL_ZT, glassZt: F.glassTop } : null };
-    ME.coarseFill(T, [0, 0, 0], [QX - 1, QY - 1, NZ / f - 1]); // the cells above the voxel grid stay empty
+    if (!RULES) ME.coarseFill(T, [0, 0, 0], [QX - 1, QY - 1, NZ / f - 1]); // the cells above the voxel grid stay empty
     T.groundAt = ME.groundAt(T);
     return T;
   };
@@ -6055,6 +6085,12 @@ window.addEventListener("error", (e) => {
   // the bake cache key's code: the bake's helpers and its tables (cache.js)
   ME.bakeTerrain.parts = [ME.validateMap, ME.waterDist, gridOf, propsOf, decoSets, propRole, areaOk, areaBox, inArea, resolve, mottleCut, pave, heights, kindNames, rows, impure, BrickGrid, ...Object.values(RECIPE),
     JSON.stringify({ B36, STEPS, RECIPES, FLAGS, AT, FIXED_BOX })];
+
+  // P2 (R1, docs/designs/2026-11-07-engine-opt-progressive-density.md section 4.9): the terrain the rules read,
+  // map st's at vs16 whatever ME.VS is, with a palette of its own (the app's keeps its ids). It carries VS, O,
+  // NX, NY, NZ, top, grid, tiles, water and groundAt (bakeTerrain's o.rules). It runs on the main thread, as
+  // the load's bake does, until the bake moves to workers (P1c).
+  ME.terrain16 = (st) => ME.bakeTerrain(st, new ME.Palette(st), { vs: 16, rules: true });
 
   // The coarse occupancy (docs/decisions/2026-10-20-sun-volume-density.md): one cell is f voxels on a side,
   // f the largest divisor of VS that keeps VS / f >= 8 cells per tile, and at least 2 (f = 2 up to vs=20,
@@ -7522,6 +7558,9 @@ window.addEventListener("error", (e) => {
      part alone keeps it: the terrain record per slot, a record per model per app (the slot's "#models" list
      names the ones its map uses; a model no list names is dropped). tools\bake-rev.ps1 in Mossheart checks
      that a changed bake raised its number.
+   - ME.rulesKey()/getRules()/putRules() (P2, R1): a game's rules record (Mossheart's core/rules.js: the ground
+     and the roads read off the map's vs16 bake, ME.terrain16, whatever the density), in a slot of its own per
+     app and map ("<app>/<map id>#rules/"), so the terrain's writes keep it.
    Any failure (no IndexedDB, quota, clone error) falls back to baking. ?nocache=1 skips it. */
 (function () {
   const ME = window.ME, DB = "mossheart", STORE = "bake";
@@ -7727,6 +7766,9 @@ window.addEventListener("error", (e) => {
   const off = () => !!ME.qn("nocache", 0) || !window.indexedDB;
   const keyHash = (s) => fnv(s) + fnv("|" + s) + s.length.toString(36);
   const MODELS = "~models/", REFS = "#models";
+  // a map's rules slot, next to its slot ("<app>/<map id>/" -> "<app>/<map id>#rules/"; an id is URI-encoded, so
+  // no map's own id ends in "#rules")
+  const RULES = "#rules/", rulesSlot = (slot) => slot.slice(0, -1) + RULES;
   const appOf = (o) => encodeURIComponent(o.app ?? pageApp()) + "/";
   // the parts waiting for flush: the terrain record ([key, snapshot]) and the model records ([key, packed copy]);
   // a model's answer kept after the flush is written at once (chain: one write at a time). wanted: every model key
@@ -7823,10 +7865,11 @@ window.addEventListener("error", (e) => {
           } catch (e) {
             ME.log("WARN bake cache write failed:", e && e.message);
             noteWrite(key, "failed " + name(e));
-            // the store is full: drop every other app's and map's records but this app's models, for the next launch
+            // the store is full: drop every other app's and map's records but this app's models and this map's
+            // rules, for the next launch
             if (e && e.name === "QuotaExceededError") try {
               const tx = (await db()).transaction(STORE, "readwrite"), s = tx.objectStore(STORE), g = s.getAllKeys();
-              g.onsuccess = () => { for (const k of g.result) if (typeof k !== "string" || (slotOf(k) !== slot && !k.startsWith(app + MODELS))) s.delete(k); };
+              g.onsuccess = () => { for (const k of g.result) if (typeof k !== "string" || (slotOf(k) !== slot && slotOf(k) !== rulesSlot(slot) && !k.startsWith(app + MODELS))) s.delete(k); };
               ME.bakeCache.evicted = true;
             } catch (_) {}
           }
@@ -7926,16 +7969,36 @@ window.addEventListener("error", (e) => {
       } catch (e) {
         ME.log("WARN bake cache write failed:", e && e.message);
         noteWrite(key, "failed " + name(e));
-        // the store is full (one record per app and map adds up): drop every other slot, so the next launch's
-        // put fits. Not retried now: the record has changed since the call (see above)
+        // the store is full (one record per app and map adds up): drop every other slot but this map's rules, so
+        // the next launch's put fits. Not retried now: the record has changed since the call (see above)
         if (e && e.name === "QuotaExceededError") {
           try {
             const db = held || (await open()), tx = db.transaction(STORE, "readwrite"), s = tx.objectStore(STORE), g = s.getAllKeys();
-            g.onsuccess = () => { for (const k of g.result) if (typeof k !== "string" || slotOf(k) !== slot) s.delete(k); };
+            g.onsuccess = () => { for (const k of g.result) if (typeof k !== "string" || (slotOf(k) !== slot && slotOf(k) !== rulesSlot(slot))) s.delete(k); };
             ME.bakeCache.evicted = true;
           } catch (_) {}
         }
       }
+    },
+    // P2 (R1): a map's rules record (key: ME.rulesKey). getRules gives it, or null (the cache off, no record, a
+    // failed read); putRules stores it in place of the rules slot's other records (an older salt or revision). The
+    // record is small (plain arrays by tile and road), so neither packs it. Neither throws, nor changes status (the
+    // terrain's)
+    async getRules(key) {
+      if (off()) return null;
+      try { return (await req((await db()).transaction(STORE).objectStore(STORE).get(key))) || null; }
+      catch (e) { ME.log("WARN bake cache: rules read failed:", e && e.message); return null; }
+    },
+    async putRules(key, rec) {
+      if (off()) return;
+      const slot = slotOf(key);
+      try {
+        const tx = (await db()).transaction(STORE, "readwrite"), s = tx.objectStore(STORE);
+        s.put(rec, key);
+        const g = s.getAllKeys();
+        g.onsuccess = () => { for (const k of g.result) if (k !== key && typeof k === "string" && slotOf(k) === slot) s.delete(k); };
+        await done(tx);
+      } catch (e) { ME.log("WARN bake cache: rules write failed:", e && e.message); }
     },
     // the stored keys (for checks and tools)
     async keys() {
@@ -7945,6 +8008,14 @@ window.addEventListener("error", (e) => {
         return await new Promise((res, rej) => { const r = db.transaction(STORE).objectStore(STORE).getAllKeys(); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
       } catch (e) { return []; }
     },
+  };
+  // the rules record's key (P2, R1): the map's content as terrainKey takes it, BAKE_REV.terrain, the code of the
+  // engine's roads (ME.roadOn.parts: the record keeps the roads ME.roadOn builds) and the salt (what else the record
+  // depends on: the game's rules code and revision, its routes), at vs16 whatever ME.VS is, in the map's rules
+  // slot. o.app as in key()
+  ME.rulesKey = (st, salt = "", o = {}) => {
+    const { slot, own, lists } = inputOf(st, "", o), roads = ((ME.roadOn && ME.roadOn.parts) || []).map(String).join("|");
+    return `${rulesSlot(slot)}r16:T${ME.BAKE_REV.terrain}:${keyHash(assetSrc(own) + own + lists + "|" + roads + "|" + salt)}`;
   };
 })();
 
@@ -7973,6 +8044,44 @@ window.addEventListener("error", (e) => {
       while (x !== x1 || y !== y1) { if (x !== x1) x += Math.sign(x1 - x); else y += Math.sign(y1 - y); out.push([x, y]); }
     }
     return out;
+  };
+
+  // A road from a route (a polyline of tile corners) on terrain T: { cells, route, len, at(s, o) }.
+  // cells: its tiles in walking order; route: the ground line at voxel spacing, smoothed; len: its length in
+  // tiles; at(s, o): the point s tiles along it, as sim.at. It reads the terrain (T.VS, T.tiles, T.groundAt)
+  // and changes nothing. sim.road on the sim's terrain; ME.roadOn on any (the rules' vs16 bake: ME.terrain16).
+  const roadOf = (T, route) => {
+    const VS = T.VS, cells = route && route.length ? cellsOf(route) : [];
+    const TL = T.tiles, tz = (c) => TL.z[c[1] * TL.W + c[0]], isW = (c) => TL.recipe[c[1] * TL.W + c[0]] === "water" || (TL.wet && TL.wet[c[1] * TL.W + c[0]] === 1);
+    // nominal height per cell; water cells take the higher bank around their crossing plus the bridge rise
+    const zc = cells.map((c, i) => {
+      if (!isW(c)) return tz(c);
+      let a = i, b = i;
+      while (a > 0 && isW(cells[a])) a--;
+      while (b < cells.length - 1 && isW(cells[b])) b++;
+      return Math.max(tz(cells[a]), tz(cells[b])) + 0.45;
+    });
+    // dense polyline at voxel spacing, ground from the voxel grid, then smoothed
+    const pts = [];
+    for (let i = 0; i + 1 < cells.length; i++) {
+      const [x0, y0] = cells[i], [x1, y1] = cells[i + 1], n = VS;
+      for (let s = 0; s < n; s++) {
+        const u = s / n, X = x0 + 0.5 + (x1 - x0) * u, Y = y0 + 0.5 + (y1 - y0) * u;
+        pts.push([X, Y, T.groundAt(X, Y, Math.max(zc[i], zc[i + 1]) + 0.6)]);
+      }
+    }
+    const last = cells[cells.length - 1];
+    if (last) pts.push([last[0] + 0.5, last[1] + 0.5, T.groundAt(last[0] + 0.5, last[1] + 0.5, zc[zc.length - 1] + 0.6)]);
+    const sz = pts.map((_, i) => { let s = 0, w = 0; for (let k = -5; k <= 5; k++) { const p = pts[Math.min(pts.length - 1, Math.max(0, i + k))]; s += p[2]; w++; } return s / w; });
+    // never sink below the raw ground (stair noses)
+    const line = pts.map((p, i) => [p[0], p[1], Math.max(p[2], sz[i])]);
+    // the road at arc length s: [x, y, z, dx, dy], into o if given (no allocation)
+    const at = (s, o = [0, 0, 0, 0, 0]) => {
+      const f = Math.max(0, Math.min(line.length - 1.001, s * VS)), i = Math.floor(f), u = f - i, a = line[i], b = line[i + 1];
+      o[0] = a[0] + (b[0] - a[0]) * u; o[1] = a[1] + (b[1] - a[1]) * u; o[2] = a[2] + (b[2] - a[2]) * u; o[3] = b[0] - a[0]; o[4] = b[1] - a[1];
+      return o;
+    };
+    return { cells, route: line, len: Math.max(0, line.length - 1) / VS, at };
   };
 
   class Sim {
@@ -8009,42 +8118,8 @@ window.addEventListener("error", (e) => {
       this.mx = { R: new Float64Array(9), P: new Float64Array(9), F: new Float64Array(9), S: new Float64Array(9), H: new Float64Array(9), A: new Float64Array(9), B: new Float64Array(9), C: new Float64Array(9), L: new Float64Array(9) };
       this.sh2 = [0, 0]; this.sc3 = [0, 0, 0]; this.at5 = [0, 0, 0, 0, 0]; this.dirty = [0, 0];
     }
-    // A road from a route (a polyline of tile corners) on this sim's terrain: { cells, route, len, at(s, o) }.
-    // cells: its tiles in walking order; route: the ground line at voxel spacing, smoothed; len: its length in
-    // tiles; at(s, o): the point s tiles along it, as sim.at. It reads the terrain and changes nothing.
-    road(route) {
-      const T = this.T, VS = this.VS, cells = route && route.length ? cellsOf(route) : [];
-      const TL = T.tiles, tz = (c) => TL.z[c[1] * TL.W + c[0]], isW = (c) => TL.recipe[c[1] * TL.W + c[0]] === "water" || (TL.wet && TL.wet[c[1] * TL.W + c[0]] === 1);
-      // nominal height per cell; water cells take the higher bank around their crossing plus the bridge rise
-      const zc = cells.map((c, i) => {
-        if (!isW(c)) return tz(c);
-        let a = i, b = i;
-        while (a > 0 && isW(cells[a])) a--;
-        while (b < cells.length - 1 && isW(cells[b])) b++;
-        return Math.max(tz(cells[a]), tz(cells[b])) + 0.45;
-      });
-      // dense polyline at voxel spacing, ground from the voxel grid, then smoothed
-      const pts = [];
-      for (let i = 0; i + 1 < cells.length; i++) {
-        const [x0, y0] = cells[i], [x1, y1] = cells[i + 1], n = VS;
-        for (let s = 0; s < n; s++) {
-          const u = s / n, X = x0 + 0.5 + (x1 - x0) * u, Y = y0 + 0.5 + (y1 - y0) * u;
-          pts.push([X, Y, T.groundAt(X, Y, Math.max(zc[i], zc[i + 1]) + 0.6)]);
-        }
-      }
-      const last = cells[cells.length - 1];
-      if (last) pts.push([last[0] + 0.5, last[1] + 0.5, T.groundAt(last[0] + 0.5, last[1] + 0.5, zc[zc.length - 1] + 0.6)]);
-      const sz = pts.map((_, i) => { let s = 0, w = 0; for (let k = -5; k <= 5; k++) { const p = pts[Math.min(pts.length - 1, Math.max(0, i + k))]; s += p[2]; w++; } return s / w; });
-      // never sink below the raw ground (stair noses)
-      const line = pts.map((p, i) => [p[0], p[1], Math.max(p[2], sz[i])]);
-      // the road at arc length s: [x, y, z, dx, dy], into o if given (no allocation)
-      const at = (s, o = [0, 0, 0, 0, 0]) => {
-        const f = Math.max(0, Math.min(line.length - 1.001, s * VS)), i = Math.floor(f), u = f - i, a = line[i], b = line[i + 1];
-        o[0] = a[0] + (b[0] - a[0]) * u; o[1] = a[1] + (b[1] - a[1]) * u; o[2] = a[2] + (b[2] - a[2]) * u; o[3] = b[0] - a[0]; o[4] = b[1] - a[1];
-        return o;
-      };
-      return { cells, route: line, len: Math.max(0, line.length - 1) / VS, at };
-    }
+    // A road from a route on this sim's terrain (roadOf)
+    road(route) { return roadOf(this.T, route); }
     // demo walkers, cycling through the content's walker kinds (ME.content.walkers)
     setCount(n) {
       n = Math.max(0, Math.min(500, n | 0));
@@ -8217,6 +8292,10 @@ window.addEventListener("error", (e) => {
     }
   }
   ME.Sim = Sim;
+  ME.roadOn = roadOf;
+  // the code a road comes from, for the rules key (cache.js: ME.rulesKey hashes it, so a cached rules record's
+  // roads follow any change to it)
+  ME.roadOn.parts = [roadOf, cellsOf, ME.groundAt, ME.BrickGrid && ME.BrickGrid.prototype.down];
   ME.INST_FLOATS = INST_FLOATS;
 })();
 
@@ -21895,8 +21974,10 @@ function MG_SFX(L) {
                                         move with the game, then back), "free" (drag turns and tilts), "locked"
                                         (the quarter views at home's tilt) or "dynamic" (free, and event() eases
                                         to a closer shot of the board's action, then back home)
-     cam.rotate(dir), cam.preset(name)  guided: a quarter turn (dir -1, 1); "player" (60 degrees), "top" or "low"
-     cam.cycle()                        guided: the next preset (player, top, low)
+     cam.rotate(dir), cam.preset(name)  guided: a quarter turn (dir -1, 1); "play" (the default: 72 degrees, the
+                                        board square to the screen, white or black nearest), "player" (60 degrees,
+                                        the iso diagonal), "top" or "low"
+     cam.cycle()                        guided: the next preset (play, player, top, low)
      cam.calm, cam.hold                 guided: no gameplay moves (reduced motion); none, and no return, for now
                                         (the app: the player has a piece selected)
      cam.view(name, o)                  "top", "side" (the player's), "follow" (o.at, o.from: behind a move) or
@@ -21930,7 +22011,8 @@ function MG_SFX(L) {
   // guided: the presets' tilts (degrees), and its gentle moves: zoom on the preset's fit, how far towards the
   // action the centre goes, the ease (s), the hold before the preset again (0: stays), the turn towards the
   // action at most and the tilt's change (degrees)
-  const PRESETS = { player: 60, top: 85, low: 26 }, ORDER = ["player", "top", "low"];
+  // (play looks square on: its quarter turn is the diagonal one less an eighth turn)
+  const PRESETS = { play: 72, player: 60, top: 85, low: 26 }, ORDER = ["play", "player", "top", "low"], SQUARE = { play: true };
   const NUDGES = { move: { z: 1.05, pull: 0.22, s: 0.6, hold: 0.9, turn: 0, tilt: 0 },
     capture: { z: 1.1, pull: 0.3, s: 0.6, hold: 1.1, turn: 0, tilt: 0 },
     check: { z: 1.08, pull: 0.3, s: 0.7, hold: 1.4, turn: 18, tilt: -6 },
@@ -21941,7 +22023,7 @@ function MG_SFX(L) {
       super(cx, cy);
       this.bound = { r: 8, z0: 0, z1: 2 };
       this.vth = 0; this.vel = 0; this.drag = false; this.dragPx = 0; this.last = null;
-      this.mode = "free"; this.pre = "player"; this.gth = null; this.calm = false; this.hold = false; this.home = null; this.fit = null; this.backAt = 0; this.shot = null;
+      this.mode = "free"; this.pre = "play"; this.gth = null; this.calm = false; this.hold = false; this.home = null; this.fit = null; this.backAt = 0; this.shot = null;
       this.look(Math.PI / 4, ((elev || ISO) * Math.PI) / 180);
     }
     get turning() { return true; }
@@ -22051,7 +22133,7 @@ function MG_SFX(L) {
       if (this.mode === "guided" && this.home) { this.gth = quarter(this.thT); this.view("reset"); }
     }
     // guided: the preset's view, framed whole at its quarter turn
-    guide() { return this.frameAt(this.gth ?? this.home.theta, deg(PRESETS[this.pre])); }
+    guide() { return this.frameAt((this.gth ?? this.home.theta) - (SQUARE[this.pre] ? Math.PI / 4 : 0), deg(PRESETS[this.pre])); }
     rotate(dir) { if (this.mode !== "guided" || !this.home) return; this.gth += dir * Q; this.view("reset"); }
     preset(name) { if (!PRESETS[name]) return; this.pre = name; if (this.mode === "guided" && this.home) this.view("reset"); }
     cycle() { this.preset(ORDER[(ORDER.indexOf(this.pre) + 1) % ORDER.length]); return this.pre; }
@@ -22695,7 +22777,8 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
   const lerp = (a, b, u) => a + (b - a) * u, ease = (u) => (u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2);
   // facing: toward the other side (heads point +X; white sits at the larger y)
   const YAW = [-Math.PI / 2, Math.PI / 2];
-  const SLIDE = 0.32, PER_TILE = 0.05, GONE = 0.1, RISE = 0.45, FPS = 5;
+  // quick: a move takes 0.15 s (a step) to 0.26 s (corner to corner), a strike 0.21 s
+  const SLIDE = 0.14, PER_TILE = 0.012, GONE = 0.06, RISE = 0.3, FPS = 5;
   // a square's trait mask (0..63; the rules keep them by 0x88 square)
   const trAt = (game, s) => (game.tr ? game.tr[(s >> 3) * 16 + (s & 7)] : 0);
 
@@ -22757,7 +22840,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
         return;
       }
       const tr = trAt(game, info.to), hit = knight ? 0.85 : 0.6;
-      this.slide(p, info.to, 0, knight ? 0.75 : 0.12, info);
+      this.slide(p, info.to, 0, knight ? 0.55 : 0.08, info);
       // its traits after the move (a Vanguard's new Ward, an Ember's loss, a promotion's) show as its victim goes,
       // or as it lands
       if (tr !== p.tr) { p.walk.tr = tr; p.walk.trK = victim && !info.promo ? hit : 1; }
@@ -22767,7 +22850,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
         // the rook from its corner to the king's other side
         const rank = info.from & 56, kingSide = info.to > info.from;
         const rook = this.pieceAt(rank + (kingSide ? 7 : 0));
-        if (rook) { rook.tr = trAt(game, rank + (kingSide ? 5 : 3)); this.slide(rook, rank + (kingSide ? 5 : 3), 0.12, 0.3); }
+        if (rook) { rook.tr = trAt(game, rank + (kingSide ? 5 : 3)); this.slide(rook, rank + (kingSide ? 5 : 3), 0.04, 0.2); }
       }
       // a Phoenix return: a piece in the game with none on screen grows back once the victim has gone
       if (victim) for (let s = 0; s < 64; s++) {
@@ -23250,6 +23333,127 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
 })();
 
 </script>
+<script>/* src/view/wheel.js */
+/* The kingdom wheel, the game's way in: a screen over the board before each game with a card for each kingdom
+   (a piece set and the powers its pieces play, core/deck.js SETS), its emblem, its name and its powers in one
+   line (their rules on a hover). The centred card is the big one; a swipe, the arrows, the mouse wheel or the
+   arrow keys turn the wheel, a tap on a side card centres it, and a tap on the centred one (or Enter) plays it
+   at once. The opponent's kingdom, the deck builder and the settings are main.js's (its gear).
+     new DG.Wheel({ el, list: [{ id, name, emblem, power, title }], onPlay(id) })
+     wheel.open(id) (centred on id), wheel.close(), wheel.isOpen, wheel.at (the centred id)
+     wheel.turn(dir) (dir -1, 1), wheel.play(), wheel.note(text) (a line under the cards), wheel.cards() */
+(function () {
+  const G = (window.DG = window.DG || {});
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  // the cards either side of the centre that show, a side card's step (its share of the centre card's width),
+  // its scale and fade a step out; a swipe that turns (px) and the mouse wheel's (its delta, and the wait in ms)
+  const SIDE = 2, GAP = 0.8, SHRINK = 0.16, FADE = 0.32, SWIPE = 36, SPIN = 40, SPIN_MS = 160;
+
+  class Wheel {
+    constructor(o) {
+      this.el = o.el; this.list = o.list; this.onPlay = o.onPlay;
+      this.i = 0; this.isOpen = false; this.busy = false; this.drag = null; this.swiped = false; this.spin = 0; this.spunAt = 0;
+      const el = this.el;
+      el.innerHTML =
+        '<div class="wh-head"><b>Choose your kingdom</b><span>against a random one</span></div>' +
+        '<div class="wh-track">' +
+        this.list.map((k, i) => `<button class="wh-card" data-i="${i}" title="${esc(k.title)}"><span class="wh-em">${esc(k.emblem)}</span>` +
+          `<b class="wh-name">${esc(k.name)}</b><span class="wh-pw">${esc(k.power)}</span><span class="wh-go">Tap to play</span></button>`).join("") +
+        "</div>" +
+        '<div class="wh-nav"><button class="btn small" data-d="-1" aria-label="the previous kingdom">‹</button>' +
+        '<span class="wh-hint">Swipe to choose · tap to play</span><button class="btn small" data-d="1" aria-label="the next kingdom">›</button></div>' +
+        '<div class="wh-note"></div>';
+      this.track = el.querySelector(".wh-track");
+      this.noteEl = el.querySelector(".wh-note");
+      for (const b of el.querySelectorAll(".wh-nav button")) b.onclick = () => this.turn(+b.dataset.d);
+      for (const c of this.cards()) c.onclick = () => {
+        if (this.swiped) return;
+        const i = +c.dataset.i;
+        if (i === this.i) this.play(); else { this.i = i; this.layout(); }
+      };
+      // a swipe follows the finger, then turns by the cards it crossed (one at least)
+      this.track.addEventListener("pointerdown", (e) => {
+        if (!this.isOpen || (e.pointerType === "mouse" && e.button !== 0)) return;
+        this.drag = { x: e.clientX, dx: 0 }; this.swiped = false;
+      });
+      window.addEventListener("pointermove", (e) => {
+        if (!this.drag) return;
+        this.drag.dx = e.clientX - this.drag.x;
+        if (Math.abs(this.drag.dx) > SWIPE / 2) { this.swiped = true; this.track.classList.add("drag"); this.layout(this.drag.dx / this.step()); }
+      });
+      const up = () => {
+        if (!this.drag) return;
+        const dx = this.drag.dx; this.drag = null; this.track.classList.remove("drag");
+        if (Math.abs(dx) >= SWIPE) this.turn(-Math.sign(dx) * Math.max(1, Math.round(Math.abs(dx) / this.step())));
+        else this.layout();
+        // the click that ends a swipe isn't a tap
+        if (this.swiped) setTimeout(() => (this.swiped = false), 0);
+      };
+      window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
+      el.addEventListener("wheel", (e) => {
+        if (!this.isOpen) return;
+        e.preventDefault();
+        this.spin += Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+        const now = performance.now();
+        if (Math.abs(this.spin) < SPIN || now - this.spunAt < SPIN_MS) return;
+        this.turn(Math.sign(this.spin)); this.spin = 0; this.spunAt = now;
+      }, { passive: false });
+      // the keys are the wheel's while it's open (before the game's and the camera's own)
+      document.addEventListener("keydown", (e) => {
+        if (!this.isOpen) return;
+        e.stopPropagation();
+        if (e.code === "ArrowLeft" || e.code === "ArrowUp") { e.preventDefault(); this.turn(-1); }
+        else if (e.code === "ArrowRight" || e.code === "ArrowDown") { e.preventDefault(); this.turn(1); }
+        else if (e.code === "Enter" || e.code === "Space") { e.preventDefault(); this.play(); }
+      }, true);
+      this.layout();
+    }
+    get at() { return this.list[this.i] ? this.list[this.i].id : null; }
+    cards() { return [...this.track.querySelectorAll(".wh-card")]; }
+    // a side card's step (px), from the centre card's width
+    step() { const c = this.cards()[this.i]; return Math.max(1, (c ? c.offsetWidth : 240) * GAP); }
+    open(id) {
+      const i = this.list.findIndex((k) => k.id === id);
+      if (i >= 0) this.i = i;
+      this.isOpen = true; this.busy = false; this.note("");
+      this.el.classList.add("show");
+      this.layout();
+    }
+    close() { this.isOpen = false; this.drag = null; this.el.classList.remove("show"); }
+    turn(dir) {
+      const n = this.list.length;
+      if (!this.isOpen || !n || this.busy) return;
+      this.i = (((this.i + dir) % n) + n) % n;
+      this.layout();
+    }
+    play() {
+      if (!this.isOpen || this.busy || !this.at) return;
+      this.busy = true;
+      this.onPlay(this.at);
+    }
+    note(text) { this.noteEl.textContent = text || ""; }
+    // each card at its place round the wheel (shift: the cards a swipe has crossed so far)
+    layout(shift = 0) {
+      const n = this.list.length;
+      this.cards().forEach((c, i) => {
+        let d = (((i - this.i) % n) + n) % n;
+        if (d > n / 2) d -= n;
+        d += shift;
+        const a = Math.abs(d), show = a <= SIDE + 0.5;
+        c.style.transform = `translate(-50%, -50%) translateX(${(d * GAP * 100).toFixed(1)}%) scale(${(1 - Math.min(a, SIDE + 1) * SHRINK).toFixed(3)})`;
+        c.style.opacity = show ? Math.max(0, 1 - a * FADE).toFixed(2) : "0";
+        c.style.zIndex = String(10 - Math.round(a));
+        c.style.pointerEvents = show ? "" : "none";
+        c.classList.toggle("mid", i === this.i);
+        c.tabIndex = i === this.i ? 0 : -1;
+      });
+    }
+  }
+
+  G.Wheel = Wheel;
+})();
+
+</script>
 <script>/* src/version.js */
 /* The game's version, shown small in the bottom-right corner. Semver. Each Pages deploy goes up one minor:
    tools\artifact.ps1 -Deployed stamps the next minor above both the live page's and this file's (the first
@@ -23258,7 +23462,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.32.0", name: "DeckChess", commit: "1d785f9" };
+  G.VERSION = { v: "0.33.0", name: "DeckChess", commit: "6006436" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -26410,19 +26614,21 @@ return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, 
    the piece set's flipbooks, DC.pieces), then the rules (core/), the view (view/), the HUD and the camera every
    frame. Mossheart's look comes with it: its default preset, sunbeams, its mood and weather (its sky panel)
    and its music, those through the stand-in for its game (src/mg-standin.js), fed with the chess game's events.
-   The game opens on the deck screen (view/deck-ui.js) over the board: each side's piece set, whose pieces play
-   with the set's powers (core/deck.js SETS: a kit of traits for each piece type), the powers listed, and Play;
-   the board shows both sides as they stand. ?decks=1 (and the self-test) gives the deck builder instead: the
-   player builds their deck, sees the AI's (core/deck.js pick, by the level and the seed) and plays. New game opens
-   it again. A traited piece shows its traits and its set on a hover or a long press (#tcard), and the lens (✦, T)
-   labels them all.
-   The view panel (🎥): the theme (art/themes.js: the board, its colours, the light and the stars), the
-   lighting (view/lighting.js), the camera's mode and its quick views (view/camera.js); the camera row over the
-   buttons: guided's quarter turns, its preset (your side, top, low) and guided / free.
+   The game opens on the kingdom wheel (view/wheel.js) over the board: a card for each kingdom (a piece set,
+   whose pieces play with the set's powers, core/deck.js SETS: a kit of traits for each piece type), its emblem
+   and its powers in a line; a swipe turns it and a tap on the centred one plays it at once, against a random
+   kingdom (the AI's), the last pick centred next time. ?decks=1 (and the self-test) gives the deck builder
+   (view/deck-ui.js) instead: the player builds their deck, sees the AI's (core/deck.js pick, by the level and
+   the seed) and plays. New game opens it again. A traited piece shows its traits and its set on a hover or a
+   long press (#tcard), and the lens (✦, T) labels them all.
+   The settings (⚙): the game row (the wheel again, the deck builder, a friend's room), the theme
+   (art/themes.js: the board, its colours, the light and the stars), the lighting (view/lighting.js), the
+   camera's mode and its quick views (view/camera.js); the camera row over the buttons in the free modes only:
+   guided's quarter turns, its preset (play, your side, top, low) and guided / free.
    URL options: ?side=w|b, ?level=0..2, ?promo=queen|choose,
    ?theme=litho|dream|cosy|cyber|kawaii|mech|moss|esport (Lithograph by default; its light unless ?light= says),
    ?light=current|day|hall|glow|soft|lamp|grove (hall, Tournament, by
-   default), ?cam=guided|free|locked|dynamic (view/hud.js), ?calm=1 (guided without its moves, as under reduced motion),
+   default), ?cam=guided|free|locked|dynamic (view/hud.js), ?calm=0 (guided with its moves; calm, none, by default),
    ?mood= ?weather= (Mossheart's; the weather is a clear sky unless ?weather= or the sky panel's pick says),
    ?set=tess|classic|grove|brass|reef (both sides' piece set; Tessellate by default), ?board=litho|space (that
    board as it is, over the theme's), ?sets=all|grove,reef,.. (more sets baked: art/sets.js),
@@ -26482,14 +26688,16 @@ return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, 
     const hooks = G.shaderHooks({ hues: C.pieces.HUES, board: ME.qn("print", 1) === 0 ? "" : boardId, region: C.boards.regionOf() }), pipelines = ME.compilePipelines(gpu, hooks);
     pipelines.then(() => ME.log("PIPELINES", { ms: Math.round(ME.now() - t0) }), () => {});
 
-    // the piece sets (art/sets.js): each side's from the deck screen's picker (hud.settings set and oppSet, a
-    // random opponent's rolled once a load), ?set=<id> both sides'; ?selftest and ?match play the Staunton set
-    // unless ?set= says. The bake takes the Staunton set (its parts dress every set) and the themed ones in
-    // play, ?sets=all (or grove,reef,..) more, a room all (the friend's may be any); a set picked that isn't baked
-    // reloads the page (main.js pickSet)
+    // the piece sets (art/sets.js): the player's the wheel's pick (hud.settings set), the opponent's a random one
+    // rolled once a load (another than the player's), or the deck builder's picker's (?decks=1: oppSet),
+    // ?set=<id> both sides'; ?selftest and ?match play the Staunton set unless ?set= says. The bake takes the
+    // Staunton set (its parts dress every set) and the themed ones in play, ?sets=all (or grove,reef,..) more, a
+    // room all (the friend's may be any); a kingdom picked that isn't baked reloads the page (the wheel's onPlay)
     const forced = SETS.includes(ME.q("set", "")) ? ME.q("set", "") : selftest || match ? "classic" : null;
-    const rolled = SETS[Math.floor(Math.random() * SETS.length)];
-    const sideSets = () => (forced ? [forced, forced] : [hud.settings.set, hud.settings.oppSet === "random" ? rolled : hud.settings.oppSet]);
+    const wheelMode = ME.qn("decks", 0) !== 1 && !selftest && !match;
+    const roll = (not, from = SETS) => { const L = from.filter((s) => s !== not); return L.length ? L[Math.floor(Math.random() * L.length)] : not; };
+    let rolled = roll(hud.settings.set);
+    const sideSets = () => (forced ? [forced, forced] : [hud.settings.set, wheelMode || hud.settings.oppSet === "random" ? rolled : hud.settings.oppSet]);
     const setIds = [...new Set(sideSets().concat(roomQ || ME.q("sets", "") === "all" ? SETS : ME.q("sets", "").split(",").filter((s) => SETS.includes(s))))].filter((s) => s !== "classic");
 
     // the board's world and the piece sets, baked, or the engine's cached copy of the bake in parts (E3; ?nocache=1
@@ -26714,7 +26922,9 @@ return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, 
         this.you = ME.qn("hotseat", 0) ? [0, 1] : [s.side];
         this.dress();
         hud.hideEnd();
-        sheet.open(); uiEl.classList.add("building");
+        if (this.builder) { sheet.open(); uiEl.classList.add("building"); }
+        // the wheel (no deck screen): a tap on a kingdom plays it, the board behind it dressed as it stands
+        else { showView(false); wheel.open(forced || s.set); uiEl.classList.add("wheel"); }
         const side = this.you.length === 1 ? this.you[0] : 0;
         this.side = side;
         this.preview();
@@ -26738,7 +26948,7 @@ return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, 
       // Play: the game from the two decks (the builder's, else the sets')
       start(deck) {
         const c = this.mine(), d = this.builder ? deck : this.myDeck(), w = c ? this.opp.deck : d, b = c ? d : this.opp.deck;
-        sheet.close(); uiEl.classList.remove("building"); this.building = false;
+        sheet.close(); wheel.close(); uiEl.classList.remove("building", "wheel"); this.building = false;
         this.newGame(hud.settings, G.Deck.fen(w, b), [w, b]);
         frameView(true);
       },
@@ -26758,7 +26968,7 @@ return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, 
         hud.hideEnd();
         const side = this.you.length === 1 ? this.you[0] : 0;
         if (side !== this.side) { this.side = side; if (cam) frameView(true); }
-        else if (cam && cam.home) cam.view("reset");
+        else if (cam && cam.home) cam.goHome(); // a jump, no fly-in
         this.refresh();
         cue("start");
         ME.log("GAME", { board: boardId, you: this.you, depth, seed: this.seed - 2 });
@@ -26833,7 +27043,7 @@ return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, 
       netStart(g, moves) {
         const c = g.colour, decks = g.decks.map((d) => Object.assign(G.Net.readDeck(d.text), { set: d.set || "classic", name: d.name }));
         this.roomSets = [g.decks[c].set || "classic", g.decks[1 - c].set || "classic"];
-        if (this.building) { this.building = false; sheet.close(); uiEl.classList.remove("building"); }
+        if (this.building) { this.building = false; sheet.close(); wheel.close(); uiEl.classList.remove("building", "wheel"); }
         this.newGame(hud.settings, g.fen, decks, [c]);
         if (moves.length) this.netSync(moves);
       },
@@ -26885,7 +27095,7 @@ return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, 
             this.thinking = false;
             if (r && r.move) this.play(r.move); else this.refresh();
           });
-        }, match ? 0 : 250);
+        }, match ? 0 : 60);
       },
     };
     // the deck screen's set picker: a side's set (0 the player's, 1 the opponent's, which may be "random"), kept;
@@ -26909,6 +27119,30 @@ return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, 
       // a new room (NET.md): this page with its code (and the builder's deck, which the invite link leaves out:
       // the friend plays their own), the invite link on the room's bar
       onFriend: () => { location.href = G.NetRoom.invite(G.NetRoom.newCode(), via) + (ctl.builder ? "&deck=" + encodeURIComponent(G.DeckSheet.code(sheet.deck)) : ""); },
+    });
+    // the kingdom wheel (view/wheel.js), the way in without the builder: each set as a kingdom, its emblem and
+    // its pieces' powers in a line (their rules on a hover). A tap plays the centred one against the rolled
+    // kingdom (another, rolled again if it was this one); one not baked this load reloads the page, which bakes it
+    // and plays it at once (sessionStorage "deckchess.go", the boot's)
+    const EMBLEM = { classic: "♔", tess: "◈", grove: "🌳", brass: "🕰️", reef: "🐚" }, PLURAL = { P: "pawns", N: "knights", B: "bishops", R: "rooks", Q: "queen" };
+    const kingdoms = setList.map((s) => {
+      const kit = Object.hasOwn(G.Deck.SETS, s.id) ? G.Deck.SETS[s.id] : {}, pw = [], rules = [];
+      for (const t of "PNBRQ") for (const id of kit[t] || []) { pw.push(G.DeckSheet.NAMES[id] + " " + PLURAL[t]); rules.push(G.DeckSheet.NAMES[id] + ": " + G.DeckSheet.RULES[id]); }
+      return { id: s.id, name: s.name, emblem: EMBLEM[s.id] || "♟", power: pw.join(" · ") || "Plain chess", title: s.title + (rules.length ? "\n" + rules.join("\n") : "") };
+    });
+    const wheel = new G.Wheel({
+      el: document.getElementById("wheel"), list: kingdoms,
+      onPlay: (id) => {
+        if (forced) { ctl.start(); return; }
+        hud.keep("set", id);
+        if (id === "classic" || setIds.includes(id)) {
+          if (rolled === id) rolled = roll(id, ["classic"].concat(setIds));
+          ctl.dress(); ctl.opp = ctl.oppDeck(); ctl.start(); return;
+        }
+        try { sessionStorage.setItem("deckchess.go", "1"); } catch (e) {}
+        wheel.note("Baking " + (SHORT[id] || id) + "…");
+        setTimeout(() => location.reload(), 60);
+      },
     });
 
     // ------------------------------------------------------------------ camera
@@ -26952,15 +27186,17 @@ return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, 
     cam.attach(canvas);
     window.addEventListener("resize", () => { fitCanvas(); frameView(false); });
 
-    // ------------------------------------------------------------------ the view panel: light, camera, views
-    // 🎥 opens it (and closes the sky's); the camera row over the buttons (#views) has guided's quarter turns
+    // ------------------------------------------------------------------ the settings: the game, light, camera, views
+    // ⚙ opens it (and closes the sky's): the game row (the wheel, the deck builder, a friend), the theme, the
+    // light and the camera; the camera row over the buttons (#views, hidden in guided) has guided's quarter turns
     // and preset, locked and dynamic's quick views, and the guided / free toggle
     const $ = (id) => document.getElementById(id), viewBox = $("view"), viewsRow = $("views");
     const CAMS = { guided: "Guided", free: "Free", locked: "Locked", dynamic: "Dynamic" }, VIEWS = { top: "Top", side: "Side", follow: "Follow", reset: "Reset" };
-    const PRESET = { player: "Side", top: "Top", low: "Low" };
-    // reduced motion: guided keeps its presets and makes no moves with the game (?calm=1 to try it)
+    const PRESET = { play: "Play", player: "Side", top: "Top", low: "Low" };
+    // calm by default (quick play: guided keeps its preset and makes no moves with the game), ?calm=0 its moves
+    // unless the system asks for reduced motion
     const calmQ = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)");
-    const calm = () => { cam.calm = ME.qn("calm", 0) === 1 || !!(calmQ && calmQ.matches); };
+    const calm = () => { cam.calm = ME.qn("calm", 1) !== 0 || !!(calmQ && calmQ.matches); };
     calm(); if (calmQ && calmQ.addEventListener) calmQ.addEventListener("change", calm);
     const segOf = (el, names, key, pick) => {
       el.innerHTML = Object.entries(names).map(([k, n]) => `<button data-${key}="${k}">${n}</button>`).join("");
@@ -26975,7 +27211,10 @@ return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, 
     const quickView = (v) => {
       const L = ctl.last;
       if (v === "follow" && L) cam.view("follow", { at: board.centre(L.to), from: board.centre(L.from) });
+      // guided's reset: back to the play view (its row, with the preset, is hidden in guided)
+      else if (v === "reset" && cam.mode === "guided") cam.preset("play");
       else cam.view(v === "follow" ? "reset" : v);
+      showPreset();
     };
     const setLight = (m) => { mark($("lightseg"), "l", lights.set(m)); hud.keep("lighting", lights.mode); };
     // a theme picked: on this board, its colours, light and stars at once (the palette rebuilt and uploaded); on
@@ -27021,6 +27260,18 @@ return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, 
       if (b && b.dataset.v) quickView(b.dataset.v); else if (b && b.dataset.g) guided(b.dataset.g);
     };
     $("viewbtn").onclick = () => showView();
+    // the game row: the wheel again (this game dropped; from the builder or a room, the page without them), the
+    // deck builder (?decks=1), a friend's room (a new one: send the friend its link)
+    $("gameseg").onclick = (e) => {
+      const b = e.target.closest("button"), a = b && b.dataset.a, u = new URL(location.href);
+      if (!a) return;
+      showView(false);
+      if (a === "kingdoms" && !ctl.builder && !roomQ) { ctl.build(); return; }
+      if (a === "friend") { location.href = G.NetRoom.invite(G.NetRoom.newCode(), via); return; }
+      for (const k of ["room", "net", "decks", "deck", "ai"]) u.searchParams.delete(k);
+      if (a === "decks") u.searchParams.set("decks", "1");
+      location.href = u.href;
+    };
     ME.Dismiss.add(viewBox, { outside: true, dir: "any", open: () => viewBox.classList.contains("show"), skip: (t) => !!t.closest("#viewbtn"), close: () => showView(false) });
     setLight(light0); mark($("themeseg"), "t", theme.id);
     setCam(hud.settings.camera);
@@ -27048,7 +27299,12 @@ return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, 
       $("e-again").textContent = "Rematch";
       addEventListener("pagehide", () => ctl.net && ctl.net.close());
       ctl.net.resume();
-    } else if (!selftest && !match && !deckQ) ctl.build();
+    } else if (!selftest && !match && !deckQ) {
+      // the wheel, or (a kingdom picked that this load bakes: the wheel's onPlay) straight into its game
+      let go = false;
+      try { go = sessionStorage.getItem("deckchess.go") === "1"; sessionStorage.removeItem("deckchess.go"); } catch (e) {}
+      if (go && !ctl.builder) { ctl.dress(); ctl.opp = ctl.oppDeck(); ctl.start(); } else ctl.build();
+    }
 
     // ------------------------------------------------------------------ pointer and keys
     const toCanvas = (e) => { const r = canvas.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * canvas.width, ((e.clientY - r.top) / r.height) * canvas.height]; };
@@ -27343,7 +27599,7 @@ return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, 
         // not calm and not while a piece is selected, and back to the preset after it
         setCam("guided"); cam.calm = false;
         const gd = { presets: {}, turn: 0, nudge: false, calm: true, held: true, back: 0 };
-        for (const p of ["player", "top", "low"]) { cam.preset(p); nFrames += await frames(60); gd.presets[p] = allIn(); }
+        for (const p of ["play", "player", "top", "low"]) { cam.preset(p); nFrames += await frames(60); gd.presets[p] = allIn(); }
         cam.preset("player"); nFrames += await frames(10);
         const g0 = cam.gth; cam.rotate(1); gd.turn = +((cam.gth - g0) / (Math.PI / 2)).toFixed(3); cam.rotate(-1); nFrames += await frames(60);
         const at = { at: board.centre(sq("d5")), from: board.centre(sq("e4")) };
@@ -27398,22 +27654,26 @@ return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, 
         showCard(sq("b1"), 100, 100); dk.card = tcard.classList.contains("show") ? tcard.textContent : ""; hideCard();
         nFrames += await frames(10);
         sheet.preset("classic");
-        // the set mode (the game's default): the sheet shows the sets and their powers, no grid, and Play gives each
-        // side its set's kit on every piece of a type (Classic's kit, or none: plain chess)
+        // the wheel (the game's way in): New game opens it on the pick (Staunton's here, ?set=), a card for each
+        // kingdom with its powers, the HUD hidden but the gear; the arrows (keys too) turn it, and a tap on the
+        // centred card plays it at once, each side its set's kit on every piece of a type
         const ss = {};
         ctl.builder = false; $("b-new").click();
-        const kit = G.Deck.ofSet(sideSets()[0]), kitSqs = Object.keys(kit.traits), types = new Set(kitSqs.map((s) => G.Deck.pieceAt(kit, s))).size;
-        ss.open = sheet.isOpen && $("deck").classList.contains("sets-only");
-        ss.pow = document.querySelectorAll("#dk-sets .dk-pow").length; ss.powWant = 2 * Math.max(1, types);
-        ss.grid = $("dk-grid").offsetHeight; ss.canPlay = !$("dk-play").disabled;
-        $("dk-play").click(); ss.playing = !ctl.building && !sheet.isOpen && !uiEl.classList.contains("building");
+        const kit = G.Deck.ofSet(sideSets()[0]), kitSqs = Object.keys(kit.traits);
+        ss.open = wheel.isOpen && uiEl.classList.contains("wheel") && !sheet.isOpen && $("top").offsetHeight === 0 && $("viewbtn").offsetHeight > 0;
+        ss.cards = wheel.cards().length; ss.at = wheel.at; ss.pow = kingdoms.every((k) => !!k.power);
+        wheel.el.querySelector(".wh-nav [data-d='1']").click(); ss.turned = wheel.at;
+        document.dispatchEvent(new KeyboardEvent("keydown", { code: "ArrowLeft", key: "ArrowLeft", cancelable: true })); ss.back = wheel.at;
+        const tWheel = performance.now();
+        wheel.el.querySelector(".wh-card.mid").click(); ss.playing = !ctl.building && !wheel.isOpen && !uiEl.classList.contains("wheel");
+        ss.ms = Math.round(performance.now() - tWheel);
         ss.traited = ctl.game.tr.filter((x) => x).length; ss.traitedWant = 2 * kitSqs.length;
         if (kitSqs.length) { showCard(boardSq(kitSqs[0], ctl.mine()), 100, 100); ss.card = tcard.classList.contains("show") ? tcard.textContent : ""; hideCard(); }
         // a peer's set id that is one of Object's own ("constructor"): the card names no set, not "· Object"
         const pd = ctl.decks && ctl.decks[ctl.mine()], was = pd && pd.set;
         if (kitSqs.length && pd) { pd.set = "constructor"; showCard(boardSq(kitSqs[0], ctl.mine()), 100, 100); ss.peerCard = tcard.classList.contains("show") ? tcard.textContent : ""; hideCard(); pd.set = was; }
         ctl.builder = true; ctl.fen = null; ctl.newGame(hud.settings); ctl.you = [0];
-        const setOk = ss.open && ss.pow === ss.powWant && ss.grid === 0 && ss.canPlay && ss.playing && ss.traited === ss.traitedWant &&
+        const setOk = ss.open && ss.cards === SETS.length && ss.at === "classic" && ss.pow && ss.turned !== "classic" && ss.back === "classic" && ss.playing && ss.traited === ss.traitedWant &&
           (!kitSqs.length || (ss.card.includes(G.Deck.SETS[kit.set].name) && !!ss.peerCard && !ss.peerCard.includes("·")));
         const deckOk = dk.open && dk.sel === "b1" && dk.stride && dk.ward && dk.pts.join() === "43,44,45" && dk.over === "Over budget" && dk.refused && dk.queen === "1 Q max" && dk.boardSel && dk.round && dk.bad && dk.oppCells === 16 && dk.preview === 32 && dk.lens >= 3 && dk.playing && dk.traits.includes("b1:WS") && dk.traits.includes("e2:V") && dk.card.includes("Stride");
         // a strike (exd5 onto a Warded pawn): the rules leave both pawns where they are, and so does the screen;
