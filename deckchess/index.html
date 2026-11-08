@@ -109,6 +109,14 @@ div.dk-cell { cursor: default; }
 .chip.wide { width: 100%; justify-content: flex-start; }
 .dk-rule { font-size: 12.5px; line-height: 1.4; color: var(--dim); }
 .dk-rule b { color: var(--rc); }
+/* the set mode (view/deck-ui.js): the sets and their powers, one line a piece type, and Play */
+#deck.sets-only #dk-preset, #deck.sets-only #dk-pts, #deck.sets-only .dk-track, #deck.sets-only #dk-grid, #deck.sets-only #dk-edit,
+#deck.sets-only #dk-slots, #deck.sets-only .dk-share, #deck.sets-only #dk-oppbtn, #deck.sets-only #dk-opp { display: none; }
+.dk-pow { margin: 0 0 0 46px; font-size: 12.5px; line-height: 1.4; color: var(--dim); cursor: default; }
+.dk-pow b { color: var(--rc, var(--ink)); font-weight: 600; }
+.dk-roll { margin: 0 0 0 46px; font-size: 12px; color: var(--dim); font-style: italic; }
+.dk-chips + .dk-pow, .dk-roll + .dk-pow { margin-top: 2px; }
+.dk-pow + .dk-chips { margin-top: 6px; }
 #dk-slots { display: flex; flex-wrap: wrap; gap: 6px; }
 #dk-slots .slot { display: inline-flex; gap: 2px; }
 .dk-share { display: flex; gap: 5px; }
@@ -150,6 +158,8 @@ div.dk-cell { cursor: default; }
   #deck { top: auto; left: 6px; right: 6px; bottom: max(6px, env(safe-area-inset-bottom)); width: auto; max-height: 55vh; padding: 8px 10px; gap: 6px; }
   .dk-cell { font-size: 19px; }
   .chip { padding: 7px 9px; }
+  .dk-pow, .dk-roll { margin-left: 8px; } .dk-pow { cursor: pointer; }
+  .dk-pow span { display: none; } .dk-pow.open span { display: inline; }
 }
 </style>
 </head>
@@ -19534,6 +19544,35 @@ function MG_SFX(L) {
       wants: [["squire", "e2"], ["anointed", "e2"], ["squire", "d2"], ["anointed", "d2"], ["ward", "f1"]] },
   };
 
+  // Each piece set's own powers (the user, 2026-11-07: "specific powers associated to a certain unit model"): one
+  // kit per set, the traits every piece of a type carries ("-" types play plain chess). The ids are the art sets'
+  // (art/sets.js). A set's deck skips problems(), whose budget and rarity caps are the deck builder's. First guesses
+  // from the measured values above; tools/rules.html?selfplay=sets plays every pairing, and &kit= tries others.
+  const SETS = {
+    classic: { name: "Classic", P: ["anointed"], Q: ["ward"] },
+    grove: { name: "Grove", P: ["ward"], N: ["rally"], B: ["sanctuary"] },
+    brass: { name: "Clockwork", P: ["squire"], N: ["stride"], R: ["vanguard"] },
+    reef: { name: "Reef", P: ["ember"], B: ["leap"], R: ["glide"], Q: ["ember"] },
+  };
+
+  // a set's deck: its kit on every piece of each type, on the classic back rank
+  const ofSet = (id) => {
+    const k = SETS[id] || SETS.classic, deck = { v: 1, name: k.name, set: SETS[id] ? id : "classic", back: CLASSIC.back, traits: {} };
+    for (let i = 0; i < 8; i++) for (const [sq, t] of [[FILES[i] + "2", "P"], [FILES[i] + "1", CLASSIC.back[i]]]) if (k[t] && k[t].length) deck.traits[sq] = k[t].slice();
+    return deck;
+  };
+
+  // kits from text, over SETS (tuning without a commit): "reef:P=ember,B=leap+ember;grove:P=ward" replaces the
+  // named sets' kits (a query turns "+" into a space, so either joins two traits); a set not named keeps its own
+  const setKits = (s) => {
+    for (const part of (s || "").split(";").filter(Boolean)) {
+      const [id, rest] = part.split(":"), k = { name: (SETS[id] && SETS[id].name) || id };
+      for (const it of (rest || "").split(",").filter(Boolean)) { const [t, ids] = it.split("="); k[t] = ids.split(/[+ ]/).filter((x) => TRAIT[x]); }
+      SETS[id] = k;
+    }
+    return SETS;
+  };
+
   // the piece letter (PNBRQK) on a deck square such as "b1" or "d2", or "" when it isn't one
   const pieceAt = (deck, sq) => {
     if (!/^[a-h][12]$/.test(sq)) return "";
@@ -19682,16 +19721,17 @@ function MG_SFX(L) {
   };
 
   // a deck from text, for the self-play harness until the share codes (phase 3): "classic", a template id,
-  // or a back rank with traits, such as "RNBQKBNR:d2=ward+rally,g1=stride"
+  // a set's deck ("set:reef"), or a back rank with traits, such as "RNBQKBNR:d2=ward+rally,g1=stride"
   const parse = (s) => {
     if (!s || s === "classic") return CLASSIC;
     if (TEMPLATES[s]) return build(s);
+    if (s.startsWith("set:")) return ofSet(s.slice(4));
     const [back, rest] = s.split(":"), deck = { v: 1, name: s, back, traits: {} };
     if (rest) for (const it of rest.split(",")) { const [sq, ids] = it.split("="); deck.traits[sq] = ids.split("+"); }
     return deck;
   };
 
-  G.Deck = { CLASSIC, BUDGET, CAPS, PER_PIECE, COST, TRAIT, TEMPLATES, points, problems, fen, random, pieceAt, traitCp, build, pick, parse };
+  G.Deck = { CLASSIC, BUDGET, CAPS, PER_PIECE, COST, TRAIT, TEMPLATES, SETS, points, problems, fen, random, pieceAt, traitCp, build, pick, parse, ofSet, setKits };
   (G.CORE = G.CORE || []).push(core); // its source, for the AI's worker (core/ai-worker.js)
 })();
 
@@ -21884,14 +21924,14 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
   const KEY = "deckchess.settings";
   const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { return {}; } };
   const save = (s) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* storage blocked */ } };
-  // the piece sets a side can play: the Staunton set, then DC.sets'
-  const SETS = () => ["classic"].concat(((window.DC && DC.sets && DC.sets.LIST) || []).map((s) => s.id));
 
   class Hud {
     constructor(o) {
       this.o = o;
       const q = new URLSearchParams(location.search), kept = load();
       const pick = (v, ok, d) => (v != null && ok(v) ? v : d);
+      // the piece sets a side can play (main.js hands them in: the Staunton "classic", then the themed ones)
+      const sets = o.sets || ["classic"];
       const side = q.get("side"), level = q.get("level"), promo = q.get("promo");
       this.settings = {
         side: side === "b" ? 1 : side === "w" ? 0 : pick(kept.side, (v) => v === 0 || v === 1, 0),
@@ -21900,8 +21940,8 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         // the lighting is kept as "lighting" (Tournament, hall, the new default, shows once over an old "light")
         lighting: (() => { const v = q.get("light"), L = ["current", "day", "hall", "glow"]; return L.includes(v) ? v : pick(kept.lighting, (x) => L.includes(x), "hall"); })(),
         // each side's piece set (DC.sets ids, or the Staunton "classic"); the opponent's may be "random"
-        set: pick(kept.set, (x) => SETS().includes(x), "classic"),
-        oppSet: pick(kept.oppSet, (x) => x === "random" || SETS().includes(x), "random"),
+        set: pick(kept.set, (x) => sets.includes(x), "classic"),
+        oppSet: pick(kept.oppSet, (x) => x === "random" || sets.includes(x), "random"),
         // the camera is kept as "camera" (#468 saved "cam" for everyone, so guided, the new default, shows once)
         camera: (() => { const v = q.get("cam"), L = ["guided", "free", "locked", "dynamic"]; return L.includes(v) ? v : pick(kept.camera, (x) => L.includes(x), L[0]); })(),
         // the weather this game's sky panel picked (main.js checks it against Mossheart's fronts; "" a clear sky)
@@ -21984,11 +22024,16 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
      one-line rule of the last trait touched; three save slots and a share code; the AI's deck for the game
      (shown before it starts); Play.
    Over it all, each side's piece set (the app's sets(), picked with onSet: the opponent's may be Random).
+   Without the builder (builder() false: the game's default, ?decks=1 turns it on in main.js) the sheet is the
+   sets alone, each side's pieces playing its set's powers (core/deck.js SETS): under each side's row the powers,
+   one line a piece type with its rule (on a phone the rule shows on a tap of its line), then Play; the deck's
+   own parts are hidden (#deck.sets-only).
    The deck and the slots are kept in localStorage ("deckchess.decks") when the browser keeps it.
    A share code is the deck as short text: DC1.<back rank>.<square><trait letters>..., such as
    "DC1.RNNQKBNR.b1S.g1W.e2V" (44 points; G.TRAITS' letters).
-     new DG.DeckSheet({ onChange(deck), onPlay(deck), opponent() -> { name, deck },
-                        sets() -> { list: [{ id, name, title }], mine, opp, fixed }, onSet(side, id) })
+     new DG.DeckSheet({ onChange(deck), onPlay(deck), opponent() -> { name, deck }, builder() -> bool (true without it),
+                        sets() -> { list: [{ id, name, title }], mine, opp, fixed, now: [mine's, opp's set as rolled] },
+                        onSet(side, id) })
      sheet.open(), sheet.close(), sheet.isOpen, sheet.deck, sheet.sel (a deck square such as "b1", or "")
      sheet.select(sq), sheet.toggle(id), sheet.setType(letter), sheet.preset(id), sheet.points
      DeckSheet.code(deck) -> text, DeckSheet.decode(text) -> a deck, or null when it isn't a playable one
@@ -22053,13 +22098,24 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       const kept = load();
       this.slots = [0, 1, 2].map((i) => (kept.slots && kept.slots[i] && !D().problems(kept.slots[i]).length ? kept.slots[i] : null));
       this.deck = kept.deck && !D().problems(kept.deck).length ? copy(kept.deck) : copy(D().CLASSIC);
-      this.sel = ""; this.rule = ""; this.note = ""; this.showOpp = false; this.isOpen = false;
+      this.sel = ""; this.rule = ""; this.note = ""; this.pow = ""; this.showOpp = false; this.isOpen = false;
       const el = (this.el = $("deck"));
       el.addEventListener("click", (e) => this.click(e));
       $("dk-preset").addEventListener("change", (e) => { if (e.target.value) this.preset(e.target.value); });
       this.keep();
     }
     get points() { return D().points(this.deck); }
+    get builder() { return this.o.builder ? !!this.o.builder() : true; }
+    // a set's powers, one line a piece type that has any (core/deck.js SETS), or plain chess; key: the open line's
+    // prefix (its side), so a tap shows that line's rule on a phone
+    powers(id, key) {
+      const k = D().SETS[id] || {};
+      const h = "PNBRQ".split("").filter((t) => k[t] && k[t].length).map((t) => {
+        const ids = k[t], r = Math.max(...ids.map(rarityOf)), rule = ids.map((x) => RULES[x]).join(" ");
+        return `<p class="dk-pow r${r}${this.pow === key + t ? " open" : ""}" data-a="pow" data-v="${key + t}" title="${esc(rule)}"><b>${NAMES[t]}</b> ${ids.map((x) => NAMES_T[x]).join(" + ")}<span> · ${esc(rule)}</span></p>`;
+      }).join("");
+      return h || `<p class="dk-pow"><b>Plain chess</b><span> · no powers</span></p>`;
+    }
     keep() { save({ deck: this.deck, slots: this.slots }); }
     open() { this.isOpen = true; this.el.classList.add("show"); this.draw(); }
     close() { this.isOpen = false; this.el.classList.remove("show"); }
@@ -22138,7 +22194,8 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         if (d) { this.deck = d; this.note = "Code loaded"; this.changed(); } else { this.note = "That code isn't a playable deck"; this.draw(); }
       } else if (a === "opp") { this.showOpp = !this.showOpp; this.draw(); }
       else if (a === "set" || a === "oppset") { if (this.o.onSet) this.o.onSet(a === "set" ? 0 : 1, v); this.draw(); }
-      else if (a === "play") { if (!D().problems(this.deck).length && this.o.onPlay) this.o.onPlay(copy(this.deck)); }
+      else if (a === "pow") { this.pow = this.pow === v ? "" : v; this.draw(); }
+      else if (a === "play") { if ((!this.builder || !D().problems(this.deck).length) && this.o.onPlay) this.o.onPlay(copy(this.deck)); }
     }
     // a piece's cell: its glyph, a pip for each trait in its rarity's colour
     cell(deck, sq, sel, act) {
@@ -22154,11 +22211,25 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     }
     draw() {
       if (!this.isOpen) return;
-      const deck = this.deck, Dk = D(), pts = this.points, sq = this.sel, t = Dk.pieceAt(deck, sq);
-      // the piece sets: the player's row, then the opponent's (Random first); fixed (?set=) greys them
+      const deck = this.deck, Dk = D(), pts = this.points, sq = this.sel, t = Dk.pieceAt(deck, sq), B = this.builder;
+      this.el.classList.toggle("sets-only", !B);
+      const head = this.el.querySelector(".dk-head b");
+      if (head) head.textContent = B ? "Your deck" : "Piece sets";
+      // the piece sets: the player's row, then the opponent's (Random first); fixed (?set=) greys them. Without the
+      // builder each row is followed by its set's powers (Random's: the set it rolled)
       const S = this.o.sets ? this.o.sets() : null, RND = { id: "random", name: "Random", title: "A set rolled for each game's load" };
-      $("dk-sets").innerHTML = !S ? "" : [["set", "You", S.mine, S.list], ["oppset", "Them", S.opp, [RND].concat(S.list)]].map(([a, lab, cur, list]) =>
-        `<div class="dk-chips"><span class="dk-lab">${lab}</span>` + list.map((s) => `<button class="chip${s.id === cur ? " on" : ""}" data-a="${a}" data-v="${s.id}" title="${esc(s.title)}"${S.fixed ? " disabled" : ""}>${esc(s.name)}</button>`).join("") + `</div>`).join("");
+      $("dk-sets").innerHTML = !S ? "" : [["set", "You", S.mine, S.list], ["oppset", "Them", S.opp, [RND].concat(S.list)]].map(([a, lab, cur, list], i) => {
+        let h = `<div class="dk-chips"><span class="dk-lab">${lab}</span>` + list.map((s) => `<button class="chip${s.id === cur ? " on" : ""}" data-a="${a}" data-v="${s.id}" title="${esc(s.title)}"${S.fixed ? " disabled" : ""}>${esc(s.name)}</button>`).join("") + `</div>`;
+        if (B) return h;
+        const id = S.now ? S.now[i] : cur, rolled = cur === "random" && S.list.find((s) => s.id === id);
+        if (rolled) h += `<p class="dk-roll">Rolled: ${esc(rolled.name)}</p>`;
+        return h + this.powers(id, "mo"[i]);
+      }).join("");
+      if (!B) {
+        $("dk-note").textContent = this.note;
+        $("dk-play").disabled = false; $("dk-play").title = "";
+        return;
+      }
       const presets = [["classic", "Classic"]].concat(Object.entries(Dk.TEMPLATES).map(([k, v]) => [k, v.name]));
       const named = presets.find(([, n]) => n === deck.name);
       $("dk-preset").innerHTML = `<option value="">${named ? "" : "Custom"}</option>` + presets.map(([k, n]) => `<option value="${k}"${named && named[0] === k ? " selected" : ""}>${n}</option>`).join("");
@@ -22215,7 +22286,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.25.0", name: "DeckChess", commit: "0343f06" };
+  G.VERSION = { v: "0.26.0", name: "DeckChess", commit: "9ecb677" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -22234,9 +22305,12 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    the piece set's flipbooks, DC.pieces), then the rules (core/), the view (view/), the HUD and the camera every
    frame. Mossheart's look comes with it: its default preset, sunbeams, its mood and weather (its sky panel)
    and its music, those through the stand-in for its game (src/mg-standin.js), fed with the chess game's events.
-   The game opens on the deck screen (view/deck-ui.js) over the board, which shows both decks as they stand: the
-   player builds theirs, sees the AI's (core/deck.js pick, by the level and the seed) and plays; New game opens it
-   again. A traited piece shows its traits on a hover or a long press (#tcard), and the lens (✦, T) labels them all.
+   The game opens on the deck screen (view/deck-ui.js) over the board: each side's piece set, whose pieces play
+   with the set's powers (core/deck.js SETS: a kit of traits for each piece type), the powers listed, and Play;
+   the board shows both sides as they stand. ?decks=1 (and the self-test) gives the deck builder instead: the
+   player builds their deck, sees the AI's (core/deck.js pick, by the level and the seed) and plays. New game opens
+   it again. A traited piece shows its traits and its set on a hover or a long press (#tcard), and the lens (✦, T)
+   labels them all.
    The view panel (🎥): the lighting (view/lighting.js), the camera's mode and its quick views (view/camera.js); the camera
    row over the buttons: guided's quarter turns, its preset (your side, top, low) and guided / free.
    URL options: ?side=w|b, ?level=0..2, ?promo=queen|choose, ?light=current|day|hall|glow (hall, Tournament,
@@ -22247,8 +22321,11 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    ?dpr=1, ?scale=0.8, ?nocache=1, ?vs=N (terrain), ?hero=N (pieces), ?small=1 (a phone's caps), ?preset=,
    ?elev=20..85 (free's pitch in degrees, Mossheart's iso angle by default: view/camera.js), ?mute=1,
    ?worker=0 (the AI searches on the main thread, not in its worker: core/ai-worker.js),
-   ?deck= ?ai= (the player's and the AI's decks, as a share code, "classic", a template id or Deck.parse's text;
-   ?deck= skips the deck screen, which ?selftest and ?match always do, classic unless these say), ?hotseat=1 (both sides by hand), ?match=1 (the AI against itself to the end, JSON report into #result),
+   ?deck= ?ai= (the player's and the AI's decks, as a share code, "classic", a template id, "set:<id>" (a set's
+   deck) or Deck.parse's text; ?deck= skips the deck screen, which ?selftest and ?match always do, classic unless
+   these say), ?kit=reef:P=ember,B=leap+ember;.. (other kits for the sets, Deck.setKits: "classic:" plays the
+   Staunton set as plain chess), ?decks=1 (the deck builder), ?hotseat=1 (both sides by hand), ?match=1 (the AI
+   against itself to the end, JSON report into #result),
    ?selftest=1 (picking by the grid at many angles, every square in view, a scripted move by touch and mouse,
    the AI's reply and an undo, a capture's burst, the stand-in's fields; timings and errors into #result). */
 (async function () {
@@ -22269,8 +22346,10 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     // Mossheart's sound banks render while the GPU starts and the bake runs; its G.Audio takes the promise
     const banks = window.MA && MG.SOUND_BANKS ? MA.renderBanks(MG.SOUND_BANKS, { cache: !ME.qn("nocache", 0) }) : null;
 
+    // the piece sets a side can play: the Staunton set, then the themed ones (art/sets.js)
+    const SETS = ["classic"].concat(C.sets.LIST.map((s) => s.id));
     let ctl = null;
-    const hud = new G.Hud({ where: C.boards.list[0].name, undo: () => ctl.undo(), newGame: () => ctl.build() });
+    const hud = new G.Hud({ where: C.boards.list[0].name, sets: SETS,undo: () => ctl.undo(), newGame: () => ctl.build() });
     const boardId = C.boards.list[0].id;
 
     ME.progress("starting WebGPU", 0.01);
@@ -22284,7 +22363,6 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     // random opponent's rolled once a load), ?set=<id> both sides'; ?selftest and ?match play the Staunton set
     // unless ?set= says. The bake takes the Staunton set (its parts dress every set) and the themed ones in
     // play, ?sets=all (or grove,reef,..) more; a set picked that isn't baked reloads the page (main.js pickSet)
-    const SETS = ["classic"].concat(C.sets.LIST.map((s) => s.id));
     const forced = SETS.includes(ME.q("set", "")) ? ME.q("set", "") : selftest || match ? "classic" : null;
     const rolled = SETS[Math.floor(Math.random() * SETS.length)];
     const sideSets = () => (forced ? [forced, forced] : [hud.settings.set, hud.settings.oppSet === "random" ? rolled : hud.settings.oppSet]);
@@ -22467,10 +22545,12 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       else cam.event(info.capture ? "capture" : "move", { at: P, from, long });
     };
 
-    // the decks: ?deck= and ?ai= (a share code, or what Deck.parse reads), else the deck screen's and the AI's pick
+    // the decks: ?deck= and ?ai= (a share code, or what Deck.parse reads: a set's deck skips the builder's checks),
+    // else each side's set (or, with the builder, the deck screen's and the AI's pick); ?kit= over the sets' kits
+    if (ME.q("kit", "")) G.Deck.setKits(ME.q("kit", ""));
     const deckOf = (q) => {
       const t = ME.params.get(q);
-      try { const d = t ? G.DeckSheet.decode(t) || G.Deck.parse(t) : null; return d && !G.Deck.problems(d).length ? d : null; } catch (e) { return null; }
+      try { const d = t ? G.DeckSheet.decode(t) || G.Deck.parse(t) : null; return d && (d.set || !G.Deck.problems(d).length) ? d : null; } catch (e) { return null; }
     };
     const deckQ = deckOf("deck"), aiQ = deckOf("ai");
     const uiEl = document.getElementById("ui");
@@ -22480,14 +22560,22 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     ctl = {
       game: null, ai: [null, null], you: [0], sel: -1, targets: [], last: null, status: null,
       thinking: false, ended: false, promoOpen: false, seq: 0, seed: seed0, side: -1,
-      building: false, opp: null, fen: null,
-      // the deck screen: the AI's deck for the next game, both decks on the board, the sheet open
+      building: false, opp: null, fen: null, decks: null,
+      // the deck builder (?decks=1, the self-test's), else each side plays its set's deck
+      builder: ME.qn("decks", 0) === 1 || selftest,
+      // the opponent's deck: ?ai=, else its set's, or with the builder the AI's pick by the level and the seed
+      oppDeck() {
+        const p = aiQ ? { id: "custom", deck: aiQ } : this.builder ? G.Deck.pick(new G.Rng(Math.imul(this.seed, 0x9e3779b1) >>> 0), hud.settings.level)
+          : { id: "set", deck: G.Deck.ofSet(sideSets()[1]) };
+        return { name: p.id === "classic" ? "Classic" : p.deck.name || p.id, deck: p.deck };
+      },
+      myDeck() { return this.builder ? sheet.deck : G.Deck.ofSet(sideSets()[0]); },
+      // the deck screen: the opponent's deck for the next game, both decks on the board, the sheet open
       build() {
         const s = hud.settings;
         this.seq++; G.AIWorker.cancel();
         this.building = true; this.thinking = false; this.ended = false; this.last = null; this.targets = [];
-        const p = aiQ ? { id: "custom", deck: aiQ } : G.Deck.pick(new G.Rng(Math.imul(this.seed, 0x9e3779b1) >>> 0), s.level);
-        this.opp = { name: p.id === "classic" ? "Classic" : p.deck.name || p.id, deck: p.deck };
+        this.opp = this.oppDeck();
         this.you = ME.qn("hotseat", 0) ? [0, 1] : [s.side];
         this.dress();
         hud.hideEnd();
@@ -22506,22 +22594,23 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       },
       preview() {
         if (!this.building) return;
-        const c = this.mine(), w = c ? this.opp.deck : sheet.deck, b = c ? sheet.deck : this.opp.deck;
-        this.game = new G.Chess(G.Deck.fen(w, b));
+        const c = this.mine(), d = this.myDeck(), w = c ? this.opp.deck : d, b = c ? d : this.opp.deck;
+        this.game = new G.Chess(G.Deck.fen(w, b)); this.decks = [w, b];
         pieces.reset(this.game); phys.clear();
-        this.sel = sheet.sel ? boardSq(sheet.sel, c) : -1;
+        this.sel = this.builder && sheet.sel ? boardSq(sheet.sel, c) : -1;
         this.refresh();
       },
-      // Play: the game from the two decks
+      // Play: the game from the two decks (the builder's, else the sets')
       start(deck) {
-        const c = this.mine();
+        const c = this.mine(), d = this.builder ? deck : this.myDeck(), w = c ? this.opp.deck : d, b = c ? d : this.opp.deck;
         sheet.close(); uiEl.classList.remove("building"); this.building = false;
-        this.newGame(hud.settings, G.Deck.fen(c ? this.opp.deck : deck, c ? deck : this.opp.deck));
+        this.newGame(hud.settings, G.Deck.fen(w, b), [w, b]);
         frameView(true);
       },
-      newGame(s, fen) {
+      // decks: White's and Black's for the fen (their sets, for the card), kept with it
+      newGame(s, fen, decks) {
         this.seq++; G.AIWorker.cancel();
-        if (fen) this.fen = fen;
+        if (fen) { this.fen = fen; this.decks = decks || null; } else if (!this.fen) this.decks = null;
         this.game = new G.Chess(this.fen || undefined);
         this.you = match ? [] : ME.qn("hotseat", 0) ? [0, 1] : [s.side];
         const L = hud.level, depth = ME.qn("depth", match ? 2 : L.depth);
@@ -22578,7 +22667,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       // a tap on square sq (-1: off the board)
       tap(sq) {
         const g = this.game;
-        if (this.building) { sheet.select(sq >= 0 ? deckSq(sq, this.mine()) : ""); return; }
+        if (this.building) { if (this.builder) sheet.select(sq >= 0 ? deckSq(sq, this.mine()) : ""); return; }
         if (this.ended || this.thinking || this.promoOpen || !this.you.includes(g.turn) || pieces.busy) return;
         if (this.sel >= 0 && sq >= 0) {
           const from = this.sel, ms = this.targets.filter((m) => G.info(m).to === sq);
@@ -22641,13 +22730,17 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     const pickSet = (side, id) => {
       hud.keep(side ? "oppSet" : "set", id);
       const want = id === "random" ? rolled : id;
-      if (forced || want === "classic" || setIds.includes(want)) { ctl.dress(); ctl.preview(); return; }
+      if (forced || want === "classic" || setIds.includes(want)) {
+        ctl.dress();
+        if (!ctl.builder && ctl.building) ctl.opp = ctl.oppDeck(); // the opponent's set brings its powers
+        ctl.preview(); return;
+      }
       sheet.note = "Baking " + (SHORT[want] || want) + "…"; sheet.draw();
       setTimeout(() => location.reload(), 60);
     };
     const sheet = new G.DeckSheet({
-      onChange: () => ctl.preview(), onPlay: (d) => ctl.start(d), opponent: () => ctl.opp,
-      sets: () => ({ list: setList, mine: forced || hud.settings.set, opp: forced || hud.settings.oppSet, fixed: !!forced }), onSet: pickSet,
+      onChange: () => ctl.preview(), onPlay: (d) => ctl.start(d), opponent: () => ctl.opp, builder: () => ctl.builder,
+      sets: () => ({ list: setList, mine: forced || hud.settings.set, opp: forced || hud.settings.oppSet, fixed: !!forced, now: sideSets() }), onSet: pickSet,
     });
 
     // ------------------------------------------------------------------ camera
@@ -22684,7 +22777,8 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     fitCanvas();
     // ?deck= / ?ai= (a share code or a deck's JSON): straight into that game; else the deck screen first
     const side0 = hud.settings.side;
-    ctl.newGame(hud.settings, deckQ || aiQ ? G.Deck.fen(side0 ? aiQ : deckQ, side0 ? deckQ : aiQ) : undefined);
+    const wQ = side0 ? aiQ : deckQ, bQ = side0 ? deckQ : aiQ;
+    ctl.newGame(hud.settings, deckQ || aiQ ? G.Deck.fen(wQ, bQ) : undefined, [wQ, bQ]);
     ME.log("READY", { bakeMs, bakeOnlyMs, sets: setIds, board: boardId, materials: pal.names.length - 1, models: MB.models.length, seed: seed0 });
     frameView(true);
     cam.attach(canvas);
@@ -22769,8 +22863,8 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       const g = ctl.game, m = s >= 0 ? g.tr[(s >> 3) * 16 + (s & 7)] : 0;
       if (!m) { hideCard(); return; }
       if (s !== cardSq) {
-        const v = g.at(s), T = G.DeckSheet;
-        let h = `<h3>${T.PIECE[" PNBRQK"[v & 7]]} <small>${G.squareName(s)}</small></h3>`;
+        const v = g.at(s), T = G.DeckSheet, d = ctl.decks && ctl.decks[v & 8 ? 1 : 0], k = d && d.set && G.Deck.SETS[d.set];
+        let h = `<h3>${T.PIECE[" PNBRQK"[v & 7]]} <small>${G.squareName(s)}${k ? " · " + k.name : ""}</small></h3>`;
         G.TRAITS.forEach((t, i) => { if (m & (1 << i)) { h += `<p class="r${t.rarity}"><b>${T.NAMES[t.id]}</b> ${T.RULES[t.id]}</p>`; } });
         tcard.innerHTML = h; cardSq = s;
       }
@@ -23086,6 +23180,20 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         showCard(sq("b1"), 100, 100); dk.card = tcard.classList.contains("show") ? tcard.textContent : ""; hideCard();
         nFrames += await frames(10);
         sheet.preset("classic");
+        // the set mode (the game's default): the sheet shows the sets and their powers, no grid, and Play gives each
+        // side its set's kit on every piece of a type (Classic's kit, or none: plain chess)
+        const ss = {};
+        ctl.builder = false; $("b-new").click();
+        const kit = G.Deck.ofSet(sideSets()[0]), kitSqs = Object.keys(kit.traits), types = new Set(kitSqs.map((s) => G.Deck.pieceAt(kit, s))).size;
+        ss.open = sheet.isOpen && $("deck").classList.contains("sets-only");
+        ss.pow = document.querySelectorAll("#dk-sets .dk-pow").length; ss.powWant = 2 * Math.max(1, types);
+        ss.grid = $("dk-grid").offsetHeight; ss.canPlay = !$("dk-play").disabled;
+        $("dk-play").click(); ss.playing = !ctl.building && !sheet.isOpen && !uiEl.classList.contains("building");
+        ss.traited = ctl.game.tr.filter((x) => x).length; ss.traitedWant = 2 * kitSqs.length;
+        if (kitSqs.length) { showCard(boardSq(kitSqs[0], ctl.mine()), 100, 100); ss.card = tcard.classList.contains("show") ? tcard.textContent : ""; hideCard(); }
+        ctl.builder = true; ctl.fen = null; ctl.newGame(hud.settings); ctl.you = [0];
+        const setOk = ss.open && ss.pow === ss.powWant && ss.grid === 0 && ss.canPlay && ss.playing && ss.traited === ss.traitedWant &&
+          (!kitSqs.length || ss.card.includes(G.Deck.SETS[kit.set].name));
         const deckOk = dk.open && dk.sel === "b1" && dk.stride && dk.ward && dk.pts.join() === "43,44,45" && dk.over === "Over budget" && dk.refused && dk.queen === "1 Q max" && dk.boardSel && dk.round && dk.bad && dk.oppCells === 16 && dk.preview === 32 && dk.lens >= 3 && dk.playing && dk.traits.includes("b1:WS") && dk.traits.includes("e2:V") && dk.card.includes("Stride");
         // a strike (exd5 onto a Warded pawn): the rules leave both pawns where they are, and so does the screen;
         // black's answer from d5 then moves black's pawn, not white's
@@ -23157,9 +23265,9 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         for (const c of [0, 1]) for (let t = 1; t <= 6; t++) { const m = models[c][t]; sizes["wb"[c] + " PNBRQK"[t]] = { model: m.name, h: +m.h.toFixed(2), r: +m.r.toFixed(2), fit: +m.fit.toFixed(2), height: m.height }; }
         out.board = { id: boardId, region, z: +board.z.toFixed(3), zSpread: board.zSpread, pieces: sizes };
         ME.log("BOARD", JSON.stringify({ id: boardId, z: out.board.z, zSpread: board.zSpread, region }));
-        out.pick = pick; out.turned = turned; out.script = script; out.capture = cap; out.camera = camT; out.lighting = lightT; out.deck = dk; out.strike = st; out.epStrike = ep; out.vanguard = van; out.parts = pk;
+        out.pick = pick; out.turned = turned; out.script = script; out.capture = cap; out.camera = camT; out.lighting = lightT; out.deck = dk; out.setMode = ss; out.strike = st; out.epStrike = ep; out.vanguard = van; out.parts = pk;
         out.sky = { stars: starsDrawn, atmos: atmos.state(), cues: fx.cues, audio: audio ? audio.stats() : null };
-        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2 && capOk && camOk && lightOk && deckOk && strikeOk && epOk && vanOk && partsOk && starsDrawn > 100 && !mg.length && aiOk();
+        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2 && capOk && camOk && lightOk && deckOk && setOk && strikeOk && epOk && vanOk && partsOk && starsDrawn > 100 && !mg.length && aiOk();
       }
       Object.assign(out, { ai: { mode: aw.mode, off: aw.off, fails: aw.fails, why: aw.why }, frames: nFrames, avgFrameIntervalMs: avg(ints.slice(5)), avgCpuMs: avg(cpus.slice(5)), gpuMs: R.gpuMs, errors: ME.errors });
       report(out);
