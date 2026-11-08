@@ -21739,8 +21739,8 @@ function MG_SFX(L) {
        in sunshine and sky blue, the black pieces grape.
      Mechatech: brushed steel and gunmetal in an iron rim on hazard-amber pads, a dark workshop, a low hard sun
        (Day); amber against electric blue.
-     Mossheart: lichen stone and moss in a bark rim, a deep forest under Mossheart's own light (Current, the
-       canopy's dapple); firefly gold against the stream's water.
+     Mossheart: lichen stone and moss in a bark rim, a deep forest under the Grove light (Mossheart's canopy, its
+       dapple and beam softened); firefly gold against the stream's water, the black pieces bark brown.
      E-sport: cool grey and slate blue in a black rim on lime pads, a dark navy stage, the Tournament light;
        electric blue against red-orange.
        DC.themes.list            [{ id, name, board, light, stars, team, fog?, ramps?, pieces? }]: the first is
@@ -21822,7 +21822,7 @@ function MG_SFX(L) {
     },
     {
       // the team: a firefly's gold and the stream's water #3d8a8f lifted; a violet would go muddy on the moss
-      id: "moss", name: "Mossheart", board: "space", light: "current", stars: false,
+      id: "moss", name: "Mossheart", board: "space", light: "grove", stars: false,
       team: [[1, 0.8, 0.35], [0.3, 0.9, 1]], fog: [70, 88, 72],
       ramps: {
         dcMaple: ["#c3c4a4", 8, 0.36, 0.86, 0.08, 0.6], dcMaple2: ["#b8ba98", 8, 0.34, 0.82, 0.08, 0.6],
@@ -21831,7 +21831,7 @@ function MG_SFX(L) {
         dcFelt: ["#3e6d3c", 6, 0.1, 0.46, 0.08],
         sky: ["#24302a", "#2c3a31", "#36463a", "#425243", "#4f5f4d", "#5e6d58", "#6e7c64", "#7f8b71"],
       },
-      pieces: [{ to: "#efe8d2", k: 0.3 }, { to: "#3a2a1e", k: 0.35 }],
+      pieces: [{ to: "#efe8d2", k: 0.3 }, { to: "#7a4a2c", k: 0.45 }],
     },
     {
       id: "esport", name: "E-sport", board: "space", light: "hall", stars: false,
@@ -22508,6 +22508,8 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
      glow     the room dark, the pieces' rims and the board's lines lit: the light comes from the game
      soft     a pale room: light from everywhere, no shadow to speak of, no haze (Minimalist's dream)
      lamp     a dark warm room: the canopy's beams as pools of lamplight, a low sun, a soft bloom (Ultra cosy)
+     grove    a forest's shade: the canopy and its sunbeam as in current, the light pools, the beam and the bloom
+              softened so the middle of the board stays readable (Mossheart)
    new DG.Lighting(R); lights.set(mode); lights.apply(rdt) after the mood each frame (it eases the R.set
    values toward the mode's over ~0.6 s, and switches the sun and the canopy halfway); lights.glow is the gain
    on the pieces' and the board's glow (1, 3 in glow), for Renderer.user[0].x (view/shaders.js) */
@@ -22522,6 +22524,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
     glow: { name: "Glow", shafts: false, shade: 0.8, amb: 0.05, pool: 0.1, exposure: 0.7, shaftK: 0, bloomK: 2.2, vignette: 0.75, glow: 3 },
     soft: { name: "Soft", canopy: false, shafts: false, sunEl: 55, sunAz: 0, shade: 0.1, pool: 0.15, amb: 0.44, shaftK: 0, haze: 0, vignette: 0.12, exposure: 1, bloomK: 0.5 },
     lamp: { name: "Lamp", canopy: true, shafts: true, sunEl: 10, sunAz: 30, shade: 0.5, pool: 0.65, amb: 0.18, shaftK: 0.25, haze: 0.07, vignette: 0.62, exposure: 1, bloomK: 1.3 },
+    grove: { name: "Grove", canopy: true, shafts: true, shade: 0.38, pool: 0.3, amb: 0.24, shaftK: 0.1, haze: 0.06, vignette: 0.5, exposure: 0.95, bloomK: 0.85 },
   };
   const SWITCH = ["canopy", "shafts", "sunEl", "sunAz"], SKIP = new Set(["name", "glow", ...SWITCH]);
   const EASE = 5; // 1/s
@@ -23255,7 +23258,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.31.0", name: "DeckChess", commit: "387f682" };
+  G.VERSION = { v: "0.32.0", name: "DeckChess", commit: "1d785f9" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -26418,7 +26421,7 @@ return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, 
    buttons: guided's quarter turns, its preset (your side, top, low) and guided / free.
    URL options: ?side=w|b, ?level=0..2, ?promo=queen|choose,
    ?theme=litho|dream|cosy|cyber|kawaii|mech|moss|esport (Lithograph by default; its light unless ?light= says),
-   ?light=current|day|hall|glow|soft|lamp (hall, Tournament, by
+   ?light=current|day|hall|glow|soft|lamp|grove (hall, Tournament, by
    default), ?cam=guided|free|locked|dynamic (view/hud.js), ?calm=1 (guided without its moves, as under reduced motion),
    ?mood= ?weather= (Mossheart's; the weather is a clear sky unless ?weather= or the sky panel's pick says),
    ?set=tess|classic|grove|brass|reef (both sides' piece set; Tessellate by default), ?board=litho|space (that
@@ -27071,7 +27074,8 @@ return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, 
       const g = ctl.game, m = s >= 0 ? g.tr[(s >> 3) * 16 + (s & 7)] : 0;
       if (!m) { hideCard(); return; }
       if (s !== cardSq) {
-        const v = g.at(s), T = G.DeckSheet, d = ctl.decks && ctl.decks[v & 8 ? 1 : 0], k = d && d.set && G.Deck.SETS[d.set];
+        // d.set may be a peer's id, and "constructor" passes the protocol's /^[a-z]{1,16}$/: own keys only
+        const v = g.at(s), T = G.DeckSheet, d = ctl.decks && ctl.decks[v & 8 ? 1 : 0], k = d && d.set && Object.hasOwn(G.Deck.SETS, d.set) && G.Deck.SETS[d.set];
         let h = `<h3>${T.PIECE[" PNBRQK"[v & 7]]} <small>${G.squareName(s)}${k ? " · " + k.name : ""}</small></h3>`;
         G.TRAITS.forEach((t, i) => { if (m & (1 << i)) { h += `<p class="r${t.rarity}"><b>${T.NAMES[t.id]}</b> ${T.RULES[t.id]}</p>`; } });
         tcard.innerHTML = h; cardSq = s;
@@ -27405,9 +27409,12 @@ return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, 
         $("dk-play").click(); ss.playing = !ctl.building && !sheet.isOpen && !uiEl.classList.contains("building");
         ss.traited = ctl.game.tr.filter((x) => x).length; ss.traitedWant = 2 * kitSqs.length;
         if (kitSqs.length) { showCard(boardSq(kitSqs[0], ctl.mine()), 100, 100); ss.card = tcard.classList.contains("show") ? tcard.textContent : ""; hideCard(); }
+        // a peer's set id that is one of Object's own ("constructor"): the card names no set, not "· Object"
+        const pd = ctl.decks && ctl.decks[ctl.mine()], was = pd && pd.set;
+        if (kitSqs.length && pd) { pd.set = "constructor"; showCard(boardSq(kitSqs[0], ctl.mine()), 100, 100); ss.peerCard = tcard.classList.contains("show") ? tcard.textContent : ""; hideCard(); pd.set = was; }
         ctl.builder = true; ctl.fen = null; ctl.newGame(hud.settings); ctl.you = [0];
         const setOk = ss.open && ss.pow === ss.powWant && ss.grid === 0 && ss.canPlay && ss.playing && ss.traited === ss.traitedWant &&
-          (!kitSqs.length || ss.card.includes(G.Deck.SETS[kit.set].name));
+          (!kitSqs.length || (ss.card.includes(G.Deck.SETS[kit.set].name) && !!ss.peerCard && !ss.peerCard.includes("·")));
         const deckOk = dk.open && dk.sel === "b1" && dk.stride && dk.ward && dk.pts.join() === "43,44,45" && dk.over === "Over budget" && dk.refused && dk.queen === "1 Q max" && dk.boardSel && dk.round && dk.bad && dk.oppCells === 16 && dk.preview === 32 && dk.lens >= 3 && dk.playing && dk.traits.includes("b1:WS") && dk.traits.includes("e2:V") && dk.card.includes("Stride");
         // a strike (exd5 onto a Warded pawn): the rules leave both pawns where they are, and so does the screen;
         // black's answer from d5 then moves black's pawn, not white's
