@@ -16118,6 +16118,380 @@ fn boxOf(V: Vox) -> Box {
 })();
 
 </script>
+<script>/* ../MossheartEngine/content/lithograph.js */
+/* The lithograph palette: ink on paper, a few washes of moss, water and lamplight. It is shared by
+   Mossheart's fourth garden, the Ever Stair (content/everstair.js), and DeckChess's lithograph theme and
+   piece set (games/DeckChess loads this file by path, after critter-models.js). Art owns it; a game that
+   wants another colour asks Art rather than editing it, so both games stay in one palette.
+     ME.content.ramps / mats / materialClass   the lit* materials, reaching each style through
+                                               ME.content.addMaterials (critter-models.js)
+     ME.content.lithograph                     the same colours as plain data, for pages and UI:
+       colors    { name: hex }, the thirteen inks
+       ramps     { material: [16 hexes] }, the cel bands as the palette samples them
+       roles     { role: [whiteHex, blackHex, opts] }, a light and a dark army in DeckChess's sets.js shape
+       board     { light, dark, line, frame } hexes for a board
+       cel(hex)  the band maker, for a game that needs one more tint of its own
+   Every ramp is an explicit list of 16 entries, four flat bands of four: the palette resamples a list to
+   16 steps (src/palette.js), so a shorter list would blend its bands into a gradient. The bands run deep
+   shade, shade, base, light; the base albedo is entry 9 (s0 0.6), inside the third band. Shades lean to
+   cool ink and lights to warm paper, the way a print's hatching does. Names never mention any artist:
+   the designs are the lab's own. */
+(function () {
+  const ME = window.ME, CT = (ME.content = ME.content || {});
+
+  const COLORS = {
+    paper: "#f6f1e4", parchment: "#ece4d0", chalk: "#edf0f2", road: "#e4d8bc", bone: "#d8ccb0",
+    slate: "#8f949a", graphite: "#6e6a64", dark: "#45413c", ink: "#23211f",
+    moss: "#5f8f3a", mossL: "#7fa955", water: "#7d96a0", amber: "#f0b040",
+  };
+  const INK = [0x23, 0x21, 0x2a], PAPER = [0xf8, 0xf2, 0xe2];
+  const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const hex = (v) => "#" + v.map((x) => Math.round(Math.min(255, Math.max(0, x))).toString(16).padStart(2, "0")).join("");
+  const mix = (a, b, t) => a.map((x, i) => x + (b[i] - x) * t);
+  // four bands toward ink and paper: k sets how far (a light ink needs less of a shadow to read)
+  const cel = (h, k = 1) => {
+    const c = rgb(h), bands = [mix(c, INK, 0.52 * k), mix(c, INK, 0.26 * k), c, mix(c, PAPER, 0.4 * k)].map(hex);
+    return bands.flatMap((b) => [b, b, b, b]);
+  };
+  // the glow: its own warm bands, brightest last
+  const glow = (h) => [h, "#f6c860", "#fadc90", "#fdf0c8"].flatMap((b) => [b, b, b, b]);
+
+  const RAMPS = {
+    litPaper: cel(COLORS.paper, 0.7), litChalk: cel(COLORS.chalk, 0.8), litParchment: cel(COLORS.parchment, 0.8), litRoad: cel(COLORS.road, 0.8), litBone: cel(COLORS.bone),
+    litSlate: cel(COLORS.slate), litGraphite: cel(COLORS.graphite), litDark: cel(COLORS.dark, 0.8), litInk: cel(COLORS.ink, 0.5),
+    litMoss: cel(COLORS.moss), litMossL: cel(COLORS.mossL), litWater: cel(COLORS.water, 0.8), litAmber: glow(COLORS.amber),
+  };
+  CT.ramps = Object.assign(CT.ramps || {}, RAMPS);
+  CT.mats = Object.assign(CT.mats || {}, {
+    litPaper: { bias: 0.1 }, litParchment: { bias: 0.05 }, litMoss: { wrap: 0.5 }, litMossL: { wrap: 0.55 },
+    litWater: { bias: 0.05 }, litAmber: { em: 1, flat: 1 },
+  });
+  Object.assign((CT.materialClass = CT.materialClass || {}), {
+    litRoad: "ROCK", litBone: "ROCK", litSlate: "ROCK", litGraphite: "ROCK", litDark: "ROCK",
+    litMoss: "MOSS", litMossL: "FOLIAGE", litWater: "WATER",
+  });
+
+  CT.lithograph = {
+    colors: COLORS,
+    ramps: RAMPS,
+    // a light army cut from chalk and bone, a dark one from ink and graphite; moss and lamplight on both. The
+    // light body is chalk, a cooler white than the parchment squares, so a piece parts from them by hue too
+    roles: {
+      Body: [COLORS.chalk, COLORS.ink],
+      Line: [COLORS.graphite, COLORS.bone],
+      Stone: [COLORS.bone, COLORS.dark],
+      Base: [COLORS.slate, COLORS.graphite],
+      Moss: [COLORS.mossL, COLORS.moss, { wrap: 0.5 }],
+      Glow: [COLORS.amber, COLORS.water, "glow"],
+    },
+    board: { light: COLORS.parchment, dark: COLORS.slate, line: COLORS.ink, frame: COLORS.dark },
+    cel,
+  };
+})();
+
+</script>
+<script>/* ../MossheartEngine/content/everstair.js */
+/* The Ever Stair, Mossheart's fourth garden: a cloister of pale stone drawn like a print, where a stair runs
+   round the court and seems to come back to where it began, the back walls keep gardens with their own
+   gravity, and the paving of the road turns, tile by tile, from a checkerboard into moths and leaves. It is
+   in the lithograph palette (content/lithograph.js, loaded before this file). The user picked layouts A, B
+   and C of the S5 board (2026-11-08). This file holds Art's part of the level; the map is Game's
+   (content/everstair-map.js) and names these kinds and models:
+     ME.content.kinds       es_road (the paved road), es_court (the cloister's flags), es_lawn (moss lawn),
+                            es_wall (the walls' tops), es_water (a still grey pool), and the plain kinds
+                            round the stair's seam: es_tread (the stair) and es_turf (the ground behind it)
+     window.MODELS          stamps es_stair (o.steps, o.rise, o.w, o.rail), es_arch (o.span, o.h),
+                            es_facade (one tile of back wall, o.piece: plain, lawn, tree, stair, arch or
+                            lantern, o.h) and es_inlay (one road tile's paving, o.stage 0-1, o.u, o.v)
+     ME.content.everstairInlays(tiles)   -> the es_inlay props for a road, its tiles in walking order
+     ME.content.mapLight.everstair       its light, { L, light, look }: even and soft, no strong sun
+   The ground's patterns are original motifs (a checker, a checker bent into interlocking waves, moths and
+   leaves): no artist's prints or tilings are copied, and nothing in the game names one. */
+(function () {
+  const ME = window.ME, P = window.PX, { S, E, C, B, Y } = P.prim, M = window.MODELS, CT = (ME.content = ME.content || {}), TAU = Math.PI * 2;
+  const ry = (a) => P.rot("y", a);
+  const fr = (x) => x - Math.floor(x);
+
+  // ---------------------------------------------------------------- kinds
+  // the road: pale paper-toned paving with a graphite kerb where it meets the lawn; the court: worn bone
+  // flags; the lawn: the garden's one strong colour; the walls' tops: bone over graphite courses
+  Object.assign((CT.kinds = CT.kinds || {}), {
+    es_road: { recipe: "layer", top: "litRoad", mottle: "litBone", mottleK: 0.08, depth: 0.12, under: "litSlate", edge: { mat: "litGraphite", width: 0.1, raise: 0.06, facing: ["es_lawn"] } },
+    es_court: { recipe: "layer", top: "litParchment", mottle: "litBone", mottleK: 0.18, depth: 0.12, under: "litSlate" },
+    es_lawn: { recipe: "carpet", top: "litMoss", mottle: "litMossL", cushions: true, drape: ["litMoss", "litMossL"], overhang: "litMoss", under: "litGraphite" },
+    es_wall: { recipe: "layer", top: "litBone", mottle: "litSlate", mottleK: 0.15, depth: 0.1, under: "litGraphite" },
+    // the plain kinds round the stair's seam (the Architect's tell 3): the loop closes only on screen, so the
+    // end's side shows next to the start's copy 4 tiles higher, and any pattern laid in world space breaks
+    // there. The stair's treads (es_tread, all 32 cells) and the plain ground behind its two ends (es_turf)
+    // have no mottle, no cushions, no edge breakup, and flat materials: litRoad's and litMoss's colours in
+    // the default lighting class, so no rock blotches, moss mottling or gust sheen either (light.js,
+    // gbuffer.js). Only the per-voxel grain stays, which has no pattern to line up. The kerb is laid by tile, not in
+    // world space, so the treads keep it
+    es_tread: { recipe: "layer", top: "litTread", depth: 0.12, under: "litSlate", edge: { mat: "litGraphite", width: 0.1, raise: 0.06, facing: ["es_lawn", "es_turf"] } },
+    es_turf: { recipe: "layer", top: "litTurf", depth: 0.12, under: "litGraphite" },
+    // a still pool the colour of slate: little glint, faint caustics, a grey tint
+    es_water: Object.assign({}, CT.kinds.water || {}, {
+      bed: ["litSlate", "litGraphite"], shore: "litBone", bank: "litMoss", drape: ["litMoss", "litMossL"], overhang: "litMoss", under: "litGraphite",
+      surface: 0, clarity: 0.6, tint: [0.12, 0.16, 0.2], absorb: 1.2, calm: 1, glint: 0.5, caustics: 0.3,
+    }),
+  });
+  // the plain kinds' materials: the lithograph's road and moss ramps under names with no class (materialClass)
+  Object.assign(CT.ramps, { litTread: CT.ramps.litRoad, litTurf: CT.ramps.litMoss });
+  CT.mats = Object.assign(CT.mats || {}, { litTurf: { wrap: 0.5 } });
+  // the stone stays crisp: printed lines, not worn edges
+  CT.edgeRound = Object.assign(CT.edgeRound || {}, { kinds: Object.assign((CT.edgeRound && CT.edgeRound.kinds) || {}, { es_road: 0, es_court: 0.03, es_wall: 0, es_tread: 0, es_turf: 0 }) });
+  if (CT.edgeBreak) CT.edgeBreak.kinds = Object.assign(CT.edgeBreak.kinds || {}, { es_road: 0, es_court: 0, es_wall: 0, es_lawn: 0.1, es_tread: 0, es_turf: 0 });
+
+  // ---------------------------------------------------------------- models
+  // tile units, the anchor at the ground centre, Z up (content/fernglass.js)
+  const model = (name, fn) => { M[name] = fn; (ME.ASSET_BY = ME.ASSET_BY || {})[name] = name + String(fn); ME.ASSET_SRC = (ME.ASSET_SRC || "") + ME.ASSET_BY[name]; };
+  // engraver's hatching on a shaded face: diagonal lines, k to a tile (4 at vs16 is one line every four voxels;
+  // a finer period aliases into noise)
+  const hatch = (u, z, k = 4) => fr((u + z) * k) < 0.25;
+  // ashlar: courses a quarter tile high, joints every half tile, staggered by course
+  const ashlar = (u, z) => { const c = Math.floor(z * 4); return fr(z * 4) < 0.22 || fr(u * 2 + (c & 1) * 0.5) < 0.11; };
+
+  // The stair: o.steps treads rising o.rise over the tile toward +x (rot turns it), between two slate
+  // stringers (o.w, the half width); o.rail adds a low parapet with a bone coping on both sides. Treads are
+  // bone with a paper nosing, risers graphite, the stringers' sides hatched. Anchored on the lower tile's
+  // centre at its ground: the top tread meets the next tile at x 0.5, o.rise up (one map step is 0.5).
+  model("es_stair", (o = {}) => {
+    const n = o.steps || 4, rise = o.rise ?? 0.5, w = o.w ?? 0.5, run = 1 / n, h = rise / n, p = [];
+    for (let i = 0; i < n; i++) {
+      const top = (i + 1) * h, x0 = -0.5 + i * run;
+      p.push(B([(x0 + 0.5) / 2, 0, top / 2 - 0.01], [(0.5 - x0) / 2, w - 0.06, top / 2 + 0.01], 0, "litBone"));
+    }
+    for (const y of [-w + 0.04, w - 0.04]) {
+      p.push(B([0, y, rise / 2 + 0.02], [0.5, 0.04, rise / 2 + 0.03], 0, "litSlate"));
+      if (o.rail) p.push(B([0, y, rise + 0.2], [0.5, 0.04, 0.16], 0, "litSlate"), B([0, y, rise + 0.38], [0.52, 0.06, 0.025], 0.005, "litBone"));
+    }
+    return {
+      prims: p, r: 0.75, h: rise + (o.rail ? 0.45 : 0.1), k: 1,
+      detail: (x, y, z, m, nx, ny, nz) => {
+        if (m === "litSlate") return Math.abs(ny) > 0.6 && hatch(x, z) ? "litGraphite" : m;
+        if (m !== "litBone") return m;
+        if (nx < -0.6) return "litGraphite"; // a riser
+        if (nz > 0.6) { const f = fr((x + 0.5) * n); return f < 0.25 ? "litPaper" : m; } // the nosing
+        return m;
+      },
+    };
+  });
+
+  // The arch: a round arch of bone voussoirs with a paper keystone, on two slate piers; the way runs through
+  // it along x. o.span is the opening's half width (0.42 lets two walkers pass), o.h the springing height.
+  // Anchored at the opening's middle on the ground.
+  model("es_arch", (o = {}) => {
+    const sp = o.span ?? 0.42, hs = o.h ?? 0.7, d = 0.16, py = sp + 0.09, top = hs + sp + 0.16, p = [];
+    p.push(B([0, 0, top / 2], [d, py + 0.09, top / 2], 0, "litBone"));
+    p.push(Y([0, 0, hs], sp, d + 0.05, "litBone", { sub: true, R: ry(Math.PI / 2) }), B([0, 0, hs / 2 - 0.05], [d + 0.05, sp, hs / 2 + 0.05], 0, "litBone", { sub: true }));
+    for (const s of [-1, 1]) p.push(B([0, s * py, hs / 2], [d + 0.02, 0.09, hs / 2], 0, "litSlate"), B([0, s * py, hs + 0.02], [d + 0.04, 0.11, 0.025], 0, "litBone"));
+    p.push(B([0, 0, hs + sp + 0.08], [d + 0.03, 0.06, 0.1], 0, "litPaper"));
+    p.push(B([0, 0, top + 0.02], [d + 0.03, py + 0.12, 0.025], 0, "litSlate"));
+    return {
+      prims: p, r: 0.75, h: top + 0.05, k: 1,
+      detail: (x, y, z, m, nx, ny, nz, vx) => {
+        if (m === "litSlate") return Math.abs(nx) > 0.6 && hatch(y, z) ? "litGraphite" : m;
+        if (m !== "litBone" || z < hs - 0.02) return m;
+        // voussoir joints: rays from the springing centre every 1/13 of the half turn, inside the ring, in
+        // graphite and on the two faces only (inked through the soffit too, they read as a black ladder at a
+        // board's scale); ashlar courses in the spandrels beyond it
+        const r = Math.hypot(y, z - hs), line = Math.max(0.015, vx * 0.6);
+        if (r > sp + 0.14) return Math.abs(nx) > 0.6 && ashlar(y, z) ? "litSlate" : m;
+        if (Math.abs(nx) <= 0.6) return m;
+        if (Math.abs(r - sp - 0.14) < line) return "litInk";
+        const a = Math.atan2(z - hs, y) / Math.PI, j = fr(a * 13 + 0.5);
+        return Math.min(j, 1 - j) * Math.PI * r / 13 < line ? "litGraphite" : m;
+      },
+    };
+  });
+
+  // One tile of the back wall, with a garden of its own gravity in relief: a bone wall o.h high facing +x,
+  // hatched where it is plain, under a slate coping. o.piece:
+  //   plain    the wall alone
+  //   lawn     a lawn standing on the wall's face, with a sideways tree growing out of it
+  //   tree     one larger tree growing straight out of the wall
+  //   stair    a stair running up the wall, its treads facing sideways
+  //   arch     an arch upside down: its round side hangs below
+  //   lantern  a lantern on a bracket, hanging upward
+  // Anchored at the tile's middle on the ground; the wall stands at its back (x -0.5 to -0.3).
+  const tree = (p, at, len, crown, lean) => {
+    const [x, y, z] = at, tip = [x + len, y, z + lean];
+    p.push(C(at, tip, 0.06, 0.035, "litDark"), C([x + len * 0.55, y, z + lean * 0.5], [x + len * 0.8, y + 0.14, z + lean * 0.5 + 0.12], 0.025, 0.015, "litDark"));
+    p.push(E([tip[0] + crown * 0.6, y, tip[2]], [crown * 0.85, crown, crown * 0.9], "litMoss"), E([tip[0] + crown * 0.9, y + 0.12, tip[2] + 0.1], [crown * 0.55, crown * 0.6, crown * 0.6], "litMossL"));
+  };
+  model("es_facade", (o = {}) => {
+    const H = o.h ?? 2, X0 = -0.5, F = -0.3, p = [B([(X0 + F) / 2, 0, H / 2], [(F - X0) / 2, 0.5, H / 2], 0, "litBone"), B([(X0 + F) / 2 + 0.02, 0, H + 0.03], [(F - X0) / 2 + 0.04, 0.5, 0.04], 0, "litSlate")];
+    const piece = o.piece || "plain";
+    if (piece === "lawn") {
+      p.push(B([F + 0.05, 0, H * 0.5], [0.05, 0.44, H * 0.36], 0.02, "litMoss"));
+      for (let i = 0; i < 9; i++) p.push(E([F + 0.1, -0.38 + 0.095 * i, H * 0.2 + fr(i * 0.618) * H * 0.6], [0.04, 0.05, 0.05], "litMossL"));
+      tree(p, [F + 0.1, -0.15, H * 0.62], 0.3, 0.18, 0.04);
+      tree(p, [F + 0.1, 0.22, H * 0.36], 0.22, 0.13, -0.02);
+    } else if (piece === "tree") {
+      p.push(E([F, 0, H * 0.55], [0.08, 0.22, 0.16], "litDark"));
+      tree(p, [F + 0.02, 0, H * 0.55], 0.45, 0.26, 0.08);
+    } else if (piece === "stair") {
+      // the floor of this stair is the wall's left edge (-y): each step stands further out toward +y
+      const n = 6, sh = (H * 0.75) / n;
+      for (let i = 0; i < n; i++) p.push(B([F + 0.08, -0.45 + 0.07 * (i + 1), H * 0.12 + sh * (i + 0.5)], [0.08, 0.07 * (i + 1), sh / 2], 0, "litBone"));
+      p.push(B([F + 0.08, -0.47, H * 0.5], [0.09, 0.025, H * 0.4], 0, "litSlate"));
+    } else if (piece === "arch") {
+      // a U of stone: the round side at the bottom, its imposts at the top, a paper keystone hanging under it;
+      // the cut stops at the wall's face, which shows through the opening in ink
+      const zc = H * 0.42, r = 0.3;
+      p.push(B([F + 0.07, 0, zc + 0.1], [0.07, 0.44, 0.52], 0, "litBone"));
+      p.push(Y([F + 0.07, 0, zc], r, 0.07, "litBone", { sub: true, R: ry(Math.PI / 2) }), B([F + 0.07, 0, zc + 0.35], [0.07, r, 0.35], 0, "litBone", { sub: true }));
+      p.push(B([F + 0.08, 0, zc - r - 0.06], [0.08, 0.05, 0.07], 0, "litPaper"));
+      for (const s of [-1, 1]) p.push(B([F + 0.08, s * (r + 0.07), zc + 0.6], [0.08, 0.08, 0.03], 0, "litSlate"));
+    } else if (piece === "lantern") {
+      // a lantern hanging upward: its chain rises from the bracket to the roof, the base plate on top
+      const z = H * 0.4, lx = F + 0.22;
+      p.push(C([F, 0, z], [lx, 0, z], 0.02, 0.02, "litInk"), C([lx, 0, z], [lx, 0, z + 0.18], 0.012, 0.012, "litInk"));
+      p.push(C([lx, 0, z + 0.18], [lx, 0, z + 0.26], 0.005, 0.07, "litInk"), B([lx, 0, z + 0.34], [0.065, 0.065, 0.08], 0.01, "litAmber"), B([lx, 0, z + 0.43], [0.08, 0.08, 0.015], 0, "litInk"));
+    }
+    const zc = H * 0.42;
+    return {
+      prims: p, r: 0.75, h: H + 0.1, k: 1,
+      detail: (x, y, z, m, nx, ny, nz) => {
+        if (m !== "litBone") return m;
+        if (x < F + 0.02 && nx > 0.6) {
+          // the wall's face: ink through the inverted arch's opening, ashlar elsewhere
+          if (piece === "arch" && z < zc + 0.62 && (Math.hypot(y, z - zc) < 0.3 || (z > zc && Math.abs(y) < 0.3))) return "litInk";
+          return ashlar(y, z) ? "litSlate" : m;
+        }
+        if (x < F) return Math.abs(ny) > 0.6 && ashlar(x, z) ? "litSlate" : m; // the wall's ends
+        if (piece === "stair" && Math.abs(nz) > 0.6) return "litGraphite"; // this stair's risers face along z
+        return m;
+      },
+    };
+  });
+
+  // ---------------------------------------------------------------- the road's paving
+  // One road tile's paving, painted into the top voxel of its ground. o.stage (0 at the gate, 1 at the
+  // court) picks the motif; o.u, o.v are the tile's map coordinates, so the pattern runs on across tiles
+  // (props are placed without rot here). Stages:
+  //   0    - 0.35  a checker of graphite and road, two cells to a tile
+  //   0.35 - 0.7   the checker's lines bend into waves, so its cells interlock
+  //   0.7  - 1     the dark cells close into moths and leaves on the pale road
+  const checker = (U, V, a) => {
+    const U2 = U + a * Math.sin(TAU * V), V2 = V + a * Math.sin(TAU * U2);
+    const du = Math.min(fr(U2), 1 - fr(U2)), dv = Math.min(fr(V2), 1 - fr(V2));
+    return { dark: ((Math.floor(U2) + Math.floor(V2)) & 1) === 1, edge: Math.min(du, dv) };
+  };
+  // a leaf along the cell's diagonal and a moth with its wings open; (s, t) in -0.5..0.5, k the size
+  const leaf = (s, t, k) => {
+    const a = (s + t) / Math.SQRT2 / k, b = (t - s) / Math.SQRT2 / k, half = 0.2 * (1 - (a / 0.44) ** 2);
+    if (a > -0.5 && a < -0.4 && Math.abs(b) < 0.035) return "litDark";
+    if (Math.abs(a) >= 0.44 || Math.abs(b) >= half) return null;
+    return Math.abs(b) > half - 0.06 ? "litInk" : Math.abs(b) < 0.035 ? "litMossL" : "litMoss";
+  };
+  const moth = (s, t, k) => {
+    s /= k; t /= k;
+    const as = Math.abs(s);
+    if (as < 0.05 && Math.abs(t) < 0.27) return "litDark";
+    const w1 = ((as - 0.2) / 0.19) ** 2 + ((t - 0.1) / 0.15) ** 2, w2 = ((as - 0.14) / 0.12) ** 2 + ((t + 0.14) / 0.1) ** 2, w = Math.min(w1, w2);
+    if (w >= 1) return as < 0.13 && t > 0.26 && t < 0.4 && Math.abs(as - (t - 0.26) * 0.8 - 0.02) < 0.03 ? "litInk" : null; // the feelers
+    if (w > 0.62) return "litInk";
+    return ((as - 0.22) / 0.06) ** 2 + ((t - 0.12) / 0.05) ** 2 < 1 ? "litGraphite" : "litBone";
+  };
+  model("es_inlay", (o = {}) => {
+    const st = Math.min(1, Math.max(0, o.stage || 0)), u0 = (o.u || 0) + 0.5, v0 = (o.v || 0) + 0.5;
+    return {
+      prims: [B([0, 0, -0.035], [0.5, 0.5, 0.035], 0, "litRoad")], r: 0.72, h: 0.05, k: 1,
+      detail: (x, y, z, m, nx, ny, nz, vx) => {
+        const u = u0 + x, v = v0 + y, line = Math.max(0.03, vx * 0.7);
+        if (st < 0.7) {
+          const c = checker(u * 2, v * 2, st < 0.35 ? 0 : ((st - 0.35) / 0.35) * 0.16);
+          if (st >= 0.2 && c.edge * 0.5 < line * Math.min(1, (st - 0.2) / 0.3)) return "litInk";
+          return c.dark ? "litGraphite" : "litRoad";
+        }
+        // one figure to a tile, a moth or a leaf by the tile's parity, turned by its hash; it grows from
+        // the last bent cell's size to the tile's
+        const t = (st - 0.7) / 0.3, cu = Math.floor(u), cv = Math.floor(v), q = Math.floor(P.hash(cu, cv, 0, 17) * 4);
+        let s = u - cu - 0.5, w = v - cv - 0.5;
+        for (let i = 0; i < q; i++) [s, w] = [-w, s];
+        const f = ((cu + cv) & 1 ? moth : leaf)(s, w, 0.6 + 0.4 * t);
+        if (f) return f;
+        if (t < 0.5) { const c = checker(u * 2, v * 2, 0.16); return c.dark && c.edge > 0.12 ? "litBone" : "litRoad"; }
+        return "litRoad";
+      },
+    };
+  });
+  // the inlays for a road: tiles [[x, y], ...] in walking order, gate first; the stage climbs evenly along it
+  CT.everstairInlays = (tiles) => tiles.map(([x, y], i) => ["es_inlay", { stage: tiles.length > 1 ? i / (tiles.length - 1) : 0, u: x, v: y }, x, y, {}]);
+
+  // ---------------------------------------------------------------- light
+  // a print's light: a high sun with little direction, deep ambient, soft shadows and no beams or mottle,
+  // so the stair's joins read cleanly; the paper's warmth in the key, a cool ink in the ambient
+  CT.mapLight = Object.assign(CT.mapLight || {}, {
+    everstair: {
+      L: [-0.32, 0.38, 0.87],
+      light: null,
+      look: { sunCol: [1.0, 0.97, 0.9], ambCol: [0.84, 0.88, 0.95], amb: 0.3, shade: 0.55, shaftK: 0, mottle: 0, haze: 0.04, vignette: 0.35, windK: 0.4 },
+    },
+  });
+})();
+
+</script>
+<script>/* ../MossheartEngine/content/everstair-map.js */
+// Mossheart, the Ever Stair (level 4): the map. A walled print-garden, flat and square (a box frame, no jar),
+// with one 2-tile road that snakes from the gate in the west wall to the Heart Tree in the south-east, its
+// paving changing step by step (Art's es_inlay stages: B, the Metamorphosis Field), and the two back walls
+// (west and north, the far sides from the camera) dressed with Art's es_facade pieces (C, the Relativity
+// Court, decor only). The Endless Stair (A) waits on the Architect's seam and camera note.
+//
+// Needs content/lithograph.js and content/everstair.js (Art's kinds, models, inlay helper and light) first.
+//
+//   ME.content.maps.everstair     the v1 map (plain data), with game: { route, spawn, heart, lane, build }
+(function () {
+  const ME = window.ME, CT = (ME.content = ME.content || {});
+  CT.maps = CT.maps || {};
+
+  // the road's tiles in walking order, gate first, both tiles of each step: legs as [x0, y0, x1, y1] with
+  // y0 (or x0) the leg's first row (column) of two
+  const legs = [[0, 3, 19, 3], [18, 5, 18, 9], [19, 10, 4, 10], [4, 12, 4, 16], [4, 17, 16, 17]];
+  const road = [];
+  for (const [x0, y0, x1, y1] of legs) {
+    if (y0 === y1) for (let x = x0, d = Math.sign(x1 - x0) || 1; x !== x1 + d; x += d) road.push([x, y0], [x, y0 + 1]);
+    else for (let y = y0; y <= y1; y++) road.push([x0, y], [x0 + 1, y]);
+  }
+  // the back walls' pieces, in turn along each wall
+  const pieces = ["plain", "lawn", "plain", "tree", "stair", "plain", "arch", "lantern"];
+  const walls = [];
+  for (let y = 1; y < 24; y++) if (y !== 3 && y !== 4) walls.push(["es_facade", { piece: pieces[y % pieces.length] }, 0, y, {}]);
+  for (let x = 0; x < 24; x++) walls.push(["es_facade", { piece: pieces[(x + 3) % pieces.length] }, x, 0, { rot: 1 }]);
+
+  CT.maps.everstair = {
+    v: 1, id: "everstair", W: 24, H: 24, hStep: 0.5, floor: -3,
+    h: Array(24).fill("2".repeat(24)),
+    // the court (parchment) by the gate gives way to a checker of court and lawn, then to lawn alone
+    kind: [
+      "wwwwwwwwwwwwwwwwwwwwwwww", "wccccccccccccccccccccccc", "wccccccccccccccccccccccc", "rrrrrrrrrrrrrrrrrrrrcccc",
+      "rrrrrrrrrrrrrrrrrrrrcccc", "wcccccccccccccccccrrcccc", "wcccccccccccccccccrrcccc", "wcccccccccccccccccrrcccc",
+      "wcccccccccccccccccrrcccc", "wcllccllccllccllccrrccll", "wlccrrrrrrrrrrrrrrrrllcc", "wlccrrrrrrrrrrrrrrrrllcc",
+      "wcllrrllccllccllccllccll", "wcllrrllccllccllccllccll", "wlccrrccllccllccllccllcc", "wlllrrllllllllllllllllll",
+      "wlllrrllllllllllllllllll", "wlllrrrrrrrrrrrrrlllllll", "wlllrrrrrrrrrrrrrlllllll", "wlllllllllllllllllllllll",
+      "wlllllllllllllllllllllll", "wlllllllllllllllllllllll", "wlllllllllllllllllllllll", "wlllllllllllllllllllllll",
+    ],
+    legend: { w: "es_wall", r: "es_road", c: "es_court", l: "es_lawn" },
+    props: [
+      // the gate: an arch over the road where it comes through the west wall
+      ["es_arch", { span: 0.9, h: 0.9 }, 0, 3, { dy: 0.5 }],
+      ...walls,
+      ...CT.everstairInlays(road),
+    ],
+    frame: { type: "box" },
+    box: { o: [-1, -1, -2.5], size: [26, 26, 10] },
+    // The rules' data (the engine never reads it): the route as one polyline of tile corners down the middle
+    // of the road, the gate's point and the Heart Tree's centre in tiles, the walk, the build tiles
+    game: {
+      route: [[[0, 4], [19, 4], [19, 11], [5, 11], [5, 18], [17, 18]]],
+      spawn: [0.6, 4.0], heart: [19, 18], lane: ["es_road"], build: ["es_court", "es_lawn"],
+    },
+  };
+})();
+
+</script>
 <script>/* ../MossheartEngine/content/critters.js */
 /* Ambient wildlife: butterflies, dragonflies, bees, songbirds, squirrels, frogs, koi, minnows, bunnies,
    snails, beetles and lantern moths. Each is a small state machine over the baked scene: ground heights from the
@@ -18097,7 +18471,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.89.0", name: "Mossheart", commit: "87bdae8" };
+  G.VERSION = { v: "0.90.0", name: "Mossheart", commit: "4c2b77f" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -18453,7 +18827,7 @@ function MA_DSP() {
   // The plants each garden grows (State.plants: its seed bar and digit keys, the bot, and the gifts drafted
   // there), five with every element among them; a garden not listed grows all eight. A plant of another
   // garden still stands and grows where a save has it. tools/sim.html ?plants= tries another set (all: every plant).
-  D.LEVEL_PLANTS = { momiji: ["thorn", "puff", "sun", "wisp", "briar"], fernglass: ["thorn", "puff", "moon", "toad", "lily"], cornmoon: ["sun", "wisp", "briar", "toad", "lily"] };
+  D.LEVEL_PLANTS = { momiji: ["thorn", "puff", "sun", "wisp", "briar"], fernglass: ["thorn", "puff", "moon", "toad", "lily"], cornmoon: ["sun", "wisp", "briar", "toad", "lily"], everstair: ["thorn", "moon", "toad", "wisp", "sun"] };
   D.plantsOf = (level) => D.LEVEL_PLANTS[level] || D.TOWER_ORDER;
   // whether a boon belongs where only `plants` grow: one tied to a plant (its `el`) only where that plant does
   D.boonFits = (b, plants) => !D.TOWERS[b.el] || plants.includes(b.el);
@@ -20435,7 +20809,7 @@ function MA_DSP() {
     // designs of five frames at size 1.5 (a body ~0.5 tiles tall, ~15 px at the fit zoom: the user's pick), ~9.6
     // voxels across the body at the heroes' density (G.heroFine). ME.content outlives the level, so another map
     // drops them
-    const CT = ME.content, id = st.map && st.map.id, on = id === "mf-valley" || id === "fernglass" || id === "cornmoon", fine = G.heroFine();
+    const CT = ME.content, id = st.map && st.map.id, on = id === "mf-valley" || id === "fernglass" || id === "cornmoon" || id === "everstair", fine = G.heroFine();
     for (let d = 0; d < 8; d++) if (on) CT.critters["wisp" + d] = ["wispling", { d, size: 1.5 }, 5, fine]; else delete CT.critters["wisp" + d];
     if (on) CT.critterExtra = Object.assign(CT.critterExtra || {}, { [id]: Object.assign({}, (CT.critterExtra || {})[id], { wisp: 6 }) });
   };
@@ -22649,7 +23023,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // ---- the gardens: Momiji Valley (the generator's mf-valley, through ME.content.mapFromGarden) and the
   // content pack's v1 maps (ME.content.maps), by id. ?level= picks one, else the one picked on the terrarium screen
   // (settings "level", menu.js); the bot and the self-test take only ?level= (Momiji when left out)
-  G.LEVELS = { momiji: { name: "Momiji Valley" }, fernglass: { name: "Fernglass" }, cornmoon: { name: "Corn Moon" } };
+  G.LEVELS = { momiji: { name: "Momiji Valley" }, fernglass: { name: "Fernglass" }, cornmoon: { name: "Corn Moon" }, everstair: { name: "Ever Stair" } };
   // and the gardens still in the works: the terrarium screen shows them dimmed (their picture, if any, a
   // turntable sheet from Art), not playable yet
   G.LEVELS_SOON = {};
@@ -29371,7 +29745,7 @@ function MG_SFX(L) {
    walkers, dressed with the asset set's Heart Tree, blight rift and glowcaps) plus the game's models,
    adds the engine's voxel physics, reads the level off it, then runs the rules (core/), the view
    (view/), the HUD, input, audio and camera every frame.
-   URL options: ?level=momiji|fernglass|cornmoon, ?seed=N fixes the run, ?speed=2, ?dpr=1, ?scale=0.8 (render scale), ?mute=1,
+   URL options: ?level=momiji|fernglass|cornmoon|everstair, ?seed=N fixes the run, ?speed=2, ?dpr=1, ?scale=0.8 (render scale), ?mute=1,
    ?autoplay=1&waves=8 (bot; see bot.js; &early=0.5 has it call waves early), ?selftest=1 (render N frames, report timings into #result),
    ?bench=1 (the engine's benchmark, src/bench.js, on a still build phase with the self-test's four plants:
    one BENCH line into #result; ?bench=2 the bake part only),
@@ -29423,6 +29797,7 @@ function MG_SFX(L) {
       const base = window.STYLES.find((s) => s.id === "mf-valley"), own = (ME.content.mapLight || {})[levelId];
       map = structuredClone(ME.content.maps[levelId]);
       st = Object.assign({}, base, { id: map.id, map, deco: [] }, own || {});
+      if (!st.light) st.light = { beams: [] }; // a map light of null (content/everstair.js): even light, no beams
       G.dressLevel(st);
     }
     G.dressSand(st); // a sand cover on the sand tiles (src/art/models.js), as props of the v1 map
