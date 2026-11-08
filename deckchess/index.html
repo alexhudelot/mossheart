@@ -169,7 +169,7 @@ div.dk-cell { cursor: default; }
 <div id="ui">
   <div id="corner"><button id="skybtn" class="btn small" title="mood and weather">☁</button><button id="sound" class="btn small" title="sound">♪</button><button id="lensbtn" class="btn small" title="show the pieces' traits (T)">✦</button></div>
   <div id="lcorner"><button id="viewbtn" class="btn small" title="lighting and camera">🎥</button></div>
-  <div id="view" class="panel"><div class="skyrow"><b>Light</b><div class="seg" id="lightseg"></div></div><div class="skyrow"><b>Camera</b><div class="seg" id="camseg"></div></div><div class="skyrow"><b>View</b><div class="seg" id="viewseg"></div></div></div>
+  <div id="view" class="panel"><div class="skyrow"><b>Theme</b><div class="seg" id="themeseg"></div></div><div class="skyrow"><b>Light</b><div class="seg" id="lightseg"></div></div><div class="skyrow"><b>Camera</b><div class="seg" id="camseg"></div></div><div class="skyrow"><b>View</b><div class="seg" id="viewseg"></div></div></div>
   <div id="sky" class="panel"><div class="skyrow"><b>Mood</b><div class="seg" id="moodseg"></div></div><div class="skyrow"><b>Weather</b><div class="seg" id="wxseg"></div></div></div>
   <div id="top" class="panel"><span id="where"></span><span id="turn"></span><span id="fps"></span></div>
   <div id="moves" class="panel"></div>
@@ -4536,8 +4536,13 @@ window.addEventListener("error", (e) => {
 
   // Stamp a placed model into a material grid (terrain bake). place: {X,Y,Z,flip}; grid: {vox,NX,NY,NZ,O,vs}, or
   // {bricks,NX,NY,NZ,O,vs} with bricks a ME.BrickGrid (the terrain bake: T.grid).
+  // P1 (a region's bake): grid.clip [x0,y0,x1,y1] (voxel columns, end exclusive) writes only the columns inside
+  // it, and grid.own (the same form) counts only the writes inside it, so a map's regions add up to the whole.
+  // The bricks keep the anchors the whole stamp has (ix0, iy0, the foot), so a column inside the clip gets the
+  // voxels the whole stamp gives it. No clip: every column, as before.
   ME.stampModel = function (md, place, grid, pal) {
     const { vs, O, NX, NY, NZ, vox, bricks } = grid, K = md.k, R = md.r * K * 1.6 + 0.2, H = md.h * K * 1.45 + 0.2;
+    const CL = grid.clip || [0, 0, NX, NY], OWN = grid.own || CL;
     const ix0 = Math.max(0, Math.floor((place.X - R - O[0]) * vs)), ix1 = Math.min(NX, Math.ceil((place.X + R - O[0]) * vs));
     const iy0 = Math.max(0, Math.floor((place.Y - R - O[1]) * vs)), iy1 = Math.min(NY, Math.ceil((place.Y + R - O[1]) * vs));
     const foot = Math.max(0, Math.floor((place.Z - 0.45 - O[2]) * vs)), iz1 = Math.min(NZ, Math.ceil((place.Z + H - O[2]) * vs));
@@ -4548,6 +4553,8 @@ window.addEventListener("error", (e) => {
       const [rx, ry] = place.rot ? ME.rotQ(wx, wy, 4 - place.rot) : [wx, wy]; // undo the turn, then the mirror
       return place.flip ? [ry, rx, wz] : [rx, ry, wz];
     };
+    const cx0 = Math.max(ix0, CL[0]), cx1 = Math.min(ix1, CL[2]), cy0 = Math.max(iy0, CL[1]), cy1 = Math.min(iy1, CL[3]);
+    if (cx0 >= cx1 || cy0 >= cy1) return 0; // (a region skips most props here, before any work)
     // with culling, a brick's voxels evaluate the prims that matter within 1.5 sqrt(3) voxels of its centre
     const B = 4, hd = ((B / vs) * Math.sqrt(3)) / 2 + 1e-4, thr = 0.3 / vs, h = 0.5 / vs, on = ME.sdf.cull, rB = ((1.5 * Math.sqrt(3)) / vs + 1e-4) * iK;
     if (on) setInfo(prims);
@@ -4555,8 +4562,11 @@ window.addEventListener("error", (e) => {
     // prop), a column is stamped down to the top of what is under it, so a facade over a step or a ledge
     // meets the ground. On its own ground nothing changes. The blocks keep their places above the foot.
     const FX = ix1 - ix0, low = new Int32Array(Math.max(0, FX * (iy1 - iy0)));
+    // (outside the clip a column keeps the foot as its low: nothing below the foot is stamped there, and the
+    // clip skips its voxels anyway)
+    if (grid.clip) low.fill(foot);
     let lo = foot;
-    for (let y = iy0; y < iy1; y++) for (let x = ix0; x < ix1; x++) {
+    for (let y = cy0; y < cy1; y++) for (let x = cx0; x < cx1; x++) {
       let k = foot;
       while (k > 0 && !(bricks ? bricks.get(x, y, k - 1) : vox[((k - 1) * NY + y) * NX + x])) k--;
       low[(y - iy0) * FX + x - ix0] = k; lo = Math.min(lo, k);
@@ -4564,17 +4574,19 @@ window.addEventListener("error", (e) => {
     const iz0 = foot - B * Math.ceil((foot - lo) / B);
     // per brick column, the lowest reach under it: a brick wholly below that is skipped before any SDF work
     const BX = Math.ceil(FX / B), lowB = new Int32Array(BX * Math.ceil((iy1 - iy0) / B)).fill(foot);
-    for (let y = iy0; y < iy1; y++) for (let x = ix0; x < ix1; x++) {
+    for (let y = cy0; y < cy1; y++) for (let x = cx0; x < cx1; x++) {
       const b = Math.floor((y - iy0) / B) * BX + Math.floor((x - ix0) / B);
       lowB[b] = Math.min(lowB[b], low[(y - iy0) * FX + x - ix0]);
     }
+    // the bricks that meet the clip (on the whole stamp's brick grid)
+    const bx0 = ix0 + B * Math.floor((cx0 - ix0) / B), by0 = iy0 + B * Math.floor((cy0 - iy0) / B);
     let n = 0;
-    for (let bz = iz0; bz < iz1; bz += B) for (let by = iy0; by < iy1; by += B) for (let bx = ix0; bx < ix1; bx += B) {
+    for (let bz = iz0; bz < iz1; bz += B) for (let by = by0; by < cy1; by += B) for (let bx = bx0; bx < cx1; bx += B) {
       if (bz + B <= lowB[((by - iy0) / B) * BX + (bx - ix0) / B]) continue;
       const c = loc(bx + B / 2 - 0.5, by + B / 2 - 0.5, bz + B / 2 - 0.5), dc = on ? evalRaw(prims, c[0] * iK, c[1] * iK, c[2] * iK) * K : ev(c[0], c[1], c[2]);
       if (dc > hd + thr) continue;
       const kp = on ? cull(prims, rB, c[0] * iK, c[1] * iK, c[2] * iK, MAT | SMOOTH) : prims, evb = kp === prims ? ev : (x, y, z) => evalModel(kp, x * iK, y * iK, z * iK) * K;
-      for (let z = bz; z < Math.min(iz1, bz + B); z++) for (let y = by; y < Math.min(iy1, by + B); y++) for (let x = bx; x < Math.min(ix1, bx + B); x++) {
+      for (let z = bz; z < Math.min(iz1, bz + B); z++) for (let y = Math.max(by, cy0); y < Math.min(cy1, by + B); y++) for (let x = Math.max(bx, cx0); x < Math.min(cx1, bx + B); x++) {
         if (z < low[(y - iy0) * FX + x - ix0]) continue;
         const [lx, ly, lz] = loc(x, y, z), e = evb(lx, ly, lz);
         if (e >= thr) continue;
@@ -4585,7 +4597,7 @@ window.addEventListener("error", (e) => {
         }
         const id = pal.id(m || (ME.content || {}).defaultMaterial);
         if (bricks) bricks.put(x, y, z, id); else vox[(z * NY + y) * NX + x] = id;
-        n++;
+        if (x >= OWN[0] && x < OWN[2] && y >= OWN[1] && y < OWN[3]) n++;
       }
     }
     return n;
@@ -5273,6 +5285,24 @@ window.addEventListener("error", (e) => {
         if (uni) { this.table[b] = v; this.free.push(e - 256); }
       }
     }
+    // bricks I0..I1-1 x J0..J1-1 (every K) of rg, a grid of the same size (a region's bake, P1), into this
+    // one, whose bricks there are still air: a uniform brick's material, a mixed one's slot copied to a new
+    // slot (the pool grown once for them)
+    adopt(rg, I0, I1, J0, J1) {
+      const T = this.table, S = rg.table, mix = [];
+      for (let K = 0; K < this.BZ; K++) for (let J = J0; J < J1; J++) for (let I = I0; I < I1; I++) {
+        const b = (K * this.BY + J) * this.BX + I;
+        if (S[b] < 256) T[b] = S[b]; else mix.push(b);
+      }
+      if ((this.used + mix.length) * 4096 > this.pool.length) {
+        const p = new Uint8Array((this.used + Math.max(mix.length, 64, this.used >> 3)) * 4096);
+        p.set(this.pool.subarray(0, this.used * 4096)); this.pool = p;
+      }
+      for (const b of mix) {
+        const s = this.used++, e = (S[b] - 256) * 4096;
+        this.pool.set(rg.pool.subarray(e, e + 4096), s * 4096); T[b] = 256 + s;
+      }
+    }
     // the first solid cell's k in column (i, j) from kFrom down (air bricks skipped), -1 if none
     down(i, j, kFrom) {
       const c = (j >> 4) * this.BX + (i >> 4), o = ((j & 15) << 4) + (i & 15);
@@ -5316,10 +5346,11 @@ window.addEventListener("error", (e) => {
       }
       return dst;
     }
-    // every brick: fn(I, J, K, v, s) with v its material when uniform (s -1), else v -1 and s its slot's offset in pool
-    bricks(fn) {
+    // every brick (or bricks I0..I1-1 x J0..J1-1, every K): fn(I, J, K, v, s) with v its material when uniform
+    // (s -1), else v -1 and s its slot's offset in pool
+    bricks(fn, I0 = 0, I1 = this.BX, J0 = 0, J1 = this.BY) {
       const T = this.table;
-      for (let K = 0, b = 0; K < this.BZ; K++) for (let J = 0; J < this.BY; J++) for (let I = 0; I < this.BX; I++, b++) {
+      for (let K = 0; K < this.BZ; K++) for (let J = J0; J < J1; J++) for (let I = I0, b = (K * this.BY + J) * this.BX + I0; I < I1; I++, b++) {
         const e = T[b];
         if (e < 256) fn(I, J, K, e, -1); else fn(I, J, K, -1, (e - 256) * 4096);
       }
@@ -5336,6 +5367,10 @@ window.addEventListener("error", (e) => {
   // T.vox is gone (T.grid): a reader left behind throws and says what to read instead. Not enumerable, so a
   // copy of T (the bake cache's put) leaves it out
   ME.voxGone = (T) => Object.defineProperty(T, "vox", { configurable: true, enumerable: false, get() { throw new Error("T.vox is gone: read T.grid (T.grid.at(idx), .get(i, j, k), .row, .plane, .down)"); } });
+
+  // P1: the bake goes by regions (?regions=1 at a density that is a multiple of 4); the terrain key (cache.js) and the
+  // mesh (greedy.js, by T.stats.regions) follow it
+  ME.regionsOn = () => ME.VS % 4 === 0 && ME.qn("regions", 0) > 0;
 
   ME.bakeTerrain = async function (st, pal) {
     const t0 = ME.now(), VS = ME.VS, CT = ME.content || {}, G = gridOf(st, CT), F = G.frame, jar = F.type === "jar";
@@ -5556,130 +5591,9 @@ window.addEventListener("error", (e) => {
     const c = { VS, X: 0, Y: 0, cx: 0, cy: 0, trees, wetV, fringes, nameAt }, out = {};
     const skirt = !jar && F.edge && F.edge.skirt ? id(F.edge.skirt) : 0, e1 = 1 / VS; // e1: the outermost voxel ring of the map
 
-    for (let j = 0; j < NY; j++) {
-      if ((j & 31) === 0) { ME.progress("terrain columns " + Math.round((j / NY) * 100) + "%", 0.05 + 0.15 * (j / NY)); await ME.tick(); }
-      const Y = O[1] + (j + 0.5) / VS;
-      if ((j & 15) === 0) { band.fill(0); wLo.fill(NZ); wHi.fill(0); dLo.fill(-1); }
-      for (let i = 0; i < NX; i++) {
-        const X = O[0] + (i + 0.5) / VS, col = j * NX + i, bc = (j & 15) * NX + i;
-        if (jar) {
-          const r = Math.hypot(X - C, Y - CY);
-          if (r > PL_R) continue;
-          // wooden plinth with a brass trim on its upper outer edge
-          for (let k = kPB; k < kPT; k++) band[k * BPL + bc] = k === kPT - 1 && r > PL_R - 0.09 ? M.brass : M.wood;
-          wLo[bc] = kPB; wHi[bc] = kPT;
-          top[col] = kPT; lobe[col] = M.moss;
-          if (r > RG - 0.06) continue;
-          // drum: soil strata seen through the glass, a moss lip under the rim, a moss ring on top
-          const U = Math.atan2(Y - CY, X - C) * RG, shell = r > RG - 0.06 - 2.5 / VS, rt = r > RI ? rimTile(X, Y) : -1, kN = rt < 0 ? kD : kOf(G.z[rt]), ZN = rt < 0 ? DRUM : O[2] + kN / VS;
-          for (let k = kPT; k < kN; k++) {
-            let m = M.earth;
-            if (shell) {
-              const Zc = O[2] + (k + 0.5) / VS, sr = F.strata && P.strataAt(F, U, Zc, 1);
-              if (sr) m = id(sr.ramp);
-              if (ZN - Zc < 0.08 + 0.18 * P.fbm(U * 3, 0.5, 0, 71)) m = M.moss;
-            }
-            band[k * BPL + bc] = m;
-          }
-          if (r > RI - 0.12) band[(kN - 1) * BPL + bc] = P.fbm(X * 0.45, Y * 0.45, 0, 29) > 0.78 ? M.moss2 : M.moss;
-          if (kN > wHi[bc]) wHi[bc] = kN;
-          top[col] = kN;
-          if (r > RI) continue;
-        }
-        let cx = Math.floor(X), cy = Math.floor(Y), kd = kindAt(cx, cy), Xw = X, Yw = Y;
-        if (!kd) continue;
-        // edge breakup: the column takes the tile at its warped position (the own tile in the core)
-        if (EB) {
-          if (vf) ebVary(X, Y);
-          ebWarp(X, Y, cx, cy, ebW);
-          Xw = ebW[0]; Yw = ebW[1];
-          if (ebW[2] !== cx || ebW[3] !== cy) { cx = ebW[2]; cy = ebW[3]; kd = kindAt(cx, cy); ebCols++; }
-        }
-        // terrain column: the kind's recipe gives the surface material and micro relief
-        out.kT = kOf(G.z[cy * G.W + cx]); out.mTop = 0; out.extra = 0; out.two = false; out.bed = false; out.layer = 0;
-        c.X = Xw; c.Y = Yw; c.cx = cx; c.cy = cy;
-        RECIPE[kd.recipe](kd, c, out);
-        // laneWave: the neighbour's recipe at the landing point gives the top material, nothing else
-        if (LW && waveTo(Xw, Yw, cx, cy, lwW)) {
-          const nk = kindAt(lwW[2], lwW[3]);
-          lwOut.kT = 0; lwOut.mTop = 0; lwOut.extra = 0; lwOut.two = false; lwOut.bed = false; lwOut.layer = 0;
-          c.X = lwW[0]; c.Y = lwW[1]; c.cx = lwW[2]; c.cy = lwW[3];
-          RECIPE[nk.recipe](nk, c, lwOut);
-          c.X = Xw; c.Y = Yw; c.cx = cx; c.cy = cy;
-          if (lwOut.mTop) { out.mTop = lwOut.mTop; lwCols++; }
-        }
-        const { kT, mTop, extra, two, bed, layer } = out;
-        if (bed) wetCols++;
-        // drape: a couple of voxels under every lip, with hanging strands, and the lobes it hangs over lower
-        // neighbours: the kind's drape and overhang (none on a layer, none where the kind asks for none)
-        const dr = layer ? null : kd.drape;
-        lobe[col] = layer ? 0 : kd.overhang;
-        let dd = 2;
-        const n1 = P.noise(X * 9, Y * 9, 0, 5);
-        if (n1 > 0.52) dd += Math.round((n1 - 0.52) * 30);
-        if (P.noise(X * 21, Y * 21, 0, 6) > 0.8) dd += 5;
-        const kEnd = kT + extra - soften(kd, Xw, Yw, cx, cy);
-        const sk = skirt && (X < e1 || Y < e1 || X > G.W - e1 || Y > G.H - e1);
-        // the deep run: below the top voxels, the drape and a layer's top, and above what the jar wrote (the
-        // skirt overwrites the whole column, so it has none)
-        const uHi = Math.min(kEnd, kEnd - (layer ? layer + extra : 1 + Math.max(two ? 1 : 0, dr && !bed ? dd : 0))), uLo = Math.max(kF, wHi[bc]);
-        let a = -1;
-        if (!sk && uHi > uLo) { a = uLo; dLo[bc] = uLo; dHi[bc] = uHi; dM[bc] = kd.under; }
-        if (kF < wLo[bc]) wLo[bc] = kF;
-        if (kEnd > wHi[bc]) wHi[bc] = kEnd;
-        for (let k = kF; k < kEnd; k++) {
-          if (k === a && (k = uHi) >= kEnd) break;
-          const dz = kEnd - 1 - k;
-          band[k * BPL + bc] = layer ? (dz < layer + extra ? mTop : kd.under) : dz === 0 || (two && dz === 1) ? mTop : dr && dz <= dd && !bed ? (n1 > 0.7 ? dr[1] : dr[0]) : kd.under;
-        }
-        if (EB) ebCarved += roughen(Xw, Yw, cx, cy, kd, kEnd, bc);
-        if (jar) for (let k = kEnd; k < kD; k++) band[k * BPL + bc] = 0; // beds carved below the drum top
-        // a box's skirt: the outer faces of the map's edge tiles, under their top voxel, in one material
-        if (sk) for (let k = kF; k < kEnd - 1; k++) band[k * BPL + bc] = skirt;
-        top[col] = kEnd;
-      }
-      if ((j & 15) === 15 || j === NY - 1) {
-        const j1 = (j & 15) + 1, BX = g.BX;
-        for (let K = 0; K < g.BZ; K++) for (let I = 0; I < BX; I++) {
-          const k0 = K * 16, k1 = Math.min(NZ, k0 + 16), i0 = I * 16, i1 = Math.min(NX, i0 + 16);
-          let w = false, m = -1; // m: the runs' material while every column's run fills the brick, -2 once one doesn't
-          for (let r = 0; r < j1 && !(w && m === -2); r++) for (let bc = r * NX + i0, e = r * NX + i1; bc < e; bc++) {
-            if (wLo[bc] < k1 && wHi[bc] > k0) w = true;
-            if (m !== -2) m = dLo[bc] >= 0 && dLo[bc] <= k0 && dHi[bc] >= k1 && (m < 0 || dM[bc] === m) ? dM[bc] : -2;
-          }
-          pre[K * BX + I] = !w ? 0 : m >= 0 ? m : -1;
-        }
-        for (let bc = 0; bc < j1 * NX; bc++) {
-          const a = dLo[bc];
-          if (a < 0) continue;
-          const b = dHi[bc], m = dM[bc], I = (bc % NX) >> 4;
-          for (let K = a >> 4; K <= (b - 1) >> 4; K++) if (pre[K * BX + I] < 0) for (let k = Math.max(a, K * 16), k1 = Math.min(b, K * 16 + 16); k < k1; k++) band[k * BPL + bc] = m;
-        }
-        g.band(j >> 4, band, pre);
-      }
-    }
-
-    // Moss overhangs: where a column stands 4+ voxels above a neighbour, hang 0-3 voxels over the lip.
-    ME.progress("moss overhangs", 0.21); await ME.tick();
+    // Static props are stamped into the grid; volume props and walkers are returned for the model bake.
     const D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-    let lobes = 0;
-    for (let j = 1; j < NY - 1; j++) for (let i = 1; i < NX - 1; i++) {
-      const col = j * NX + i, tk = top[col];
-      if (tk < 0 || !lobe[col]) continue; // layers (sand banks) do not overhang
-      const X = O[0] + (i + 0.5) / VS, Y = O[1] + (j + 0.5) / VS;
-      for (const [dx, dy] of D4) {
-        const nc = col + dx + dy * NX, nk = top[nc];
-        if (nk < 0 || tk - nk < 4) continue;
-        const len = Math.floor(P.noise(X * 7 + dx * 3.1, Y * 7 + dy * 3.1, 0, 9) * 4.6) - 1;
-        for (let k = tk - len; k < tk; k++) if (!g.get(i + dx, j + dy, k)) { g.put(i + dx, j + dy, k, lobe[col]); lobes++; }
-      }
-    }
-
-    // Static props stamped into the grid; volume props and walkers are returned for the model bake.
-    const grid = { bricks: g, NX, NY, NZ, O, vs: VS };
-    const volumes = [], walkers = [];
-    let stamped = 0, propCount = 0;
-    const deco = G.props;
+    const volumes = [], walkers = [], stamps = [], deco = G.props;
     for (let n = 0; n < deco.length; n++) {
       const [name, o, x, y, ex] = deco[n];
       const role = propRole(name, ex, VOLUME_DECO, WALKER_DECO);
@@ -5689,20 +5603,20 @@ window.addEventListener("error", (e) => {
       // walkers and volumes go to the model bake (ME.volumeDecoOf lists the same volumes from st)
       if (role === "walker") { walkers.push(place); continue; }
       if (role === "volume") { volumes.push(place); continue; }
-      if ((n & 7) === 0) { ME.progress("stamping props " + n + "/" + deco.length, 0.22 + 0.1 * (n / deco.length)); await ME.tick(); }
-      stamped += ME.stampModel(ME.modelOf(name, o), place, grid, pal);
-      propCount++;
+      stamps.push({ n, name, o, place, md: null });
     }
+    const propCount = stamps.length;
 
     // Ground lamps (content.groundLamps): one kind lining the lanes, another by the water, on moss tiles
-    // clear of the props, at least `spacing` tiles apart. Stamped into the grid; each one lights.
-    const lights = [], GL = CT.groundLamps;
+    // clear of the props, at least `spacing` tiles apart. Stamped into the grid after the props, each on the
+    // surface under it then (Z, found when it is stamped); each one lights.
+    const lamps = [], GL = CT.groundLamps;
+    const surfZ = (g, X, Y, zFrom) => {
+      const i = Math.floor((X - O[0]) * VS), j = Math.floor((Y - O[1]) * VS);
+      const k = g.down(i, j, Math.min(NZ - 1, kOf(zFrom)));
+      return k >= 0 ? O[2] + (k + 1) / VS : zFrom;
+    };
     if (GL) {
-      const surfZ = (X, Y, zFrom) => {
-        const i = Math.floor((X - O[0]) * VS), j = Math.floor((Y - O[1]) * VS);
-        const k = g.down(i, j, Math.min(NZ - 1, kOf(zFrom)));
-        return k >= 0 ? O[2] + (k + 1) / VS : zFrom;
-      };
       const taken = deco.filter((d) => window.MODELS[d[0]]).map((d) => [d[2] + 0.5 + (d[4].dx || 0), d[3] + 0.5 + (d[4].dy || 0)]);
       const cand = [];
       for (let cy = 0; cy < G.H; cy++) for (let cx = 0; cx < G.W; cx++) {
@@ -5717,22 +5631,246 @@ window.addEventListener("error", (e) => {
         if (dir) cand.push({ cx, cy, dir, kind, r: P.hash(cx, cy, 0, 61) });
       }
       cand.sort((a, b) => a.r - b.r);
-      const placed = [];
       for (const c of cand) {
-        if (placed.length >= GL.max) break;
+        if (lamps.length >= GL.max) break;
         const side = (P.hash(c.cx, c.cy, 1, 61) - 0.5) * 0.4;
         const X = c.cx + 0.5 + c.dir[0] * 0.3 + (c.dir[1] ? side : 0), Y = c.cy + 0.5 + c.dir[1] * 0.3 + (c.dir[0] ? side : 0);
-        if (placed.some((p) => Math.hypot(p.X - X, p.Y - Y) < GL.spacing) || taken.some(([tx, ty]) => Math.hypot(tx - X, ty - Y) < 0.75)) continue;
-        const Z = surfZ(X, Y, G.z[c.cy * G.W + c.cx] + 0.6), o = { seed: 1 + placed.length * 7 }, md = ME.modelOf(c.kind.model, o);
-        stamped += ME.stampModel(md, { X, Y, Z, flip: false }, grid, pal);
-        placed.push({ X, Y });
-        const lp = [X, Y, Z + md.lz * md.k];
-        const L = c.kind.light;
-        lights.push({ p: lp, r: L.r, col: L.col.slice(), k: L.k, mat: L.mat });
+        if (lamps.some((p) => Math.hypot(p.X - X, p.Y - Y) < GL.spacing) || taken.some(([tx, ty]) => Math.hypot(tx - X, ty - Y) < 0.75)) continue;
+        lamps.push({ X, Y, z0: G.z[c.cy * G.W + c.cx] + 0.6, md: ME.modelOf(c.kind.model, { seed: 1 + lamps.length * 7 }), L: c.kind.light, Z: null });
       }
     }
 
-    // The map's point lights (tiles)
+    // The passes into a grid g: the columns, the overhangs, the props and lamps 0..lampN-1. box null: the whole
+    // map. Else a region's (P1): box.C, the columns computed (voxel columns [i0, j0, i1, j1], end exclusive),
+    // box.W, the columns written (the lobes, the stamps), and box.R (null: none), the columns counted in the
+    // stats; every column of W comes out as the whole map's when C is W and 1 round it
+    let lobes = 0, stamped = 0;
+    const fill = async (g, box, lampN) => {
+      const [ci0, cj0, ci1, cj1] = box ? box.C : [0, 0, NX, NY], R = box && box.R;
+      const own = (i, j) => !box || (!!R && i >= R[0] && i < R[2] && j >= R[1] && j < R[3]);
+      // the band's bricks the columns reach (the whole brick row without a box; the others stay air)
+      const bx0 = ci0 >> 4, bx1 = (ci1 + 15) >> 4, s0 = bx0 * 16, s1 = Math.min(NX, bx1 * 16);
+      if (box) pre.fill(0);
+      for (let j = cj0; j < cj1; j++) {
+        if (!box && (j & 31) === 0) { ME.progress("terrain columns " + Math.round((j / NY) * 100) + "%", 0.05 + 0.15 * (j / NY)); await ME.tick(); }
+        const Y = O[1] + (j + 0.5) / VS;
+        if ((j & 15) === 0 || j === cj0) {
+          if (!box) band.fill(0);
+          else for (let k = 0; k < NZ; k++) for (let r = 0; r < 16; r++) band.fill(0, k * BPL + r * NX + s0, k * BPL + r * NX + s1);
+          wLo.fill(NZ); wHi.fill(0); dLo.fill(-1);
+        }
+        for (let i = ci0; i < ci1; i++) {
+          const X = O[0] + (i + 0.5) / VS, col = j * NX + i, bc = (j & 15) * NX + i;
+          if (jar) {
+            const r = Math.hypot(X - C, Y - CY);
+            if (r > PL_R) continue;
+            // wooden plinth with a brass trim on its upper outer edge
+            for (let k = kPB; k < kPT; k++) band[k * BPL + bc] = k === kPT - 1 && r > PL_R - 0.09 ? M.brass : M.wood;
+            wLo[bc] = kPB; wHi[bc] = kPT;
+            top[col] = kPT; lobe[col] = M.moss;
+            if (r > RG - 0.06) continue;
+            // drum: soil strata seen through the glass, a moss lip under the rim, a moss ring on top
+            const U = Math.atan2(Y - CY, X - C) * RG, shell = r > RG - 0.06 - 2.5 / VS, rt = r > RI ? rimTile(X, Y) : -1, kN = rt < 0 ? kD : kOf(G.z[rt]), ZN = rt < 0 ? DRUM : O[2] + kN / VS;
+            for (let k = kPT; k < kN; k++) {
+              let m = M.earth;
+              if (shell) {
+                const Zc = O[2] + (k + 0.5) / VS, sr = F.strata && P.strataAt(F, U, Zc, 1);
+                if (sr) m = id(sr.ramp);
+                if (ZN - Zc < 0.08 + 0.18 * P.fbm(U * 3, 0.5, 0, 71)) m = M.moss;
+              }
+              band[k * BPL + bc] = m;
+            }
+            if (r > RI - 0.12) band[(kN - 1) * BPL + bc] = P.fbm(X * 0.45, Y * 0.45, 0, 29) > 0.78 ? M.moss2 : M.moss;
+            if (kN > wHi[bc]) wHi[bc] = kN;
+            top[col] = kN;
+            if (r > RI) continue;
+          }
+          let cx = Math.floor(X), cy = Math.floor(Y), kd = kindAt(cx, cy), Xw = X, Yw = Y;
+          if (!kd) continue;
+          // edge breakup: the column takes the tile at its warped position (the own tile in the core)
+          if (EB) {
+            if (vf) ebVary(X, Y);
+            ebWarp(X, Y, cx, cy, ebW);
+            Xw = ebW[0]; Yw = ebW[1];
+            if (ebW[2] !== cx || ebW[3] !== cy) { cx = ebW[2]; cy = ebW[3]; kd = kindAt(cx, cy); if (own(i, j)) ebCols++; }
+          }
+          // terrain column: the kind's recipe gives the surface material and micro relief
+          out.kT = kOf(G.z[cy * G.W + cx]); out.mTop = 0; out.extra = 0; out.two = false; out.bed = false; out.layer = 0;
+          c.X = Xw; c.Y = Yw; c.cx = cx; c.cy = cy;
+          RECIPE[kd.recipe](kd, c, out);
+          // laneWave: the neighbour's recipe at the landing point gives the top material, nothing else
+          if (LW && waveTo(Xw, Yw, cx, cy, lwW)) {
+            const nk = kindAt(lwW[2], lwW[3]);
+            lwOut.kT = 0; lwOut.mTop = 0; lwOut.extra = 0; lwOut.two = false; lwOut.bed = false; lwOut.layer = 0;
+            c.X = lwW[0]; c.Y = lwW[1]; c.cx = lwW[2]; c.cy = lwW[3];
+            RECIPE[nk.recipe](nk, c, lwOut);
+            c.X = Xw; c.Y = Yw; c.cx = cx; c.cy = cy;
+            if (lwOut.mTop) { out.mTop = lwOut.mTop; if (own(i, j)) lwCols++; }
+          }
+          const { kT, mTop, extra, two, bed, layer } = out;
+          if (bed && own(i, j)) wetCols++;
+          // drape: a couple of voxels under every lip, with hanging strands, and the lobes it hangs over lower
+          // neighbours: the kind's drape and overhang (none on a layer, none where the kind asks for none)
+          const dr = layer ? null : kd.drape;
+          lobe[col] = layer ? 0 : kd.overhang;
+          let dd = 2;
+          const n1 = P.noise(X * 9, Y * 9, 0, 5);
+          if (n1 > 0.52) dd += Math.round((n1 - 0.52) * 30);
+          if (P.noise(X * 21, Y * 21, 0, 6) > 0.8) dd += 5;
+          const kEnd = kT + extra - soften(kd, Xw, Yw, cx, cy);
+          const sk = skirt && (X < e1 || Y < e1 || X > G.W - e1 || Y > G.H - e1);
+          // the deep run: below the top voxels, the drape and a layer's top, and above what the jar wrote (the
+          // skirt overwrites the whole column, so it has none)
+          const uHi = Math.min(kEnd, kEnd - (layer ? layer + extra : 1 + Math.max(two ? 1 : 0, dr && !bed ? dd : 0))), uLo = Math.max(kF, wHi[bc]);
+          let a = -1;
+          if (!sk && uHi > uLo) { a = uLo; dLo[bc] = uLo; dHi[bc] = uHi; dM[bc] = kd.under; }
+          if (kF < wLo[bc]) wLo[bc] = kF;
+          if (kEnd > wHi[bc]) wHi[bc] = kEnd;
+          for (let k = kF; k < kEnd; k++) {
+            if (k === a && (k = uHi) >= kEnd) break;
+            const dz = kEnd - 1 - k;
+            band[k * BPL + bc] = layer ? (dz < layer + extra ? mTop : kd.under) : dz === 0 || (two && dz === 1) ? mTop : dr && dz <= dd && !bed ? (n1 > 0.7 ? dr[1] : dr[0]) : kd.under;
+          }
+          if (EB) { const n = roughen(Xw, Yw, cx, cy, kd, kEnd, bc); if (own(i, j)) ebCarved += n; }
+          if (jar) for (let k = kEnd; k < kD; k++) band[k * BPL + bc] = 0; // beds carved below the drum top
+          // a box's skirt: the outer faces of the map's edge tiles, under their top voxel, in one material
+          if (sk) for (let k = kF; k < kEnd - 1; k++) band[k * BPL + bc] = skirt;
+          top[col] = kEnd;
+        }
+        if ((j & 15) === 15 || j === cj1 - 1) {
+          const j1 = (j & 15) + 1, BX = g.BX;
+          for (let K = 0; K < g.BZ; K++) for (let I = bx0; I < bx1; I++) {
+            const k0 = K * 16, k1 = Math.min(NZ, k0 + 16), i0 = I * 16, i1 = Math.min(NX, i0 + 16);
+            let w = false, m = -1; // m: the runs' material while every column's run fills the brick, -2 once one doesn't
+            for (let r = 0; r < j1 && !(w && m === -2); r++) for (let bc = r * NX + i0, e = r * NX + i1; bc < e; bc++) {
+              if (wLo[bc] < k1 && wHi[bc] > k0) w = true;
+              if (m !== -2) m = dLo[bc] >= 0 && dLo[bc] <= k0 && dHi[bc] >= k1 && (m < 0 || dM[bc] === m) ? dM[bc] : -2;
+            }
+            pre[K * BX + I] = !w ? 0 : m >= 0 ? m : -1;
+          }
+          for (let r = 0; r < j1; r++) for (let bc = r * NX + s0, e = r * NX + s1; bc < e; bc++) {
+            const a = dLo[bc];
+            if (a < 0) continue;
+            const b = dHi[bc], m = dM[bc], I = (bc % NX) >> 4;
+            for (let K = a >> 4; K <= (b - 1) >> 4; K++) if (pre[K * BX + I] < 0) for (let k = Math.max(a, K * 16), k1 = Math.min(b, K * 16 + 16); k < k1; k++) band[k * BPL + bc] = m;
+          }
+          g.band(j >> 4, band, pre);
+        }
+      }
+
+      // Moss overhangs: where a column stands 4+ voxels above a neighbour, hang 0-3 voxels over the lip. A cell
+      // takes the first lobe in j-major order, so a region (its sources in C, its cells in W) takes the same one
+      if (!box) { ME.progress("moss overhangs", 0.21); await ME.tick(); }
+      const W = box && box.W;
+      for (let j = Math.max(1, cj0); j < Math.min(NY - 1, cj1); j++) for (let i = Math.max(1, ci0); i < Math.min(NX - 1, ci1); i++) {
+        const col = j * NX + i, tk = top[col];
+        if (tk < 0 || !lobe[col]) continue; // layers (sand banks) do not overhang
+        const X = O[0] + (i + 0.5) / VS, Y = O[1] + (j + 0.5) / VS;
+        for (const [dx, dy] of D4) {
+          const x = i + dx, y = j + dy;
+          if (W && (x < W[0] || x >= W[2] || y < W[1] || y >= W[3])) continue;
+          const nc = col + dx + dy * NX, nk = top[nc];
+          if (nk < 0 || tk - nk < 4) continue;
+          const len = Math.floor(P.noise(X * 7 + dx * 3.1, Y * 7 + dy * 3.1, 0, 9) * 4.6) - 1, mine = own(x, y);
+          for (let k = tk - len; k < tk; k++) if (!g.get(x, y, k)) { g.put(x, y, k, lobe[col]); if (mine) lobes++; }
+        }
+      }
+
+      // the props, then the lamps (a region: clipped to W, counted in R; a prop's model made once)
+      const grid = { bricks: g, NX, NY, NZ, O, vs: VS };
+      if (box) { grid.clip = W; grid.own = R || [0, 0, 0, 0]; }
+      for (const s of stamps) {
+        if (box) { stamped += ME.stampModel(s.md || (s.md = ME.modelOf(s.name, s.o)), s.place, grid, pal); continue; }
+        if ((s.n & 7) === 0) { ME.progress("stamping props " + s.n + "/" + deco.length, 0.22 + 0.1 * (s.n / deco.length)); await ME.tick(); }
+        stamped += ME.stampModel(ME.modelOf(s.name, s.o), s.place, grid, pal);
+      }
+      for (let n = 0; n < lampN; n++) {
+        const lp = lamps[n];
+        if (lp.Z === null) lp.Z = surfZ(g, lp.X, lp.Y, lp.z0);
+        stamped += ME.stampModel(lp.md, { X: lp.X, Y: lp.Y, Z: lp.Z, flip: false }, grid, pal);
+      }
+    };
+
+    // Density for normals/AO from half resolution up (mip0 = 2x2x2 box average of occupancy, mip1 = 4x4x4), by
+    // mips(G, I0, I1, J0, J1) over bricks I0..I1-1 x J0..J1-1 (every K) of G: the whole grid once it is filled, or
+    // a region's bricks in its own grid, before g adopts them (a brick's 2x2x2 and 4x4x4 never straddle bricks, so a
+    // region's mips are the whole bake's there). First the bricks the props and lobes split and left one material
+    // fold back. Then one pass over the bricks: the solid count, the top (the highest k with a solid cell among
+    // every 7th cell of its plane) and mip0, the occupancy (255 where solid) of each 2x2x2 averaged; a uniform brick
+    // is its size, its top and an 8^3 block of mip0 at once. Then mip1, mip0's 2x2x2 averaged
+    let solid = 0, kMax = 0;
+    const MX = NX >> 1, MY = NY >> 1, MZ = NZ >> 1, d1 = new Uint8Array(MX * MY * MZ);
+    const LX = MX >> 1, LY = MY >> 1, LZ = MZ >> 1, d2 = new Uint8Array(LX * LY * LZ);
+    const s7 = (j, i0) => i0 + (7 - (j * NX + i0) % 7) % 7; // row j's first 7th cell from i0
+    const mips = (G, I0, I1, J0, J1) => {
+      G.compact([I0 << 4, J0 << 4, 0], [Math.min(NX, I1 << 4) - 1, Math.min(NY, J1 << 4) - 1, NZ - 1]);
+      const GP = G.pool;
+      G.bricks((I, J, K, v, s) => {
+        if (v === 0) return;
+        const i0 = I << 4, j0 = J << 4, k0 = K << 4, i1 = Math.min(NX, i0 + 16), j1 = Math.min(NY, j0 + 16), k1 = Math.min(NZ, k0 + 16);
+        const x0 = i0 >> 1, x1 = Math.min(MX, x0 + 8), y0 = j0 >> 1, y1 = Math.min(MY, y0 + 8), z0 = k0 >> 1, z1 = Math.min(MZ, z0 + 8);
+        if (v > 0) {
+          solid += (i1 - i0) * (j1 - j0) * (k1 - k0);
+          if (k1 - 1 > kMax) for (let j = j0; j < j1; j++) if (s7(j, i0) < i1) { kMax = k1 - 1; break; }
+          for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let c = (z * MY + y) * MX + x0, e = c + x1 - x0; c < e; c++) d1[c] = 255;
+          return;
+        }
+        let n = 0;
+        for (let k = k0; k < k1; k++) for (let j = j0; j < j1; j++) {
+          const o = s + ((k & 15) << 8) + ((j & 15) << 4) - i0;
+          for (let i = i0; i < i1; i++) if (GP[o + i]) n++;
+        }
+        solid += n;
+        if (n) for (let k = k1 - 1, hit = false; k > kMax && !hit; k--) for (let j = j0; j < j1 && !hit; j++) {
+          const o = s + ((k & 15) << 8) + ((j & 15) << 4) - i0;
+          for (let i = s7(j, i0); i < i1; i += 7) if (GP[o + i]) { kMax = k; hit = true; break; }
+        }
+        for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+          const o = s + (((2 * z) & 15) << 8) + (((2 * y) & 15) << 4) + ((2 * x) & 15);
+          d1[(z * MY + y) * MX + x] = ((GP[o] ? 255 : 0) + (GP[o + 1] ? 255 : 0) + (GP[o + 16] ? 255 : 0) + (GP[o + 17] ? 255 : 0) +
+            (GP[o + 256] ? 255 : 0) + (GP[o + 257] ? 255 : 0) + (GP[o + 272] ? 255 : 0) + (GP[o + 273] ? 255 : 0)) >> 3;
+        }
+      }, I0, I1, J0, J1);
+      for (let z = 0; z < LZ; z++) for (let y = J0 << 2, y1 = Math.min(LY, J1 << 2); y < y1; y++) for (let x = I0 << 2, x1 = Math.min(LX, I1 << 2); x < x1; x++) {
+        let s = 0;
+        for (let c = 0; c < 8; c++) s += d1[((2 * z + (c >> 2)) * MY + 2 * y + ((c >> 1) & 1)) * MX + 2 * x + (c & 1)];
+        d2[(z * LY + y) * LX + x] = s >> 3;
+      }
+    };
+
+    // P1 (docs/designs/2026-11-07-engine-opt-progressive-density.md, L2): ?regions=1, at a density that is a
+    // multiple of 4 (a region's edge is then a brick edge), bakes the map by regions of 4x4 tiles, each in a
+    // grid of its own whose bricks in the region g then adopts, with their mips. The voxels are the whole bake's;
+    // the palette's ids may come in another order (a material is named where a region first meets it). The
+    // lamps' Z come first, each from its own column baked with the props and the lamps before it.
+    // regions: the count, the lamp pre-pass and each region's time (ms: its fill, mips and adoption; mipMs: its
+    // mips), kept in T.stats.regions
+    let regions = null;
+    if (!ME.regionsOn()) await fill(g, null, lamps.length);
+    else {
+      const RT = 4 * VS, NRX = Math.ceil(NX / RT), NRY = Math.ceil(NY / RT), N = NRX * NRY, tl = ME.now();
+      const grow = (b, d) => [Math.max(0, b[0] - d), Math.max(0, b[1] - d), Math.min(NX, b[2] + d), Math.min(NY, b[3] + d)];
+      for (let n = 0; n < lamps.length; n++) {
+        const lp = lamps[n], i = Math.floor((lp.X - O[0]) * VS), j = Math.floor((lp.Y - O[1]) * VS), b = [i, j, i + 1, j + 1], rg = new BrickGrid(NX, NY, NZ);
+        await fill(rg, { C: grow(b, 2), W: grow(b, 1), R: null }, n);
+        lp.Z = surfZ(rg, lp.X, lp.Y, lp.z0);
+      }
+      regions = { n: N, rt: RT, size: [NRX, NRY], lamps: lamps.length, lampMs: Math.round(ME.now() - tl), ms: [], mipMs: [] };
+      for (let r = 0; r < N; r++) {
+        ME.progress("terrain region " + (r + 1) + "/" + N, 0.05 + 0.27 * (r / N)); await ME.tick();
+        const i0 = (r % NRX) * RT, j0 = Math.floor(r / NRX) * RT, R = [i0, j0, Math.min(NX, i0 + RT), Math.min(NY, j0 + RT)], rg = new BrickGrid(NX, NY, NZ), tr = ME.now();
+        const I0 = R[0] >> 4, I1 = (R[2] + 15) >> 4, J0 = R[1] >> 4, J1 = (R[3] + 15) >> 4;
+        await fill(rg, { C: grow(R, 2), W: grow(R, 1), R }, lamps.length);
+        const tm = ME.now();
+        mips(rg, I0, I1, J0, J1);
+        regions.mipMs.push(+(ME.now() - tm).toFixed(1));
+        g.adopt(rg, I0, I1, J0, J1);
+        regions.ms.push(Math.round(ME.now() - tr));
+      }
+    }
+
+    // The lamps' lights, then the map's point lights (tiles)
+    const lights = lamps.map(({ X, Y, Z, md, L }) => ({ p: [X, Y, Z + md.lz * md.k], r: L.r, col: L.col.slice(), k: L.k, mat: L.mat }));
     for (const l of G.lights) lights.push({ p: l.p.slice(), r: l.r, col: l.col.slice(), k: l.k });
 
     // Water: one surface quad per wet tile, falls where a wet tile steps down into lower water. Between two
@@ -5810,54 +5948,13 @@ window.addEventListener("error", (e) => {
       }
     }
 
-    // Density for normals/AO from half resolution up (mip0 = 2x2x2 box average of occupancy, mip1 = 4x4x4) and the coarse occupancy
-    // (about 8 cells per tile at any VS, taller than the voxel grid so the tree canopies fit) that feeds the sun volume.
+    // The density mips over the whole grid (by regions, each region's came with it; mipMs: their time), then the
+    // coarse occupancy (about 8 cells per tile at any VS, taller than the voxel grid so the tree canopies fit) that
+    // feeds the sun volume.
     ME.progress("density mips", 0.33); await ME.tick();
-    // the props and lobes split bricks: the ones they left one material fold back
-    g.compact([0, 0, 0], [NX - 1, NY - 1, NZ - 1]);
-    // one pass over the grid's bricks: the solid count, the top (the highest k with a solid cell among every
-    // 7th cell of its plane) and mip0, the occupancy (255 where solid) of each 2x2x2 averaged. A brick's 2x2x2
-    // never straddles bricks, so a uniform brick is its size, its top and an 8^3 block of mip0 at once
-    let solid = 0, kMax = 0;
-    const MX = NX >> 1, MY = NY >> 1, MZ = NZ >> 1, d1 = new Uint8Array(MX * MY * MZ), GP = g.pool;
-    const s7 = (j, i0) => i0 + (7 - (j * NX + i0) % 7) % 7; // row j's first 7th cell from i0
-    g.bricks((I, J, K, v, s) => {
-      if (v === 0) return;
-      const i0 = I << 4, j0 = J << 4, k0 = K << 4, i1 = Math.min(NX, i0 + 16), j1 = Math.min(NY, j0 + 16), k1 = Math.min(NZ, k0 + 16);
-      const x0 = i0 >> 1, x1 = Math.min(MX, x0 + 8), y0 = j0 >> 1, y1 = Math.min(MY, y0 + 8), z0 = k0 >> 1, z1 = Math.min(MZ, z0 + 8);
-      if (v > 0) {
-        solid += (i1 - i0) * (j1 - j0) * (k1 - k0);
-        if (k1 - 1 > kMax) for (let j = j0; j < j1; j++) if (s7(j, i0) < i1) { kMax = k1 - 1; break; }
-        for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let c = (z * MY + y) * MX + x0, e = c + x1 - x0; c < e; c++) d1[c] = 255;
-        return;
-      }
-      let n = 0;
-      for (let k = k0; k < k1; k++) for (let j = j0; j < j1; j++) {
-        const o = s + ((k & 15) << 8) + ((j & 15) << 4) - i0;
-        for (let i = i0; i < i1; i++) if (GP[o + i]) n++;
-      }
-      solid += n;
-      if (n) for (let k = k1 - 1, hit = false; k > kMax && !hit; k--) for (let j = j0; j < j1 && !hit; j++) {
-        const o = s + ((k & 15) << 8) + ((j & 15) << 4) - i0;
-        for (let i = s7(j, i0); i < i1; i += 7) if (GP[o + i]) { kMax = k; hit = true; break; }
-      }
-      for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
-        const o = s + (((2 * z) & 15) << 8) + (((2 * y) & 15) << 4) + ((2 * x) & 15);
-        d1[(z * MY + y) * MX + x] = ((GP[o] ? 255 : 0) + (GP[o + 1] ? 255 : 0) + (GP[o + 16] ? 255 : 0) + (GP[o + 17] ? 255 : 0) +
-          (GP[o + 256] ? 255 : 0) + (GP[o + 257] ? 255 : 0) + (GP[o + 272] ? 255 : 0) + (GP[o + 273] ? 255 : 0)) >> 3;
-      }
-    });
-    // mip1: mip0's 2x2x2 averaged
-    const down = (src, nx, ny, nz) => {
-      const mx = nx >> 1, my = ny >> 1, mz = nz >> 1, out = new Uint8Array(mx * my * mz);
-      for (let z = 0; z < mz; z++) for (let y = 0; y < my; y++) for (let x = 0; x < mx; x++) {
-        let s = 0;
-        for (let c = 0; c < 8; c++) s += src[((2 * z + (c >> 2)) * ny + 2 * y + ((c >> 1) & 1)) * nx + 2 * x + (c & 1)];
-        out[(z * my + y) * mx + x] = s >> 3;
-      }
-      return out;
-    };
-    const d2 = down(d1, MX, MY, MZ);
+    let mipMs = 0;
+    if (regions) mipMs = +regions.mipMs.reduce((s, x) => s + x, 0).toFixed(1);
+    else { const tm = ME.now(); mips(g, 0, g.BX, 0, g.BY); mipMs = +(ME.now() - tm).toFixed(1); }
     // the coarse grid is 3 tiles taller than the box (13 tiles for a generator map), f voxels a cell
     const f = ME.coarseStep(VS), CPU = VS / f, QX = NX / f, QY = NY / f, QZ = (B.size[2] + 3) * CPU, coarse = new Uint8Array(QX * QY * QZ);
 
@@ -5866,7 +5963,8 @@ window.addEventListener("error", (e) => {
 
     // Walkable ground: first solid voxel scanning down from zFrom.
 
-    const stats = { dims: [NX, NY, NZ], solid, wetCols, lobes, props: propCount, lanterns: lights.length, stampedVoxels: stamped, water: water.length, falls: falls.length, flooded: G.flood ? water.filter((w) => fullAt(w.x, w.y)).length : 0, edgeBreak: EB ? Object.assign({ cols: ebCols, carved: ebCarved }, LW ? { waved: lwCols } : null) : null, zTop: O[2] + (kMax + 1) / VS, ms: Math.round(ME.now() - t0) };
+    const stats = { dims: [NX, NY, NZ], solid, wetCols, lobes, props: propCount, lanterns: lights.length, stampedVoxels: stamped, water: water.length, falls: falls.length, flooded: G.flood ? water.filter((w) => fullAt(w.x, w.y)).length : 0, edgeBreak: EB ? Object.assign({ cols: ebCols, carved: ebCarved }, LW ? { waved: lwCols } : null) : null, zTop: O[2] + (kMax + 1) / VS, mipMs, ms: Math.round(ME.now() - t0) };
+    if (regions) stats.regions = regions; // regions mode only: the whole path's stats keep their keys
     // bounds: the world box in tiles; frame: the map's (jar or box); geo: the jar's measures (null in a box)
     const bounds = { min: O.slice(), max: [O[0] + B.size[0], O[1] + B.size[1], O[2] + B.size[2]] };
     // tiles: per tile of the map, its top (tiles), its kind's name (null on a generator map) and recipe (null:
@@ -5951,12 +6049,24 @@ window.addEventListener("error", (e) => {
    restored in the shader from the voxel coordinate). Faces pointing down are never visible from the
    isometric camera and are dropped. Vertices are 8 bytes: uint16 x,y,z (voxel units) + dir|mat<<3.
    For each 90-degree camera snap the visible quads (up and two sides) are sorted front to back into
-   their own index range, so a snapped view is one draw call with good early-Z. */
+   their own index range, so a snapped view is one draw call with good early-Z.
+   By regions (P1, docs/designs/2026-11-07-engine-opt-progressive-density.md, section 3): with opt.rt (by default
+   the terrain bake's regions, T.stats.regions.rt) the map is meshed by squares of rt x rt voxel columns, merging
+   stops at their edges, and each region is its own run of quads (mesh.regions: its first quad, its quads, its box
+   and its meshing ms; mesh.meshMs, either way: the boxes' meshing, the sort left out). A snap's index range is
+   then the regions front to back, each one's quads front to back, in 16-bit indices; its parts (snaps[k].parts)
+   are [region, base vertex, first index, count] a draw, so a region the view misses is left out (passes.js). */
 (function () {
   const ME = window.ME;
 
-  ME.greedyMesh = async function (T) {
+  ME.greedyMesh = async function (T, opt = {}) {
     const t0 = ME.now(), { grid, NX, NY, NZ } = T, PLANE = NX * NY;
+    const rt = opt.rt ?? ((T.stats && T.stats.regions && T.stats.regions.rt) || 0);
+    // the boxes meshed, [x0, y0, x1, y1] in voxel columns: the regions in their order (row by row), or the map
+    const boxes = [];
+    if (rt > 0) for (let y = 0; y < NY; y += rt) for (let x = 0; x < NX; x += rt) boxes.push([x, y, Math.min(NX, x + rt), Math.min(NY, y + rt)]);
+    else boxes.push([0, 0, NX, NY]);
+    const BW = rt > 0 ? Math.min(NX, rt) : NX, BH = rt > 0 ? Math.min(NY, rt) : NY; // the widest box
     // the voxels are read a plane or a row at a time from T.grid (pa, pb: two planes; rb: a row)
     const pa = new Uint8Array(PLANE), pb = new Uint8Array(PLANE), rb = new Uint8Array(NX);
     // the layers with terrain (each plane sampled every third cell); a layer of air bricks is skipped whole
@@ -6018,122 +6128,196 @@ window.addEventListener("error", (e) => {
     const clsAt = (I, J, K) => (J < 0 || J >= BY || K < 0 || K >= grid.BZ ? 0 : cls[(K * BY + J) * BX + I]);
     const none = (a, b) => a === b && a !== 2; // no face between two bricks of these classes
 
-    // +z faces: slice planes between z = s-1 and s
-    let mask = new Int16Array(PLANE), below = pa, cur = pb;
-    if (kLo > 0) grid.plane(kLo - 1, below); else below.fill(0);
-    for (let s = kLo; s <= kHi + 1; s++) {
-      if ((s & 15) === 0) { ME.progress("meshing tops " + s, 0.36 + 0.04 * ((s - kLo) / ZN)); await ME.tick(); }
-      if (s < NZ) grid.plane(s, cur); else cur.fill(0);
-      let any = false;
-      const Ka = s > 0 ? (s - 1) >> 4 : -1, Kb = s < NZ ? s >> 4 : -1;
-      for (let J = 0; J < BY; J++) for (let I = 0; I < BX; I++) {
-        if (none(clsAt(I, J, Ka), clsAt(I, J, Kb))) continue;
-        const i0 = I * 16, i1 = Math.min(NX, i0 + 16), j1 = Math.min(NY, J * 16 + 16);
-        for (let j = J * 16; j < j1; j++) for (let c = j * NX + i0, c1 = j * NX + i1; c < c1; c++) { const va = below[c], vb = cur[c]; const m = va && !vb ? va : 0; mask[c] = m; any = any || m !== 0; }
+    // the masks, sized for the widest box and shared by the boxes (merge leaves them zero)
+    const zmask = new Int16Array(BW * BH);
+    const XS = 32, xm = new Int16Array(XS * BH * ZN), xany = new Uint8Array(XS);
+    const ymask = new Int16Array(BW * ZN);
+    let ya = new Uint8Array(BW * ZN), yb = new Uint8Array(BW * ZN);
+    const KL = kLo >> 4, KN = (kHi >> 4) - KL + 1, sk = new Uint8Array(BX * KN), sn = new Uint8Array(BX * KN);
+
+    // The faces of the box [X0, X1) x [Y0, Y1): its tops, its x faces on slices X0 .. X1 - 1 (and X1 at the map's
+    // edge) and its y faces on rows Y0 .. Y1 - 1 likewise, so each face is one box's. Masks are indexed from the
+    // box's corner. The whole map (whole: with the progress bar) gives the quads it always has, in the same order
+    const meshBox = async (X0, Y0, X1, Y1, whole) => {
+      const W = X1 - X0, H = Y1 - Y0, IA = X0 >> 4, IB = (X1 + 15) >> 4, JA = Y0 >> 4, JB = (Y1 + 15) >> 4;
+      const read = (k, dst) => { if (whole) grid.plane(k, dst); else for (let j = Y0; j < Y1; j++) grid.row(j, k, X0, X1, dst, (j - Y0) * W); };
+
+      // +z faces: slice planes between z = s-1 and s
+      let below = pa, cur = pb;
+      if (kLo > 0) read(kLo - 1, below); else below.fill(0);
+      for (let s = kLo; s <= kHi + 1; s++) {
+        if (whole && (s & 15) === 0) { ME.progress("meshing tops " + s, 0.36 + 0.04 * ((s - kLo) / ZN)); await ME.tick(); }
+        if (s < NZ) read(s, cur); else cur.fill(0);
+        let any = false;
+        const Ka = s > 0 ? (s - 1) >> 4 : -1, Kb = s < NZ ? s >> 4 : -1;
+        for (let J = JA; J < JB; J++) for (let I = IA; I < IB; I++) {
+          if (none(clsAt(I, J, Ka), clsAt(I, J, Kb))) continue;
+          const i0 = Math.max(X0, I * 16), i1 = Math.min(X1, I * 16 + 16), j1 = Math.min(Y1, J * 16 + 16);
+          for (let j = Math.max(Y0, J * 16); j < j1; j++) for (let c = (j - Y0) * W + i0 - X0, c1 = c + i1 - i0; c < c1; c++) { const va = below[c], vb = cur[c]; const m = va && !vb ? va : 0; zmask[c] = m; any = any || m !== 0; }
+        }
+        [below, cur] = [cur, below];
+        if (any) merge(zmask, W, H, (i, j, w, h, c) => { const x = X0 + i, y = Y0 + j; emit(4, c, [x, y, s], [x + w, y, s], [x + w, y + h, s], [x, y + h, s]); });
       }
-      [below, cur] = [cur, below];
-      if (any) merge(mask, NX, NY, (i, j, w, h, c) => emit(4, c, [i, j, s], [i + w, j, s], [i + w, j + h, s], [i, j + h, s]));
-    }
-    // x faces: mask over (y, z) per slice s. A slab of XS slices is filled in one pass along the voxel rows
-    // (reading the grid column-wise per slice was cache-hostile), then merged slice by slice; the slab's
-    // masks are reused (merge leaves them zero). All NX + 1 slices at once was 2 bytes a voxel (~600 MB at vs40).
-    ME.progress("meshing x sides", 0.4); await ME.tick();
-    const XS = 32, SL = NY * ZN, xm = new Int16Array(XS * SL), xany = new Uint8Array(XS);
-    for (let s0 = 0; s0 <= NX; s0 += XS) {
-      ME.progress("meshing x sides " + s0, 0.4 + 0.04 * (s0 / NX)); await ME.tick();
-      const s1 = Math.min(NX, s0 + XS - 1), r0 = Math.max(0, s0 - 1), r1 = Math.min(NX, s1 + 1);
-      xany.fill(0);
-      // a row of bricks all air, or all solid away from the grid's x ends, has no x face in this slab
-      const I0 = r0 >> 4, I1 = (r1 - 1) >> 4, inner = s0 > 0 && s1 < NX;
-      for (let z = 0; z < ZN; z++) for (let J = 0; J < BY; J++) {
-        const b0 = (((z + kLo) >> 4) * BY + J) * BX;
-        let c0 = 0, c1 = 0;
-        for (let I = I0; I <= I1; I++) { const c = cls[b0 + I]; if (c === 0) c0++; else if (c === 1) c1++; }
-        if (c0 === I1 - I0 + 1 || (inner && c1 === I1 - I0 + 1)) continue;
-        for (let y = J * 16, y1 = Math.min(NY, y + 16); y < y1; y++) {
-          const mo = y + z * NY;
-          grid.row(y, z + kLo, r0, r1, rb);
-          let va = s0 > 0 ? rb[s0 - 1 - r0] : 0;
-          for (let s = s0; s <= s1; s++) {
-            const vb = s < NX ? rb[s - r0] : 0;
-            if (va !== vb && !(va && vb)) { xm[(s - s0) * SL + mo] = va ? va : -vb; xany[s - s0] = 1; }
-            va = vb;
+      // x faces: mask over (y, z) per slice s. A slab of XS slices is filled in one pass along the voxel rows
+      // (reading the grid column-wise per slice was cache-hostile), then merged slice by slice; the slab's
+      // masks are reused (merge leaves them zero). All NX + 1 slices at once was 2 bytes a voxel (~600 MB at vs40).
+      if (whole) { ME.progress("meshing x sides", 0.4); await ME.tick(); }
+      const SL = H * ZN, SE = X1 === NX ? NX : X1 - 1;
+      for (let s0 = X0; s0 <= SE; s0 += XS) {
+        if (whole) { ME.progress("meshing x sides " + s0, 0.4 + 0.04 * (s0 / NX)); await ME.tick(); }
+        const s1 = Math.min(SE, s0 + XS - 1), r0 = Math.max(0, s0 - 1), r1 = Math.min(NX, s1 + 1);
+        xany.fill(0);
+        // a row of bricks all air, or all solid away from the grid's x ends, has no x face in this slab
+        const I0 = r0 >> 4, I1 = (r1 - 1) >> 4, inner = s0 > 0 && s1 < NX;
+        for (let z = 0; z < ZN; z++) for (let J = JA; J < JB; J++) {
+          const b0 = (((z + kLo) >> 4) * BY + J) * BX;
+          let c0 = 0, c1 = 0;
+          for (let I = I0; I <= I1; I++) { const c = cls[b0 + I]; if (c === 0) c0++; else if (c === 1) c1++; }
+          if (c0 === I1 - I0 + 1 || (inner && c1 === I1 - I0 + 1)) continue;
+          for (let y = Math.max(Y0, J * 16), y1 = Math.min(Y1, J * 16 + 16); y < y1; y++) {
+            const mo = y - Y0 + z * H;
+            grid.row(y, z + kLo, r0, r1, rb);
+            let va = s0 > 0 ? rb[s0 - 1 - r0] : 0;
+            for (let s = s0; s <= s1; s++) {
+              const vb = s < NX ? rb[s - r0] : 0;
+              if (va !== vb && !(va && vb)) { xm[(s - s0) * SL + mo] = va ? va : -vb; xany[s - s0] = 1; }
+              va = vb;
+            }
           }
         }
+        for (let s = s0; s <= s1; s++) {
+          if (xany[s - s0]) merge(xm.subarray((s - s0) * SL, (s - s0 + 1) * SL), H, ZN, (i, j, w, h, c) => {
+            const z0 = j + kLo, z1 = z0 + h, y0 = Y0 + i, y1 = y0 + w;
+            if (c > 0) emit(0, c, [s, y0, z0], [s, y1, z0], [s, y1, z1], [s, y0, z1]);
+            else emit(1, -c, [s, y0, z0], [s, y1, z0], [s, y1, z1], [s, y0, z1]);
+          });
+        }
       }
-      for (let s = s0; s <= s1; s++) {
-        mask = xm.subarray((s - s0) * SL, (s - s0 + 1) * SL);
-        if (xany[s - s0]) merge(mask, NY, ZN, (i, j, w, h, c) => {
-          const z0 = j + kLo, z1 = z0 + h;
-          if (c > 0) emit(0, c, [s, i, z0], [s, i + w, z0], [s, i + w, z1], [s, i, z1]);
-          else emit(1, -c, [s, i, z0], [s, i + w, z0], [s, i + w, z1], [s, i, z1]);
+      // y faces: mask over (x, z). Rows s - 1 and s of every z are kept (ya, yb) and swapped, so each row is read once.
+      // A brick's stretch of row s is read where a face may lie on either side of it (sk: none between rows
+      // s - 1 and s, sn: none between s and s + 1), and the mask computed where sk allows; what isn't read isn't used
+      const skips = (s, out) => {
+        const Ja = s > 0 ? (s - 1) >> 4 : -1, Jb = s < NY ? s >> 4 : -1; // a row past the grid is air, even inside a brick
+        for (let K = 0; K < KN; K++) for (let I = IA; I < IB; I++) out[K * BX + I] = s > NY || none(clsAt(I, Ja, K + KL), clsAt(I, Jb, K + KL)) ? 1 : 0;
+      };
+      // row s of the box into dst where use(brick) holds, a run of bricks at a time
+      const rowRuns = (s, dst, use) => {
+        for (let z = 0; z < ZN; z++) {
+          const q = (((z + kLo) >> 4) - KL) * BX;
+          for (let I = IA; I < IB; ) {
+            if (!use(q + I)) { I++; continue; }
+            let I1 = I + 1;
+            while (I1 < IB && use(q + I1)) I1++;
+            const x0 = Math.max(X0, I * 16);
+            grid.row(s, z + kLo, x0, Math.min(X1, I1 * 16), dst, z * W + x0 - X0);
+            I = I1;
+          }
+        }
+      };
+      // a box past the map's first row starts from the row before its own, where its first row's faces need it
+      if (Y0 > 0) { skips(Y0, sk); rowRuns(Y0 - 1, ya, (n) => !sk[n]); } else ya.fill(0);
+      const SY = Y1 === NY ? NY : Y1 - 1;
+      for (let s = Y0; s <= SY; s++) {
+        if (whole && (s & 31) === 0) { ME.progress("meshing y sides " + s, 0.44 + 0.04 * (s / NY)); await ME.tick(); }
+        let any = false;
+        skips(s, sk); skips(s + 1, sn);
+        if (s < NY) rowRuns(s, yb, (n) => !(sk[n] && sn[n])); else yb.fill(0);
+        for (let z = 0; z < ZN; z++) {
+          const q = (((z + kLo) >> 4) - KL) * BX;
+          for (let I = IA; I < IB; I++) {
+            if (sk[q + I]) continue;
+            for (let c = z * W + Math.max(X0, I * 16) - X0, c1 = z * W + Math.min(X1, I * 16 + 16) - X0; c < c1; c++) {
+              const va = ya[c], vb = yb[c];
+              const m = va && !vb ? va : !va && vb ? -vb : 0;
+              ymask[c] = m; any = any || m !== 0;
+            }
+          }
+        }
+        [ya, yb] = [yb, ya];
+        if (any) merge(ymask, W, ZN, (i, j, w, h, c) => {
+          const z0 = j + kLo, z1 = z0 + h, x0 = X0 + i, x1 = x0 + w;
+          if (c > 0) emit(2, c, [x0, s, z0], [x1, s, z0], [x1, s, z1], [x0, s, z1]);
+          else emit(3, -c, [x0, s, z0], [x1, s, z0], [x1, s, z1], [x0, s, z1]);
         });
       }
-    }
-    // y faces: mask over (x, z). Rows s - 1 and s of every z are kept (ya, yb) and swapped, so each row is read once
-    mask = new Int16Array(NX * ZN);
-    let ya = new Uint8Array(NX * ZN), yb = new Uint8Array(NX * ZN);
-    // a brick's stretch of row s is read where a face may lie on either side of it (sk: none between rows
-    // s - 1 and s, sn: none between s and s + 1), and the mask computed where sk allows; what isn't read isn't used
-    const KL = kLo >> 4, KN = (kHi >> 4) - KL + 1, sk = new Uint8Array(BX * KN), sn = new Uint8Array(BX * KN);
-    const skips = (s, out) => {
-      const Ja = s > 0 ? (s - 1) >> 4 : -1, Jb = s < NY ? s >> 4 : -1; // a row past the grid is air, even inside a brick
-      for (let K = 0; K < KN; K++) for (let I = 0; I < BX; I++) out[K * BX + I] = s > NY || none(clsAt(I, Ja, K + KL), clsAt(I, Jb, K + KL)) ? 1 : 0;
     };
-    for (let s = 0; s <= NY; s++) {
-      if ((s & 31) === 0) { ME.progress("meshing y sides " + s, 0.44 + 0.04 * (s / NY)); await ME.tick(); }
-      let any = false;
-      skips(s, sk); skips(s + 1, sn);
-      if (s < NY) for (let z = 0; z < ZN; z++) {
-        const q = (((z + kLo) >> 4) - KL) * BX;
-        for (let I = 0; I < BX; ) {
-          if (sk[q + I] && sn[q + I]) { I++; continue; }
-          let I1 = I + 1;
-          while (I1 < BX && !(sk[q + I1] && sn[q + I1])) I1++;
-          grid.row(s, z + kLo, I * 16, Math.min(NX, I1 * 16), yb, z * NX + I * 16);
-          I = I1;
-        }
-      } else yb.fill(0);
-      for (let z = 0; z < ZN; z++) {
-        const q = (((z + kLo) >> 4) - KL) * BX;
-        for (let I = 0; I < BX; I++) {
-          if (sk[q + I]) continue;
-          for (let c = z * NX + I * 16, c1 = z * NX + Math.min(NX, I * 16 + 16); c < c1; c++) {
-            const va = ya[c], vb = yb[c];
-            const m = va && !vb ? va : !va && vb ? -vb : 0;
-            mask[c] = m; any = any || m !== 0;
-          }
-        }
-      }
-      [ya, yb] = [yb, ya];
-      if (any) merge(mask, NX, ZN, (i, j, w, h, c) => {
-        const z0 = j + kLo, z1 = z0 + h;
-        if (c > 0) emit(2, c, [i, s, z0], [i + w, s, z0], [i + w, s, z1], [i, s, z1]);
-        else emit(3, -c, [i, s, z0], [i + w, s, z0], [i + w, s, z1], [i, s, z1]);
-      });
+
+    const starts = [], bms = []; // bms: each box's meshing time (a whole map's includes its yields to the page)
+    for (let r = 0; r < boxes.length; r++) {
+      if (rt > 0) { ME.progress("meshing region " + (r + 1) + "/" + boxes.length, 0.36 + 0.12 * (r / boxes.length)); await ME.tick(); }
+      starts.push(nq);
+      const tb = ME.now();
+      await meshBox(boxes[r][0], boxes[r][1], boxes[r][2], boxes[r][3], !(rt > 0));
+      bms.push(+(ME.now() - tb).toFixed(1));
     }
+    starts.push(nq);
 
     // Per-snap visible quads, sorted front to back by rotated depth (X'+Y'+Z).
     ME.progress("sorting quads per snap", 0.49); await ME.tick();
     const snaps = [], lists = [];
     let total = 0;
+    if (!(rt > 0)) {
+      for (let k = 0; k < 4; k++) {
+        const th = (k * Math.PI) / 2, c = Math.round(Math.cos(th)), s = Math.round(Math.sin(th));
+        const vis = [c + s > 0, c + s < 0, c - s > 0, c - s < 0, true];
+        const ids = [];
+        for (let q = 0; q < nq; q++) if (vis[DIR[q]]) ids.push(q);
+        const key = new Float32Array(nq);
+        for (const q of ids) key[q] = (c + s) * CEN[q * 3] + (c - s) * CEN[q * 3 + 1] + CEN[q * 3 + 2];
+        const arr = Uint32Array.from(ids).sort((a, b) => key[b] - key[a]);
+        lists.push(arr); total += arr.length;
+      }
+      const IDX = new Uint32Array(total * 6);
+      let o = 0;
+      for (let k = 0; k < 4; k++) {
+        snaps.push({ first: o, count: lists[k].length * 6 });
+        for (const q of lists[k]) { const b = q * 4; IDX[o++] = b; IDX[o++] = b + 1; IDX[o++] = b + 2; IDX[o++] = b; IDX[o++] = b + 2; IDX[o++] = b + 3; }
+      }
+      return { verts: V.subarray(0, nq * 16), index: IDX, snaps, quads: nq, meshMs: bms[0], ms: Math.round(ME.now() - t0) };
+    }
+
+    // By regions: each region with quads, its box (x0, y0, z0, x1, y1, z1 in voxels, from its vertices)
+    const regions = [];
+    for (let r = 0; r < boxes.length; r++) {
+      const q0 = starts[r], q1 = starts[r + 1];
+      if (q1 === q0) continue;
+      const b = [65535, 65535, 65535, 0, 0, 0];
+      for (let o = q0 * 16; o < q1 * 16; o += 4) for (let a = 0; a < 3; a++) { const v = V[o + a]; if (v < b[a]) b[a] = v; if (v > b[a + 3]) b[a + 3] = v; }
+      regions.push({ rect: boxes[r], box: b, q0, quads: q1 - q0, ms: bms[r] });
+    }
+    // A snap: the regions front to back by their box's centre, and in each one its visible quads front to back. A
+    // part's vertices must fit a 16-bit index, so a region of more than CH quads is drawn in parts of CH, each sorted
+    const CH = 16384;
     for (let k = 0; k < 4; k++) {
       const th = (k * Math.PI) / 2, c = Math.round(Math.cos(th)), s = Math.round(Math.sin(th));
       const vis = [c + s > 0, c + s < 0, c - s > 0, c - s < 0, true];
-      const ids = [];
-      for (let q = 0; q < nq; q++) if (vis[DIR[q]]) ids.push(q);
       const key = new Float32Array(nq);
-      for (const q of ids) key[q] = (c + s) * CEN[q * 3] + (c - s) * CEN[q * 3 + 1] + CEN[q * 3 + 2];
-      const arr = Uint32Array.from(ids).sort((a, b) => key[b] - key[a]);
-      lists.push(arr); total += arr.length;
+      for (let q = 0; q < nq; q++) key[q] = (c + s) * CEN[q * 3] + (c - s) * CEN[q * 3 + 1] + CEN[q * 3 + 2];
+      const rk = regions.map(({ box: b }) => ((c + s) * (b[0] + b[3]) + (c - s) * (b[1] + b[4]) + b[2] + b[5]) / 2);
+      const order = regions.map((R, n) => n).sort((a, b) => rk[b] - rk[a]), list = [];
+      for (const n of order) {
+        const R = regions[n], qe = R.q0 + R.quads;
+        for (let c0 = R.q0; c0 < qe; c0 += CH) {
+          const ids = [];
+          for (let q = c0, c1 = Math.min(qe, c0 + CH); q < c1; q++) if (vis[DIR[q]]) ids.push(q);
+          if (!ids.length) continue;
+          list.push([n, c0, Uint32Array.from(ids).sort((a, b) => key[b] - key[a])]); total += ids.length;
+        }
+      }
+      lists.push(list);
     }
-    const IDX = new Uint32Array(total * 6);
+    const IDX = new Uint16Array(total * 6);
     let o = 0;
     for (let k = 0; k < 4; k++) {
-      snaps.push({ first: o, count: lists[k].length * 6 });
-      for (const q of lists[k]) { const b = q * 4; IDX[o++] = b; IDX[o++] = b + 1; IDX[o++] = b + 2; IDX[o++] = b; IDX[o++] = b + 2; IDX[o++] = b + 3; }
+      const parts = new Uint32Array(lists[k].length * 4), first = o;
+      lists[k].forEach(([n, c0, arr], p) => {
+        const f = o;
+        for (const q of arr) { const b = (q - c0) * 4; IDX[o++] = b; IDX[o++] = b + 1; IDX[o++] = b + 2; IDX[o++] = b; IDX[o++] = b + 2; IDX[o++] = b + 3; }
+        parts[p * 4] = n; parts[p * 4 + 1] = c0 * 4; parts[p * 4 + 2] = f; parts[p * 4 + 3] = o - f;
+      });
+      snaps.push({ first, count: o - first, parts });
     }
-    return { verts: V.subarray(0, nq * 16), index: IDX, snaps, quads: nq, ms: Math.round(ME.now() - t0) };
+    return { verts: V.subarray(0, nq * 16), index: IDX, snaps, quads: nq, regions, rt, meshMs: +bms.reduce((s, x) => s + x, 0).toFixed(1), ms: Math.round(ME.now() - t0) };
   };
 })();
 
@@ -7489,7 +7673,7 @@ window.addEventListener("error", (e) => {
     // bake stamps), BAKE_REV.terrain and the density. extra: anything else the terrain bake reads. Read with get()
     terrainKey(st, extra = "", o = {}) {
       const { slot, own, lists } = inputOf(st, extra, o);
-      return `${slot}T${ME.BAKE_REV.terrain}:vs${ME.VS}:${keyHash(assetSrc(own) + own + lists)}`;
+      return `${slot}T${ME.BAKE_REV.terrain}:vs${ME.VS}${ME.regionsOn && ME.regionsOn() ? ":rg" : ""}:${keyHash(assetSrc(own) + own + lists)}`;
     },
     // the terrain record, stored at the flush: its plain parts copied now (snap), its big arrays as they are then,
     // so the caller copies any it changes before (the model bake splats into T.coarse; R.init drops T.mips)
@@ -11144,6 +11328,7 @@ fn boxOf(V: Vox) -> Box {
     writeUniforms(cam, time, dt) {
       const u = this.u, O = ME.UOFF, S = this.S, T = S.T, st = S.st, s = this.set, [w, h] = this.size;
       const M = cam.matrices(this.out[0], this.out[1]);
+      if (S.mesh.regions) this.cullRegions(M.vp, T);
       u.set(M.vp, O.vp); u.set(M.ivp, O.ivp);
       u.set(M.vdir, O.vdir); u[O.vdir + M.vdir.length] = time;
       const L = this.sunDir(this.sunL || (this.sunL = [0, 0, 0])), LL = this.lastL;
@@ -11212,6 +11397,33 @@ fn boxOf(V: Vox) -> Box {
       u.set(this.key, O.key); u.set(this.key2, O.key2); u.set(this.sky, O.sky); u.set(this.sky2, O.sky2);
       u.set(this.user, O.user);
       this.dev.queue.writeBuffer(this.ubuf, 0, u);
+    }
+
+    // A mesh by regions (greedy.js): regionOut[n] is 1 while region n's box is off screen. The view is orthographic,
+    // so a box is off when its centre's clip x or y is past +-1 by more than its half extent there (2% slack)
+    cullRegions(vp, T) {
+      const R = this.S.mesh.regions, iv = 1 / T.VS;
+      let out = this.regionOut, drawn = 0;
+      if (!out || out.length !== R.length) out = this.regionOut = new Uint8Array(R.length);
+      for (let n = 0; n < R.length; n++) {
+        const b = R[n].box, cx = (b[0] + b[3]) * 0.5 * iv + T.O[0], cy = (b[1] + b[4]) * 0.5 * iv + T.O[1], cz = (b[2] + b[5]) * 0.5 * iv + T.O[2];
+        const hx = (b[3] - b[0]) * 0.5 * iv, hy = (b[4] - b[1]) * 0.5 * iv, hz = (b[5] - b[2]) * 0.5 * iv;
+        let off = 0;
+        for (let a = 0; a < 2 && !off; a++) {
+          const c = vp[a] * cx + vp[4 + a] * cy + vp[8 + a] * cz + vp[12 + a], e = Math.abs(vp[a]) * hx + Math.abs(vp[4 + a]) * hy + Math.abs(vp[8 + a]) * hz;
+          off = c - e > 1.02 || c + e < -1.02 ? 1 : 0;
+        }
+        out[n] = off; drawn += 1 - off;
+      }
+      this.regionDrawn = drawn;
+    }
+
+    // the terrain's index range for snap k: one draw, or by regions each part whose region is on screen
+    drawSnap(r, k) {
+      const sn = this.S.mesh.snaps[k];
+      if (!sn.parts) { r.drawIndexed(sn.count, 1, sn.first, 0, 0); return; }
+      const p = sn.parts, out = this.regionOut;
+      for (let n = 0; n < p.length; n += 4) if (!out[p[n]]) r.drawIndexed(p[n + 3], 1, p[n + 2], p[n + 1], 0);
     }
 
     ts(name, begin = true, end = true) {
@@ -11322,10 +11534,9 @@ fn boxOf(V: Vox) -> Box {
       if (this.patchDirty) this.carvePatch();
       const CD = this.carveDraw; // terrain voxels carved by the app: the variant that skips them, and their patch
       if (CD) { r.setPipeline(CD.pl); r.setBindGroup(0, CD.g0); r.setBindGroup(1, CD.g1); } else { r.setPipeline(P.terrain); r.setBindGroup(0, g0.terrain); r.setBindGroup(1, g1.terrain); }
-      r.setVertexBuffer(0, this.tVB); r.setIndexBuffer(this.tIB, "uint32");
+      r.setVertexBuffer(0, this.tVB); r.setIndexBuffer(this.tIB, S.mesh.index.BYTES_PER_ELEMENT === 2 ? "uint16" : "uint32");
       const k0 = cam.turning ? cam.snapIndex(cam.from) : cam.snapIndex(), k1 = cam.turning ? cam.snapIndex(cam.to) : k0;
-      let sr = S.mesh.snaps[k0]; r.drawIndexed(sr.count, 1, sr.first, 0, 0);
-      if (k1 !== k0) { sr = S.mesh.snaps[k1]; r.drawIndexed(sr.count, 1, sr.first, 0, 0); }
+      this.drawSnap(r, k0); if (k1 !== k0) this.drawSnap(r, k1);
       if (CD && CD.n) { r.setVertexBuffer(0, CD.vb); r.setIndexBuffer(CD.ib, "uint32"); r.drawIndexed(CD.n); }
       if (s.grass && S.grass.count) { r.setPipeline(P.grass); r.setBindGroup(0, g0.grass); r.setBindGroup(1, g1.grass); r.draw(42, S.grass.count); }
       r.setPipeline(P.volume); r.setBindGroup(0, g0.volume); r.setBindGroup(1, g1.volume); r.draw(36, nInst);
@@ -21411,6 +21622,97 @@ function MG_SFX(L) {
 })();
 
 </script>
+<script>/* src/art/themes.js */
+/* The themes (DC.themes): the whole look of a game in one object, picked in the view panel (🎥, Theme) and
+   kept like the piece sets. A theme names its board (DC.boards) and its lighting rig (view/lighting.js
+   DG.LIGHTS), and over the board's style it sets the sky, the fog, the squares' and the rim's woods (the
+   board's ramps), the team colours (the pieces' rims, the territory, the selected square) and a tint on
+   every piece set's colours; the pieces' shapes stay with the set picker. No weather: the sky panel's own.
+     Lithograph (the default): the board as Art drew it, the Tournament light.
+     Minimalist's dream: pale matte squares in a pale room, a soft even light, no shadow to speak of.
+     Ultra cosy: honey maple and walnut in a cherry rim, a dark warm room, pools of lamplight drifting.
+     Cyberpunk: dark steel squares under a violet night with its stars, the room dark, the game's lines and
+     the pieces' rims lit in neon cyan and magenta.
+       DC.themes.list            [{ id, name, board, light, stars, team, fog?, ramps?, pieces? }]: the first is
+                                 the default. team: white's and black's colours (0..1); fog: 0..255; ramps:
+                                 the style's ramps it replaces (a spec or a list of hex); pieces: each side's
+                                 tint { to: "#hex", k }, toward the hex at the piece's own lightness
+       DC.themes.get(id)         the theme, else the default
+       DC.themes.paint(st, t)    the theme's ramps and fog on the style (the board's own first, so themes
+                                 swap); after the bake (it keeps material names, not colours), before
+                                 pal.build(), or then R.refreshPalette(pal) */
+(function () {
+  const C = (window.DC = window.DC || {});
+  const LIST = [
+    { id: "litho", name: "Lithograph", board: "litho", light: "hall", stars: false, team: [[1, 0.9, 0.65], [0.6, 0.45, 1]] },
+    {
+      id: "dream", name: "Minimalist's dream", board: "space", light: "soft", stars: false,
+      team: [[0.86, 0.7, 0.45], [0.36, 0.47, 0.68]], fog: [228, 230, 234],
+      ramps: {
+        dcMaple: ["#f2efe9", 8, 0.64, 0.97, 0.02, 0.5], dcMaple2: ["#ebe7df", 8, 0.6, 0.95, 0.02, 0.5],
+        dcWalnut: ["#b9bdc4", 8, 0.42, 0.8, 0.02, 0.4], dcWalnut2: ["#afb3bb", 8, 0.38, 0.76, 0.02, 0.4],
+        dcRim: ["#e6e3dc", 8, 0.52, 0.93, 0.02, 0.3], dcRimDk: ["#d6d3cc", 8, 0.46, 0.88, 0.02, 0.3],
+        dcFelt: ["#c9c4bb", 6, 0.42, 0.8, 0.02, 0.3],
+        sky: ["#dcdfe3", "#dfe2e6", "#e3e5e8", "#e6e8eb", "#e9ebee", "#eceef0", "#eff0f2", "#f2f3f5"],
+      },
+      pieces: [{ to: "#faf8f3", k: 0.5 }, { to: "#2c2f35", k: 0.5 }],
+    },
+    {
+      id: "cosy", name: "Ultra cosy", board: "space", light: "lamp", stars: false,
+      team: [[1, 0.78, 0.48], [0.52, 0.8, 0.6]], fog: [44, 28, 22],
+      ramps: {
+        dcMaple: ["#e2b67c", 8, 0.3, 0.86, 0.16], dcMaple2: ["#d8a76b", 8, 0.28, 0.82, 0.16],
+        dcWalnut: ["#7c4629", 8, 0.12, 0.52, 0.15], dcWalnut2: ["#6d3c23", 8, 0.1, 0.48, 0.15],
+        dcRim: ["#7e3024", 8, 0.08, 0.46, 0.12], dcRimDk: ["#5c2119", 8, 0.06, 0.36, 0.12],
+        dcFelt: ["#2c5a34", 6, 0.1, 0.42, 0.1],
+        sky: ["#1a1016", "#21141b", "#29181f", "#321c23", "#3c2126", "#472628", "#532c2a", "#5f332c"],
+      },
+      pieces: [{ to: "#f6e2bd", k: 0.35 }, { to: "#3c2216", k: 0.4 }],
+    },
+    {
+      id: "cyber", name: "Cyberpunk", board: "space", light: "glow", stars: true,
+      team: [[0.2, 0.95, 1], [1, 0.25, 0.75]], fog: [14, 8, 26],
+      ramps: {
+        dcMaple: ["#34467a", 8, 0.1, 0.46, 0.08], dcMaple2: ["#2e3f70", 8, 0.09, 0.42, 0.08],
+        dcWalnut: ["#1b1532", 8, 0.03, 0.2, 0.08], dcWalnut2: ["#17112b", 8, 0.03, 0.18, 0.08],
+        dcRim: ["#100d1c", 8, 0.02, 0.15, 0.08], dcRimDk: ["#0b0914", 8, 0.02, 0.11, 0.08],
+        dcFelt: ["#ff2fa8", 6, 0.15, 0.55, 0.05],
+        sky: ["#05030a", "#06040c", "#07040e", "#080510", "#090612", "#0a0614", "#0b0716", "#0c0818"],
+      },
+      pieces: [{ to: "#9ff6ff", k: 0.35 }, { to: "#8a1f6e", k: 0.45 }],
+    },
+  ];
+  // each side's piece ramps: the Staunton set's ivory and ebony, the themed sets' roles (art/sets.js names)
+  const SIDE = [(n) => n === "dcIvory" || /^ds[A-Z]\w*W$/.test(n), (n) => n === "dcEbony" || /^ds[A-Z]\w*B$/.test(n)];
+  const BASE = new WeakMap(); // each style's own ramps and fog, before any theme
+  const lum = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  // a ramp toward a colour, step by step at the step's own lightness: its hue and chroma move, its shading stays
+  const tint = (spec, to, k) => {
+    const PX = window.PX, c = PX.hex(to), lc = Math.max(1, lum(c));
+    return PX.makeRamp(spec).map((v) => {
+      const s = lum(v) / lc;
+      return PX.toHex(v.map((x, i) => Math.round(Math.min(255, x + (Math.min(255, c[i] * s) - x) * k))));
+    });
+  };
+
+  C.themes = {
+    list: LIST,
+    get: (id) => LIST.find((t) => t.id === id) || LIST[0],
+    paint(st, t) {
+      if (!BASE.has(st)) BASE.set(st, { ramps: Object.assign({}, st.ramps), fog: st.hd.fog });
+      const base = BASE.get(st);
+      Object.assign(st.ramps, base.ramps, t.ramps || {});
+      st.hd.fog = t.fog || base.fog;
+      if (!t.pieces) return;
+      for (const n in base.ramps) {
+        if (st.mats[n] && st.mats[n].em) continue; // the sets' glows keep their colours
+        for (const c of [0, 1]) if (SIDE[c](n) && t.pieces[c]) st.ramps[n] = tint(base.ramps[n], t.pieces[c].to, t.pieces[c].k);
+      }
+    },
+  };
+})();
+
+</script>
 <script>/* src/view/camera.js */
 /* The board's camera: the engine's ME.Camera (pan, pinch and wheel zoom, ray, toScreen, focus) turned into an
    orbit round the board. It starts in Mossheart's iso view (the engine's diagonal, at the iso angle) and
@@ -22026,6 +22328,8 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
      day      full day: the canopy's shade off, a high sun, a bright fill, little haze
      hall     an indoor tournament: light from overhead, even and soft, almost no shadow, no sunbeams
      glow     the room dark, the pieces' rims and the board's lines lit: the light comes from the game
+     soft     a pale room: light from everywhere, no shadow to speak of, no haze (Minimalist's dream)
+     lamp     a dark warm room: the canopy's beams as pools of lamplight, a low sun, a soft bloom (Ultra cosy)
    new DG.Lighting(R); lights.set(mode); lights.apply(rdt) after the mood each frame (it eases the R.set
    values toward the mode's over ~0.6 s, and switches the sun and the canopy halfway); lights.glow is the gain
    on the pieces' and the board's glow (1, 3 in glow), for Renderer.user[0].x (view/shaders.js) */
@@ -22038,6 +22342,8 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
     day: { name: "Day", canopy: false, sunEl: 25, sunAz: 0, amb: 0.32, shade: 0.3, pool: 0.3, exposure: 1.12, shaftK: 0.05, haze: 0.03, vignette: 0.3, bloomK: 0.9 },
     hall: { name: "Tournament", canopy: false, shafts: false, sunEl: 50, sunAz: 0, shade: 0.18, pool: 0.2, amb: 0.38, shaftK: 0, haze: 0.02, vignette: 0.25, exposure: 1.05, bloomK: 0.8 },
     glow: { name: "Glow", shafts: false, shade: 0.8, amb: 0.05, pool: 0.1, exposure: 0.7, shaftK: 0, bloomK: 2.2, vignette: 0.75, glow: 3 },
+    soft: { name: "Soft", canopy: false, shafts: false, sunEl: 55, sunAz: 0, shade: 0.1, pool: 0.15, amb: 0.44, shaftK: 0, haze: 0, vignette: 0.12, exposure: 1, bloomK: 0.5 },
+    lamp: { name: "Lamp", canopy: true, shafts: true, sunEl: 10, sunAz: 30, shade: 0.5, pool: 0.65, amb: 0.18, shaftK: 0.25, haze: 0.07, vignette: 0.62, exposure: 1, bloomK: 1.3 },
   };
   const SWITCH = ["canopy", "shafts", "sunEl", "sunAz"], SKIP = new Set(["name", "glow", ...SWITCH]);
   const EASE = 5; // 1/s
@@ -22371,14 +22677,16 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
 <script>/* src/view/hud.js */
 /* The HUD (index.html's #ui): the top bar (where, whose turn, check), the move list, the bottom buttons, the
    promotion picker and the end of the game. One board and no menu: the game opens straight onto the board.
-   The settings come from the URL (?side=w|b ?level=0..2 ?promo=queen|choose ?light=current|day|hall|glow
-   ?cam=guided|free|locked|dynamic), else from the last game
+   The settings come from the URL (?side=w|b ?level=0..2 ?promo=queen|choose ?light=current|day|hall|glow|..
+   (DG.LIGHTS) ?cam=guided|free|locked|dynamic ?theme=litho|dream|..), else from the last game
    (localStorage, when the browser keeps it), else the defaults (white, Normal, always a queen, the Tournament
-   lighting, the Tessellate set on both sides when it is there, else the Staunton set against a random one).
-     new DG.Hud({ where, undo(), newGame() })
-     hud.settings                      { side (0 white, 1 black), level, promo, lighting, camera, set, oppSet, weather }
-     hud.keep(key, value)              a setting changed (the view panel: lighting, camera; the deck screen's
-                                       set picker: set, oppSet; the sky panel: weather), remembered
+   lighting, the first theme, the Tessellate set on both sides when it is there, else the Staunton set against
+   a random one).
+     new DG.Hud({ where, sets, themes, undo(), newGame() })   sets, themes: the ids a side or the game can pick
+     hud.settings                      { side (0 white, 1 black), level, promo, lighting, camera, theme, set, oppSet, weather }
+     hud.keep(key, value)              a setting changed (the view panel: lighting, camera, theme; the deck
+                                       screen's set picker: set, oppSet; the sky panel: weather), remembered
+     hud.where(text)                   the top bar's name of the board (the theme's)
      hud.show({ game, status, thinking, you, canUndo })   the top bar, the move list and the buttons
      hud.askPromo(color) -> Promise<type (QUEEN..KNIGHT), or 0 when dismissed>
      hud.showEnd(status, you), hud.hideEnd()
@@ -22409,7 +22717,9 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
         level: level != null && LEVELS[+level] ? +level : pick(kept.level, (v) => !!LEVELS[v], 1),
         promo: promo === "choose" || promo === "queen" ? promo : pick(kept.promo, (v) => v === "queen" || v === "choose", "queen"),
         // the lighting is kept as "lighting" (Tournament, hall, the new default, shows once over an old "light")
-        lighting: (() => { const v = q.get("light"), L = ["current", "day", "hall", "glow"]; return L.includes(v) ? v : pick(kept.lighting, (x) => L.includes(x), "hall"); })(),
+        lighting: (() => { const v = q.get("light"), L = Object.keys(G.LIGHTS); return L.includes(v) ? v : pick(kept.lighting, (x) => L.includes(x), "hall"); })(),
+        // the theme (DC.themes ids, main.js hands them in; the first is the default)
+        theme: (() => { const v = q.get("theme"), L = o.themes || ["litho"]; return L.includes(v) ? v : pick(kept.theme, (x) => L.includes(x), L[0]); })(),
         // each side's piece set (DC.sets ids, or the Staunton "classic"); the opponent's may be "random"
         set: pick(kept.set, (x) => sets.includes(x), tess ? "tess" : "classic"),
         oppSet: pick(kept.oppSet, (x) => x === "random" || sets.includes(x), tess ? "tess" : "random"),
@@ -22419,7 +22729,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
         weather: pick(kept.weather, (x) => typeof x === "string", ""),
       };
       save(this.settings);
-      $("where").textContent = o.where || "";
+      this.where(o.where);
       $("b-undo").onclick = () => o.undo();
       $("b-new").onclick = () => o.newGame();
       $("e-look").onclick = () => this.hideEnd();
@@ -22428,6 +22738,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
       $("promo").onclick = (e) => { if (e.target === $("promo")) this.answerPromo(0); };
     }
     keep(key, v) { this.settings[key] = v; save(this.settings); }
+    where(text) { $("where").textContent = text || ""; }
     get level() { return LEVELS[this.settings.level]; }
     show({ game, status, thinking, you, canUndo }) {
       const t = $("turn"), side = SIDES[game.turn];
@@ -22757,7 +23068,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.27.0", name: "DeckChess", commit: "b602d08" };
+  G.VERSION = { v: "0.28.0", name: "DeckChess", commit: "592781a" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -22783,13 +23094,15 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
    player builds their deck, sees the AI's (core/deck.js pick, by the level and the seed) and plays. New game opens
    it again. A traited piece shows its traits and its set on a hover or a long press (#tcard), and the lens (✦, T)
    labels them all.
-   The view panel (🎥): the lighting (view/lighting.js), the camera's mode and its quick views (view/camera.js); the camera
-   row over the buttons: guided's quarter turns, its preset (your side, top, low) and guided / free.
-   URL options: ?side=w|b, ?level=0..2, ?promo=queen|choose, ?light=current|day|hall|glow (hall, Tournament,
-   by default), ?cam=guided|free|locked|dynamic (view/hud.js), ?calm=1 (guided without its moves, as under reduced motion),
+   The view panel (🎥): the theme (art/themes.js: the board, its colours, the light and the stars), the
+   lighting (view/lighting.js), the camera's mode and its quick views (view/camera.js); the camera row over the
+   buttons: guided's quarter turns, its preset (your side, top, low) and guided / free.
+   URL options: ?side=w|b, ?level=0..2, ?promo=queen|choose, ?theme=litho|dream|cosy|cyber (Lithograph by
+   default; its light unless ?light= says), ?light=current|day|hall|glow|soft|lamp (hall, Tournament, by
+   default), ?cam=guided|free|locked|dynamic (view/hud.js), ?calm=1 (guided without its moves, as under reduced motion),
    ?mood= ?weather= (Mossheart's; the weather is a clear sky unless ?weather= or the sky panel's pick says),
-   ?set=tess|classic|grove|brass|reef (both sides' piece set; Tessellate by default), ?board=litho|space,
-   ?sets=all|grove,reef,.. (more sets baked: art/sets.js),
+   ?set=tess|classic|grove|brass|reef (both sides' piece set; Tessellate by default), ?board=litho|space (that
+   board as it is, over the theme's), ?sets=all|grove,reef,.. (more sets baked: art/sets.js),
    ?seed=N (the AI's; 1 under ?selftest and ?match, else random), ?depth=N (the AI's, over the level's),
    ?dpr=1, ?scale=0.8, ?nocache=1, ?vs=N (terrain), ?hero=N (pieces), ?small=1 (a phone's caps), ?preset=,
    ?elev=20..85 (free's pitch in degrees, Mossheart's iso angle by default: view/camera.js), ?mute=1,
@@ -22822,9 +23135,18 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
     // the piece sets a side can play: the Staunton set, then the themed ones (art/sets.js)
     const SETS = ["classic"].concat(C.sets.LIST.map((s) => s.id));
     let ctl = null;
-    // the board: the first in DC.boards.list unless ?board= names another
-    const board0 = C.boards.list.find((b) => b.id === ME.q("board", "")) || C.boards.list[0], boardId = board0.id;
-    const hud = new G.Hud({ where: board0.name, sets: SETS,undo: () => ctl.undo(), newGame: () => ctl.build() });
+    const hud = new G.Hud({ sets: SETS, themes: C.themes.list.map((t) => t.id), undo: () => ctl.undo(), newGame: () => ctl.build() });
+    // the theme (art/themes.js): the view panel's pick (hud.settings.theme, ?theme=), the first under ?selftest
+    // and ?match unless ?theme= says. It names the board, unless ?board= names another: that board as it is
+    let theme = C.themes.get(ME.q("theme", "") || (selftest || match ? "" : hud.settings.theme));
+    const boardQ = C.boards.list.find((b) => b.id === ME.q("board", ""));
+    if (boardQ && boardQ.id !== theme.board) theme = { id: "", name: boardQ.name, board: boardQ.id, light: "hall", stars: boardQ.stars };
+    const board0 = C.boards.list.find((b) => b.id === theme.board) || C.boards.list[0], boardId = board0.id;
+    hud.where(theme.name);
+    // the lighting: the theme's when the URL names the theme (and not the light), else the kept one (a theme
+    // picked sets it, the Light row may change it after)
+    const light0 = ME.q("theme", "") && !ME.q("light", "") ? theme.light : hud.settings.lighting;
+    let starsOn = !!theme.stars;
 
     ME.progress("starting WebGPU", 0.01);
     ME.onDeviceLost = () => { const l = document.getElementById("lost"); if (l) l.style.display = "grid"; };
@@ -22878,6 +23200,8 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
     const themed = C.sets.bind(MB, setIds), staunton = C.pieces.bind(MB), parts = C.pieces.bindParts(MB);
     const setOf = (id) => (id !== "classic" && themed[id]) || staunton;
     let models = [setOf(sideSets()[0])[0], setOf(sideSets()[1])[1]];
+    // the theme's colours on the style (the bakes keep material names, so one bake serves every theme on a board)
+    C.themes.paint(st, theme);
     const tables = pal.build();
     if (pal.missing.size) ME.log("WARN materials without ramps:", [...pal.missing].join(","));
     ME.progress("uploading", 0.85); await ME.tick();
@@ -22943,14 +23267,16 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
     };
     // the board's lighting over the mood (view/lighting.js), its gain on the glow into Renderer.user[0].x
     const lights = new G.Lighting(R);
-    lights.set(hud.settings.lighting);
+    lights.set(light0);
 
     // ------------------------------------------------------------------ board, pieces, the game
     const board = new G.BoardView({ st, T, R }, region), pieces = new G.PiecesView(board, models, parts);
     sim.layers.push(pieces);
     const stars = new G.Stars(7);
+    // the team colours (the pieces' rims, the territory, the selected square: view/shaders.js), the theme's
     const TEAM = [[1, 0.9, 0.65], [0.6, 0.45, 1]];
-    for (const c of [0, 1]) R.user.set([...TEAM[c], 1], (4 + c) * 4);
+    const teamOf = (t) => { for (const c of [0, 1]) R.user.set([...(t.team || TEAM)[c], 1], (4 + c) * 4); };
+    teamOf(theme);
     const seed0 = ME.params.has("seed") || selftest || match ? ME.qn("seed", 1) >>> 0 : (Date.now() ^ (Math.random() * 1e9)) >>> 0;
     const kingSq = (game, c) => { const k = game.king[c]; return (k >> 4) * 8 + (k & 7); };
     // the traits' bits that mark board tiles (G.TRAITS index; -1 not in the rules yet)
@@ -23253,7 +23579,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
     const side0 = hud.settings.side;
     const wQ = side0 ? aiQ : deckQ, bQ = side0 ? deckQ : aiQ;
     ctl.newGame(hud.settings, deckQ || aiQ ? G.Deck.fen(wQ, bQ) : undefined, [wQ, bQ]);
-    ME.log("READY", { bakeMs, bakeOnlyMs, sets: setIds, board: boardId, materials: pal.names.length - 1, models: MB.models.length, seed: seed0 });
+    ME.log("READY", { bakeMs, bakeOnlyMs, sets: setIds, board: boardId, theme: theme.id, light: light0, materials: pal.names.length - 1, models: MB.models.length, seed: seed0 });
     frameView(true);
     cam.attach(canvas);
     window.addEventListener("resize", () => { fitCanvas(); frameView(false); });
@@ -23284,6 +23610,26 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
       else cam.view(v === "follow" ? "reset" : v);
     };
     const setLight = (m) => { mark($("lightseg"), "l", lights.set(m)); hud.keep("lighting", lights.mode); };
+    // a theme picked: on this board, its colours, light and stars at once (the palette rebuilt and uploaded); on
+    // another, kept with its light and the page loaded again on that board (the URL's own board, theme and light
+    // dropped)
+    const repaint = (t) => { C.themes.paint(st, t); R.refreshPalette(pal); teamOf(t); };
+    const setTheme = (id) => {
+      const t = C.themes.get(id);
+      hud.keep("theme", t.id);
+      if (t.board !== boardId) {
+        hud.keep("lighting", t.light);
+        const u = new URL(location.href);
+        for (const k of ["board", "theme", "light"]) u.searchParams.delete(k);
+        location.replace(u.href);
+        return false;
+      }
+      theme = t;
+      repaint(t);
+      setLight(t.light); starsOn = !!t.stars;
+      hud.where(t.name); mark($("themeseg"), "t", t.id);
+      return true;
+    };
     const setCam = (m) => {
       cam.setMode(m); mark($("camseg"), "c", cam.mode); hud.keep("camera", cam.mode);
       viewsRow.dataset.m = cam.mode; $("g-mode").textContent = cam.mode === "guided" ? "Free" : "Guided";
@@ -23298,6 +23644,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
       else if (k === "mode") setCam(cam.mode === "guided" ? "free" : "guided");
       showPreset();
     };
+    segOf($("themeseg"), Object.fromEntries(C.themes.list.map((t) => [t.id, t.name])), "t", setTheme);
     segOf($("lightseg"), Object.fromEntries(Object.entries(G.LIGHTS).map(([k, L]) => [k, L.name])), "l", setLight);
     segOf($("camseg"), CAMS, "c", setCam);
     segOf($("viewseg"), VIEWS, "v", quickView);
@@ -23307,7 +23654,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
     };
     $("viewbtn").onclick = () => showView();
     ME.Dismiss.add(viewBox, { outside: true, dir: "any", open: () => viewBox.classList.contains("show"), skip: (t) => !!t.closest("#viewbtn"), close: () => showView(false) });
-    setLight(hud.settings.lighting);
+    setLight(light0); mark($("themeseg"), "t", theme.id);
     setCam(hud.settings.camera);
     frameView(true); // the row now shows: the board fitted above it, at the mode's home
     document.getElementById("loading").style.display = "none";
@@ -23441,7 +23788,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
       mood(rdt);
       R.user[0] = lights.apply(rdt);
       const sp = R.sprites;
-      sp.begin(); if (board0.stars) starsDrawn = stars.write(R, cam, canvas.width, canvas.height, fx.clock, canvas.width / Math.max(1, canvas.clientWidth)); sp.end();
+      sp.begin(); if (starsOn) starsDrawn = stars.write(R, cam, canvas.width, canvas.height, fx.clock, canvas.width / Math.max(1, canvas.clientWidth)); sp.end();
       // the rumble: Mossheart's camera shake
       const sh = fx.trauma * fx.trauma * 0.22, tt = now / 1000, jx = sh * Math.sin(tt * 61.3) * Math.sin(tt * 17.1), jy = sh * Math.sin(tt * 53.7 + 1.3) * Math.sin(tt * 13.9);
       cam.pan[0] += jx; cam.pan[1] += jy;
@@ -23455,7 +23802,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
       if (ME.now() - perf.t > 2000) { perf.fps = perf.n / Math.max(1e-3, perf.acc); perf.acc = 0; perf.n = 0; perf.t = ME.now(); fpsEl.textContent = Math.round(perf.fps) + " fps · " + Math.round(R.set.scale * 100) + "%"; }
       return cpu;
     };
-    G.app = { gpu, st, map, region, T, MB, sim, R, cam, hud, board, pieces, get models() { return models; }, sets: themed, ctl, phys, atmos, audio, fx, stars, get game() { return ctl.game; } };
+    G.app = { gpu, st, map, region, T, MB, sim, R, cam, hud, board, pieces, get models() { return models; }, get theme() { return theme; }, setTheme, sets: themed, ctl, phys, atmos, audio, fx, stars, get game() { return ctl.game; } };
 
     if (selftest || match) {
       // selftest: the picking over the 64 squares at the opening view and at many angles, then a move by touch
@@ -23484,7 +23831,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
       // where the AI searched: its worker unless ?worker=0, with no failures (core/ai-worker.js); read once the
       // AI has played (the self-test's reply comes later)
       const aw = G.AIWorker, aiOk = () => aw.fails === 0 && (aw.off || aw.mode === "worker");
-      const out = { ok: false, board: boardId, density, adapter: gpu.info, canvas: [canvas.width, canvas.height], render: R.size, bakeMs, bakeOnlyMs, sets: setIds, cache: ME.bakeCache.statusText(), weather: atmos.weather, lighting: hud.settings.lighting, models: MB.stats, mg, ai: null };
+      const out = { ok: false, board: boardId, density, adapter: gpu.info, canvas: [canvas.width, canvas.height], render: R.size, bakeMs, bakeOnlyMs, sets: setIds, cache: ME.bakeCache.statusText(), weather: atmos.weather, theme: theme.id, lighting: lights.mode, models: MB.stats, mg, ai: null };
       if (match) {
         const st = g.status();
         out.match = { seed: seed0, over: st.over, result: st.result, reason: st.reason, plies: g.history.length, moves: g.sans.join(" "), fen: g.fen() };
@@ -23625,7 +23972,13 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
         }
         const LD = G.LIGHTS;
         const lightOk = lightT.glow.glow === 3 && lightT.day.glow === 1 && Math.abs(lightT.day.amb - LD.day.amb) < 1e-3 && Math.abs(lightT.hall.exposure - LD.hall.exposure) < 1e-3 && lightT.day.canopy === false && lightT.hall.sunEl === LD.hall.sunEl;
-        setLight("hall"); mood(0); lights.apply(0, true);
+        setLight(light0); mood(0); lights.apply(0, true);
+        // the themes: each one painted (its ramps all found) changes the palette, and the game's own paints it back
+        const ramps = () => { let h = 0; for (const v of R.S.tables.ramps) h = (Math.imul(h, 31) + v) >>> 0; return h; };
+        const thT = { home: ramps(), each: {} }, miss0 = pal.missing.size;
+        for (const t of C.themes.list) { repaint(t); thT.each[t.id] = { ramps: ramps(), missing: pal.missing.size - miss0 }; }
+        repaint(theme); thT.back = ramps();
+        const thE = Object.values(thT.each), themeOk = thT.back === thT.home && thE.every((e) => !e.missing) && new Set(thE.map((e) => e.ramps)).size === thE.length;
         nFrames += await frames(10);
         // the deck screen: New game opens it over both decks on the board; a tap on b1 picks the knight, Stride
         // and Ward on it (43 points), Vanguard on e2 and Ward on d2 fill the budget (45), Ward on c2 is refused;
@@ -23739,9 +24092,9 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
         for (const c of [0, 1]) for (let t = 1; t <= 6; t++) { const m = models[c][t]; sizes["wb"[c] + " PNBRQK"[t]] = { model: m.name, h: +m.h.toFixed(2), r: +m.r.toFixed(2), fit: +m.fit.toFixed(2), height: m.height }; }
         out.board = { id: boardId, region, z: +board.z.toFixed(3), zSpread: board.zSpread, pieces: sizes };
         ME.log("BOARD", JSON.stringify({ id: boardId, z: out.board.z, zSpread: board.zSpread, region }));
-        out.pick = pick; out.turned = turned; out.script = script; out.capture = cap; out.camera = camT; out.lighting = lightT; out.deck = dk; out.setMode = ss; out.strike = st; out.epStrike = ep; out.vanguard = van; out.parts = pk;
+        out.pick = pick; out.turned = turned; out.script = script; out.capture = cap; out.camera = camT; out.lighting = lightT; out.themes = thT; out.deck = dk; out.setMode = ss; out.strike = st; out.epStrike = ep; out.vanguard = van; out.parts = pk;
         out.sky = { stars: starsDrawn, atmos: atmos.state(), cues: fx.cues, audio: audio ? audio.stats() : null };
-        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2 && capOk && camOk && lightOk && deckOk && setOk && strikeOk && epOk && vanOk && partsOk && (!board0.stars || starsDrawn > 100) && !mg.length && aiOk();
+        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2 && capOk && camOk && lightOk && deckOk && setOk && strikeOk && epOk && vanOk && partsOk && (!starsOn || starsDrawn > 100) && themeOk && !mg.length && aiOk();
       }
       Object.assign(out, { ai: { mode: aw.mode, off: aw.off, fails: aw.fails, why: aw.why }, frames: nFrames, avgFrameIntervalMs: avg(ints.slice(5)), avgCpuMs: avg(cpus.slice(5)), gpuMs: R.gpuMs, errors: ME.errors });
       report(out);
