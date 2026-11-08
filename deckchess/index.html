@@ -13973,6 +13973,305 @@ fn boxOf(V: Vox) -> Box {
 })();
 
 </script>
+<script>/* ../MossheartEngine/content/lithograph.js */
+/* The lithograph palette: ink on paper, a few washes of moss, water and lamplight. It is shared by
+   Mossheart's fourth garden, the Ever Stair (content/everstair.js), and DeckChess's lithograph theme and
+   piece set (games/DeckChess loads this file by path, after critter-models.js). Art owns it; a game that
+   wants another colour asks Art rather than editing it, so both games stay in one palette.
+     ME.content.ramps / mats / materialClass   the lit* materials, reaching each style through
+                                               ME.content.addMaterials (critter-models.js)
+     ME.content.lithograph                     the same colours as plain data, for pages and UI:
+       colors    { name: hex }, the twelve inks
+       ramps     { material: [16 hexes] }, the cel bands as the palette samples them
+       roles     { role: [whiteHex, blackHex, opts] }, a light and a dark army in DeckChess's sets.js shape
+       board     { light, dark, line, frame } hexes for a board
+       cel(hex)  the band maker, for a game that needs one more tint of its own
+   Every ramp is an explicit list of 16 entries, four flat bands of four: the palette resamples a list to
+   16 steps (src/palette.js), so a shorter list would blend its bands into a gradient. The bands run deep
+   shade, shade, base, light; the base albedo is entry 9 (s0 0.6), inside the third band. Shades lean to
+   cool ink and lights to warm paper, the way a print's hatching does. Names never mention any artist:
+   the designs are the lab's own. */
+(function () {
+  const ME = window.ME, CT = (ME.content = ME.content || {});
+
+  const COLORS = {
+    paper: "#f6f1e4", parchment: "#ece4d0", road: "#e4d8bc", bone: "#d8ccb0",
+    slate: "#8f949a", graphite: "#6e6a64", dark: "#45413c", ink: "#23211f",
+    moss: "#5f8f3a", mossL: "#7fa955", water: "#7d96a0", amber: "#f0b040",
+  };
+  const INK = [0x23, 0x21, 0x2a], PAPER = [0xf8, 0xf2, 0xe2];
+  const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const hex = (v) => "#" + v.map((x) => Math.round(Math.min(255, Math.max(0, x))).toString(16).padStart(2, "0")).join("");
+  const mix = (a, b, t) => a.map((x, i) => x + (b[i] - x) * t);
+  // four bands toward ink and paper: k sets how far (a light ink needs less of a shadow to read)
+  const cel = (h, k = 1) => {
+    const c = rgb(h), bands = [mix(c, INK, 0.52 * k), mix(c, INK, 0.26 * k), c, mix(c, PAPER, 0.4 * k)].map(hex);
+    return bands.flatMap((b) => [b, b, b, b]);
+  };
+  // the glow: its own warm bands, brightest last
+  const glow = (h) => [h, "#f6c860", "#fadc90", "#fdf0c8"].flatMap((b) => [b, b, b, b]);
+
+  const RAMPS = {
+    litPaper: cel(COLORS.paper, 0.7), litParchment: cel(COLORS.parchment, 0.8), litRoad: cel(COLORS.road, 0.8), litBone: cel(COLORS.bone),
+    litSlate: cel(COLORS.slate), litGraphite: cel(COLORS.graphite), litDark: cel(COLORS.dark, 0.8), litInk: cel(COLORS.ink, 0.5),
+    litMoss: cel(COLORS.moss), litMossL: cel(COLORS.mossL), litWater: cel(COLORS.water, 0.8), litAmber: glow(COLORS.amber),
+  };
+  CT.ramps = Object.assign(CT.ramps || {}, RAMPS);
+  CT.mats = Object.assign(CT.mats || {}, {
+    litPaper: { bias: 0.1 }, litParchment: { bias: 0.05 }, litMoss: { wrap: 0.5 }, litMossL: { wrap: 0.55 },
+    litWater: { bias: 0.05 }, litAmber: { em: 1, flat: 1 },
+  });
+  Object.assign((CT.materialClass = CT.materialClass || {}), {
+    litRoad: "ROCK", litBone: "ROCK", litSlate: "ROCK", litGraphite: "ROCK", litDark: "ROCK",
+    litMoss: "MOSS", litMossL: "FOLIAGE", litWater: "WATER",
+  });
+
+  CT.lithograph = {
+    colors: COLORS,
+    ramps: RAMPS,
+    // a light army cut from paper and bone, a dark one from ink and graphite; moss and lamplight on both
+    roles: {
+      Body: [COLORS.parchment, COLORS.ink],
+      Line: [COLORS.graphite, COLORS.bone],
+      Stone: [COLORS.bone, COLORS.dark],
+      Base: [COLORS.slate, COLORS.graphite],
+      Moss: [COLORS.mossL, COLORS.moss, { wrap: 0.5 }],
+      Glow: [COLORS.amber, COLORS.water, "glow"],
+    },
+    board: { light: COLORS.parchment, dark: COLORS.slate, line: COLORS.ink, frame: COLORS.dark },
+    cel,
+  };
+})();
+
+</script>
+<script>/* ../MossheartEngine/content/everstair.js */
+/* The Ever Stair, Mossheart's fourth garden: a cloister of pale stone drawn like a print, where a stair runs
+   round the court and seems to come back to where it began, the back walls keep gardens with their own
+   gravity, and the paving of the road turns, tile by tile, from a checkerboard into moths and leaves. It is
+   in the lithograph palette (content/lithograph.js, loaded before this file). The user picked layouts A, B
+   and C of the S5 board (2026-11-08). This file holds Art's part of the level; the map is Game's
+   (content/everstair-map.js) and names these kinds and models:
+     ME.content.kinds       es_road (the paved road), es_court (the cloister's flags), es_lawn (moss lawn),
+                            es_wall (the walls' tops), es_water (a still grey pool)
+     window.MODELS          stamps es_stair (o.steps, o.rise, o.w, o.rail), es_arch (o.span, o.h),
+                            es_facade (one tile of back wall, o.piece: plain, lawn, tree, stair, arch or
+                            lantern, o.h) and es_inlay (one road tile's paving, o.stage 0-1, o.u, o.v)
+     ME.content.everstairInlays(tiles)   -> the es_inlay props for a road, its tiles in walking order
+     ME.content.mapLight.everstair       its light, { L, light, look }: even and soft, no strong sun
+   The ground's patterns are original motifs (a checker, a checker bent into interlocking waves, moths and
+   leaves): no artist's prints or tilings are copied, and nothing in the game names one. */
+(function () {
+  const ME = window.ME, P = window.PX, { S, E, C, B, Y } = P.prim, M = window.MODELS, CT = (ME.content = ME.content || {}), TAU = Math.PI * 2;
+  const ry = (a) => P.rot("y", a);
+  const fr = (x) => x - Math.floor(x);
+
+  // ---------------------------------------------------------------- kinds
+  // the road: pale paper-toned paving with a graphite kerb where it meets the lawn; the court: worn bone
+  // flags; the lawn: the garden's one strong colour; the walls' tops: bone over graphite courses
+  Object.assign((CT.kinds = CT.kinds || {}), {
+    es_road: { recipe: "layer", top: "litRoad", mottle: "litBone", mottleK: 0.08, depth: 0.12, under: "litSlate", edge: { mat: "litGraphite", width: 0.1, raise: 0.06, facing: ["es_lawn"] } },
+    es_court: { recipe: "layer", top: "litParchment", mottle: "litBone", mottleK: 0.18, depth: 0.12, under: "litSlate" },
+    es_lawn: { recipe: "carpet", top: "litMoss", mottle: "litMossL", cushions: true, drape: ["litMoss", "litMossL"], overhang: "litMoss", under: "litGraphite" },
+    es_wall: { recipe: "layer", top: "litBone", mottle: "litSlate", mottleK: 0.15, depth: 0.1, under: "litGraphite" },
+    // a still pool the colour of slate: little glint, faint caustics, a grey tint
+    es_water: Object.assign({}, CT.kinds.water || {}, {
+      bed: ["litSlate", "litGraphite"], shore: "litBone", bank: "litMoss", drape: ["litMoss", "litMossL"], overhang: "litMoss", under: "litGraphite",
+      surface: 0, clarity: 0.6, tint: [0.12, 0.16, 0.2], absorb: 1.2, calm: 1, glint: 0.5, caustics: 0.3,
+    }),
+  });
+  // the stone stays crisp: printed lines, not worn edges
+  CT.edgeRound = Object.assign(CT.edgeRound || {}, { kinds: Object.assign((CT.edgeRound && CT.edgeRound.kinds) || {}, { es_road: 0, es_court: 0.03, es_wall: 0 }) });
+  if (CT.edgeBreak) CT.edgeBreak.kinds = Object.assign(CT.edgeBreak.kinds || {}, { es_road: 0, es_court: 0, es_wall: 0, es_lawn: 0.1 });
+
+  // ---------------------------------------------------------------- models
+  // tile units, the anchor at the ground centre, Z up (content/fernglass.js)
+  const model = (name, fn) => { M[name] = fn; (ME.ASSET_BY = ME.ASSET_BY || {})[name] = name + String(fn); ME.ASSET_SRC = (ME.ASSET_SRC || "") + ME.ASSET_BY[name]; };
+  // engraver's hatching on a shaded face: diagonal lines, k to a tile (4 at vs16 is one line every four voxels;
+  // a finer period aliases into noise)
+  const hatch = (u, z, k = 4) => fr((u + z) * k) < 0.25;
+  // ashlar: courses a quarter tile high, joints every half tile, staggered by course
+  const ashlar = (u, z) => { const c = Math.floor(z * 4); return fr(z * 4) < 0.22 || fr(u * 2 + (c & 1) * 0.5) < 0.11; };
+
+  // The stair: o.steps treads rising o.rise over the tile toward +x (rot turns it), between two slate
+  // stringers (o.w, the half width); o.rail adds a low parapet with a bone coping on both sides. Treads are
+  // bone with a paper nosing, risers graphite, the stringers' sides hatched. Anchored on the lower tile's
+  // centre at its ground: the top tread meets the next tile at x 0.5, o.rise up (one map step is 0.5).
+  model("es_stair", (o = {}) => {
+    const n = o.steps || 4, rise = o.rise ?? 0.5, w = o.w ?? 0.5, run = 1 / n, h = rise / n, p = [];
+    for (let i = 0; i < n; i++) {
+      const top = (i + 1) * h, x0 = -0.5 + i * run;
+      p.push(B([(x0 + 0.5) / 2, 0, top / 2 - 0.01], [(0.5 - x0) / 2, w - 0.06, top / 2 + 0.01], 0, "litBone"));
+    }
+    for (const y of [-w + 0.04, w - 0.04]) {
+      p.push(B([0, y, rise / 2 + 0.02], [0.5, 0.04, rise / 2 + 0.03], 0, "litSlate"));
+      if (o.rail) p.push(B([0, y, rise + 0.2], [0.5, 0.04, 0.16], 0, "litSlate"), B([0, y, rise + 0.38], [0.52, 0.06, 0.025], 0.005, "litBone"));
+    }
+    return {
+      prims: p, r: 0.75, h: rise + (o.rail ? 0.45 : 0.1), k: 1,
+      detail: (x, y, z, m, nx, ny, nz) => {
+        if (m === "litSlate") return Math.abs(ny) > 0.6 && hatch(x, z) ? "litGraphite" : m;
+        if (m !== "litBone") return m;
+        if (nx < -0.6) return "litGraphite"; // a riser
+        if (nz > 0.6) { const f = fr((x + 0.5) * n); return f < 0.25 ? "litPaper" : m; } // the nosing
+        return m;
+      },
+    };
+  });
+
+  // The arch: a round arch of bone voussoirs with a paper keystone, on two slate piers; the way runs through
+  // it along x. o.span is the opening's half width (0.42 lets two walkers pass), o.h the springing height.
+  // Anchored at the opening's middle on the ground.
+  model("es_arch", (o = {}) => {
+    const sp = o.span ?? 0.42, hs = o.h ?? 0.7, d = 0.16, py = sp + 0.09, top = hs + sp + 0.16, p = [];
+    p.push(B([0, 0, top / 2], [d, py + 0.09, top / 2], 0, "litBone"));
+    p.push(Y([0, 0, hs], sp, d + 0.05, "litBone", { sub: true, R: ry(Math.PI / 2) }), B([0, 0, hs / 2 - 0.05], [d + 0.05, sp, hs / 2 + 0.05], 0, "litBone", { sub: true }));
+    for (const s of [-1, 1]) p.push(B([0, s * py, hs / 2], [d + 0.02, 0.09, hs / 2], 0, "litSlate"), B([0, s * py, hs + 0.02], [d + 0.04, 0.11, 0.025], 0, "litBone"));
+    p.push(B([0, 0, hs + sp + 0.08], [d + 0.03, 0.06, 0.1], 0, "litPaper"));
+    p.push(B([0, 0, top + 0.02], [d + 0.03, py + 0.12, 0.025], 0, "litSlate"));
+    return {
+      prims: p, r: 0.75, h: top + 0.05, k: 1,
+      detail: (x, y, z, m, nx, ny, nz, vx) => {
+        if (m === "litSlate") return Math.abs(nx) > 0.6 && hatch(y, z) ? "litGraphite" : m;
+        if (m !== "litBone" || z < hs - 0.02) return m;
+        // voussoir joints: rays from the springing centre every 1/13 of the half turn, inside the ring; ashlar
+        // courses in the spandrels beyond it
+        const r = Math.hypot(y, z - hs), line = Math.max(0.015, vx * 0.6);
+        if (r > sp + 0.14) return Math.abs(nx) > 0.6 && ashlar(y, z) ? "litSlate" : m;
+        if (Math.abs(r - sp - 0.14) < line) return "litInk";
+        const a = Math.atan2(z - hs, y) / Math.PI, j = fr(a * 13 + 0.5);
+        return Math.min(j, 1 - j) * Math.PI * r / 13 < line ? "litInk" : m;
+      },
+    };
+  });
+
+  // One tile of the back wall, with a garden of its own gravity in relief: a bone wall o.h high facing +x,
+  // hatched where it is plain, under a slate coping. o.piece:
+  //   plain    the wall alone
+  //   lawn     a lawn standing on the wall's face, with a sideways tree growing out of it
+  //   tree     one larger tree growing straight out of the wall
+  //   stair    a stair running up the wall, its treads facing sideways
+  //   arch     an arch upside down: its round side hangs below
+  //   lantern  a lantern on a bracket, hanging upward
+  // Anchored at the tile's middle on the ground; the wall stands at its back (x -0.5 to -0.3).
+  const tree = (p, at, len, crown, lean) => {
+    const [x, y, z] = at, tip = [x + len, y, z + lean];
+    p.push(C(at, tip, 0.06, 0.035, "litDark"), C([x + len * 0.55, y, z + lean * 0.5], [x + len * 0.8, y + 0.14, z + lean * 0.5 + 0.12], 0.025, 0.015, "litDark"));
+    p.push(E([tip[0] + crown * 0.6, y, tip[2]], [crown * 0.85, crown, crown * 0.9], "litMoss"), E([tip[0] + crown * 0.9, y + 0.12, tip[2] + 0.1], [crown * 0.55, crown * 0.6, crown * 0.6], "litMossL"));
+  };
+  model("es_facade", (o = {}) => {
+    const H = o.h ?? 2, X0 = -0.5, F = -0.3, p = [B([(X0 + F) / 2, 0, H / 2], [(F - X0) / 2, 0.5, H / 2], 0, "litBone"), B([(X0 + F) / 2 + 0.02, 0, H + 0.03], [(F - X0) / 2 + 0.04, 0.5, 0.04], 0, "litSlate")];
+    const piece = o.piece || "plain";
+    if (piece === "lawn") {
+      p.push(B([F + 0.05, 0, H * 0.5], [0.05, 0.44, H * 0.36], 0.02, "litMoss"));
+      for (let i = 0; i < 9; i++) p.push(E([F + 0.1, -0.38 + 0.095 * i, H * 0.2 + fr(i * 0.618) * H * 0.6], [0.04, 0.05, 0.05], "litMossL"));
+      tree(p, [F + 0.1, -0.15, H * 0.62], 0.3, 0.18, 0.04);
+      tree(p, [F + 0.1, 0.22, H * 0.36], 0.22, 0.13, -0.02);
+    } else if (piece === "tree") {
+      p.push(E([F, 0, H * 0.55], [0.08, 0.22, 0.16], "litDark"));
+      tree(p, [F + 0.02, 0, H * 0.55], 0.45, 0.26, 0.08);
+    } else if (piece === "stair") {
+      // the floor of this stair is the wall's left edge (-y): each step stands further out toward +y
+      const n = 6, sh = (H * 0.75) / n;
+      for (let i = 0; i < n; i++) p.push(B([F + 0.08, -0.45 + 0.07 * (i + 1), H * 0.12 + sh * (i + 0.5)], [0.08, 0.07 * (i + 1), sh / 2], 0, "litBone"));
+      p.push(B([F + 0.08, -0.47, H * 0.5], [0.09, 0.025, H * 0.4], 0, "litSlate"));
+    } else if (piece === "arch") {
+      // a U of stone: the round side at the bottom, its imposts at the top, a paper keystone hanging under it;
+      // the cut stops at the wall's face, which shows through the opening in ink
+      const zc = H * 0.42, r = 0.3;
+      p.push(B([F + 0.07, 0, zc + 0.1], [0.07, 0.44, 0.52], 0, "litBone"));
+      p.push(Y([F + 0.07, 0, zc], r, 0.07, "litBone", { sub: true, R: ry(Math.PI / 2) }), B([F + 0.07, 0, zc + 0.35], [0.07, r, 0.35], 0, "litBone", { sub: true }));
+      p.push(B([F + 0.08, 0, zc - r - 0.06], [0.08, 0.05, 0.07], 0, "litPaper"));
+      for (const s of [-1, 1]) p.push(B([F + 0.08, s * (r + 0.07), zc + 0.6], [0.08, 0.08, 0.03], 0, "litSlate"));
+    } else if (piece === "lantern") {
+      // a lantern hanging upward: its chain rises from the bracket to the roof, the base plate on top
+      const z = H * 0.4, lx = F + 0.22;
+      p.push(C([F, 0, z], [lx, 0, z], 0.02, 0.02, "litInk"), C([lx, 0, z], [lx, 0, z + 0.18], 0.012, 0.012, "litInk"));
+      p.push(C([lx, 0, z + 0.18], [lx, 0, z + 0.26], 0.005, 0.07, "litInk"), B([lx, 0, z + 0.34], [0.065, 0.065, 0.08], 0.01, "litAmber"), B([lx, 0, z + 0.43], [0.08, 0.08, 0.015], 0, "litInk"));
+    }
+    const zc = H * 0.42;
+    return {
+      prims: p, r: 0.75, h: H + 0.1, k: 1,
+      detail: (x, y, z, m, nx, ny, nz) => {
+        if (m !== "litBone") return m;
+        if (x < F + 0.02 && nx > 0.6) {
+          // the wall's face: ink through the inverted arch's opening, ashlar elsewhere
+          if (piece === "arch" && z < zc + 0.62 && (Math.hypot(y, z - zc) < 0.3 || (z > zc && Math.abs(y) < 0.3))) return "litInk";
+          return ashlar(y, z) ? "litSlate" : m;
+        }
+        if (x < F) return Math.abs(ny) > 0.6 && ashlar(x, z) ? "litSlate" : m; // the wall's ends
+        if (piece === "stair" && Math.abs(nz) > 0.6) return "litGraphite"; // this stair's risers face along z
+        return m;
+      },
+    };
+  });
+
+  // ---------------------------------------------------------------- the road's paving
+  // One road tile's paving, painted into the top voxel of its ground. o.stage (0 at the gate, 1 at the
+  // court) picks the motif; o.u, o.v are the tile's map coordinates, so the pattern runs on across tiles
+  // (props are placed without rot here). Stages:
+  //   0    - 0.35  a checker of graphite and road, two cells to a tile
+  //   0.35 - 0.7   the checker's lines bend into waves, so its cells interlock
+  //   0.7  - 1     the dark cells close into moths and leaves on the pale road
+  const checker = (U, V, a) => {
+    const U2 = U + a * Math.sin(TAU * V), V2 = V + a * Math.sin(TAU * U2);
+    const du = Math.min(fr(U2), 1 - fr(U2)), dv = Math.min(fr(V2), 1 - fr(V2));
+    return { dark: ((Math.floor(U2) + Math.floor(V2)) & 1) === 1, edge: Math.min(du, dv) };
+  };
+  // a leaf along the cell's diagonal and a moth with its wings open; (s, t) in -0.5..0.5, k the size
+  const leaf = (s, t, k) => {
+    const a = (s + t) / Math.SQRT2 / k, b = (t - s) / Math.SQRT2 / k, half = 0.2 * (1 - (a / 0.44) ** 2);
+    if (a > -0.5 && a < -0.4 && Math.abs(b) < 0.035) return "litDark";
+    if (Math.abs(a) >= 0.44 || Math.abs(b) >= half) return null;
+    return Math.abs(b) > half - 0.06 ? "litInk" : Math.abs(b) < 0.035 ? "litMossL" : "litMoss";
+  };
+  const moth = (s, t, k) => {
+    s /= k; t /= k;
+    const as = Math.abs(s);
+    if (as < 0.05 && Math.abs(t) < 0.27) return "litDark";
+    const w1 = ((as - 0.2) / 0.19) ** 2 + ((t - 0.1) / 0.15) ** 2, w2 = ((as - 0.14) / 0.12) ** 2 + ((t + 0.14) / 0.1) ** 2, w = Math.min(w1, w2);
+    if (w >= 1) return as < 0.13 && t > 0.26 && t < 0.4 && Math.abs(as - (t - 0.26) * 0.8 - 0.02) < 0.03 ? "litInk" : null; // the feelers
+    if (w > 0.62) return "litInk";
+    return ((as - 0.22) / 0.06) ** 2 + ((t - 0.12) / 0.05) ** 2 < 1 ? "litGraphite" : "litBone";
+  };
+  model("es_inlay", (o = {}) => {
+    const st = Math.min(1, Math.max(0, o.stage || 0)), u0 = (o.u || 0) + 0.5, v0 = (o.v || 0) + 0.5;
+    return {
+      prims: [B([0, 0, -0.035], [0.5, 0.5, 0.035], 0, "litRoad")], r: 0.72, h: 0.05, k: 1,
+      detail: (x, y, z, m, nx, ny, nz, vx) => {
+        const u = u0 + x, v = v0 + y, line = Math.max(0.03, vx * 0.7);
+        if (st < 0.7) {
+          const c = checker(u * 2, v * 2, st < 0.35 ? 0 : ((st - 0.35) / 0.35) * 0.16);
+          if (st >= 0.2 && c.edge * 0.5 < line * Math.min(1, (st - 0.2) / 0.3)) return "litInk";
+          return c.dark ? "litGraphite" : "litRoad";
+        }
+        // one figure to a tile, a moth or a leaf by the tile's parity, turned by its hash; it grows from
+        // the last bent cell's size to the tile's
+        const t = (st - 0.7) / 0.3, cu = Math.floor(u), cv = Math.floor(v), q = Math.floor(P.hash(cu, cv, 0, 17) * 4);
+        let s = u - cu - 0.5, w = v - cv - 0.5;
+        for (let i = 0; i < q; i++) [s, w] = [-w, s];
+        const f = ((cu + cv) & 1 ? moth : leaf)(s, w, 0.6 + 0.4 * t);
+        if (f) return f;
+        if (t < 0.5) { const c = checker(u * 2, v * 2, 0.16); return c.dark && c.edge > 0.12 ? "litBone" : "litRoad"; }
+        return "litRoad";
+      },
+    };
+  });
+  // the inlays for a road: tiles [[x, y], ...] in walking order, gate first; the stage climbs evenly along it
+  CT.everstairInlays = (tiles) => tiles.map(([x, y], i) => ["es_inlay", { stage: tiles.length > 1 ? i / (tiles.length - 1) : 0, u: x, v: y }, x, y, {}]);
+
+  // ---------------------------------------------------------------- light
+  // a print's light: a high sun with little direction, deep ambient, soft shadows and no beams or mottle,
+  // so the stair's joins read cleanly; the paper's warmth in the key, a cool ink in the ambient
+  CT.mapLight = Object.assign(CT.mapLight || {}, {
+    everstair: {
+      L: [-0.32, 0.38, 0.87],
+      light: null,
+      look: { sunCol: [1.0, 0.97, 0.9], ambCol: [0.84, 0.88, 0.95], amb: 0.3, shade: 0.55, shaftK: 0, mottle: 0, haze: 0.04, vignette: 0.35, windK: 0.4 },
+    },
+  });
+})();
+
+</script>
 <!-- the engine's asset kit, read-only: DeckChess models its own pieces with it -->
 <script>/* ../MossheartEngine/assets/asset-kit.js */
 /* Asset kit: shared helpers, materials and parts for hand-authored voxel assets (assets/assets-mockups.js,
@@ -19550,6 +19849,8 @@ function MG_SFX(L) {
   // from the measured values above; tools/rules.html?selfplay=sets plays every pairing, and &kit= tries others.
   const SETS = {
     classic: { name: "Classic", P: ["anointed"], Q: ["ward"] },
+    // the default set ships on the default kit until the user picks Classic's (decide 71637ea)
+    tess: { name: "Tessellate", P: ["anointed"], Q: ["ward"] },
     grove: { name: "Grove", P: ["ward"], N: ["rally"], B: ["sanctuary"] },
     brass: { name: "Clockwork", P: ["squire"], N: ["stride"], R: ["vanguard"] },
     reef: { name: "Reef", P: ["ember"], B: ["leap"], R: ["glide"], Q: ["ember"] },
@@ -20006,19 +20307,27 @@ function MG_SFX(L) {
 
 </script>
 <script>/* src/art/boards.js */
-/* The board (DC.boards): a plain wooden chessboard floating in space. A v1 content map of 10 x 10 tiles in a
-   box frame: the 8x8 squares (maple and walnut) with a rim one tile wide of dark rosewood round them, half a
-   tile thick, over nothing. The light is Momiji Valley's (the mf-valley style: its sun, bloom and colour
-   grade) with a canopy of a few broad sunbeams that drift slowly across the board, under a sky ramp of deep
-   space (the stars are sprites, src/view/stars.js).
-     DC.boards.list            [{ id, name }]
-     DC.boards.style(id)       -> { st, map, region }: an engine style to bake, its v1 map and the board
-                               region { x0, y0, n, z }: squares are world tiles x0..x0+7, y0..y0+7, top z
-   The squares are two layer kinds, the rim a third; none of them grows grass, all keep crisp edges. */
+/* The boards (DC.boards): v1 content maps of 10 x 10 tiles in a box frame, the 8x8 squares with a rim one
+   tile wide round them, over nothing.
+     Lithograph (the default): a block of pale stone drawn like a print, parchment and slate squares a tile and
+     a quarter high, and round its foot a stair that climbs along one side and down the next, with an arch on
+     each corner landing (Art's es_stair and es_arch, content/everstair.js, in the lithograph palette,
+     content/lithograph.js). A paper sky, an even light with no beams, no stars; the squares' interlocking
+     pattern is drawn by the overlay (view/shaders.js, opts.board "litho").
+     Space: a plain wooden chessboard, maple and walnut in dark rosewood, half a tile thick. The light is
+     Momiji Valley's (the mf-valley style: its sun, bloom and colour grade) with a canopy of a few broad
+     sunbeams that drift slowly across the board, under a sky ramp of deep space (the stars are sprites,
+     src/view/stars.js).
+       DC.boards.list            [{ id, name, stars }]: the first is the default; stars, whether the sky has them
+       DC.boards.style(id)       -> { st, map, region }: an engine style to bake, its v1 map and the board
+                                 region { x0, y0, n, z }: squares are world tiles x0..x0+7, y0..y0+7, top z
+     The squares are two layer kinds, the rim a third; none of them grows grass, all keep crisp edges. */
 (function () {
   const C = (window.DC = window.DC || {});
-  const LIST = [{ id: "space", name: "Space" }];
-  const N = 8, RIM = 1, W = N + 2 * RIM, TOP = 2, H_STEP = 0.25; // the top at 2 x 0.25 = half a tile
+  const LIST = [{ id: "litho", name: "Lithograph", stars: false }, { id: "space", name: "Space", stars: true }];
+  const N = 8, RIM = 1, W = N + 2 * RIM, H_STEP = 0.25;
+  // the squares' top in map steps: a tile and a quarter (over the stair), half a tile
+  const TOP = { litho: 5, space: 2 };
 
   // the woods (ramp specs: base, steps, dark, light, hue shift kept low so the shade stays brown) and the
   // pieces' ivory, ebony and felt (src/art/pieces.js)
@@ -20027,21 +20336,63 @@ function MG_SFX(L) {
     dcWalnut: ["#6b4226", 8, 0.12, 0.5, 0.1], dcWalnut2: ["#5e3820", 8, 0.1, 0.46, 0.1],
     dcRim: ["#4a2a1a", 8, 0.08, 0.42, 0.1], dcRimDk: ["#36200f", 8, 0.06, 0.34, 0.1],
     dcIvory: ["#efe3c8", 8, 0.35, 0.95, 0.12, 0.7], dcEbony: ["#3a302c", 8, 0.07, 0.45, 0.15], dcFelt: ["#2f5a3a", 6, 0.1, 0.45, 0.1],
-    // deep space behind everything: near-uniform navy, so the engine's backdrop pattern stays a faint glow
-    sky: ["#04050d", "#05060f", "#060812", "#070914", "#080a17", "#090c1a", "#0a0d1d", "#0b0f21"],
+  };
+  // each board's sky: deep space, near-uniform navy, so the engine's backdrop pattern stays a faint glow; the
+  // print's paper, as even
+  const SKY = {
+    space: ["#04050d", "#05060f", "#060812", "#070914", "#080a17", "#090c1a", "#0a0d1d", "#0b0f21"],
+    litho: ["#e6dec8", "#e9e1cc", "#ece4d0", "#eee7d4", "#f0e9d8", "#f2ecdc", "#f4eee0", "#f6f1e4"],
   };
   const CLASS = { dcMaple: "BARK", dcMaple2: "BARK", dcWalnut: "BARK", dcWalnut2: "BARK", dcRim: "BARK", dcRimDk: "BARK", dcFelt: "MOSS" };
   const KINDS = {
     "dc-light": { recipe: "layer", top: "dcMaple", mottle: "dcMaple2", mottleK: 0.18, depth: 0.12, under: "dcWalnut2" },
     "dc-dark": { recipe: "layer", top: "dcWalnut", mottle: "dcWalnut2", mottleK: 0.2, depth: 0.12, under: "dcWalnut2" },
     "dc-rim": { recipe: "layer", top: "dcRim", mottle: "dcRimDk", mottleK: 0.15, depth: 0.12, under: "dcRimDk" },
+    // the print's stone (Art's lit* inks): the block's sides are its dark frame, the stair's landings bone
+    "dc-litho-light": { recipe: "layer", top: "litParchment", mottle: "litPaper", mottleK: 0.06, depth: 0.12, under: "litDark" },
+    "dc-litho-dark": { recipe: "layer", top: "litSlate", mottle: "litGraphite", mottleK: 0.08, depth: 0.12, under: "litDark" },
+    "dc-litho-rim": { recipe: "layer", top: "litBone", mottle: "litParchment", mottleK: 0.1, depth: 0.12, under: "litSlate" },
   };
-  // sunbeams over the board: broad, soft, each drifting on its own slow loop (ME beamAt: drift tiles)
+  const LEGEND = {
+    space: { r: "dc-rim", l: "dc-light", d: "dc-dark" },
+    litho: { r: "dc-litho-rim", l: "dc-litho-light", d: "dc-litho-dark" },
+  };
+  // sunbeams over the space board: broad, soft, each drifting on its own slow loop (ME beamAt: drift tiles)
   const BEAMS = [
     { x: 3.6, y: 3.4, r: 1.7, len: 24, drift: 2.6 },
     { x: 6.8, y: 6.6, r: 1.4, k: 0.92, len: 24, drift: 3.0 },
     { x: 7.4, y: 2.6, r: 1.0, k: 0.8, len: 24, drift: 2.2 },
   ];
+  // each board's air and light over the mf-valley base: fog is 0-255 sRGB (the paper's, for the print)
+  const LOOK = {
+    space: { hd: { fog: [6, 8, 20], haze: 0.04, vignette: 0.55 }, light: { shade: 0.46, pool: 0.55, beams: BEAMS } },
+    litho: { hd: { fog: [236, 229, 212], haze: 0.02, vignette: 0.2, beamK: 0 }, light: { shade: 0.2, pool: 0.2, beams: [] } },
+  };
+
+  // The Lithograph's stair: walked clockwise as seen from white's side, each side's eight rim tiles climb
+  // one step (a quarter tile) every other tile from the low corners to the high ones, so the loop climbs
+  // along the far side and the near one and comes down the other two; corners (0,0) and (9,9) are low, (9,0)
+  // and (0,9) high, each with an arch its way turned onto the next side. SIDES: the first tile and the step
+  // of each side; side k's rot k turns a stair's +x along it (ME.rotQ).
+  const FLIGHT = [1, 2, 2, 3, 3, 4, 4, 4];
+  const SIDES = [[1, 0, 1, 0], [W - 1, 1, 0, 1], [W - 2, W - 1, -1, 0], [0, W - 2, 0, -1]];
+  const STAIR = { steps: 4, rise: H_STEP }, ARCH = { span: 0.28, h: 0.34 };
+  const ring = () => {
+    const h = {}, props = [];
+    SIDES.forEach(([x0, y0, dx, dy], k) => {
+      const hs = k % 2 ? FLIGHT.slice().reverse() : FLIGHT;
+      for (let i = 0; i < N; i++) {
+        h[x0 + i * dx + "," + (y0 + i * dy)] = hs[i];
+        // a stair on the lower of two tiles, rising toward the higher
+        if (i + 1 < N && hs[i + 1] > hs[i]) props.push(["es_stair", STAIR, x0 + i * dx, y0 + i * dy, { rot: k }]);
+        if (i + 1 < N && hs[i + 1] < hs[i]) props.push(["es_stair", STAIR, x0 + (i + 1) * dx, y0 + (i + 1) * dy, { rot: (k + 2) % 4 }]);
+      }
+      const cx = x0 + N * dx, cy = y0 + N * dy;
+      h[cx + "," + cy] = hs[N - 1];
+      props.push(["es_arch", ARCH, cx, cy, { rot: (k + 1) % 4 }]);
+    });
+    return { h, props };
+  };
 
   const register = () => {
     const CT = window.ME.content;
@@ -20059,21 +20410,20 @@ function MG_SFX(L) {
   const regionOf = () => ({ x0: RIM, y0: RIM, n: N });
 
   // the v1 map: a1 is dark (file f = x - x0, rank r = (y0 + 7) - y: white's side at the larger y)
-  const mapOf = () => {
-    const h = [], kind = [];
+  const mapOf = (id) => {
+    const h = [], kind = [], litho = id === "litho", rg = litho ? ring() : null;
     for (let y = 0; y < W; y++) {
       let hr = "", kr = "";
       for (let x = 0; x < W; x++) {
-        hr += TOP;
         const rim = x < RIM || y < RIM || x >= RIM + N || y >= RIM + N, f = x - RIM, r = RIM + N - 1 - y;
+        hr += (rim && rg ? rg.h[x + "," + y] : TOP[id]).toString(36);
         kr += rim ? "r" : (f + r) % 2 === 0 ? "d" : "l";
       }
       h.push(hr); kind.push(kr);
     }
     return {
-      v: 1, id: "deckchess-space", W, H: W, hStep: H_STEP, floor: 0, h, kind,
-      legend: { r: "dc-rim", l: "dc-light", d: "dc-dark" },
-      frame: { type: "box", edge: { skirt: "dcRimDk" } }, props: [], game: { route: [] },
+      v: 1, id: "deckchess-" + id, W, H: W, hStep: H_STEP, floor: 0, h, kind, legend: LEGEND[id],
+      frame: { type: "box", edge: { skirt: litho ? "litDark" : "dcRimDk" } }, props: rg ? rg.props : [], game: { route: [] },
     };
   };
 
@@ -20086,13 +20436,14 @@ function MG_SFX(L) {
       if (!LIST.some((b) => b.id === id)) throw new Error("no board " + id + " (" + LIST.map((b) => b.id).join(", ") + ")");
       const valley = window.STYLES.find((s) => s.id === "mf-valley");
       if (!valley) throw new Error("no mf-valley style (vendor/gen/styles5.js)");
+      if (id === "litho" && !(window.MODELS.es_stair && ME.content.lithograph)) throw new Error("board litho: no lithograph.js / everstair.js (MossheartEngine/content)");
       register();
-      const map = mapOf(), PX = window.PX;
-      // Momiji's sun and grade over a dark, cold fog (space), the drifting beams
+      const map = mapOf(id), PX = window.PX, look = LOOK[id];
+      // Momiji's sun and grade under this board's air and light
       const st = Object.assign({}, valley, {
         id: map.id, map, deco: [],
-        hd: Object.assign({}, valley.hd, { fog: [6, 8, 20], haze: 0.04, vignette: 0.55 }),
-        light: PX.r4.CANOPY({ shade: 0.46, pool: 0.55, beams: BEAMS }),
+        hd: Object.assign({}, valley.hd, look.hd),
+        light: PX.r4.CANOPY(look.light),
       });
       const check = ME.validateMap(map, ME.content.kinds);
       if (check.warnings.length) ME.log("WARN board " + id + ": " + check.warnings.join("; "));
@@ -20100,9 +20451,9 @@ function MG_SFX(L) {
       // the content pack's and the asset kit's materials, then ours, on copies (the shared style keeps its own)
       st.ramps = Object.assign({}, st.ramps); st.mats = Object.assign({}, st.mats);
       ME.content.addMaterials(st);
-      Object.assign(st.ramps, ME.assetKit.RAMPS, RAMPS, C.pieces ? C.pieces.RAMPS : {}); // with the pieces' parts
+      Object.assign(st.ramps, ME.assetKit.RAMPS, RAMPS, C.pieces ? C.pieces.RAMPS : {}, { sky: SKY[id] }); // with the pieces' parts
       Object.assign(st.mats, ME.assetKit.MATS, C.pieces ? C.pieces.MATS : {});
-      return { st, map, region: Object.assign(regionOf(), { z: TOP * H_STEP }) };
+      return { st, map, region: Object.assign(regionOf(), { z: TOP[id] * H_STEP }) };
     },
   };
 })();
@@ -20578,8 +20929,9 @@ function MG_SFX(L) {
 
 </script>
 <script>/* src/art/sets.js */
-/* Themed piece sets (DC.sets): three figurine sets, each a whole army of K Q R B N P on a themed base, in a white
-   and a black colourway. A set is a skin: the same models[color][type] the Staunton set binds (DC.pieces.bind),
+/* Themed piece sets (DC.sets): four figurine sets, each a whole army of K Q R B N P on a themed base, in a white
+   and a black colourway. Tessellate, the first and the default, is inked in Art's lithograph palette
+   (MossheartEngine/content/lithograph.js, loaded before this file; without it the set is not offered). A set is a skin: the same models[color][type] the Staunton set binds (DC.pieces.bind),
    so the rules, the view and the part kit's anchors work on it unchanged (a kept set gets its own SLOT table).
    The deck screen's picker chooses a set per side (main.js bakes only the chosen ones, beside the Staunton set);
    ?sets=all or ?sets=grove,brass bakes more, ?set=<id> plays both sides with one.
@@ -20590,11 +20942,13 @@ function MG_SFX(L) {
    Each figurine is authored at its type's height (DC.pieces.HEIGHT), facing +X, its base's top at z 0.1. */
 (function () {
   const C = (window.DC = window.DC || {});
+  const LIT = window.ME && window.ME.content && window.ME.content.lithograph;
   const LIST = [
+    { id: "tess", name: "Tessellate", blurb: "Paper and ink figures stepping out of their tiles on endless-stair plinths: a tile-bird, a stair-maned horse, a tiled mitre, a spiral-stair tower, an arcade-crowned queen, a stair-crowned king." },
     { id: "grove", name: "Wispling Grove", blurb: "Forest spirits on log slices: acorn kodama, a stag, a morel sage, a hollow stump, a blossom dryad, an oak ent." },
     { id: "brass", name: "Clockwork Court", blurb: "Wind-up automata on brass gears: tin soldiers, a riveted horse, a clock tower, a boiler fort, a music-box ballerina, a gear-crowned king." },
     { id: "reef", name: "Coral Court", blurb: "Undersea nobles on sand and shells: hermit crabs, a seahorse, an octopus mage, a coral lighthouse, a jellyfish queen, a merking." },
-  ];
+  ].filter((s) => s.id !== "tess" || LIT);
   const TYPES = [null, "pawn", "knight", "bishop", "rook", "queen", "king"];
   const cap = (s) => s[0].toUpperCase() + s.slice(1);
 
@@ -20606,6 +20960,9 @@ function MG_SFX(L) {
     brass: { Metal: ["#c89a48", "#4a5058"], Trim: ["#efe6d0", "#b86a40"], Enamel: ["#a83030", "#2a7a80"], Glow: ["#ffb040", "#40a0ff", GLOW], Dark: ["#3a2a1e", "#1a1c20"] },
     reef: { Coral: ["#f07860", "#7a3a9a", SOFT], Pearl: ["#f4eee4", "#3a3a4a"], Sand: ["#e8d098", "#3a3a48", SKIN], Glow: ["#40e8d0", "#60ff90", GLOW], Kelp: ["#4a9a6a", "#2a5a5a", SOFT], Shell: ["#f0c070", "#c050a0"] },
   };
+  // Tessellate's roles are Art's (Body, Line, Stone, Base, Moss, Glow), each ink on its lit* cel bands
+  if (LIT) ROLES.tess = LIT.roles;
+  const litOf = (h) => { for (const k in LIT.colors) if (LIT.colors[k] === h) return LIT.ramps["lit" + cap(k)]; };
   const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
   const hex = (v) => "#" + v.map((x) => Math.round(Math.min(1, Math.max(0, x)) * 255).toString(16).padStart(2, "0")).join("");
   const ramp = (h) => { const v = rgb(h), L = (Math.max(...v) + Math.min(...v)) / 2; return [h, 7, Math.max(0.04, L - 0.32), Math.min(0.96, L + 0.28), 0.12]; };
@@ -20617,7 +20974,7 @@ function MG_SFX(L) {
       const [w, b, o] = ROLES[id][role];
       [w, b].forEach((h, c) => {
         const n = "ds" + cap(id) + role + "WB"[c];
-        RAMPS[n] = o === GLOW ? glow(h) : ramp(h);
+        RAMPS[n] = o === GLOW ? glow(h) : (id === "tess" && litOf(h)) || ramp(h);
         if (o) MATS[n] = o === GLOW ? { em: 1, flat: 1 } : o;
         BY[id].push(n);
       });
@@ -20916,6 +21273,96 @@ function MG_SFX(L) {
           Y([0, 0, 0.78], 0.07, 0.015, m.Coral, { round: 0.006 }),
           ...around(6, (c, s) => Cap([c * 0.06, s * 0.06, 0.78], [c * 0.08, s * 0.08, 0.88], 0.018, 0.008, m.Coral)),
           S([0.07, 0, 0.8], 0.018, m.Pearl),
+        ] }),
+      };
+    };
+
+    // ---- Tessellate: paper and ink figures stepping out of their tiles, on plinths ringed by a stair that
+    // climbs all the way round and steps down to where it began
+    D.tess = (m) => {
+      const base = (R) => [
+        Y([0, 0, 0.05], R, 0.05, m.Base, { round: 0.01 }),
+        Y([0, 0, 0.086], R + 0.012, 0.01, m.Line), Y([0, 0, 0.02], R + 0.012, 0.01, m.Line),
+        ...around(12, (c, s, a, i) => { const h = 0.012 + i * 0.004; return B([c * R * 0.84, s * R * 0.84, 0.1 + h / 2], [0.032, 0.05, h / 2], 0.002, m.Stone, { R: rz(a) }); }),
+      ];
+      // square tiles stacked and turning as they rise, ink and paper in turn: what the figure grows out of
+      const tiles = (n, w, z0 = 0.118) => [...Array(n)].map((_, i) => B([0, 0, z0 + i * 0.036], [w - i * 0.014, w - i * 0.014, 0.016], 0.004, i % 2 ? m.Line : m.Body, { R: rz(0.3 + i * 0.3) }));
+      // an arched opening carved into a surface facing (c, s) at radius r: its inside in material sm
+      const arch = (c, s, r, z, w, hh, sm) => [
+        B([c * r, s * r, z], [0.03, w, hh], 0, m.Body, hole({ R: rz(Math.atan2(s, c)), subm: sm })),
+        Y([c * r, s * r, z + hh], w, 0.03, m.Body, hole({ R: orient([c, s, 0]), subm: sm })),
+      ];
+      return {
+        pawn: () => ({ r: 0.3, h: 0.52, prims: [...base(0.26), ...tiles(3, 0.1),
+          E([0, 0, 0.29], [0.1, 0.09, 0.1], m.Body, { k2: 0.02 }),
+          ...pair((sd) => B([-0.02, sd * 0.095, 0.29], [0.07, 0.014, 0.045], 0.01, m.Line, { R: rz(sd * 0.25) })),
+          Y([0, 0, 0.37], 0.07, 0.01, m.Line),
+          S([0.01, 0, 0.41], 0.065, m.Body, { k2: 0.01 }),
+          Cap([0.06, 0, 0.41], [0.125, 0, 0.395], 0.024, 0.007, m.Stone),
+          ...pair((sd) => S([0.055, sd * 0.036, 0.43], 0.016, m.Glow)),
+          B([0, 0, 0.482], [0.035, 0.035, 0.012], 0.004, m.Line, { R: rz(TAU / 8) }),
+        ] }),
+        knight: () => ({ r: 0.3, h: 0.7, prims: [...base(0.27), ...tiles(2, 0.11),
+          Cap([-0.02, 0, 0.17], [0, 0, 0.42], 0.1, 0.075, m.Body, { k2: 0.03 }),
+          E([0.04, 0, 0.49], [0.09, 0.065, 0.075], m.Body, { k2: 0.03 }),
+          Cap([0.06, 0, 0.49], [0.19, 0, 0.42], 0.06, 0.042, m.Body, { k2: 0.02 }),
+          S([0.215, 0, 0.415], 0.03, m.Line),
+          ...pair((sd) => [
+            S([0.1, sd * 0.045, 0.52], 0.017, m.Glow),
+            Cap([0, sd * 0.035, 0.54], [-0.03, sd * 0.045, 0.62], 0.022, 0.008, m.Body),
+          ]),
+          // the mane: a flight of steps down the back of the neck
+          ...[0, 1, 2, 3, 4, 5].map((j) => B([-0.05 - j * 0.022, 0, 0.5 - j * 0.06], [0.035 + j * 0.008, 0.032, 0.03], 0.003, m.Line)),
+          Y([0, 0, 0.21], 0.115, 0.012, m.Line),
+        ] }),
+        bishop: () => ({ r: 0.3, h: 0.78, prims: [...base(0.27),
+          Cap([0, 0, 0.1], [0, 0, 0.45], 0.15, 0.085, m.Body, { k2: 0.03 }),
+          Y([0, 0, 0.3], 0.125, 0.012, m.Line),
+          ...arch(1, 0, 0.14, 0.19, 0.035, 0.06, m.Line),
+          Y([0, 0, 0.45], 0.1, 0.014, m.Stone, { round: 0.006 }),
+          S([0, 0, 0.5], 0.06, m.Body),
+          ...pair((sd) => S([0.055, sd * 0.024, 0.51], 0.014, m.Glow)),
+          // the mitre: tiles stacked into a turning stepped spire, a lamp on top
+          ...tiles(5, 0.08, 0.56),
+          S([0, 0, 0.735], 0.02, m.Glow),
+          Cap([0.02, 0.07, 0.36], [0.04, 0.15, 0.4], 0.025, 0.02, m.Body),
+          Cap([0.04, 0.16, 0.12], [0.04, 0.16, 0.62], 0.014, 0.014, m.Line), S([0.04, 0.16, 0.645], 0.03, m.Glow),
+        ] }),
+        rook: () => ({ r: 0.3, h: 0.6, prims: [...base(0.28),
+          Y([0, 0, 0.3], 0.14, 0.2, m.Body, { round: 0.01 }),
+          Y([0, 0, 0.13], 0.15, 0.014, m.Stone),
+          Y([0, 0, 0.53], 0.165, 0.035, m.Stone, { round: 0.006 }),
+          B([0, 0, 0.56], [0.2, 0.028, 0.03], 0, m.Stone, hole()), B([0, 0, 0.56], [0.028, 0.2, 0.03], 0, m.Stone, hole()),
+          Y([0, 0, 0.6], 0.12, 0.06, m.Stone, hole({ subm: m.Moss })),
+          ...arch(1, 0, 0.14, 0.3, 0.022, 0.04, m.Glow), ...arch(0, 1, 0.14, 0.32, 0.022, 0.04, m.Glow),
+          // the stair winding up the outside, nearly a turn and a half
+          ...[...Array(14)].map((_, i) => { const a = i * 0.62; return B([Math.cos(a) * 0.16, Math.sin(a) * 0.16, 0.14 + i * 0.026], [0.032, 0.042, 0.012], 0.002, m.Line, { R: rz(a) }); }),
+        ] }),
+        queen: () => ({ r: 0.3, h: 0.9, prims: [...base(0.28),
+          Cap([0, 0, 0.1], [0, 0, 0.5], 0.16, 0.07, m.Body, { k2: 0.04 }),
+          // a hem of tiles, ink and stone in turn
+          ...around(12, (c, s, a, i) => B([c * 0.158, s * 0.158, 0.135], [0.016, 0.042, 0.03], 0.003, i % 2 ? m.Line : m.Stone, { R: rz(a) })),
+          Y([0, 0, 0.42], 0.095, 0.012, m.Line),
+          Cap([0, 0, 0.5], [0, 0, 0.6], 0.05, 0.04, m.Body),
+          S([0, 0, 0.66], 0.06, m.Body),
+          ...pair((sd) => S([0.052, sd * 0.024, 0.67], 0.013, m.Glow)),
+          // the crown: an arcade of lit arches, a smaller drum over it, a lamp on top
+          Y([0, 0, 0.745], 0.085, 0.04, m.Stone, { round: 0.006 }),
+          ...around(6, (c, s) => arch(c, s, 0.085, 0.73, 0.018, 0.015, m.Glow)),
+          Y([0, 0, 0.81], 0.055, 0.025, m.Stone, { round: 0.006 }),
+          S([0, 0, 0.86], 0.026, m.Glow),
+        ] }),
+        king: () => ({ r: 0.34, h: 1.0, prims: [...base(0.29), ...tiles(2, 0.15),
+          Cap([0, 0, 0.15], [0, 0, 0.6], 0.17, 0.1, m.Body, { k2: 0.03 }),
+          Y([0, 0, 0.55], 0.122, 0.014, m.Stone),
+          ...pair((sd) => Cap([0.09, sd * 0.06, 0.56], [0.155, sd * 0.06, 0.2], 0.02, 0.02, m.Line)),
+          S([0.01, 0, 0.66], 0.065, m.Body),
+          ...pair((sd) => S([0.066, sd * 0.026, 0.67], 0.014, m.Glow)),
+          // the crown: four flights of three steps round its rim, each flight dropping back to where it began
+          Y([0, 0, 0.735], 0.08, 0.025, m.Stone, { round: 0.005 }),
+          ...around(12, (c, s, a, i) => { const h = 0.02 + (i % 3) * 0.022; return B([c * 0.07, s * 0.07, 0.76 + h / 2], [0.016, 0.019, h / 2], 0.002, m.Stone, { R: rz(a) }); }),
+          Cap([0, 0, 0.74], [0, 0, 0.88], 0.022, 0.014, m.Line),
+          S([0, 0, 0.91], 0.035, m.Glow), Cap([0, 0, 0.94], [0, 0, 0.99], 0.02, 0.004, m.Line),
         ] }),
       };
     };
@@ -21390,8 +21837,9 @@ function MG_SFX(L) {
      mark     pieces: a faint rim in its side's colour, a pulsing glow when selected, red when its king is
               in check, a soft glow under the pointer, a white flash as a promoted pawn lands or a Ward
               breaks; a gem (a part, art/pieces.js) tinted and glowing in its trait's hue (mark bits 4..7)
-     overlay  on the board's squares only (their top, at the board's height): a parquet grain in the wood,
-              each side's territory (the squares it controls: a wash of its colour, dots for white and
+     overlay  on the board's squares only (their top, at the board's height): a parquet grain in the wood
+              (on the Lithograph, the checker bent into interlocking tiles inked round), each side's
+              territory (the squares it controls: a wash of its colour, dots for white and
               hatching for black, stronger the more it outnumbers the other side there), a faint grid, the
               last move in amber, the selected square, the king in check (a red pulse spreading from it),
               dots on the squares a move can reach and rings on the pieces it can take, the hovered
@@ -21423,9 +21871,16 @@ function MG_SFX(L) {
   G.CELL_B = { LAST: 128, WARD: 64, SANCT: 32 };
 
   const lin = (h) => [1, 3, 5].map((i) => Math.pow(parseInt(h.slice(i, i + 2), 16) / 255, 2.2).toFixed(4));
-  // opts.hues: the gems' hues ("#rrggbb", at most 15), by the index a part's mark carries
+  const num = (v) => (+v).toFixed(3);
+  // the colour that turns a baked square of one colour into the other's (linear, per channel)
+  const ratio = (a, b) => lin(a).map((v, i) => (v / lin(b)[i]).toFixed(4)).join(", ");
+  // opts.hues: the gems' hues ("#rrggbb", at most 15), by the index a part's mark carries; opts.board: the
+  // board's id (DC.boards.list), "litho" drawing the print's pattern; opts.region: its squares { x0, y0, n }
   G.shaderHooks = (opts = {}) => {
     const hues = (opts.hues || []).slice(0, 15);
+    const litho = opts.board === "litho", rg = opts.region || { x0: 1, y0: 1, n: 8 };
+    // Art's board inks (DC.boards.style("litho") has already checked lithograph.js loaded)
+    const LITHO = litho ? window.ME.content.lithograph.board : null;
     const table = ["vec3f(0.0)"].concat(hues.map((h) => "vec3f(" + lin(h).join(", ") + ")"));
     return {
     mark: /* wgsl */ `
@@ -21468,12 +21923,28 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
   let edge = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
   let line = 1.0 - sstep(0.02, 0.06, edge);
   var col = c;
-  // parquet: the grain runs along x on one colour of square and along y on the other
   let par = (cl.x + cl.y) & 1;
+${litho ? `  // the print: the checker bent into interlocking tiles, every tile the same shape, straight at ranks 1 and 8
+  // and fully bent across the middle ranks (the outer files' edges stay straight); each square's centre keeps
+  // its own colour. A tile over the other colour's square swaps it (the baked parchment and slate's ratio);
+  // ink lines round the tiles, an engraver's hatching on the dark ones, a paper grain on the light
+  let mo = 1.0 - sstep(1.0, 3.6, abs(p.y - ${num(rg.y0 + rg.n / 2)}));
+  let ax = 0.2 * mo * sstep(0.0, 1.0, min(p.x - ${num(rg.x0)}, ${num(rg.x0 + rg.n)} - p.x));
+  let ay = 0.2 * mo;
+  let wx = p.x - ax * (sin(p.y * 6.2832) + 0.3 * sin(p.y * 12.566));
+  let wy = p.y + ay * (sin(p.x * 6.2832) + 0.3 * sin(p.x * 12.566));
+  let tp = (i32(floor(wx)) + i32(floor(wy))) & 1;
+  if (tp != par) { col = mix(col, col * select(vec3f(${ratio(LITHO.light, LITHO.dark)}), vec3f(${ratio(LITHO.dark, LITHO.light)}), tp == 1), top); }
+  let gx = length(vec2f(1.0, ax * 6.2832 * (cos(p.y * 6.2832) + 0.6 * cos(p.y * 12.566))));
+  let gy = length(vec2f(1.0, ay * 6.2832 * (cos(p.x * 6.2832) + 0.6 * cos(p.x * 12.566))));
+  let dw = min(abs(fract(wx + 0.5) - 0.5) / gx, abs(fract(wy + 0.5) - 0.5) / gy);
+  let hl = 1.0 - sstep(0.06, 0.12, abs(fract((p.x + p.y) * 7.0) - 0.5));
+  col *= 1.0 - (select(0.025 * (dcHash(floor(p.xy * 40.0)) - 0.5), 0.2 * hl, tp == 1) + 0.7 * (1.0 - sstep(0.012, 0.03, dw))) * top;`
+  : `  // parquet: the grain runs along x on one colour of square and along y on the other
   let ga = select(f.y, f.x, par == 1);
   let gb = select(f.x, f.y, par == 1);
   let grain = sin(ga * 46.0 + sin(gb * 5.0 + dcHash(cc) * 6.28) * 2.2 + dcHash(cc.yx) * 9.0);
-  col *= 1.0 + (0.045 * grain + 0.03 * sin(ga * 9.0 + dcHash(cc) * 3.0)) * top;
+  col *= 1.0 + (0.045 * grain + 0.03 * sin(ga * 9.0 + dcHash(cc) * 3.0)) * top;`}
   // the territory: a wash of the side's colour and its texture, dots for white and hatching for black
   let t = (cell.a * 255.0 - 128.0) / 127.0;
   let at = abs(t) * u.user[1].w;
@@ -21903,7 +22374,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    The settings come from the URL (?side=w|b ?level=0..2 ?promo=queen|choose ?light=current|day|hall|glow
    ?cam=guided|free|locked|dynamic), else from the last game
    (localStorage, when the browser keeps it), else the defaults (white, Normal, always a queen, the Tournament
-   lighting, the Staunton set against a random one).
+   lighting, the Tessellate set on both sides when it is there, else the Staunton set against a random one).
      new DG.Hud({ where, undo(), newGame() })
      hud.settings                      { side (0 white, 1 black), level, promo, lighting, camera, set, oppSet, weather }
      hud.keep(key, value)              a setting changed (the view panel: lighting, camera; the deck screen's
@@ -21931,7 +22402,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       const q = new URLSearchParams(location.search), kept = load();
       const pick = (v, ok, d) => (v != null && ok(v) ? v : d);
       // the piece sets a side can play (main.js hands them in: the Staunton "classic", then the themed ones)
-      const sets = o.sets || ["classic"];
+      const sets = o.sets || ["classic"], tess = sets.includes("tess");
       const side = q.get("side"), level = q.get("level"), promo = q.get("promo");
       this.settings = {
         side: side === "b" ? 1 : side === "w" ? 0 : pick(kept.side, (v) => v === 0 || v === 1, 0),
@@ -21940,8 +22411,8 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         // the lighting is kept as "lighting" (Tournament, hall, the new default, shows once over an old "light")
         lighting: (() => { const v = q.get("light"), L = ["current", "day", "hall", "glow"]; return L.includes(v) ? v : pick(kept.lighting, (x) => L.includes(x), "hall"); })(),
         // each side's piece set (DC.sets ids, or the Staunton "classic"); the opponent's may be "random"
-        set: pick(kept.set, (x) => sets.includes(x), "classic"),
-        oppSet: pick(kept.oppSet, (x) => x === "random" || sets.includes(x), "random"),
+        set: pick(kept.set, (x) => sets.includes(x), tess ? "tess" : "classic"),
+        oppSet: pick(kept.oppSet, (x) => x === "random" || sets.includes(x), tess ? "tess" : "random"),
         // the camera is kept as "camera" (#468 saved "cam" for everyone, so guided, the new default, shows once)
         camera: (() => { const v = q.get("cam"), L = ["guided", "free", "locked", "dynamic"]; return L.includes(v) ? v : pick(kept.camera, (x) => L.includes(x), L[0]); })(),
         // the weather this game's sky panel picked (main.js checks it against Mossheart's fronts; "" a clear sky)
@@ -22286,7 +22757,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.26.0", name: "DeckChess", commit: "9ecb677" };
+  G.VERSION = { v: "0.27.0", name: "DeckChess", commit: "b602d08" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -22300,7 +22771,8 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
 
 </script>
 <script>/* src/main.js */
-/* Boot and main loop, the one place every layer meets: the board (DC.boards: a wooden board floating in space)
+/* Boot and main loop, the one place every layer meets: the board (DC.boards: the Lithograph, a block of pale
+   stone drawn like a print with a stair round it, by default; ?board=space, a wooden board floating in space)
    as an engine style, baked with the Mossheart Engine's public API (bakeTerrain, greedyMesh, bakeModels with
    the piece set's flipbooks, DC.pieces), then the rules (core/), the view (view/), the HUD and the camera every
    frame. Mossheart's look comes with it: its default preset, sunbeams, its mood and weather (its sky panel)
@@ -22316,7 +22788,8 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
    URL options: ?side=w|b, ?level=0..2, ?promo=queen|choose, ?light=current|day|hall|glow (hall, Tournament,
    by default), ?cam=guided|free|locked|dynamic (view/hud.js), ?calm=1 (guided without its moves, as under reduced motion),
    ?mood= ?weather= (Mossheart's; the weather is a clear sky unless ?weather= or the sky panel's pick says),
-   ?set=classic|grove|brass|reef (both sides' piece set), ?sets=all|grove,reef,.. (more sets baked: art/sets.js),
+   ?set=tess|classic|grove|brass|reef (both sides' piece set; Tessellate by default), ?board=litho|space,
+   ?sets=all|grove,reef,.. (more sets baked: art/sets.js),
    ?seed=N (the AI's; 1 under ?selftest and ?match, else random), ?depth=N (the AI's, over the level's),
    ?dpr=1, ?scale=0.8, ?nocache=1, ?vs=N (terrain), ?hero=N (pieces), ?small=1 (a phone's caps), ?preset=,
    ?elev=20..85 (free's pitch in degrees, Mossheart's iso angle by default: view/camera.js), ?mute=1,
@@ -22349,14 +22822,15 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     // the piece sets a side can play: the Staunton set, then the themed ones (art/sets.js)
     const SETS = ["classic"].concat(C.sets.LIST.map((s) => s.id));
     let ctl = null;
-    const hud = new G.Hud({ where: C.boards.list[0].name, sets: SETS,undo: () => ctl.undo(), newGame: () => ctl.build() });
-    const boardId = C.boards.list[0].id;
+    // the board: the first in DC.boards.list unless ?board= names another
+    const board0 = C.boards.list.find((b) => b.id === ME.q("board", "")) || C.boards.list[0], boardId = board0.id;
+    const hud = new G.Hud({ where: board0.name, sets: SETS,undo: () => ctl.undo(), newGame: () => ctl.build() });
 
     ME.progress("starting WebGPU", 0.01);
     ME.onDeviceLost = () => { const l = document.getElementById("lost"); if (l) l.style.display = "grid"; };
     const gpu = await ME.initGPU(canvas);
     ME.log("ADAPTER", gpu.info, "features", [...gpu.features]);
-    const hooks = G.shaderHooks({ hues: C.pieces.HUES }), pipelines = ME.compilePipelines(gpu, hooks);
+    const hooks = G.shaderHooks({ hues: C.pieces.HUES, board: boardId, region: C.boards.regionOf() }), pipelines = ME.compilePipelines(gpu, hooks);
     pipelines.then(() => ME.log("PIPELINES", { ms: Math.round(ME.now() - t0) }), () => {});
 
     // the piece sets (art/sets.js): each side's from the deck screen's picker (hud.settings set and oppSet, a
@@ -22725,7 +23199,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
     };
     // the deck screen's set picker: a side's set (0 the player's, 1 the opponent's, which may be "random"), kept;
     // one not baked this load reloads the page, which bakes it (the deck is kept: view/deck-ui.js)
-    const SHORT = { classic: "Classic", grove: "Grove", brass: "Clockwork", reef: "Reef" };
+    const SHORT = { tess: "Tessellate", classic: "Classic", grove: "Grove", brass: "Clockwork", reef: "Reef" };
     const setList = SETS.map((id) => { const s = C.sets.LIST.find((x) => x.id === id); return { id, name: SHORT[id] || (s ? s.name : id), title: s ? s.name + ": " + s.blurb : "The Staunton set" }; });
     const pickSet = (side, id) => {
       hud.keep(side ? "oppSet" : "set", id);
@@ -22967,7 +23441,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
       mood(rdt);
       R.user[0] = lights.apply(rdt);
       const sp = R.sprites;
-      sp.begin(); starsDrawn = stars.write(R, cam, canvas.width, canvas.height, fx.clock, canvas.width / Math.max(1, canvas.clientWidth)); sp.end();
+      sp.begin(); if (board0.stars) starsDrawn = stars.write(R, cam, canvas.width, canvas.height, fx.clock, canvas.width / Math.max(1, canvas.clientWidth)); sp.end();
       // the rumble: Mossheart's camera shake
       const sh = fx.trauma * fx.trauma * 0.22, tt = now / 1000, jx = sh * Math.sin(tt * 61.3) * Math.sin(tt * 17.1), jy = sh * Math.sin(tt * 53.7 + 1.3) * Math.sin(tt * 13.9);
       cam.pan[0] += jx; cam.pan[1] += jy;
@@ -23267,7 +23741,7 @@ fn hookOverlay(c: vec3f, p: vec3f, n: vec3f, unit: bool) -> vec3f {
         ME.log("BOARD", JSON.stringify({ id: boardId, z: out.board.z, zSpread: board.zSpread, region }));
         out.pick = pick; out.turned = turned; out.script = script; out.capture = cap; out.camera = camT; out.lighting = lightT; out.deck = dk; out.setMode = ss; out.strike = st; out.epStrike = ep; out.vanguard = van; out.parts = pk;
         out.sky = { stars: starsDrawn, atmos: atmos.state(), cues: fx.cues, audio: audio ? audio.stats() : null };
-        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2 && capOk && camOk && lightOk && deckOk && setOk && strikeOk && epOk && vanOk && partsOk && starsDrawn > 100 && !mg.length && aiOk();
+        out.ok = ME.errors.length === 0 && pickOk && script.touchHover && script.tag === "e2" && script.selected && script.mouseHover && script.targets === 2 && script.played === "e4" && !!script.reply && script.undone && board.zSpread < 0.2 && capOk && camOk && lightOk && deckOk && setOk && strikeOk && epOk && vanOk && partsOk && (!board0.stars || starsDrawn > 100) && !mg.length && aiOk();
       }
       Object.assign(out, { ai: { mode: aw.mode, off: aw.off, fails: aw.fails, why: aw.why }, frames: nFrames, avgFrameIntervalMs: avg(ints.slice(5)), avgCpuMs: avg(cpus.slice(5)), gpuMs: R.gpuMs, errors: ME.errors });
       report(out);
