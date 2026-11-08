@@ -3728,7 +3728,35 @@ window.addEventListener("error", (e) => {
   ME.VS_LEVELS = [8, 12, 16, 20, 24, 32, 40, 48, 64];
   ME.setVS = (n) => { const L = ME.VS_LEVELS; ME.VS = L.reduce((b, v) => (Math.abs(v - n) < Math.abs(b - n) ? v : b), L[0]); return ME.VS; };
   ME.vsPinned = ME.params.has("vs");
-  if (ME.vsPinned) ME.setVS(ME.qn("vs", 16));
+  // ?vs=128 (W0, docs/designs/2026-11-08-whole-game-128.md) snaps to 64 as any level past the list does, and is
+  // kept as the ask (ME.vsAsk): only ME.vsFit raises ME.VS to it, so a page that never calls it boots as at ?vs=64
+  // (never a level an app or a menu picks either: vsCeiling stays 64)
+  if (ME.vsPinned) { ME.setVS(ME.qn("vs", 16)); if (ME.qn("vs", 16) >= 128) ME.vsAsk = 128; }
+  // Does a bake of box ({ o, size } in tiles, ME.bakeBox) fit at level vs? The grid's cells under 2^32 (physics' u32
+  // cell index), the half-res density within 2048 an axis (and the device's 3D texture limit), and the commit the
+  // bake adds within gb, estimated at vs64's measure (0.73 B a cell dense, a commit up to 4.4 times that)
+  const fitAt = (box, vs, gb) => {
+    const dims = box.size.map((n) => n * vs), cells = dims[0] * dims[1] * dims[2], half = Math.max(...dims) >> 1;
+    const lim = Math.min(2048, (ME.limits && ME.limits.maxTextureDimension3D) || 2048), commitGB = +((cells * 0.73 * 4.4) / 1e9).toFixed(2);
+    return { vs, dims, cells, half, lim, commitGB, gb, ok: cells < 2 ** 32 && half <= lim && commitGB <= gb };
+  };
+  // With ME.vsAsk above 64 (?vs=128), the app runs this on its bake box before the bake: a fit sets ME.VS to the ask
+  // and logs "VS128 fit"; a miss walks ME.VS_LEVELS down from 64 to the first level that passes the same checks
+  // (8 if none), sets ME.VS to it and logs "VS128 nofit -> VS48" (that level, r.to) with the numbers. gb: ?fitgb=, 2.5
+  // (W0's 4x4 slice is 1.08, a 6x6 2.43; a bigger box needs an explicit ?fitgb= until W0 measures the factor).
+  // Without an ask it only measures at ME.VS. Returns the ask's numbers (or ME.VS's).
+  ME.vsFit = (box, gb = ME.qn("fitgb", 2.5)) => {
+    if (!(ME.vsAsk > 64)) return fitAt(box, ME.VS, gb);
+    const r = fitAt(box, ME.vsAsk, gb);
+    if (r.ok) ME.VS = ME.vsAsk;
+    else {
+      const L = ME.VS_LEVELS.filter((v) => v <= 64).reverse();
+      r.to = L.find((v) => fitAt(box, v, gb).ok) || L[L.length - 1];
+      ME.VS = r.to;
+    }
+    ME.log("VS" + ME.vsAsk + (r.ok ? " fit" : " nofit -> VS" + r.to), r);
+    return r;
+  };
   // The densest level this device should offer. Engine's measure (2026-10-24, Mossheart's gardens on a 16 GB
   // Iris Xe laptop, cold bake and the machine's commit charge): 24 bakes in ~34 s for +0.9 GB, 32 in 50-59 s
   // for +1.3-1.5 GB, 40 for +2-2.7 GB (docs/decisions/2026-10-24-density-levels.md); 48 and 64 are unmeasured
@@ -5025,13 +5053,30 @@ window.addEventListener("error", (e) => {
   // and the content alone: ME.bakeModels.start builds its variant list from them before the terrain bake.
   ME.volumeDecoOf = (st, CT = ME.content || {}) => {
     const [V, W] = decoSets(CT);
-    return propsOf(st).filter(([name, , , , ex]) => propRole(name, ex, V, W) === "volume").map(([name, o]) => ({ name, o }));
+    return propsOf(st).filter(([name, , x, y, ex]) => propRole(name, ex, V, W) === "volume" && (!st.area || inArea(st.area, x, y))).map(([name, o]) => ({ name, o }));
   };
 
   // ---- The bake's view of a map: per tile its top Z (tiles), its height (for comparing neighbours) and
   // its kind (null: no ground); the water distance (null: none, or whole tiles with wholeWater); the
   // props as [model, options, x, y, at]; the frame; the bake box (tiles); the map's point lights.
   const FIXED_BOX = { o: [-1, -1, -2.5], size: [26, 26, 10] }; // a generator map's
+  // st.area = [x, y, w, h, ring] (tiles, W0): the bake is a slice of the map, its box the area and ring tiles
+  // round it within the map's box, with the map's z span; props and lamps outside it are left out
+  const areaOk = (a) => Array.isArray(a) && (a.length === 4 || a.length === 5) && a.every(Number.isInteger) && a[2] > 0 && a[3] > 0 && (a[4] ?? 0) >= 0;
+  const areaBox = (box, a) => {
+    if (!areaOk(a)) throw new Error("area: [x, y, w, h] or [x, y, w, h, ring], whole tiles, w and h > 0");
+    const r = a[4] || 0, x0 = Math.max(box.o[0], a[0] - r), y0 = Math.max(box.o[1], a[1] - r);
+    const x1 = Math.min(box.o[0] + box.size[0], a[0] + a[2] + r), y1 = Math.min(box.o[1] + box.size[1], a[1] + a[3] + r);
+    if (!(x1 > x0 && y1 > y0)) throw new Error("area: " + a.join(",") + " is outside the map's box");
+    return { o: [x0, y0, box.o[2]], size: [Math.ceil(x1 - x0), Math.ceil(y1 - y0), box.size[2]] };
+  };
+  // tile (x, y) is in the slice: its centre within the area and its ring
+  const inArea = (a, x, y) => { const r = a[4] || 0; return x + 0.5 >= a[0] - r && x + 0.5 < a[0] + a[2] + r && y + 0.5 >= a[1] - r && y + 0.5 < a[1] + a[3] + r; };
+  // the bake box of st (tiles), the slice's with st.area: what ME.vsFit measures before a bake
+  ME.bakeBox = (st, CT = ME.content || {}) => {
+    const m = st.map, box = m.v !== undefined ? ME.validateMap(m, CT.kinds || {}).box : FIXED_BOX;
+    return box && st.area ? areaBox(box, st.area) : box;
+  };
   const gridOf = (st, CT) => {
     const m = st.map;
     if (m.v !== undefined) { // a versioned map (the validator refuses any version but 1)
@@ -5050,7 +5095,7 @@ window.addEventListener("error", (e) => {
         frame: f.type === "jar"
           ? { type: "jar", c: f.c.slice(), r: f.r, foot: f.foot ?? 0.92, glassTop: f.glassTop ?? 3.4, strata: f.strata || [], spill: !!f.spill }
           : { type: "box", edge: f.edge ?? "cut" },
-        box: v.box, lights: m.lights || [],
+        box: st.area ? areaBox(v.box, st.area) : v.box, lights: m.lights || [],
       };
     }
     // a generator map: its letters as kinds made of the content's terrain roles (today's constants). Every
@@ -5075,7 +5120,7 @@ window.addEventListener("error", (e) => {
       W, H, hv, z, names: null, kinds, kindTable: Object.assign({ other }, LETTER), floorZ: (m.floor ?? -3) * 0.5, wd: m.waterD || null, wholeWater: false,
       props: propsOf(st),
       frame: { type: "jar", c: [m.geo.C, m.geo.C], r: m.geo.RI, foot: (st.clip && st.clip.foot) ?? 0.92, glassTop: st.glassZt ?? 3.4, strata: st.strata, spill: !!st.spill },
-      box: FIXED_BOX, lights: [],
+      box: st.area ? areaBox(FIXED_BOX, st.area) : FIXED_BOX, lights: [],
     };
   };
 
@@ -5622,7 +5667,9 @@ window.addEventListener("error", (e) => {
       if (!role) continue;
       const place = { name, o, X: x + 0.5 + (ex.dx || 0), Y: y + 0.5 + (ex.dy || 0), Z: G.z[y * G.W + x] + (ex.dz || 0), flip: !!ex.flip };
       if (ex.rot & 3) place.rot = ex.rot & 3; // quarter turns (stamps, volumes, their splat and lights)
-      // walkers and volumes go to the model bake (ME.volumeDecoOf lists the same volumes from st)
+      // walkers and volumes go to the model bake (ME.volumeDecoOf lists the same volumes from st); a slice's
+      // (st.area) only the ones on its tiles. Every stamp is kept: one outside the grid writes nothing
+      if (role !== "stamp" && st.area && !inArea(st.area, x, y)) continue;
       if (role === "walker") { walkers.push(place); continue; }
       if (role === "volume") { volumes.push(place); continue; }
       stamps.push({ n, name, o, place, md: null });
@@ -5659,6 +5706,11 @@ window.addEventListener("error", (e) => {
         const X = c.cx + 0.5 + c.dir[0] * 0.3 + (c.dir[1] ? side : 0), Y = c.cy + 0.5 + c.dir[1] * 0.3 + (c.dir[0] ? side : 0);
         if (lamps.some((p) => Math.hypot(p.X - X, p.Y - Y) < GL.spacing) || taken.some(([tx, ty]) => Math.hypot(tx - X, ty - Y) < 0.75)) continue;
         lamps.push({ X, Y, z0: G.z[c.cy * G.W + c.cx] + 0.6, md: ME.modelOf(c.kind.model, { seed: 1 + lamps.length * 7 }), L: c.kind.light, Z: null });
+      }
+      // a slice keeps the whole map's choice (and seeds) of lamps, then only the ones inside its box
+      if (st.area) for (let n = lamps.length - 1; n >= 0; n--) {
+        const { X, Y } = lamps[n];
+        if (X < O[0] || Y < O[1] || X >= O[0] + B.size[0] || Y >= O[1] + B.size[1]) lamps.splice(n, 1);
       }
     }
 
@@ -5918,7 +5970,7 @@ window.addEventListener("error", (e) => {
     };
     for (let cy = 0; cy < G.H; cy++) for (let cx = 0; cx < G.W; cx++) {
       const kd = kindAt(cx, cy), full = fullAt(cx, cy);
-      if (!kd || !wetAt(cx, cy)) continue;
+      if (!kd || !wetAt(cx, cy) || (st.area && !inArea(st.area, cx, cy))) continue;
       let any = full;
       for (let s = 0; s < 64 && !any; s++) any = wetV(cx + ((s % 8) + 0.5) / 8, cy + (Math.floor(s / 8) + 0.5) / 8) > 0;
       if (!any) continue;
@@ -5987,6 +6039,7 @@ window.addEventListener("error", (e) => {
 
     const stats = { dims: [NX, NY, NZ], solid, wetCols, lobes, props: propCount, lanterns: lights.length, stampedVoxels: stamped, water: water.length, falls: falls.length, flooded: G.flood ? water.filter((w) => fullAt(w.x, w.y)).length : 0, edgeBreak: EB ? Object.assign({ cols: ebCols, carved: ebCarved }, LW ? { waved: lwCols } : null) : null, zTop: O[2] + (kMax + 1) / VS, mipMs, ms: Math.round(ME.now() - t0) };
     if (regions) stats.regions = regions; // regions mode only: the whole path's stats keep their keys
+    if (st.area) stats.area = { area: st.area.slice(), box: { o: O.slice(), size: B.size.slice() } }; // a slice's (W0)
     // bounds: the world box in tiles; frame: the map's (jar or box); geo: the jar's measures (null in a box)
     const bounds = { min: O.slice(), max: [O[0] + B.size[0], O[1] + B.size[1], O[2] + B.size[2]] };
     // tiles: per tile of the map, its top (tiles), its kind's name (null on a generator map) and recipe (null:
@@ -6000,7 +6053,7 @@ window.addEventListener("error", (e) => {
   };
   // the code the bake runs besides bakeTerrain itself (the bake cache key holds its source)
   // the bake cache key's code: the bake's helpers and its tables (cache.js)
-  ME.bakeTerrain.parts = [ME.validateMap, ME.waterDist, gridOf, propsOf, decoSets, propRole, resolve, mottleCut, pave, heights, kindNames, rows, impure, BrickGrid, ...Object.values(RECIPE),
+  ME.bakeTerrain.parts = [ME.validateMap, ME.waterDist, gridOf, propsOf, decoSets, propRole, areaOk, areaBox, inArea, resolve, mottleCut, pave, heights, kindNames, rows, impure, BrickGrid, ...Object.values(RECIPE),
     JSON.stringify({ B36, STEPS, RECIPES, FLAGS, AT, FIXED_BOX })];
 
   // The coarse occupancy (docs/decisions/2026-10-20-sun-volume-density.md): one cell is f voxels on a side,
@@ -6730,6 +6783,8 @@ window.addEventListener("error", (e) => {
     }
     return { variants, statics, walkerTypes, walkerFrames, extraFrames, critterFrames };
   }
+  // the most voxels a tile edge a model bakes at (W0): a terrain at ?vs=128 keeps its models at 64
+  ME.MODEL_VS = 64;
   // every variant's model: critters (o.fine set) are drawn content.critterScale x life size so they read
   // beside the chibi units; app models may set their own scale (o.scale) and recolour materials (o.remap:
   // name -> name)
@@ -6741,6 +6796,11 @@ window.addEventListener("error", (e) => {
       if (v.o && v.o.scale) md.k = v.o.scale * fine;
       else if (fine !== 1) md.k = ((v.o && v.o.size) || md.k) * fine * (CT.critterScale ?? 1);
       if (v.o && v.o.chunk) { md.k /= v.o.chunk; vf = 1 / v.o.chunk; }
+      // above ME.MODEL_VS (W0, ?vs=128) a model bakes at most at that density (VS x vf voxels a tile edge), as a
+      // chunk does: the voxeliser sees VS x k, so it is the vs64 model, drawn 1/vf as big. A model already at or
+      // under it (a game's own fine, e.g. Mossheart's G.heroFine, divides by ME.VS) keeps its vf. Its vf is then
+      // at most MODEL_VS / VS, so it is not progressive there
+      if (ME.VS > ME.MODEL_VS) { const c = Math.min(1, ME.MODEL_VS / (ME.VS * vf)); md.k *= c; vf *= c; }
       if (v.o && v.o.remap) {
         const map = v.o.remap, d0 = md.detail;
         md.detail = (x, y, z, m, nx, ny, nz, tv) => { const r = d0 ? d0(x, y, z, m, nx, ny, nz, tv) || m : m; return map[r] || r; };
@@ -21669,7 +21729,8 @@ function MG_SFX(L) {
    DG.LIGHTS), and over the board's style it sets the sky, the fog, the squares' and the rim's woods (the
    board's ramps), the team colours (the pieces' rims, the territory, the selected square) and a tint on
    every piece set's colours; the pieces' shapes stay with the set picker. No weather: the sky panel's own.
-     Lithograph (the default): the board as Art drew it, the Tournament light.
+     Lithograph (the default): the board as Art drew it, the Tournament light, its sides in the glow's
+       lamplight and water.
      Minimalist's dream: pale matte squares in a pale room, a soft even light, no shadow to speak of.
      Ultra cosy: honey maple and walnut in a cherry rim, a dark warm room, pools of lamplight drifting.
      Cyberpunk: dark steel squares under a violet night with its stars, the room dark, the game's lines and
@@ -21685,7 +21746,10 @@ function MG_SFX(L) {
 (function () {
   const C = (window.DC = window.DC || {});
   const LIST = [
-    { id: "litho", name: "Lithograph", board: "litho", light: "hall", stars: false, team: [[1, 0.9, 0.65], [0.6, 0.45, 1]] },
+    // the team colours are the print's Glow role (Art's lithograph.js), linear: white's lamplight, the amber glow's
+    // band #fadc90, and black's water #7d96a0 lifted to full brightness. The default violet came from outside the
+    // print and washed the slate squares Black holds (d6-e6 in the opening) violet-grey (#557's bisect)
+    { id: "litho", name: "Lithograph", board: "litho", light: "hall", stars: false, team: [[0.957, 0.723, 0.284], [0.581, 0.868, 1]] },
     {
       id: "dream", name: "Minimalist's dream", board: "space", light: "soft", stars: false,
       team: [[0.86, 0.7, 0.45], [0.36, 0.47, 0.68]], fog: [228, 230, 234],
@@ -23132,7 +23196,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.29.0", name: "DeckChess", commit: "c454776" };
+  G.VERSION = { v: "0.30.0", name: "DeckChess", commit: "1eadb35" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
