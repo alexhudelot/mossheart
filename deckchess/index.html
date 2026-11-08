@@ -122,6 +122,21 @@ div.dk-cell { cursor: default; }
 .dk-share { display: flex; gap: 5px; }
 #dk-code { flex: 1; min-width: 0; font: 12px ui-monospace, Consolas, monospace; color: var(--ink); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; user-select: text; -webkit-user-select: text; }
 #dk-play { font-size: 16px; padding: 10px; }
+#dk-friend { justify-content: center; }
+/* a room (net/room.js, NET.md): its bar above the camera row and the bottom buttons (the invite link, how the friend is, the draw,
+   resign and rematch buttons); a room has no New game (Rematch is the bar's) */
+#net { position: absolute; z-index: 2; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 94px); left: 50%; transform: translateX(-50%); width: min(420px, calc(100vw - 20px)); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.net-status { font-size: 13px; color: var(--ink); text-align: center; }
+.net-status.bad { color: var(--bad); }
+.net-note { font-size: 12.5px; color: var(--dim); text-align: center; }
+.net-note:empty { display: none; }
+.net-share { display: flex; gap: 5px; }
+.net-share input { flex: 1; min-width: 0; font: 12px ui-monospace, Consolas, monospace; color: var(--ink); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; user-select: text; -webkit-user-select: text; }
+.net-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.net-acts:not(:has(button:not([hidden]))) { display: none; }
+#net [hidden], #dk-friend[hidden] { display: none !important; }
+#ui.room #b-new { display: none; }
+#ui.building #net { display: none; }
 /* a traited piece's card (hover, or a long press) and the trait lens: a label over each traited piece */
 #tcard { position: absolute; z-index: 6; display: none; max-width: 280px; padding: 8px 10px; font-size: 12.5px; line-height: 1.4; pointer-events: none; }
 #tcard.show { display: block; }
@@ -190,7 +205,8 @@ div.dk-cell { cursor: default; }
     <div class="dk-share"><input id="dk-code" spellcheck="false" placeholder="share code"><button class="chip" data-a="share">Copy code</button><button class="chip" data-a="import">Load code</button></div>
     <div id="dk-note"></div>
     <button id="dk-oppbtn" class="chip wide" data-a="opp"></button><div id="dk-opp"></div>
-    <button id="dk-play" class="btn on" data-a="play">Play</button></div>
+    <button id="dk-play" class="btn on" data-a="play">Play</button>
+    <button id="dk-friend" class="chip wide" data-a="friend" title="a new room: send your friend its link">Play a friend online</button></div>
   <div id="promo" class="veil"><div class="panel card"><h2>Promote to</h2><div id="p-pick" class="seg big"></div></div></div>
   <div id="end" class="veil"><div class="panel card"><h2 id="endtitle"></h2><p id="endtxt"></p>
     <div class="row end"><button id="e-look" class="btn">Look at the board</button><button id="e-again" class="btn on">New game</button></div></div></div>
@@ -4004,14 +4020,20 @@ window.addEventListener("error", (e) => {
       this.zoom = 30; this.pan = [0, 0];
       this.minZoom = 6; this.maxZoom = 400; // (canvas px per tile; a game scales them with its canvas DPR)
       this.D0 = D0; this.D1 = D1; this.foc = null;
+      this.locked = null; // the quarter turn lock() holds the view at, or null
     }
     snap(dir) {
+      if (this.locked !== null) return;
       this.k += dir;
       this.from = this.theta; this.to = (this.k * Math.PI) / 2; this.t0 = ME.now();
     }
     get turning() { return this.t0 !== null; }
     // jump to quarter turn k at once (no easing): a showroom or a saved view
-    turnTo(k) { this.k = k; this.theta = this.from = this.to = (k * Math.PI) / 2; this.t0 = null; }
+    turnTo(k) { if (this.locked !== null) return; this.k = k; this.theta = this.from = this.to = (k * Math.PI) / 2; this.t0 = null; }
+    // Hold the view at quarter turn k (it jumps there): snap() and turnTo() then do nothing, so Q/E and a game's
+    // turn buttons are ignored; pan, zoom, focus and fit stay. For a level whose picture holds at one turn only
+    // (the Ever Stair's loop: docs/designs/2026-11-08-escher-level-engine.md). lock(null) frees it.
+    lock(k) { this.locked = null; if (k != null) { this.turnTo(k); this.locked = k; } }
     // Ease the view to the world point p over o.s seconds (and the zoom to o.zoom, if given). The player's
     // drag or wheel, lookAt and fit cancel it; busy says whether the view still moves (a focus or a Q/E
     // turn). A turn on the way keeps p centred.
@@ -14192,7 +14214,7 @@ fn boxOf(V: Vox) -> Box {
      ME.content.ramps / mats / materialClass   the lit* materials, reaching each style through
                                                ME.content.addMaterials (critter-models.js)
      ME.content.lithograph                     the same colours as plain data, for pages and UI:
-       colors    { name: hex }, the twelve inks
+       colors    { name: hex }, the thirteen inks
        ramps     { material: [16 hexes] }, the cel bands as the palette samples them
        roles     { role: [whiteHex, blackHex, opts] }, a light and a dark army in DeckChess's sets.js shape
        board     { light, dark, line, frame } hexes for a board
@@ -14206,7 +14228,7 @@ fn boxOf(V: Vox) -> Box {
   const ME = window.ME, CT = (ME.content = ME.content || {});
 
   const COLORS = {
-    paper: "#f6f1e4", parchment: "#ece4d0", road: "#e4d8bc", bone: "#d8ccb0",
+    paper: "#f6f1e4", parchment: "#ece4d0", chalk: "#edf0f2", road: "#e4d8bc", bone: "#d8ccb0",
     slate: "#8f949a", graphite: "#6e6a64", dark: "#45413c", ink: "#23211f",
     moss: "#5f8f3a", mossL: "#7fa955", water: "#7d96a0", amber: "#f0b040",
   };
@@ -14223,7 +14245,7 @@ fn boxOf(V: Vox) -> Box {
   const glow = (h) => [h, "#f6c860", "#fadc90", "#fdf0c8"].flatMap((b) => [b, b, b, b]);
 
   const RAMPS = {
-    litPaper: cel(COLORS.paper, 0.7), litParchment: cel(COLORS.parchment, 0.8), litRoad: cel(COLORS.road, 0.8), litBone: cel(COLORS.bone),
+    litPaper: cel(COLORS.paper, 0.7), litChalk: cel(COLORS.chalk, 0.8), litParchment: cel(COLORS.parchment, 0.8), litRoad: cel(COLORS.road, 0.8), litBone: cel(COLORS.bone),
     litSlate: cel(COLORS.slate), litGraphite: cel(COLORS.graphite), litDark: cel(COLORS.dark, 0.8), litInk: cel(COLORS.ink, 0.5),
     litMoss: cel(COLORS.moss), litMossL: cel(COLORS.mossL), litWater: cel(COLORS.water, 0.8), litAmber: glow(COLORS.amber),
   };
@@ -14240,9 +14262,10 @@ fn boxOf(V: Vox) -> Box {
   CT.lithograph = {
     colors: COLORS,
     ramps: RAMPS,
-    // a light army cut from paper and bone, a dark one from ink and graphite; moss and lamplight on both
+    // a light army cut from chalk and bone, a dark one from ink and graphite; moss and lamplight on both. The
+    // light body is chalk, a cooler white than the parchment squares, so a piece parts from them by hue too
     roles: {
-      Body: [COLORS.parchment, COLORS.ink],
+      Body: [COLORS.chalk, COLORS.ink],
       Line: [COLORS.graphite, COLORS.bone],
       Stone: [COLORS.bone, COLORS.dark],
       Base: [COLORS.slate, COLORS.graphite],
@@ -14263,7 +14286,8 @@ fn boxOf(V: Vox) -> Box {
    and C of the S5 board (2026-11-08). This file holds Art's part of the level; the map is Game's
    (content/everstair-map.js) and names these kinds and models:
      ME.content.kinds       es_road (the paved road), es_court (the cloister's flags), es_lawn (moss lawn),
-                            es_wall (the walls' tops), es_water (a still grey pool)
+                            es_wall (the walls' tops), es_water (a still grey pool), and the plain kinds
+                            round the stair's seam: es_tread (the stair) and es_turf (the ground behind it)
      window.MODELS          stamps es_stair (o.steps, o.rise, o.w, o.rail), es_arch (o.span, o.h),
                             es_facade (one tile of back wall, o.piece: plain, lawn, tree, stair, arch or
                             lantern, o.h) and es_inlay (one road tile's paving, o.stage 0-1, o.u, o.v)
@@ -14284,15 +14308,27 @@ fn boxOf(V: Vox) -> Box {
     es_court: { recipe: "layer", top: "litParchment", mottle: "litBone", mottleK: 0.18, depth: 0.12, under: "litSlate" },
     es_lawn: { recipe: "carpet", top: "litMoss", mottle: "litMossL", cushions: true, drape: ["litMoss", "litMossL"], overhang: "litMoss", under: "litGraphite" },
     es_wall: { recipe: "layer", top: "litBone", mottle: "litSlate", mottleK: 0.15, depth: 0.1, under: "litGraphite" },
+    // the plain kinds round the stair's seam (the Architect's tell 3): the loop closes only on screen, so the
+    // end's side shows next to the start's copy 4 tiles higher, and any pattern laid in world space breaks
+    // there. The stair's treads (es_tread, all 32 cells) and the plain ground behind its two ends (es_turf)
+    // have no mottle, no cushions, no edge breakup, and flat materials: litRoad's and litMoss's colours in
+    // the default lighting class, so no rock blotches, moss mottling or gust sheen either (light.js,
+    // gbuffer.js). Only the per-voxel grain stays, which has no pattern to line up. The kerb is laid by tile, not in
+    // world space, so the treads keep it
+    es_tread: { recipe: "layer", top: "litTread", depth: 0.12, under: "litSlate", edge: { mat: "litGraphite", width: 0.1, raise: 0.06, facing: ["es_lawn", "es_turf"] } },
+    es_turf: { recipe: "layer", top: "litTurf", depth: 0.12, under: "litGraphite" },
     // a still pool the colour of slate: little glint, faint caustics, a grey tint
     es_water: Object.assign({}, CT.kinds.water || {}, {
       bed: ["litSlate", "litGraphite"], shore: "litBone", bank: "litMoss", drape: ["litMoss", "litMossL"], overhang: "litMoss", under: "litGraphite",
       surface: 0, clarity: 0.6, tint: [0.12, 0.16, 0.2], absorb: 1.2, calm: 1, glint: 0.5, caustics: 0.3,
     }),
   });
+  // the plain kinds' materials: the lithograph's road and moss ramps under names with no class (materialClass)
+  Object.assign(CT.ramps, { litTread: CT.ramps.litRoad, litTurf: CT.ramps.litMoss });
+  CT.mats = Object.assign(CT.mats || {}, { litTurf: { wrap: 0.5 } });
   // the stone stays crisp: printed lines, not worn edges
-  CT.edgeRound = Object.assign(CT.edgeRound || {}, { kinds: Object.assign((CT.edgeRound && CT.edgeRound.kinds) || {}, { es_road: 0, es_court: 0.03, es_wall: 0 }) });
-  if (CT.edgeBreak) CT.edgeBreak.kinds = Object.assign(CT.edgeBreak.kinds || {}, { es_road: 0, es_court: 0, es_wall: 0, es_lawn: 0.1 });
+  CT.edgeRound = Object.assign(CT.edgeRound || {}, { kinds: Object.assign((CT.edgeRound && CT.edgeRound.kinds) || {}, { es_road: 0, es_court: 0.03, es_wall: 0, es_tread: 0, es_turf: 0 }) });
+  if (CT.edgeBreak) CT.edgeBreak.kinds = Object.assign(CT.edgeBreak.kinds || {}, { es_road: 0, es_court: 0, es_wall: 0, es_lawn: 0.1, es_tread: 0, es_turf: 0 });
 
   // ---------------------------------------------------------------- models
   // tile units, the anchor at the ground centre, Z up (content/fernglass.js)
@@ -14344,13 +14380,15 @@ fn boxOf(V: Vox) -> Box {
       detail: (x, y, z, m, nx, ny, nz, vx) => {
         if (m === "litSlate") return Math.abs(nx) > 0.6 && hatch(y, z) ? "litGraphite" : m;
         if (m !== "litBone" || z < hs - 0.02) return m;
-        // voussoir joints: rays from the springing centre every 1/13 of the half turn, inside the ring; ashlar
-        // courses in the spandrels beyond it
+        // voussoir joints: rays from the springing centre every 1/13 of the half turn, inside the ring, in
+        // graphite and on the two faces only (inked through the soffit too, they read as a black ladder at a
+        // board's scale); ashlar courses in the spandrels beyond it
         const r = Math.hypot(y, z - hs), line = Math.max(0.015, vx * 0.6);
         if (r > sp + 0.14) return Math.abs(nx) > 0.6 && ashlar(y, z) ? "litSlate" : m;
+        if (Math.abs(nx) <= 0.6) return m;
         if (Math.abs(r - sp - 0.14) < line) return "litInk";
         const a = Math.atan2(z - hs, y) / Math.PI, j = fr(a * 13 + 0.5);
-        return Math.min(j, 1 - j) * Math.PI * r / 13 < line ? "litInk" : m;
+        return Math.min(j, 1 - j) * Math.PI * r / 13 < line ? "litGraphite" : m;
       },
     };
   });
@@ -20688,9 +20726,10 @@ function MG_SFX(L) {
      DC.pieces.CUES[id]           { hue, rarity, idx }   (idx 1..12, a gem's hue in HUES)
      DC.pieces.tierOf(ids), gemOf(ids)
      DC.pieces.RAMPS, MATS        the parts' materials, for the board's style
-     DC.pieces.bindParts(MB)      -> { layout(color, type, ids, silOk) -> { tier, gem, list: [{ f, off, sc, hue }],
+     DC.pieces.bindParts(MB, traits)  -> { layout(color, type, ids, silOk) -> { tier, gem, list: [{ f, off, sc, hue }],
                                      sil? } }: sil { f, fine } the tier 5 silhouette, drawn in place of the base
-                                     (none with silOk false: a themed set's figurine keeps its own) */
+                                     (none with silOk false: a themed set's figurine keeps its own). traits: the
+                                     rules' list ([{ id, rarity }]), whose rarities CUES, tierOf and gemOf use */
 (function () {
   const C = (window.DC = window.DC || {});
   const FRAMES = 1;
@@ -20780,14 +20819,15 @@ function MG_SFX(L) {
   // (the slot it sits in) in model units and set on a piece by SLOT below. The bake's key takes a model's own
   // source only, so each part's data sits inside its function.
   // the traits in the catalogue's order and their hues; index + 1 is a gem's hue in the shader's table (HUES).
-  // Their rarities (1 Common .. 4 Legendary) are the rules' (DG.TRAITS, core/chess.js)
+  // Their rarities (1 Common .. 4 Legendary) are the rules' (core/chess.js): the game hands its trait list to
+  // bindParts, which fills them in (the content layer doesn't name the game: check-layers)
   const CUES = [
     ["ward", "#9fd6ff"], ["vanguard", "#e5483d"], ["glide", "#1fa89a"], ["rally", "#4fbf5a"],
     ["anointed", "#e8b33a"], ["stride", "#f39a1e"], ["pike", "#a8b3c1"], ["squire", "#f2cc4d"],
     ["ember", "#ff6a1a"], ["leap", "#3cc3db"], ["sanctuary", "#a383f2"], ["phoenix", "#ee3f86"],
   ];
-  const CUE = {}, RULES = window.DG.TRAITS;
-  CUES.forEach(([id, hue], i) => (CUE[id] = { id, hue, rarity: RULES.find((t) => t.id === id).rarity, idx: i + 1 }));
+  const CUE = {};
+  CUES.forEach(([id, hue], i) => (CUE[id] = { id, hue, rarity: 0, idx: i + 1 }));
   // the tier from the traits' rarities: U their sum; a Legendary with U >= 6, or U >= 8, is tier 5
   const tierOf = (ids) => {
     let u = 0, leg = false;
@@ -21074,7 +21114,8 @@ function MG_SFX(L) {
     // the base's fit), and its list leaves out the collar, crest and inlay the silhouette carries. With silOk
     // false (a themed set's figurine, DC.sets: the silhouettes are Staunton shapes) it keeps its base and the
     // collar, crest and inlay instead.
-    bindParts(MB) {
+    bindParts(MB, traits) {
+      for (const t of traits) { if (CUE[t.id]) CUE[t.id].rarity = t.rarity; }
       const id = {};
       const get = (k) => {
         const fr = MB.extraFrames[k];
@@ -22138,7 +22179,9 @@ function MG_SFX(L) {
 /* The board's look in the engine's shader hooks (ME.SHADER_HOOKS; spliced in by the Renderer):
      mark     pieces: a faint rim in its side's colour, a pulsing glow when selected, red when its king is
               in check, a soft glow under the pointer, a white flash as a promoted pawn lands or a Ward
-              breaks; a gem (a part, art/pieces.js) tinted and glowing in its trait's hue (mark bits 4..7)
+              breaks; a gem (a part, art/pieces.js) tinted and glowing in its trait's hue (mark bits 4..7);
+              on the Lithograph, a figure marked INK edged in the Line role's ink (graphite round a white
+              piece, bone round a black one), drawn where it turns away from the eye
      overlay  on the board's squares only (their top, at the board's height): a parquet grain in the wood
               (on the Lithograph, the checker bent into interlocking tiles inked round), each side's
               territory (the squares it controls: a wash of its colour, dots for white and
@@ -22160,13 +22203,15 @@ function MG_SFX(L) {
      user[2] = the last ripple: its centre xy (world), its start (s, the frame clock u.vdir.w), its kind
                (0 a move, 1 a capture, 2 a promotion)
      user[3] = the king in check: its square's centre xy, 1 while in check, the mate's start (s, 0 = none)
-     user[4], user[5] = white's and black's colours (piece rims, territory, the selected square) */
+     user[4], user[5] = white's and black's colours (piece rims, territory, the selected square), and in w
+               the strength of the ink edge round each side's pieces (0 none; the Lithograph only) */
 (function () {
   const G = (window.DG = window.DG || {});
 
   // instance mark bits (sim.put mark)
-  // (bits HUE_SHIFT.. : a gem's hue, 1 + its index in the hues shaderHooks takes; 0 none)
-  G.MARK = { BLACK: 1, SELECTED: 2, CHECK: 4, HOVER: 8, HUE_SHIFT: 4 };
+  // (bits HUE_SHIFT.. : a gem's hue, 1 + its index in the hues shaderHooks takes; 0 none; INK: the
+  // Lithograph's ink edge, a set PiecesView.ink names)
+  G.MARK = { BLACK: 1, SELECTED: 2, CHECK: 4, HOVER: 8, HUE_SHIFT: 4, INK: 256 };
   // the ripple's kinds (user[2].w)
   G.RIPPLE = { MOVE: 0, CAPTURE: 1, PROMO: 2 };
   // the ground map's b bits
@@ -22183,6 +22228,8 @@ function MG_SFX(L) {
     const litho = opts.board === "litho", rg = opts.region || { x0: 1, y0: 1, n: 8 };
     // Art's board inks (DC.boards.style("litho") has already checked lithograph.js loaded)
     const LITHO = litho ? window.ME.content.lithograph.board : null;
+    // and its figures' Line role: the ink edge's colour, white's then black's
+    const LINE = litho ? window.ME.content.lithograph.roles.Line.map((h) => "vec3f(" + lin(h).join(", ") + ")") : null;
     const table = ["vec3f(0.0)"].concat(hues.map((h) => "vec3f(" + lin(h).join(", ") + ")"));
     return {
     mark: /* wgsl */ `
@@ -22201,11 +22248,19 @@ fn hookMark(m: u32, flash: f32, n: vec3f, lp: vec3f, hc: f32, seed: f32) -> Mark
   let tc = select(u.user[4].rgb, u.user[5].rgb, (m & ${G.MARK.BLACK}u) != 0u);
   // the glow gain (user[0].x): the rim brighter and, past 1, a faint light in the whole piece
   let gg = max(1.0, u.user[0].x);
-  g.emit += tc * rim * 0.35 * gg + tc * 0.06 * (gg - 1.0) * (0.6 + 0.4 * rim);
+${litho ? `  // (not on a white piece the INK bit alone brought here: the engine runs this only for a mark or a flash)
+  if ((m & ~${G.MARK.INK}u) != 0u || flash > 0.0) { g.emit += tc * rim * 0.35 * gg + tc * 0.06 * (gg - 1.0) * (0.6 + 0.4 * rim); }`
+    : `  g.emit += tc * rim * 0.35 * gg + tc * 0.06 * (gg - 1.0) * (0.6 + 0.4 * rim);`}
   if ((m & ${G.MARK.SELECTED}u) != 0u) { g.emit += tc * rim * (1.6 + 0.5 * sin(tm * 4.0)) + tc * 0.1; }
   if ((m & ${G.MARK.CHECK}u) != 0u) { g.emit += vec3f(1.0, 0.25, 0.2) * rim * (1.5 + 0.6 * sin(tm * 6.0)); }
   if ((m & ${G.MARK.HOVER}u) != 0u) { g.emit += tc * rim * 0.8; }
-  if (flash > 0.0) { g.tint = vec4f(mix(g.tint.rgb, vec3f(1.0, 0.95, 0.9), select(1.0, flash, g.tint.a > 0.0)), max(g.tint.a, flash)); g.emit += vec3f(1.0, 0.8, 0.6) * flash; }
+${litho ? `  // the ink edge: the albedo turning to the Line role's ink where the figure turns away from the eye (not a gem)
+  if ((m & ${G.MARK.INK}u) != 0u && hi == 0u) {
+    let bk = (m & ${G.MARK.BLACK}u) != 0u;
+    let e = sstep(0.5, 0.85, 1.0 - clamp(dot(n, -u.vdir.xyz), 0.0, 1.0)) * select(u.user[4].w, u.user[5].w, bk);
+    g.tint = vec4f(select(${LINE[0]}, ${LINE[1]}, bk), e);
+  }
+` : ""}  if (flash > 0.0) { g.tint = vec4f(mix(g.tint.rgb, vec3f(1.0, 0.95, 0.9), select(1.0, flash, g.tint.a > 0.0)), max(g.tint.a, flash)); g.emit += vec3f(1.0, 0.8, 0.6) * flash; }
   return g;
 }`,
 
@@ -22501,6 +22556,8 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
                             piece goes or comes back): the app repaints the tiles they mark, then clears it
      partStats()            how many parts the pieces draw and each tier's count of pieces
      setModels(models)      another set's models (the deck screen's picker)
+     ink                    the sets (a Set of DC.sets ids, or null) whose figures carry G.MARK.INK, the
+                            Lithograph's ink edge (view/shaders.js); their parts don't
    With parts (DC.pieces.bindParts) each piece with traits (game.tr) also draws its tier's and its traits'
    parts, offset from its anchor and turned with it; a gem's mark carries its hue (G.MARK.HUE_SHIFT). A tier 5
    Staunton knight, bishop or rook draws its silhouette (the layout's sil) in place of its base; a themed set's
@@ -22519,6 +22576,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
   class PiecesView {
     constructor(board, models, parts = null) {
       this.board = board; this.models = models; this.parts = parts;
+      this.ink = null;
       this.list = []; this.drawn = [];
       this.selected = -1; this.hover = -1; this.check = -1;
       this.ids = 0;
@@ -22641,12 +22699,13 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
         const f = s5 ? s5.f : m.frames[Math.floor(time * FPS + p.phase * m.frames.length) % m.frames.length];
         const k = (m.fit / (s5 ? s5.fine : m.fine)) * p.s;
         let Z = p.P[2], mark = p.c ? MK.BLACK : 0;
+        const ink = this.ink && this.ink.has(m.set) ? MK.INK : 0;
         if (p.sq === this.selected && !p.walk) { mark |= MK.SELECTED; Z += 0.05 + Math.sin(time * 4) * 0.02; }
         if (p.sq === this.check && p.t === G.PIECE.KING && !p.walk) mark |= MK.CHECK;
         if (p.sq === this.hover && !p.die) mark |= MK.HOVER;
         if (i >= cap) break;
         this.drawn.push(p);
-        sim.put(i++, f, p.P[0], p.P[1], Z, YAW[p.c], false, [k, k, k], [0, 0], 1, 0, mark, p.flash);
+        sim.put(i++, f, p.P[0], p.P[1], Z, YAW[p.c], false, [k, k, k], [0, 0], 1, 0, mark | ink, p.flash);
         // its parts: each offset from its anchor in model units, turned with it, at its fit
         if (!l) continue;
         const ks = m.fit * p.s, yc = Math.cos(YAW[p.c]), ys = Math.sin(YAW[p.c]);
@@ -22771,9 +22830,10 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
       const r = this.promoWait; this.promoWait = null;
       if (r) r(t);
     }
+    // status: a game's end (core/chess.js status(), or a room's: its title, "Game stopped", says it)
     showEnd(status, you) {
       const solo = you.length === 1, won = solo && status.winner === you[0], draw = status.winner < 0;
-      const title = draw ? "Draw" : solo ? (won ? "You win" : "You lose") : SIDES[status.winner] + " wins";
+      const title = status.title || (draw ? "Draw" : solo ? (won ? "You win" : "You lose") : SIDES[status.winner] + " wins");
       $("endtitle").textContent = title;
       $("endtitle").className = draw ? "" : "wb"[status.winner];
       $("endtxt").textContent = (status.reason[0].toUpperCase() + status.reason.slice(1)) + " · " + status.result;
@@ -22815,7 +22875,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
    "DC1.RNNQKBNR.b1S.g1W.e2V" (44 points; G.TRAITS' letters).
      new DG.DeckSheet({ onChange(deck), onPlay(deck), opponent() -> { name, deck }, builder() -> bool (true without it),
                         sets() -> { list: [{ id, name, title }], mine, opp, fixed, now: [mine's, opp's set as rolled] },
-                        onSet(side, id) })
+                        onSet(side, id), onFriend() (Play a friend online: a new room, NET.md; the button hides without it) })
      sheet.open(), sheet.close(), sheet.isOpen, sheet.deck, sheet.sel (a deck square such as "b1", or "")
      sheet.select(sq), sheet.toggle(id), sheet.setType(letter), sheet.preset(id), sheet.points
      DeckSheet.code(deck) -> text, DeckSheet.decode(text) -> a deck, or null when it isn't a playable one
@@ -22884,6 +22944,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
       const el = (this.el = $("deck"));
       el.addEventListener("click", (e) => this.click(e));
       $("dk-preset").addEventListener("change", (e) => { if (e.target.value) this.preset(e.target.value); });
+      if ($("dk-friend")) $("dk-friend").hidden = !o.onFriend;
       this.keep();
     }
     get points() { return D().points(this.deck); }
@@ -22978,6 +23039,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
       else if (a === "set" || a === "oppset") { if (this.o.onSet) this.o.onSet(a === "set" ? 0 : 1, v); this.draw(); }
       else if (a === "pow") { this.pow = this.pow === v ? "" : v; this.draw(); }
       else if (a === "play") { if ((!this.builder || !D().problems(this.deck).length) && this.o.onPlay) this.o.onPlay(copy(this.deck)); }
+      else if (a === "friend") { if (this.o.onFriend && (!this.builder || !D().problems(this.deck).length)) this.o.onFriend(); }
     }
     // a piece's cell: its glyph, a pip for each trait in its rarity's colour
     cell(deck, sq, sel, act) {
@@ -23010,6 +23072,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
       if (!B) {
         $("dk-note").textContent = this.note;
         $("dk-play").disabled = false; $("dk-play").title = "";
+        if ($("dk-friend")) $("dk-friend").disabled = false;
         return;
       }
       const presets = [["classic", "Classic"]].concat(Object.entries(Dk.TEMPLATES).map(([k, v]) => [k, v.name]));
@@ -23048,6 +23111,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
       const bad = Dk.problems(deck);
       $("dk-play").disabled = bad.length > 0;
       $("dk-play").title = bad.join("; ");
+      if ($("dk-friend")) $("dk-friend").disabled = bad.length > 0;
     }
   }
   DeckSheet.code = code;
@@ -23068,7 +23132,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.28.0", name: "DeckChess", commit: "592781a" };
+  G.VERSION = { v: "0.29.0", name: "DeckChess", commit: "c454776" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -23078,6 +23142,3138 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
     document.body.appendChild(el);
   };
   if (document.body) show(); else document.addEventListener("DOMContentLoaded", show);
+})();
+
+</script>
+<!-- play a friend online (NET.md): Trystero over Nostr relays, vendored and pinned (no CDN at run time) -->
+<script>/* vendor/trystero-nostr.js */
+/*! vendor/trystero-nostr.js, written by tools/vendor-trystero.ps1 (do not edit: change the script and rerun it).
+   Trystero's Nostr strategy (src/utils, crypto, peer, room, strategy, nostr) and @noble/secp256k1, each ES module
+   moved into a function scope; the code is otherwise the packages' own (line ends made LF). Nothing runs until
+   TrysteroNostr() is first called; it returns {joinRoom, selfId, getRelaySockets, defaultRelayUrls, schnorr}.
+     trystero 0.21.8  https://registry.npmjs.org/trystero/-/trystero-0.21.8.tgz
+       sha256 c696f1e03842e8f9e02726f8e8794f2d10777550fd01ca44cdb29ad0bd846b91
+     @noble/secp256k1 3.0.0  https://registry.npmjs.org/@noble/secp256k1/-/secp256k1-3.0.0.tgz
+       sha256 fdd30915cb29c57e0a6099fe1483d8b1d31fb9efe0bd027c40db04feec11ed1b
+
+   ---- trystero: LICENSE ----
+Copyright (c) 2021 Dan Motzenbecker
+
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+   ---- @noble/secp256k1: LICENSE ----
+The MIT License (MIT)
+
+Copyright (c) 2019 Paul Miller (https://paulmillr.com)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the “Software”), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/var TrysteroNostr = (function () {
+  'use strict';
+  var api = null;
+  return function () {
+    if (api) return api;
+  const M_noble = (() => {
+'use strict';
+/*! noble-secp256k1 - MIT License (c) 2019 Paul Miller (paulmillr.com) */
+/**
+ * 5KB JS implementation of secp256k1 ECDSA / Schnorr signatures & ECDH.
+ * Compliant with RFC6979 & BIP340.
+ * @module
+ */
+/**
+ * Curve params. secp256k1 is short weierstrass / koblitz curve. Equation is y² == x³ + ax + b.
+ * * P = `2n**256n-2n**32n-2n**977n` // field over which calculations are done
+ * * N = `2n**256n - 0x14551231950b75fc4402da1732fc9bebfn` // group order, amount of curve points
+ * * h = `1n` // cofactor
+ * * a = `0n` // equation param
+ * * b = `7n` // equation param
+ * * Gx, Gy are coordinates of Generator / base point
+ */
+const secp256k1_CURVE = {
+    p: 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2fn,
+    n: 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n,
+    h: 1n,
+    a: 0n,
+    b: 7n,
+    Gx: 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798n,
+    Gy: 0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8n,
+};
+const { p: P, n: N, Gx, Gy, b: _b } = secp256k1_CURVE;
+const L = 32; // field / group byte length
+const L2 = 64;
+const lengths = {
+    publicKey: L + 1,
+    publicKeyUncompressed: L2 + 1,
+    signature: L2,
+    seed: L + L / 2,
+};
+// Helpers and Precomputes sections are reused between libraries
+// ## Helpers
+// ----------
+const captureTrace = (...args) => {
+    if ('captureStackTrace' in Error && typeof Error.captureStackTrace === 'function') {
+        Error.captureStackTrace(...args);
+    }
+};
+const err = (message = '') => {
+    const e = new Error(message);
+    captureTrace(e, err);
+    throw e;
+};
+const isBig = (n) => typeof n === 'bigint'; // is big integer
+const isStr = (s) => typeof s === 'string'; // is string
+const isBytes = (a) => a instanceof Uint8Array || (ArrayBuffer.isView(a) && a.constructor.name === 'Uint8Array');
+/** Asserts something is Uint8Array. */
+const abytes = (value, length, title = '') => {
+    const bytes = isBytes(value);
+    const len = value?.length;
+    const needsLen = length !== undefined;
+    if (!bytes || (needsLen && len !== length)) {
+        const prefix = title && `"${title}" `;
+        const ofLen = needsLen ? ` of length ${length}` : '';
+        const got = bytes ? `length=${len}` : `type=${typeof value}`;
+        err(prefix + 'expected Uint8Array' + ofLen + ', got ' + got);
+    }
+    return value;
+};
+/** create Uint8Array */
+const u8n = (len) => new Uint8Array(len);
+const padh = (n, pad) => n.toString(16).padStart(pad, '0');
+const bytesToHex = (b) => Array.from(abytes(b))
+    .map((e) => padh(e, 2))
+    .join('');
+const C = { _0: 48, _9: 57, A: 65, F: 70, a: 97, f: 102 }; // ASCII characters
+const _ch = (ch) => {
+    if (ch >= C._0 && ch <= C._9)
+        return ch - C._0; // '2' => 50-48
+    if (ch >= C.A && ch <= C.F)
+        return ch - (C.A - 10); // 'B' => 66-(65-10)
+    if (ch >= C.a && ch <= C.f)
+        return ch - (C.a - 10); // 'b' => 98-(97-10)
+    return;
+};
+const hexToBytes = (hex) => {
+    const e = 'hex invalid';
+    if (!isStr(hex))
+        return err(e);
+    const hl = hex.length;
+    const al = hl / 2;
+    if (hl % 2)
+        return err(e);
+    const array = u8n(al);
+    for (let ai = 0, hi = 0; ai < al; ai++, hi += 2) {
+        // treat each char as ASCII
+        const n1 = _ch(hex.charCodeAt(hi)); // parse first char, multiply it by 16
+        const n2 = _ch(hex.charCodeAt(hi + 1)); // parse second char
+        if (n1 === undefined || n2 === undefined)
+            return err(e);
+        array[ai] = n1 * 16 + n2; // example: 'A9' => 10*16 + 9
+    }
+    return array;
+};
+const cr = () => globalThis?.crypto; // WebCrypto is available in all modern environments
+const subtle = () => cr()?.subtle ?? err('crypto.subtle must be defined, consider polyfill');
+// prettier-ignore
+const concatBytes = (...arrs) => {
+    const r = u8n(arrs.reduce((sum, a) => sum + abytes(a).length, 0)); // create u8a of summed length
+    let pad = 0; // walk through each array,
+    arrs.forEach(a => { r.set(a, pad); pad += a.length; }); // ensure they have proper type
+    return r;
+};
+/** WebCrypto OS-level CSPRNG (random number generator). Will throw when not available. */
+const randomBytes = (len = L) => {
+    const c = cr();
+    return c.getRandomValues(u8n(len));
+};
+const big = BigInt;
+const arange = (n, min, max, msg = 'bad number: out of range') => isBig(n) && min <= n && n < max ? n : err(msg);
+/** modular division */
+const M = (a, b = P) => {
+    const r = a % b;
+    return r >= 0n ? r : b + r;
+};
+const modN = (a) => M(a, N);
+/** Modular inversion using eucledian GCD (non-CT). No negative exponent for now. */
+// prettier-ignore
+const invert = (num, md) => {
+    if (num === 0n || md <= 0n)
+        err('no inverse n=' + num + ' mod=' + md);
+    let a = M(num, md), b = md, x = 0n, y = 1n, u = 1n, v = 0n;
+    while (a !== 0n) {
+        const q = b / a, r = b % a;
+        const m = x - u * q, n = y - v * q;
+        b = a, a = r, x = u, y = v, u = m, v = n;
+    }
+    return b === 1n ? M(x, md) : err('no inverse'); // b is gcd at this point
+};
+const callHash = (name) => {
+    // @ts-ignore
+    const fn = hashes[name];
+    if (typeof fn !== 'function')
+        err('hashes.' + name + ' not set');
+    return fn;
+};
+const hash = (msg) => callHash('sha256')(msg);
+const apoint = (p) => (p instanceof Point ? p : err('Point expected'));
+// ## End of Helpers
+// -----------------
+/** secp256k1 formula. Koblitz curves are subclass of weierstrass curves with a=0, making it x³+b */
+const koblitz = (x) => M(M(x * x) * x + _b);
+/** assert is element of field mod P (incl. 0) */
+const FpIsValid = (n) => arange(n, 0n, P);
+/** assert is element of field mod P (excl. 0) */
+const FpIsValidNot0 = (n) => arange(n, 1n, P);
+/** assert is element of field mod N (excl. 0) */
+const FnIsValidNot0 = (n) => arange(n, 1n, N);
+const isEven = (y) => (y & 1n) === 0n;
+/** create Uint8Array of byte n */
+const u8of = (n) => Uint8Array.of(n);
+const getPrefix = (y) => u8of(isEven(y) ? 0x02 : 0x03);
+/** lift_x from BIP340 calculates square root. Validates x, then validates root*root. */
+const lift_x = (x) => {
+    // Let c = x³ + 7 mod p. Fail if x ≥ p. (also fail if x < 1)
+    const c = koblitz(FpIsValidNot0(x));
+    // c = √y
+    // y = c^((p+1)/4) mod p
+    // This formula works for fields p = 3 mod 4 -- a special, fast case.
+    // Paper: "Square Roots from 1;24,51,10 to Dan Shanks".
+    let r = 1n;
+    for (let num = c, e = (P + 1n) / 4n; e > 0n; e >>= 1n) {
+        // powMod: modular exponentiation.
+        if (e & 1n)
+            r = (r * num) % P; // Uses exponentiation by squaring.
+        num = (num * num) % P; // Not constant-time.
+    }
+    return M(r * r) === c ? r : err('sqrt invalid'); // check if result is valid
+};
+/** Point in 3d xyz projective coordinates. 3d takes less inversions than 2d. */
+class Point {
+    static BASE;
+    static ZERO;
+    X;
+    Y;
+    Z;
+    constructor(X, Y, Z) {
+        this.X = FpIsValid(X);
+        this.Y = FpIsValidNot0(Y); // Y can't be 0 in Projective
+        this.Z = FpIsValid(Z);
+        Object.freeze(this);
+    }
+    static CURVE() {
+        return secp256k1_CURVE;
+    }
+    /** Create 3d xyz point from 2d xy. (0, 0) => (0, 1, 0), not (0, 0, 1) */
+    static fromAffine(ap) {
+        const { x, y } = ap;
+        return x === 0n && y === 0n ? I : new Point(x, y, 1n);
+    }
+    /** Convert Uint8Array or hex string to Point. */
+    static fromBytes(bytes) {
+        abytes(bytes);
+        const { publicKey: comp, publicKeyUncompressed: uncomp } = lengths; // e.g. for 32-byte: 33, 65
+        let p = undefined;
+        const length = bytes.length;
+        const head = bytes[0];
+        const tail = bytes.subarray(1);
+        const x = sliceBytesNumBE(tail, 0, L);
+        // No actual validation is done here: use .assertValidity()
+        if (length === comp && (head === 0x02 || head === 0x03)) {
+            // Equation is y² == x³ + ax + b. We calculate y from x.
+            // y = √y²; there are two solutions: y, -y. Determine proper solution based on prefix
+            let y = lift_x(x);
+            const evenY = isEven(y);
+            const evenH = isEven(big(head));
+            if (evenH !== evenY)
+                y = M(-y);
+            p = new Point(x, y, 1n);
+        }
+        // Uncompressed 65-byte point, 0x04 prefix
+        if (length === uncomp && head === 0x04)
+            p = new Point(x, sliceBytesNumBE(tail, L, L2), 1n);
+        // Validate point
+        return p ? p.assertValidity() : err('bad point: not on curve');
+    }
+    static fromHex(hex) {
+        return Point.fromBytes(hexToBytes(hex));
+    }
+    get x() {
+        return this.toAffine().x;
+    }
+    get y() {
+        return this.toAffine().y;
+    }
+    /** Equality check: compare points P&Q. */
+    equals(other) {
+        const { X: X1, Y: Y1, Z: Z1 } = this;
+        const { X: X2, Y: Y2, Z: Z2 } = apoint(other); // checks class equality
+        const X1Z2 = M(X1 * Z2);
+        const X2Z1 = M(X2 * Z1);
+        const Y1Z2 = M(Y1 * Z2);
+        const Y2Z1 = M(Y2 * Z1);
+        return X1Z2 === X2Z1 && Y1Z2 === Y2Z1;
+    }
+    is0() {
+        return this.equals(I);
+    }
+    /** Flip point over y coordinate. */
+    negate() {
+        return new Point(this.X, M(-this.Y), this.Z);
+    }
+    /** Point doubling: P+P, complete formula. */
+    double() {
+        return this.add(this);
+    }
+    /**
+     * Point addition: P+Q, complete, exception-free formula
+     * (Renes-Costello-Batina, algo 1 of [2015/1060](https://eprint.iacr.org/2015/1060)).
+     * Cost: `12M + 0S + 3*a + 3*b3 + 23add`.
+     */
+    // prettier-ignore
+    add(other) {
+        const { X: X1, Y: Y1, Z: Z1 } = this;
+        const { X: X2, Y: Y2, Z: Z2 } = apoint(other);
+        const a = 0n;
+        const b = _b;
+        let X3 = 0n, Y3 = 0n, Z3 = 0n;
+        const b3 = M(b * 3n);
+        let t0 = M(X1 * X2), t1 = M(Y1 * Y2), t2 = M(Z1 * Z2), t3 = M(X1 + Y1); // step 1
+        let t4 = M(X2 + Y2); // step 5
+        t3 = M(t3 * t4);
+        t4 = M(t0 + t1);
+        t3 = M(t3 - t4);
+        t4 = M(X1 + Z1);
+        let t5 = M(X2 + Z2); // step 10
+        t4 = M(t4 * t5);
+        t5 = M(t0 + t2);
+        t4 = M(t4 - t5);
+        t5 = M(Y1 + Z1);
+        X3 = M(Y2 + Z2); // step 15
+        t5 = M(t5 * X3);
+        X3 = M(t1 + t2);
+        t5 = M(t5 - X3);
+        Z3 = M(a * t4);
+        X3 = M(b3 * t2); // step 20
+        Z3 = M(X3 + Z3);
+        X3 = M(t1 - Z3);
+        Z3 = M(t1 + Z3);
+        Y3 = M(X3 * Z3);
+        t1 = M(t0 + t0); // step 25
+        t1 = M(t1 + t0);
+        t2 = M(a * t2);
+        t4 = M(b3 * t4);
+        t1 = M(t1 + t2);
+        t2 = M(t0 - t2); // step 30
+        t2 = M(a * t2);
+        t4 = M(t4 + t2);
+        t0 = M(t1 * t4);
+        Y3 = M(Y3 + t0);
+        t0 = M(t5 * t4); // step 35
+        X3 = M(t3 * X3);
+        X3 = M(X3 - t0);
+        t0 = M(t3 * t1);
+        Z3 = M(t5 * Z3);
+        Z3 = M(Z3 + t0); // step 40
+        return new Point(X3, Y3, Z3);
+    }
+    subtract(other) {
+        return this.add(apoint(other).negate());
+    }
+    /**
+     * Point-by-scalar multiplication. Scalar must be in range 1 <= n < CURVE.n.
+     * Uses {@link wNAF} for base point.
+     * Uses fake point to mitigate side-channel leakage.
+     * @param n scalar by which point is multiplied
+     * @param safe safe mode guards against timing attacks; unsafe mode is faster
+     */
+    multiply(n, safe = true) {
+        if (!safe && n === 0n)
+            return I;
+        FnIsValidNot0(n);
+        if (n === 1n)
+            return this;
+        if (this.equals(G))
+            return wNAF(n).p;
+        // init result point & fake point
+        let p = I;
+        let f = G;
+        for (let d = this; n > 0n; d = d.double(), n >>= 1n) {
+            // if bit is present, add to point
+            // if not present, add to fake, for timing safety
+            if (n & 1n)
+                p = p.add(d);
+            else if (safe)
+                f = f.add(d);
+        }
+        return p;
+    }
+    multiplyUnsafe(scalar) {
+        return this.multiply(scalar, false);
+    }
+    /** Convert point to 2d xy affine point. (X, Y, Z) ∋ (x=X/Z, y=Y/Z) */
+    toAffine() {
+        const { X: x, Y: y, Z: z } = this;
+        // fast-paths for ZERO point OR Z=1
+        if (this.equals(I))
+            return { x: 0n, y: 0n };
+        if (z === 1n)
+            return { x, y };
+        const iz = invert(z, P);
+        // (Z * Z^-1) must be 1, otherwise bad math
+        if (M(z * iz) !== 1n)
+            err('inverse invalid');
+        // x = X*Z^-1; y = Y*Z^-1
+        return { x: M(x * iz), y: M(y * iz) };
+    }
+    /** Checks if the point is valid and on-curve. */
+    assertValidity() {
+        const { x, y } = this.toAffine(); // convert to 2d xy affine point.
+        FpIsValidNot0(x); // must be in range 1 <= x,y < P
+        FpIsValidNot0(y);
+        // y² == x³ + ax + b, equation sides must be equal
+        return M(y * y) === koblitz(x) ? this : err('bad point: not on curve');
+    }
+    /** Converts point to 33/65-byte Uint8Array. */
+    toBytes(isCompressed = true) {
+        const { x, y } = this.assertValidity().toAffine();
+        const x32b = numTo32b(x);
+        if (isCompressed)
+            return concatBytes(getPrefix(y), x32b);
+        return concatBytes(u8of(0x04), x32b, numTo32b(y));
+    }
+    toHex(isCompressed) {
+        return bytesToHex(this.toBytes(isCompressed));
+    }
+}
+/** Generator / base point */
+const G = new Point(Gx, Gy, 1n);
+/** Identity / zero point */
+const I = new Point(0n, 1n, 0n);
+// Static aliases
+Point.BASE = G;
+Point.ZERO = I;
+/** `Q = u1⋅G + u2⋅R`. Verifies Q is not ZERO. Unsafe: non-CT. */
+const doubleScalarMulUns = (R, u1, u2) => {
+    return G.multiply(u1, false).add(R.multiply(u2, false)).assertValidity();
+};
+const bytesToNumBE = (b) => big('0x' + (bytesToHex(b) || '0'));
+const sliceBytesNumBE = (b, from, to) => bytesToNumBE(b.subarray(from, to));
+const B256 = 2n ** 256n; // secp256k1 is weierstrass curve. Equation is x³ + ax + b.
+/** Number to 32b. Must be 0 <= num < B256. validate, pad, to bytes. */
+const numTo32b = (num) => hexToBytes(padh(arange(num, 0n, B256), L2));
+/** Normalize private key to scalar (bigint). Verifies scalar is in range 1<s<N */
+const secretKeyToScalar = (secretKey) => {
+    const num = bytesToNumBE(abytes(secretKey, L, 'secret key'));
+    return arange(num, 1n, N, 'invalid secret key: outside of range');
+};
+/** For Signature malleability, validates sig.s is bigger than N/2. */
+const highS = (n) => n > N >> 1n;
+/** Creates 33/65-byte public key from 32-byte private key. */
+const getPublicKey = (privKey, isCompressed = true) => {
+    return G.multiply(secretKeyToScalar(privKey)).toBytes(isCompressed);
+};
+const isValidSecretKey = (secretKey) => {
+    try {
+        return !!secretKeyToScalar(secretKey);
+    }
+    catch (error) {
+        return false;
+    }
+};
+const isValidPublicKey = (publicKey, isCompressed) => {
+    const { publicKey: comp, publicKeyUncompressed } = lengths;
+    try {
+        const l = publicKey.length;
+        if (isCompressed === true && l !== comp)
+            return false;
+        if (isCompressed === false && l !== publicKeyUncompressed)
+            return false;
+        return !!Point.fromBytes(publicKey);
+    }
+    catch (error) {
+        return false;
+    }
+};
+const assertRecoveryBit = (recovery) => {
+    if (![0, 1, 2, 3].includes(recovery))
+        err('recovery id must be valid and present');
+};
+const assertSigFormat = (format) => {
+    if (format != null && !ALL_SIG.includes(format))
+        err(`Signature format must be one of: ${ALL_SIG.join(', ')}`);
+    if (format === SIG_DER)
+        err('Signature format "der" is not supported: switch to noble-curves');
+};
+const assertSigLength = (sig, format = SIG_COMPACT) => {
+    assertSigFormat(format);
+    const SL = lengths.signature;
+    const RL = SL + 1;
+    let msg = `Signature format "${format}" expects Uint8Array with length `;
+    if (format === SIG_COMPACT && sig.length !== SL)
+        err(msg + SL);
+    if (format === SIG_RECOVERED && sig.length !== RL)
+        err(msg + RL);
+};
+/** ECDSA Signature class. Supports only compact 64-byte representation, not DER. */
+class Signature {
+    r;
+    s;
+    recovery;
+    constructor(r, s, recovery) {
+        this.r = FnIsValidNot0(r); // 1 <= r < N
+        this.s = FnIsValidNot0(s); // 1 <= s < N
+        if (recovery != null)
+            this.recovery = recovery;
+        Object.freeze(this);
+    }
+    static fromBytes(b, format = SIG_COMPACT) {
+        assertSigLength(b, format);
+        let rec;
+        if (format === SIG_RECOVERED) {
+            rec = b[0];
+            b = b.subarray(1);
+        }
+        const r = sliceBytesNumBE(b, 0, L);
+        const s = sliceBytesNumBE(b, L, L2);
+        return new Signature(r, s, rec);
+    }
+    addRecoveryBit(bit) {
+        return new Signature(this.r, this.s, bit);
+    }
+    hasHighS() {
+        return highS(this.s);
+    }
+    toBytes(format = SIG_COMPACT) {
+        const { r, s, recovery } = this;
+        const res = concatBytes(numTo32b(r), numTo32b(s));
+        if (format === SIG_RECOVERED) {
+            assertRecoveryBit(recovery);
+            return concatBytes(Uint8Array.of(recovery), res);
+        }
+        return res;
+    }
+}
+/**
+ * RFC6979: ensure ECDSA msg is X bytes, convert to BigInt.
+ * RFC suggests optional truncating via bits2octets.
+ * FIPS 186-4 4.6 suggests the leftmost min(nBitLen, outLen) bits,
+ * which matches bits2int. bits2int can produce res>N.
+ */
+const bits2int = (bytes) => {
+    const delta = bytes.length * 8 - 256;
+    if (delta > 1024)
+        err('msg invalid'); // our CUSTOM check, "just-in-case": prohibit long inputs
+    const num = bytesToNumBE(bytes);
+    return delta > 0 ? num >> big(delta) : num;
+};
+/** int2octets can't be used; pads small msgs with 0: BAD for truncation as per RFC vectors */
+const bits2int_modN = (bytes) => modN(bits2int(abytes(bytes)));
+// todo: better name
+const SIG_COMPACT = 'compact';
+const SIG_RECOVERED = 'recovered';
+const SIG_DER = 'der';
+const ALL_SIG = [SIG_COMPACT, SIG_RECOVERED, SIG_DER];
+const defaultSignOpts = {
+    lowS: true,
+    prehash: true,
+    format: SIG_COMPACT,
+    extraEntropy: false,
+};
+const _sha = 'SHA-256';
+const hashes = {
+    hmacSha256Async: async (key, message) => {
+        const s = subtle();
+        const name = 'HMAC';
+        const k = await s.importKey('raw', key, { name, hash: { name: _sha } }, false, ['sign']);
+        return u8n(await s.sign(name, k, message));
+    },
+    hmacSha256: undefined,
+    sha256Async: async (msg) => u8n(await subtle().digest(_sha, msg)),
+    sha256: undefined,
+};
+const prepMsg = (msg, opts, async_) => {
+    abytes(msg, undefined, 'message');
+    if (!opts.prehash)
+        return msg;
+    return async_ ? hashes.sha256Async(msg) : callHash('sha256')(msg);
+};
+const NULL = u8n(0);
+const byte0 = u8of(0x00);
+const byte1 = u8of(0x01);
+const _maxDrbgIters = 1000;
+const _drbgErr = 'drbg: tried max amount of iterations';
+// HMAC-DRBG from NIST 800-90. Minimal, non-full-spec - used for RFC6979 signatures.
+const hmacDrbg = (seed, pred) => {
+    let v = u8n(L); // Steps B, C of RFC6979 3.2: set hashLen
+    let k = u8n(L); // In our case, it's always equal to L
+    let i = 0; // Iterations counter, will throw when over max
+    const reset = () => {
+        v.fill(1);
+        k.fill(0);
+    };
+    // h = hmac(K || V || ...)
+    const h = (...b) => callHash('hmacSha256')(k, concatBytes(v, ...b));
+    const reseed = (seed = NULL) => {
+        // HMAC-DRBG reseed() function. Steps D-G
+        k = h(byte0, seed); // k = hmac(k || v || 0x00 || seed)
+        v = h(); // v = hmac(k || v)
+        if (seed.length === 0)
+            return;
+        k = h(byte1, seed); // k = hmac(k || v || 0x01 || seed)
+        v = h(); // v = hmac(k || v)
+    };
+    // HMAC-DRBG generate() function
+    const gen = () => {
+        if (i++ >= _maxDrbgIters)
+            err(_drbgErr);
+        v = h(); // v = hmac(k || v)
+        return v; // this diverges from noble-curves: we don't allow arbitrary output len!
+    };
+    reset();
+    reseed(seed); // Steps D-G
+    let res = undefined; // Step H: grind until k is in [1..n-1]
+    while (!(res = pred(gen())))
+        reseed(); // test predicate until it returns ok
+    reset();
+    return res;
+};
+// Identical to hmacDrbg, but async: uses built-in WebCrypto
+const hmacDrbgAsync = async (seed, pred) => {
+    let v = u8n(L); // Steps B, C of RFC6979 3.2: set hashLen
+    let k = u8n(L); // In our case, it's always equal to L
+    let i = 0; // Iterations counter, will throw when over max
+    const reset = () => {
+        v.fill(1);
+        k.fill(0);
+    };
+    // h = hmac(K || V || ...)
+    const h = (...b) => hashes.hmacSha256Async(k, concatBytes(v, ...b));
+    const reseed = async (seed = NULL) => {
+        // HMAC-DRBG reseed() function. Steps D-G
+        k = await h(byte0, seed); // k = hmac(K || V || 0x00 || seed)
+        v = await h(); // v = hmac(K || V)
+        if (seed.length === 0)
+            return;
+        k = await h(byte1, seed); // k = hmac(K || V || 0x01 || seed)
+        v = await h(); // v = hmac(K || V)
+    };
+    // HMAC-DRBG generate() function
+    const gen = async () => {
+        if (i++ >= _maxDrbgIters)
+            err(_drbgErr);
+        v = await h(); // v = hmac(K || V)
+        return v; // this diverges from noble-curves: we don't allow arbitrary output len!
+    };
+    reset();
+    await reseed(seed); // Steps D-G
+    let res = undefined; // Step H: grind until k is in [1..n-1]
+    while (!(res = pred(await gen())))
+        await reseed(); // test predicate until it returns ok
+    reset();
+    return res;
+};
+// RFC6979 signature generation, preparation step.
+// Follows [SEC1](https://secg.org/sec1-v2.pdf) 4.1.2 & RFC6979.
+const _sign = (messageHash, secretKey, opts, hmacDrbg) => {
+    let { lowS, extraEntropy } = opts; // generates low-s sigs by default
+    // RFC6979 3.2: we skip step A
+    const int2octets = numTo32b; // int to octets
+    const h1i = bits2int_modN(messageHash); // msg bigint
+    const h1o = int2octets(h1i); // msg octets
+    const d = secretKeyToScalar(secretKey); // validate private key, convert to bigint
+    const seedArgs = [int2octets(d), h1o]; // Step D of RFC6979 3.2
+    /** RFC6979 3.6: additional k' (optional). See {@link ECDSAExtraEntropy}. */
+    if (extraEntropy != null && extraEntropy !== false) {
+        // K = HMAC_K(V || 0x00 || int2octets(x) || bits2octets(h1) || k')
+        // gen random bytes OR pass as-is
+        const e = extraEntropy === true ? randomBytes(L) : extraEntropy;
+        seedArgs.push(abytes(e, undefined, 'extraEntropy')); // check for being bytes
+    }
+    const seed = concatBytes(...seedArgs);
+    const m = h1i; // convert msg to bigint
+    // Converts signature params into point w r/s, checks result for validity.
+    // To transform k => Signature:
+    // q = k⋅G
+    // r = q.x mod n
+    // s = k^-1(m + rd) mod n
+    // Can use scalar blinding b^-1(bm + bdr) where b ∈ [1,q−1] according to
+    // https://tches.iacr.org/index.php/TCHES/article/view/7337/6509. We've decided against it:
+    // a) dependency on CSPRNG b) 15% slowdown c) doesn't really help since bigints are not CT
+    const k2sig = (kBytes) => {
+        // RFC 6979 Section 3.2, step 3: k = bits2int(T)
+        // Important: all mod() calls here must be done over N
+        const k = bits2int(kBytes);
+        if (!(1n <= k && k < N))
+            return; // Valid scalars (including k) must be in 1..N-1
+        const ik = invert(k, N); // k^-1 mod n
+        const q = G.multiply(k).toAffine(); // q = k⋅G
+        const r = modN(q.x); // r = q.x mod n
+        if (r === 0n)
+            return;
+        const s = modN(ik * modN(m + r * d)); // s = k^-1(m + rd) mod n
+        if (s === 0n)
+            return;
+        let recovery = (q.x === r ? 0 : 2) | Number(q.y & 1n); // recovery bit (2 or 3, when q.x > n)
+        let normS = s; // normalized S
+        if (lowS && highS(s)) {
+            // if lowS was passed, ensure s is always
+            normS = modN(-s); // in the bottom half of CURVE.n
+            recovery ^= 1;
+        }
+        const sig = new Signature(r, normS, recovery); // use normS, not s
+        return sig.toBytes(opts.format);
+    };
+    return hmacDrbg(seed, k2sig);
+};
+// Follows [SEC1](https://secg.org/sec1-v2.pdf) 4.1.4.
+const _verify = (sig, messageHash, publicKey, opts = {}) => {
+    const { lowS, format } = opts;
+    if (sig instanceof Signature)
+        err('Signature must be in Uint8Array, use .toBytes()');
+    assertSigLength(sig, format);
+    abytes(publicKey, undefined, 'publicKey');
+    try {
+        const { r, s } = Signature.fromBytes(sig, format);
+        const h = bits2int_modN(messageHash); // Truncate hash
+        const P = Point.fromBytes(publicKey); // Validate public key
+        if (lowS && highS(s))
+            return false; // lowS bans sig.s >= CURVE.n/2
+        const is = invert(s, N); // s^-1
+        const u1 = modN(h * is); // u1 = hs^-1 mod n
+        const u2 = modN(r * is); // u2 = rs^-1 mod n
+        const R = doubleScalarMulUns(P, u1, u2).toAffine(); // R = u1⋅G + u2⋅P
+        // Stop if R is identity / zero point. Check is done inside `doubleScalarMulUns`
+        const v = modN(R.x); // R.x must be in N's field, not P's
+        return v === r; // mod(R.x, n) == r
+    }
+    catch (error) {
+        return false;
+    }
+};
+const setDefaults = (opts) => {
+    const res = {};
+    Object.keys(defaultSignOpts).forEach((k) => {
+        // @ts-ignore
+        res[k] = opts[k] ?? defaultSignOpts[k];
+    });
+    return res;
+};
+/**
+ * Sign a message using secp256k1. Sync: uses `hashes.sha256` and `hashes.hmacSha256`.
+ * Prehashes message with sha256, disable using `prehash: false`.
+ * @param opts - see {@link ECDSASignOpts} for details. Enabling {@link ECDSAExtraEntropy} will improve security.
+ * @example
+ * ```js
+ * const msg = new TextEncoder().encode('hello noble');
+ * sign(msg, secretKey);
+ * sign(keccak256(msg), secretKey, { prehash: false });
+ * sign(msg, secretKey, { extraEntropy: true });
+ * sign(msg, secretKey, { format: 'recovered' });
+ * ```
+ */
+const sign = (message, secretKey, opts = {}) => {
+    opts = setDefaults(opts);
+    message = prepMsg(message, opts, false);
+    return _sign(message, secretKey, opts, hmacDrbg);
+};
+/**
+ * Sign a message using secp256k1. Async: uses built-in WebCrypto hashes.
+ * Prehashes message with sha256, disable using `prehash: false`.
+ * @param opts - see {@link ECDSASignOpts} for details. Enabling {@link ECDSAExtraEntropy} will improve security.
+ * @example
+ * ```js
+ * const msg = new TextEncoder().encode('hello noble');
+ * await signAsync(msg, secretKey);
+ * await signAsync(keccak256(msg), secretKey, { prehash: false });
+ * await signAsync(msg, secretKey, { extraEntropy: true });
+ * await signAsync(msg, secretKey, { format: 'recovered' });
+ * ```
+ */
+const signAsync = async (message, secretKey, opts = {}) => {
+    opts = setDefaults(opts);
+    message = await prepMsg(message, opts, true);
+    return _sign(message, secretKey, opts, hmacDrbgAsync);
+};
+/**
+ * Verify a signature using secp256k1. Sync: uses `hashes.sha256` and `hashes.hmacSha256`.
+ * @param signature - default is 64-byte 'compact' format, also see {@link ECDSASignatureFormat}
+ * @param message - message which was signed. Keep in mind `prehash` from opts.
+ * @param publicKey - public key which
+ * @param opts - see {@link ECDSAVerifyOpts} for details.
+ * @example
+ * ```js
+ * const msg = new TextEncoder().encode('hello noble');
+ * verify(sig, msg, publicKey);
+ * verify(sig, keccak256(msg), publicKey, { prehash: false });
+ * verify(sig, msg, publicKey, { lowS: false });
+ * verify(sigr, msg, publicKey, { format: 'recovered' });
+ * ```
+ */
+const verify = (signature, message, publicKey, opts = {}) => {
+    opts = setDefaults(opts);
+    message = prepMsg(message, opts, false);
+    return _verify(signature, message, publicKey, opts);
+};
+/**
+ * Verify a signature using secp256k1. Async: uses built-in WebCrypto hashes.
+ * @param signature - default is 64-byte 'compact' format, also see {@link ECDSASignatureFormat}
+ * @param message - message which was signed. Keep in mind `prehash` from opts.
+ * @param publicKey - public key which
+ * @param opts - see {@link ECDSAVerifyOpts} for details.
+ * @example
+ * ```js
+ * const msg = new TextEncoder().encode('hello noble');
+ * verify(sig, msg, publicKey);
+ * verify(sig, keccak256(msg), publicKey, { prehash: false });
+ * verify(sig, msg, publicKey, { lowS: false });
+ * verify(sigr, msg, publicKey, { format: 'recovered' });
+ * ```
+ */
+const verifyAsync = async (sig, message, publicKey, opts = {}) => {
+    opts = setDefaults(opts);
+    message = await prepMsg(message, opts, true);
+    return _verify(sig, message, publicKey, opts);
+};
+const _recover = (signature, messageHash) => {
+    const sig = Signature.fromBytes(signature, 'recovered');
+    const { r, s, recovery } = sig;
+    // 0 or 1 recovery id determines sign of "y" coordinate.
+    // 2 or 3 means q.x was >N.
+    assertRecoveryBit(recovery);
+    const h = bits2int_modN(abytes(messageHash, L)); // Truncate hash
+    const radj = recovery === 2 || recovery === 3 ? r + N : r;
+    FpIsValidNot0(radj); // ensure q.x is still a field element
+    const head = getPrefix(big(recovery)); // head is 0x02 or 0x03
+    const Rb = concatBytes(head, numTo32b(radj)); // concat head + r
+    const R = Point.fromBytes(Rb);
+    const ir = invert(radj, N); // r^-1
+    const u1 = modN(-h * ir); // -hr^-1
+    const u2 = modN(s * ir); // sr^-1
+    const point = doubleScalarMulUns(R, u1, u2); // (sr^-1)R-(hr^-1)G = -(hr^-1)G + (sr^-1)
+    return point.toBytes();
+};
+/**
+ * ECDSA public key recovery. Requires msg hash and recovery id.
+ * Follows [SEC1](https://secg.org/sec1-v2.pdf) 4.1.6.
+ */
+const recoverPublicKey = (signature, message, opts = {}) => {
+    message = prepMsg(message, setDefaults(opts), false);
+    return _recover(signature, message);
+};
+const recoverPublicKeyAsync = async (signature, message, opts = {}) => {
+    message = await prepMsg(message, setDefaults(opts), true);
+    return _recover(signature, message);
+};
+/**
+ * Elliptic Curve Diffie-Hellman (ECDH) on secp256k1.
+ * Result is **NOT hashed**. Use hash or KDF on it if you need.
+ * @param isCompressed 33-byte (true) or 65-byte (false) output
+ * @returns public key C
+ */
+const getSharedSecret = (secretKeyA, publicKeyB, isCompressed = true) => {
+    return Point.fromBytes(publicKeyB).multiply(secretKeyToScalar(secretKeyA)).toBytes(isCompressed);
+};
+// FIPS 186 B.4.1 compliant key generation produces private keys
+// with modulo bias being neglible. takes >N+16 bytes, returns (hash mod n-1)+1
+const randomSecretKey = (seed = randomBytes(lengths.seed)) => {
+    abytes(seed);
+    if (seed.length < lengths.seed || seed.length > 1024)
+        err('expected 40-1024b');
+    const num = M(bytesToNumBE(seed), N - 1n);
+    return numTo32b(num + 1n);
+};
+const createKeygen = (getPublicKey) => (seed) => {
+    const secretKey = randomSecretKey(seed);
+    return { secretKey, publicKey: getPublicKey(secretKey) };
+};
+const keygen = createKeygen(getPublicKey);
+/** Math, hex, byte helpers. Not in `utils` because utils share API with noble-curves. */
+const etc = {
+    hexToBytes: hexToBytes,
+    bytesToHex: bytesToHex,
+    concatBytes: concatBytes,
+    bytesToNumberBE: bytesToNumBE,
+    numberToBytesBE: numTo32b,
+    mod: M,
+    invert: invert, // math utilities
+    randomBytes: randomBytes,
+    secretKeyToScalar: secretKeyToScalar,
+    abytes: abytes,
+};
+/** Curve-specific utilities for private keys. */
+const utils = {
+    isValidSecretKey: isValidSecretKey,
+    isValidPublicKey: isValidPublicKey,
+    randomSecretKey: randomSecretKey,
+};
+// Schnorr signatures are superior to ECDSA from above. Below is Schnorr-specific BIP0340 code.
+// https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
+const getTag = (tag) => Uint8Array.from('BIP0340/' + tag, (c) => c.charCodeAt(0));
+const T_AUX = 'aux';
+const T_NONCE = 'nonce';
+const T_CHALLENGE = 'challenge';
+const taggedHash = (tag, ...messages) => {
+    const fn = callHash('sha256');
+    const tagH = fn(getTag(tag));
+    return fn(concatBytes(tagH, tagH, ...messages));
+};
+const taggedHashAsync = async (tag, ...messages) => {
+    const fn = hashes.sha256Async;
+    const tagH = await fn(getTag(tag));
+    return await fn(concatBytes(tagH, tagH, ...messages));
+};
+// ECDSA compact points are 33-byte. Schnorr is 32: we strip first byte 0x02 or 0x03
+// Calculate point, scalar and bytes
+const extpubSchnorr = (priv) => {
+    const d_ = secretKeyToScalar(priv);
+    const p = G.multiply(d_); // P = d'⋅G; 0 < d' < n check is done inside
+    const { x, y } = p.assertValidity().toAffine(); // validate Point is not at infinity
+    const d = isEven(y) ? d_ : modN(-d_);
+    const px = numTo32b(x);
+    return { d, px };
+};
+const bytesModN = (bytes) => modN(bytesToNumBE(bytes));
+const challenge = (...args) => bytesModN(taggedHash(T_CHALLENGE, ...args));
+const challengeAsync = async (...args) => bytesModN(await taggedHashAsync(T_CHALLENGE, ...args));
+/**
+ * Schnorr public key is just `x` coordinate of Point as per BIP340.
+ */
+const pubSchnorr = (secretKey) => {
+    return extpubSchnorr(secretKey).px; // d'=int(sk). Fail if d'=0 or d'≥n. Ret bytes(d'⋅G)
+};
+const keygenSchnorr = createKeygen(pubSchnorr);
+// Common preparation fn for both sync and async signing
+const prepSigSchnorr = (message, secretKey, auxRand) => {
+    const { px, d } = extpubSchnorr(secretKey);
+    return { m: abytes(message), px, d, a: abytes(auxRand, L) };
+};
+const extractK = (rand) => {
+    const k_ = bytesModN(rand); // Let k' = int(rand) mod n
+    if (k_ === 0n)
+        err('sign failed: k is zero'); // Fail if k' = 0.
+    const { px, d } = extpubSchnorr(numTo32b(k_)); // Let R = k'⋅G.
+    return { rx: px, k: d };
+};
+// Common signature creation helper
+const createSigSchnorr = (k, px, e, d) => {
+    return concatBytes(px, numTo32b(modN(k + e * d)));
+};
+const E_INVSIG = 'invalid signature produced';
+/**
+ * Creates Schnorr signature as per BIP340. Verifies itself before returning anything.
+ * auxRand is optional and is not the sole source of k generation: bad CSPRNG won't be dangerous.
+ */
+const signSchnorr = (message, secretKey, auxRand = randomBytes(L)) => {
+    const { m, px, d, a } = prepSigSchnorr(message, secretKey, auxRand);
+    const aux = taggedHash(T_AUX, a);
+    // Let t be the byte-wise xor of bytes(d) and hash/aux(a)
+    const t = numTo32b(d ^ bytesToNumBE(aux));
+    // Let rand = hash/nonce(t || bytes(P) || m)
+    const rand = taggedHash(T_NONCE, t, px, m);
+    const { rx, k } = extractK(rand);
+    // Let e = int(hash/challenge(bytes(R) || bytes(P) || m)) mod n.
+    const e = challenge(rx, px, m);
+    const sig = createSigSchnorr(k, rx, e, d);
+    // If Verify(bytes(P), m, sig) (see below) returns failure, abort
+    if (!verifySchnorr(sig, m, px))
+        err(E_INVSIG);
+    return sig;
+};
+const signSchnorrAsync = async (message, secretKey, auxRand = randomBytes(L)) => {
+    const { m, px, d, a } = prepSigSchnorr(message, secretKey, auxRand);
+    const aux = await taggedHashAsync(T_AUX, a);
+    // Let t be the byte-wise xor of bytes(d) and hash/aux(a)
+    const t = numTo32b(d ^ bytesToNumBE(aux));
+    // Let rand = hash/nonce(t || bytes(P) || m)
+    const rand = await taggedHashAsync(T_NONCE, t, px, m);
+    const { rx, k } = extractK(rand);
+    // Let e = int(hash/challenge(bytes(R) || bytes(P) || m)) mod n.
+    const e = await challengeAsync(rx, px, m);
+    const sig = createSigSchnorr(k, rx, e, d);
+    // If Verify(bytes(P), m, sig) (see below) returns failure, abort
+    if (!(await verifySchnorrAsync(sig, m, px)))
+        err(E_INVSIG);
+    return sig;
+};
+const callSyncAsyncFn = (res, later) => {
+    return res instanceof Promise ? res.then(later) : later(res);
+};
+const _verifSchnorr = (signature, message, publicKey, challengeFn) => {
+    const sig = abytes(signature, L2, 'signature');
+    const msg = abytes(message, undefined, 'message');
+    const pub = abytes(publicKey, L, 'publicKey');
+    try {
+        // lift_x from BIP340. Convert 32-byte x coordinate to elliptic curve point.
+        // Fail if x ≥ p. Let c = x³ + 7 mod p.
+        const x = bytesToNumBE(pub);
+        const y = lift_x(x); // Let y = c^(p+1)/4 mod p.
+        const y_ = isEven(y) ? y : M(-y);
+        // Return the unique point P such that x(P) = x and
+        // y(P) = y if y mod 2 = 0 or y(P) = p-y otherwise.
+        const P_ = new Point(x, y_, 1n).assertValidity();
+        const px = numTo32b(P_.toAffine().x);
+        // P = lift_x(int(pk)); fail if that fails
+        const r = sliceBytesNumBE(sig, 0, L); // Let r = int(sig[0:32]); fail if r ≥ p.
+        arange(r, 1n, P);
+        const s = sliceBytesNumBE(sig, L, L2); // Let s = int(sig[32:64]); fail if s ≥ n.
+        arange(s, 1n, N);
+        const i = concatBytes(numTo32b(r), px, msg);
+        // int(challenge(bytes(r)||bytes(P)||m))%n
+        return callSyncAsyncFn(challengeFn(i), (e) => {
+            const { x, y } = doubleScalarMulUns(P_, s, modN(-e)).toAffine(); // R = s⋅G - e⋅P
+            if (!isEven(y) || x !== r)
+                return false; // -eP == (n-e)P
+            return true; // Fail if is_infinite(R) / not has_even_y(R) / x(R) ≠ r.
+        });
+    }
+    catch (error) {
+        return false;
+    }
+};
+/**
+ * Verifies Schnorr signature.
+ * Will swallow errors & return false except for initial type validation of arguments.
+ */
+const verifySchnorr = (s, m, p) => _verifSchnorr(s, m, p, challenge);
+const verifySchnorrAsync = async (s, m, p) => _verifSchnorr(s, m, p, challengeAsync);
+const schnorr = {
+    keygen: keygenSchnorr,
+    getPublicKey: pubSchnorr,
+    sign: signSchnorr,
+    verify: verifySchnorr,
+    signAsync: signSchnorrAsync,
+    verifyAsync: verifySchnorrAsync,
+};
+// ## Precomputes
+// --------------
+const W = 8; // W is window size
+const scalarBits = 256;
+const pwindows = Math.ceil(scalarBits / W) + 1; // 33 for W=8, NOT 32 - see wNAF loop
+const pwindowSize = 2 ** (W - 1); // 128 for W=8
+const precompute = () => {
+    const points = [];
+    let p = G;
+    let b = p;
+    for (let w = 0; w < pwindows; w++) {
+        b = p;
+        points.push(b);
+        for (let i = 1; i < pwindowSize; i++) {
+            b = b.add(p);
+            points.push(b);
+        } // i=1, bc we skip 0
+        p = b.double();
+    }
+    return points;
+};
+let Gpows = undefined; // precomputes for base point G
+// const-time negate
+const ctneg = (cnd, p) => {
+    const n = p.negate();
+    return cnd ? n : p;
+};
+/**
+ * Precomputes give 12x faster getPublicKey(), 10x sign(), 2x verify() by
+ * caching multiples of G (base point). Cache is stored in 32MB of RAM.
+ * Any time `G.multiply` is done, precomputes are used.
+ * Not used for getSharedSecret, which instead multiplies random pubkey `P.multiply`.
+ *
+ * w-ary non-adjacent form (wNAF) precomputation method is 10% slower than windowed method,
+ * but takes 2x less RAM. RAM reduction is possible by utilizing `.subtract`.
+ *
+ * !! Precomputes can be disabled by commenting-out call of the wNAF() inside Point#multiply().
+ */
+const wNAF = (n) => {
+    const comp = Gpows || (Gpows = precompute());
+    let p = I;
+    let f = G; // f must be G, or could become I in the end
+    const pow_2_w = 2 ** W; // 256 for W=8
+    const maxNum = pow_2_w; // 256 for W=8
+    const mask = big(pow_2_w - 1); // 255 for W=8 == mask 0b11111111
+    const shiftBy = big(W); // 8 for W=8
+    for (let w = 0; w < pwindows; w++) {
+        let wbits = Number(n & mask); // extract W bits.
+        n >>= shiftBy; // shift number by W bits.
+        // We use negative indexes to reduce size of precomputed table by 2x.
+        // Instead of needing precomputes 0..256, we only calculate them for 0..128.
+        // If an index > 128 is found, we do (256-index) - where 256 is next window.
+        // Naive: index +127 => 127, +224 => 224
+        // Optimized: index +127 => 127, +224 => 256-32
+        if (wbits > pwindowSize) {
+            wbits -= maxNum;
+            n += 1n;
+        }
+        const off = w * pwindowSize;
+        const offF = off; // offsets, evaluate both
+        const offP = off + Math.abs(wbits) - 1;
+        const isEven = w % 2 !== 0; // conditions, evaluate both
+        const isNeg = wbits < 0;
+        if (wbits === 0) {
+            // off == I: can't add it. Adding random offF instead.
+            f = f.add(ctneg(isEven, comp[offF])); // bits are 0: add garbage to fake point
+        }
+        else {
+            p = p.add(ctneg(isNeg, comp[offP])); // bits are 1: add to result point
+        }
+    }
+    if (n !== 0n)
+        err('invalid wnaf');
+    return { p, f }; // return both real and fake points for JIT
+};
+// !! Remove the export below to easily use in REPL / browser console;
+return {etc: etc, getPublicKey: getPublicKey, getSharedSecret: getSharedSecret, hash: hash, hashes: hashes, keygen: keygen, Point: Point, recoverPublicKey: recoverPublicKey, recoverPublicKeyAsync: recoverPublicKeyAsync, schnorr: schnorr, sign: sign, signAsync: signAsync, Signature: Signature, utils: utils, verify: verify, verifyAsync: verifyAsync};
+  })();
+
+  const M_utils = (() => {
+'use strict';
+const {floor, random, sin} = Math
+
+const libName = 'Trystero'
+
+const alloc = (n, f) => Array(n).fill().map(f)
+
+const charSet = '0123456789AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz'
+
+const genId = n =>
+  alloc(n, () => charSet[floor(random() * charSet.length)]).join('')
+
+const selfId = genId(20)
+
+const all = Promise.all.bind(Promise)
+
+const isBrowser = typeof window !== 'undefined'
+
+const {entries, fromEntries, keys} = Object
+
+const noOp = () => {}
+
+const mkErr = msg => new Error(`${libName}: ${msg}`)
+
+const encoder = new TextEncoder()
+const decoder = new TextDecoder()
+
+const encodeBytes = txt => encoder.encode(txt)
+
+const decodeBytes = buffer => decoder.decode(buffer)
+
+const toHex = buffer =>
+  buffer.reduce((a, c) => a + c.toString(16).padStart(2, '0'), '')
+
+const topicPath = (...parts) => parts.join('@')
+
+const shuffle = (xs, seed) => {
+  const a = [...xs]
+  const rand = () => {
+    const x = sin(seed++) * 10_000
+    return x - floor(x)
+  }
+
+  let i = a.length
+
+  while (i) {
+    const j = floor(rand() * i--)
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+
+  return a
+}
+
+const getRelays = (config, defaults, defaultN, deriveFromAppId) => {
+  const relayUrls =
+    config.relayUrls ||
+    (deriveFromAppId ? shuffle(defaults, strToNum(config.appId)) : defaults)
+
+  return relayUrls.slice(
+    0,
+    config.relayUrls
+      ? config.relayUrls.length
+      : config.relayRedundancy || defaultN
+  )
+}
+
+const toJson = JSON.stringify
+
+const fromJson = JSON.parse
+
+const strToNum = (str, limit = Number.MAX_SAFE_INTEGER) =>
+  str.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % limit
+
+const defaultRetryMs = 3333
+const socketRetryPeriods = {}
+
+const makeSocket = (url, onMessage) => {
+  const client = {}
+
+  const init = () => {
+    const socket = new WebSocket(url)
+
+    socket.onclose = () => {
+      socketRetryPeriods[url] ??= defaultRetryMs
+      setTimeout(init, socketRetryPeriods[url])
+      socketRetryPeriods[url] *= 2
+    }
+
+    socket.onmessage = e => onMessage(e.data)
+    client.socket = socket
+    client.url = socket.url
+    client.ready = new Promise(
+      res =>
+        (socket.onopen = () => {
+          res(client)
+          socketRetryPeriods[url] = defaultRetryMs
+        })
+    )
+    client.send = data => {
+      if (socket.readyState === 1) {
+        socket.send(data)
+      }
+    }
+  }
+
+  init()
+
+  return client
+}
+
+const socketGetter = clientMap => () =>
+  fromEntries(entries(clientMap).map(([url, client]) => [url, client.socket]));
+return {entries, fromEntries, keys, libName, alloc, genId, selfId, all, isBrowser, noOp, mkErr, encodeBytes, decodeBytes, toHex, topicPath, shuffle, getRelays, toJson, fromJson, strToNum, makeSocket, socketGetter};
+  })();
+
+  const M_crypto = (() => {
+'use strict';
+const {decodeBytes, encodeBytes} = M_utils;
+
+const algo = 'AES-GCM'
+const strToSha1 = {}
+
+const pack = buff => btoa(String.fromCharCode.apply(null, new Uint8Array(buff)))
+
+const unpack = packed => {
+  const str = atob(packed)
+  return new Uint8Array(str.length).map((_, i) => str.charCodeAt(i)).buffer
+}
+
+const hashWith = async (algo, str) =>
+  new Uint8Array(await crypto.subtle.digest(algo, encodeBytes(str)))
+
+const sha1 = async str =>
+  // eslint-disable-next-line require-atomic-updates
+  (strToSha1[str] ||= Array.from(await hashWith('SHA-1', str))
+    .map(b => b.toString(36))
+    .join(''))
+
+const genKey = async (secret, appId, roomId) =>
+  crypto.subtle.importKey(
+    'raw',
+    await crypto.subtle.digest(
+      {name: 'SHA-256'},
+      encodeBytes(`${secret}:${appId}:${roomId}`)
+    ),
+    {name: algo},
+    false,
+    ['encrypt', 'decrypt']
+  )
+
+const joinChar = '$'
+const ivJoinChar = ','
+
+const encrypt = async (keyP, plaintext) => {
+  const iv = crypto.getRandomValues(new Uint8Array(16))
+
+  return (
+    iv.join(ivJoinChar) +
+    joinChar +
+    pack(
+      await crypto.subtle.encrypt(
+        {name: algo, iv},
+        await keyP,
+        encodeBytes(plaintext)
+      )
+    )
+  )
+}
+
+const decrypt = async (keyP, raw) => {
+  const [iv, c] = raw.split(joinChar)
+
+  return decodeBytes(
+    await crypto.subtle.decrypt(
+      {name: algo, iv: new Uint8Array(iv.split(ivJoinChar))},
+      await keyP,
+      unpack(c)
+    )
+  )
+};
+return {hashWith, sha1, genKey, encrypt, decrypt};
+  })();
+
+  const M_peer = (() => {
+'use strict';
+const {all, alloc} = M_utils;
+
+const iceTimeout = 5000
+const iceStateEvent = 'icegatheringstatechange'
+const offerType = 'offer'
+const answerType = 'answer'
+
+const __default = (initiator, {rtcConfig, rtcPolyfill, turnConfig}) => {
+  const pc = new (rtcPolyfill || RTCPeerConnection)({
+    iceServers: defaultIceServers.concat(turnConfig || []),
+    ...rtcConfig
+  })
+
+  const handlers = {}
+  let makingOffer = false
+  let isSettingRemoteAnswerPending = false
+  let dataChannel = null
+
+  const setupDataChannel = channel => {
+    channel.binaryType = 'arraybuffer'
+    channel.bufferedAmountLowThreshold = 0xffff
+    channel.onmessage = e => handlers.data?.(e.data)
+    channel.onopen = () => handlers.connect?.()
+    channel.onclose = () => handlers.close?.()
+    channel.onerror = err => handlers.error?.(err)
+  }
+
+  const waitForIceGathering = pc =>
+    Promise.race([
+      new Promise(res => {
+        const checkState = () => {
+          if (pc.iceGatheringState === 'complete') {
+            pc.removeEventListener(iceStateEvent, checkState)
+            res()
+          }
+        }
+
+        pc.addEventListener(iceStateEvent, checkState)
+        checkState()
+      }),
+      new Promise(res => setTimeout(res, iceTimeout))
+    ]).then(() => ({
+      type: pc.localDescription.type,
+      sdp: pc.localDescription.sdp.replace(/a=ice-options:trickle\s\n/g, '')
+    }))
+
+  if (initiator) {
+    dataChannel = pc.createDataChannel('data')
+    setupDataChannel(dataChannel)
+  } else {
+    pc.ondatachannel = ({channel}) => {
+      dataChannel = channel
+      setupDataChannel(channel)
+    }
+  }
+
+  pc.onnegotiationneeded = async () => {
+    try {
+      makingOffer = true
+      await pc.setLocalDescription()
+      const offer = await waitForIceGathering(pc)
+
+      handlers.signal?.(offer)
+    } catch (err) {
+      handlers.error?.(err)
+    } finally {
+      makingOffer = false
+    }
+  }
+
+  pc.onconnectionstatechange = () => {
+    if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
+      handlers.close?.()
+    }
+  }
+
+  pc.ontrack = e => {
+    handlers.track?.(e.track, e.streams[0])
+    handlers.stream?.(e.streams[0])
+  }
+
+  pc.onremovestream = e => handlers.stream?.(e.stream)
+
+  if (initiator) {
+    if (!pc.canTrickleIceCandidates) {
+      pc.onnegotiationneeded()
+    }
+  }
+
+  return {
+    created: Date.now(),
+
+    connection: pc,
+
+    get channel() {
+      return dataChannel
+    },
+
+    get isDead() {
+      return pc.connectionState === 'closed'
+    },
+
+    async signal(sdp) {
+      if (
+        dataChannel?.readyState === 'open' &&
+        !sdp.sdp?.includes('a=rtpmap')
+      ) {
+        return
+      }
+
+      try {
+        if (sdp.type === offerType) {
+          if (
+            makingOffer ||
+            (pc.signalingState !== 'stable' && !isSettingRemoteAnswerPending)
+          ) {
+            if (initiator) {
+              return
+            }
+
+            await all([
+              pc.setLocalDescription({type: 'rollback'}),
+              pc.setRemoteDescription(sdp)
+            ])
+          } else {
+            await pc.setRemoteDescription(sdp)
+          }
+
+          await pc.setLocalDescription()
+          const answer = await waitForIceGathering(pc)
+          handlers.signal?.(answer)
+
+          return answer
+        } else if (sdp.type === answerType) {
+          isSettingRemoteAnswerPending = true
+          try {
+            await pc.setRemoteDescription(sdp)
+          } finally {
+            isSettingRemoteAnswerPending = false
+          }
+        }
+      } catch (err) {
+        handlers.error?.(err)
+      }
+    },
+
+    sendData: data => dataChannel.send(data),
+
+    destroy: () => {
+      dataChannel?.close()
+      pc.close()
+      makingOffer = false
+      isSettingRemoteAnswerPending = false
+    },
+
+    setHandlers: newHandlers => Object.assign(handlers, newHandlers),
+
+    offerPromise: initiator
+      ? new Promise(
+          res =>
+            (handlers.signal = sdp => {
+              if (sdp.type === offerType) {
+                res(sdp)
+              }
+            })
+        )
+      : Promise.resolve(),
+
+    addStream: stream =>
+      stream.getTracks().forEach(track => pc.addTrack(track, stream)),
+
+    removeStream: stream =>
+      pc
+        .getSenders()
+        .filter(sender => stream.getTracks().includes(sender.track))
+        .forEach(sender => pc.removeTrack(sender)),
+
+    addTrack: (track, stream) => pc.addTrack(track, stream),
+
+    removeTrack: track => {
+      const sender = pc.getSenders().find(s => s.track === track)
+      if (sender) {
+        pc.removeTrack(sender)
+      }
+    },
+
+    replaceTrack: (oldTrack, newTrack) => {
+      const sender = pc.getSenders().find(s => s.track === oldTrack)
+      if (sender) {
+        return sender.replaceTrack(newTrack)
+      }
+    }
+  }
+}
+
+const defaultIceServers = [
+  ...alloc(3, (_, i) => `stun:stun${i || ''}.l.google.com:19302`),
+  'stun:stun.cloudflare.com:3478'
+].map(url => ({urls: url}));
+return {default: __default, defaultIceServers};
+  })();
+
+  const M_room = (() => {
+'use strict';
+const {all, alloc, decodeBytes, encodeBytes, entries, fromEntries, fromJson, isBrowser, keys, libName, mkErr, noOp, toJson} = M_utils;
+
+const TypedArray = Object.getPrototypeOf(Uint8Array)
+const typeByteLimit = 12
+const typeIndex = 0
+const nonceIndex = typeIndex + typeByteLimit
+const tagIndex = nonceIndex + 1
+const progressIndex = tagIndex + 1
+const payloadIndex = progressIndex + 1
+const chunkSize = 16 * 2 ** 10 - payloadIndex
+const oneByteMax = 0xff
+const buffLowEvent = 'bufferedamountlow'
+const internalNs = ns => '@_' + ns
+
+const __default = (onPeer, onPeerLeave, onSelfLeave) => {
+  const peerMap = {}
+  const actions = {}
+  const actionsCache = {}
+  const pendingTransmissions = {}
+  const pendingPongs = {}
+  const pendingStreamMetas = {}
+  const pendingTrackMetas = {}
+  const listeners = {
+    onPeerJoin: noOp,
+    onPeerLeave: noOp,
+    onPeerStream: noOp,
+    onPeerTrack: noOp
+  }
+
+  const iterate = (targets, f) =>
+    (targets
+      ? Array.isArray(targets)
+        ? targets
+        : [targets]
+      : keys(peerMap)
+    ).flatMap(id => {
+      const peer = peerMap[id]
+
+      if (!peer) {
+        console.warn(`${libName}: no peer with id ${id} found`)
+        return []
+      }
+
+      return f(id, peer)
+    })
+
+  const exitPeer = id => {
+    if (!peerMap[id]) {
+      return
+    }
+
+    peerMap[id].destroy()
+    delete peerMap[id]
+    delete pendingTransmissions[id]
+    delete pendingPongs[id]
+    listeners.onPeerLeave(id)
+    onPeerLeave(id)
+  }
+
+  const makeAction = type => {
+    if (actions[type]) {
+      return actionsCache[type]
+    }
+
+    if (!type) {
+      throw mkErr('action type argument is required')
+    }
+
+    const typeBytes = encodeBytes(type)
+
+    if (typeBytes.byteLength > typeByteLimit) {
+      throw mkErr(
+        `action type string "${type}" (${typeBytes.byteLength}b) exceeds ` +
+          `byte limit (${typeByteLimit}). Hint: choose a shorter name.`
+      )
+    }
+
+    const typeBytesPadded = new Uint8Array(typeByteLimit)
+    typeBytesPadded.set(typeBytes)
+
+    let nonce = 0
+
+    actions[type] = {
+      onComplete: noOp,
+      onProgress: noOp,
+
+      setOnComplete: f => (actions[type] = {...actions[type], onComplete: f}),
+
+      setOnProgress: f => (actions[type] = {...actions[type], onProgress: f}),
+
+      send: async (data, targets, meta, onProgress) => {
+        if (meta && typeof meta !== 'object') {
+          throw mkErr('action meta argument must be an object')
+        }
+
+        const dataType = typeof data
+
+        if (dataType === 'undefined') {
+          throw mkErr('action data cannot be undefined')
+        }
+
+        const isJson = dataType !== 'string'
+        const isBlob = data instanceof Blob
+        const isBinary =
+          isBlob || data instanceof ArrayBuffer || data instanceof TypedArray
+
+        if (meta && !isBinary) {
+          throw mkErr('action meta argument can only be used with binary data')
+        }
+
+        const buffer = isBinary
+          ? new Uint8Array(isBlob ? await data.arrayBuffer() : data)
+          : encodeBytes(isJson ? toJson(data) : data)
+
+        const metaEncoded = meta ? encodeBytes(toJson(meta)) : null
+
+        const chunkTotal =
+          Math.ceil(buffer.byteLength / chunkSize) + (meta ? 1 : 0) || 1
+
+        const chunks = alloc(chunkTotal, (_, i) => {
+          const isLast = i === chunkTotal - 1
+          const isMeta = meta && i === 0
+          const chunk = new Uint8Array(
+            payloadIndex +
+              (isMeta
+                ? metaEncoded.byteLength
+                : isLast
+                  ? buffer.byteLength -
+                    chunkSize * (chunkTotal - (meta ? 2 : 1))
+                  : chunkSize)
+          )
+
+          chunk.set(typeBytesPadded)
+          chunk.set([nonce], nonceIndex)
+          chunk.set(
+            [isLast | (isMeta << 1) | (isBinary << 2) | (isJson << 3)],
+            tagIndex
+          )
+          chunk.set(
+            [Math.round(((i + 1) / chunkTotal) * oneByteMax)],
+            progressIndex
+          )
+          chunk.set(
+            meta
+              ? isMeta
+                ? metaEncoded
+                : buffer.subarray((i - 1) * chunkSize, i * chunkSize)
+              : buffer.subarray(i * chunkSize, (i + 1) * chunkSize),
+            payloadIndex
+          )
+
+          return chunk
+        })
+
+        nonce = (nonce + 1) & oneByteMax
+
+        return all(
+          iterate(targets, async (id, peer) => {
+            const {channel} = peer
+            let chunkN = 0
+
+            while (chunkN < chunkTotal) {
+              const chunk = chunks[chunkN]
+
+              if (channel.bufferedAmount > channel.bufferedAmountLowThreshold) {
+                await new Promise(res => {
+                  const next = () => {
+                    channel.removeEventListener(buffLowEvent, next)
+                    res()
+                  }
+
+                  channel.addEventListener(buffLowEvent, next)
+                })
+              }
+
+              if (!peerMap[id]) {
+                break
+              }
+
+              peer.sendData(chunk)
+              chunkN++
+              onProgress?.(chunk[progressIndex] / oneByteMax, id, meta)
+            }
+          })
+        )
+      }
+    }
+
+    return (actionsCache[type] ||= [
+      actions[type].send,
+      actions[type].setOnComplete,
+      actions[type].setOnProgress
+    ])
+  }
+
+  const handleData = (id, data) => {
+    const buffer = new Uint8Array(data)
+    const type = decodeBytes(buffer.subarray(typeIndex, nonceIndex)).replaceAll(
+      '\x00',
+      ''
+    )
+    const [nonce] = buffer.subarray(nonceIndex, tagIndex)
+    const [tag] = buffer.subarray(tagIndex, progressIndex)
+    const [progress] = buffer.subarray(progressIndex, payloadIndex)
+    const payload = buffer.subarray(payloadIndex)
+    const isLast = !!(tag & 1)
+    const isMeta = !!(tag & (1 << 1))
+    const isBinary = !!(tag & (1 << 2))
+    const isJson = !!(tag & (1 << 3))
+
+    if (!actions[type]) {
+      console.warn(
+        `${libName}: received message with unregistered type (${type})`
+      )
+      return
+    }
+
+    pendingTransmissions[id] ||= {}
+    pendingTransmissions[id][type] ||= {}
+
+    const target = (pendingTransmissions[id][type][nonce] ||= {chunks: []})
+
+    if (isMeta) {
+      target.meta = fromJson(decodeBytes(payload))
+    } else {
+      target.chunks.push(payload)
+    }
+
+    actions[type].onProgress(progress / oneByteMax, id, target.meta)
+
+    if (!isLast) {
+      return
+    }
+
+    const full = new Uint8Array(
+      target.chunks.reduce((a, c) => a + c.byteLength, 0)
+    )
+
+    target.chunks.reduce((a, c) => {
+      full.set(c, a)
+      return a + c.byteLength
+    }, 0)
+
+    delete pendingTransmissions[id][type][nonce]
+
+    if (isBinary) {
+      actions[type].onComplete(full, id, target.meta)
+    } else {
+      const text = decodeBytes(full)
+      actions[type].onComplete(isJson ? fromJson(text) : text, id)
+    }
+  }
+
+  const leave = async () => {
+    await sendLeave('')
+    await new Promise(res => setTimeout(res, 99))
+    entries(peerMap).forEach(([id, peer]) => {
+      peer.destroy()
+      delete peerMap[id]
+    })
+    onSelfLeave()
+  }
+
+  const [sendPing, getPing] = makeAction(internalNs('ping'))
+  const [sendPong, getPong] = makeAction(internalNs('pong'))
+  const [sendSignal, getSignal] = makeAction(internalNs('signal'))
+  const [sendStreamMeta, getStreamMeta] = makeAction(internalNs('stream'))
+  const [sendTrackMeta, getTrackMeta] = makeAction(internalNs('track'))
+  const [sendLeave, getLeave] = makeAction(internalNs('leave'))
+
+  onPeer((peer, id) => {
+    if (peerMap[id]) {
+      return
+    }
+
+    peerMap[id] = peer
+
+    peer.setHandlers({
+      data: d => handleData(id, d),
+      stream: stream => {
+        listeners.onPeerStream(stream, id, pendingStreamMetas[id])
+        delete pendingStreamMetas[id]
+      },
+      track: (track, stream) => {
+        listeners.onPeerTrack(track, stream, id, pendingTrackMetas[id])
+        delete pendingTrackMetas[id]
+      },
+      signal: sdp => sendSignal(sdp, id),
+      close: () => exitPeer(id),
+      error: err => {
+        console.error(err)
+        exitPeer(id)
+      }
+    })
+
+    listeners.onPeerJoin(id)
+  })
+
+  getPing((_, id) => sendPong('', id))
+
+  getPong((_, id) => {
+    pendingPongs[id]?.()
+    delete pendingPongs[id]
+  })
+
+  getSignal((sdp, id) => peerMap[id]?.signal(sdp))
+
+  getStreamMeta((meta, id) => (pendingStreamMetas[id] = meta))
+
+  getTrackMeta((meta, id) => (pendingTrackMetas[id] = meta))
+
+  getLeave((_, id) => exitPeer(id))
+
+  if (isBrowser) {
+    addEventListener('beforeunload', leave)
+  }
+
+  return {
+    makeAction,
+
+    leave,
+
+    ping: async id => {
+      if (!id) {
+        throw mkErr('ping() must be called with target peer ID')
+      }
+
+      const start = Date.now()
+
+      sendPing('', id)
+      await new Promise(res => (pendingPongs[id] = res))
+      return Date.now() - start
+    },
+
+    getPeers: () =>
+      fromEntries(entries(peerMap).map(([id, peer]) => [id, peer.connection])),
+
+    addStream: (stream, targets, meta) =>
+      iterate(targets, async (id, peer) => {
+        if (meta) {
+          await sendStreamMeta(meta, id)
+        }
+
+        peer.addStream(stream)
+      }),
+
+    removeStream: (stream, targets) =>
+      iterate(targets, (_, peer) => peer.removeStream(stream)),
+
+    addTrack: (track, stream, targets, meta) =>
+      iterate(targets, async (id, peer) => {
+        if (meta) {
+          await sendTrackMeta(meta, id)
+        }
+
+        peer.addTrack(track, stream)
+      }),
+
+    removeTrack: (track, targets) =>
+      iterate(targets, (_, peer) => peer.removeTrack(track)),
+
+    replaceTrack: (oldTrack, newTrack, targets, meta) =>
+      iterate(targets, async (id, peer) => {
+        if (meta) {
+          await sendTrackMeta(meta, id)
+        }
+
+        peer.replaceTrack(oldTrack, newTrack)
+      }),
+
+    onPeerJoin: f => (listeners.onPeerJoin = f),
+
+    onPeerLeave: f => (listeners.onPeerLeave = f),
+
+    onPeerStream: f => (listeners.onPeerStream = f),
+
+    onPeerTrack: f => (listeners.onPeerTrack = f)
+  }
+};
+return {default: __default};
+  })();
+
+  const M_strategy = (() => {
+'use strict';
+const {decrypt, encrypt, genKey, sha1} = M_crypto;
+const initPeer = M_peer.default;
+const room = M_room.default;
+const {all, alloc, fromJson, libName, mkErr, noOp, selfId, toJson, topicPath} = M_utils;
+
+const poolSize = 20
+const announceIntervalMs = 5_333
+const offerTtl = 57_333
+
+const __default = ({init, subscribe, announce}) => {
+  const occupiedRooms = {}
+
+  let didInit = false
+  let initPromises
+  let offerPool
+  let offerCleanupTimer
+
+  return (config, roomId, onJoinError) => {
+    const {appId} = config
+
+    if (occupiedRooms[appId]?.[roomId]) {
+      return occupiedRooms[appId][roomId]
+    }
+
+    const pendingOffers = {}
+    const connectedPeers = {}
+    const rootTopicPlaintext = topicPath(libName, appId, roomId)
+    const rootTopicP = sha1(rootTopicPlaintext)
+    const selfTopicP = sha1(topicPath(rootTopicPlaintext, selfId))
+    const key = genKey(config.password || '', appId, roomId)
+
+    const withKey = f => async signal => ({
+      type: signal.type,
+      sdp: await f(key, signal.sdp)
+    })
+
+    const toPlain = withKey(decrypt)
+    const toCipher = withKey(encrypt)
+
+    const makeOffer = () => initPeer(true, config)
+
+    const connectPeer = (peer, peerId, relayId) => {
+      if (connectedPeers[peerId]) {
+        if (connectedPeers[peerId] !== peer) {
+          peer.destroy()
+        }
+        return
+      }
+
+      connectedPeers[peerId] = peer
+      onPeerConnect(peer, peerId)
+
+      pendingOffers[peerId]?.forEach((peer, i) => {
+        if (i !== relayId) {
+          peer.destroy()
+        }
+      })
+      delete pendingOffers[peerId]
+    }
+
+    const disconnectPeer = (peer, peerId) => {
+      if (connectedPeers[peerId] === peer) {
+        delete connectedPeers[peerId]
+      }
+    }
+
+    const prunePendingOffer = (peerId, relayId) => {
+      if (connectedPeers[peerId]) {
+        return
+      }
+
+      const offer = pendingOffers[peerId]?.[relayId]
+
+      if (offer) {
+        delete pendingOffers[peerId][relayId]
+        offer.destroy()
+      }
+    }
+
+    const getOffers = n => {
+      offerPool.push(...alloc(n, makeOffer))
+
+      return all(
+        offerPool
+          .splice(0, n)
+          .map(peer =>
+            peer.offerPromise.then(toCipher).then(offer => ({peer, offer}))
+          )
+      )
+    }
+
+    const handleJoinError = (peerId, sdpType) =>
+      onJoinError?.({
+        error: `incorrect password (${config.password}) when decrypting ${sdpType}`,
+        appId,
+        peerId,
+        roomId
+      })
+
+    const handleMessage = relayId => async (topic, msg, signalPeer) => {
+      const [rootTopic, selfTopic] = await all([rootTopicP, selfTopicP])
+
+      if (topic !== rootTopic && topic !== selfTopic) {
+        return
+      }
+
+      const {peerId, offer, answer, peer} =
+        typeof msg === 'string' ? fromJson(msg) : msg
+
+      if (peerId === selfId || connectedPeers[peerId]) {
+        return
+      }
+
+      if (peerId && !offer && !answer) {
+        if (pendingOffers[peerId]?.[relayId]) {
+          return
+        }
+
+        const [[{peer, offer}], topic] = await all([
+          getOffers(1),
+          sha1(topicPath(rootTopicPlaintext, peerId))
+        ])
+
+        pendingOffers[peerId] ||= []
+        pendingOffers[peerId][relayId] = peer
+
+        setTimeout(
+          () => prunePendingOffer(peerId, relayId),
+          announceIntervals[relayId] * 0.9
+        )
+
+        peer.setHandlers({
+          connect: () => connectPeer(peer, peerId, relayId),
+          close: () => disconnectPeer(peer, peerId)
+        })
+
+        signalPeer(topic, toJson({peerId: selfId, offer}))
+      } else if (offer) {
+        const myOffer = pendingOffers[peerId]?.[relayId]
+
+        if (myOffer && selfId > peerId) {
+          return
+        }
+
+        const peer = initPeer(false, config)
+        peer.setHandlers({
+          connect: () => connectPeer(peer, peerId, relayId),
+          close: () => disconnectPeer(peer, peerId)
+        })
+
+        let plainOffer
+
+        try {
+          plainOffer = await toPlain(offer)
+        } catch {
+          handleJoinError(peerId, 'offer')
+          return
+        }
+
+        if (peer.isDead) {
+          return
+        }
+
+        const [topic, answer] = await all([
+          sha1(topicPath(rootTopicPlaintext, peerId)),
+          peer.signal(plainOffer)
+        ])
+
+        signalPeer(
+          topic,
+          toJson({peerId: selfId, answer: await toCipher(answer)})
+        )
+      } else if (answer) {
+        let plainAnswer
+
+        try {
+          plainAnswer = await toPlain(answer)
+        } catch (e) {
+          handleJoinError(peerId, 'answer')
+          return
+        }
+
+        if (peer) {
+          peer.setHandlers({
+            connect: () => connectPeer(peer, peerId, relayId),
+            close: () => disconnectPeer(peer, peerId)
+          })
+
+          peer.signal(plainAnswer)
+        } else {
+          const peer = pendingOffers[peerId]?.[relayId]
+
+          if (peer && !peer.isDead) {
+            peer.signal(plainAnswer)
+          }
+        }
+      }
+    }
+
+    if (!config) {
+      throw mkErr('requires a config map as the first argument')
+    }
+
+    if (!appId && !config.firebaseApp) {
+      throw mkErr('config map is missing appId field')
+    }
+
+    if (!roomId) {
+      throw mkErr('roomId argument required')
+    }
+
+    if (!didInit) {
+      const initRes = init(config)
+      offerPool = alloc(poolSize, makeOffer)
+      initPromises = Array.isArray(initRes) ? initRes : [initRes]
+      didInit = true
+      offerCleanupTimer = setInterval(
+        () =>
+          (offerPool = offerPool.filter(peer => {
+            const shouldLive = Date.now() - peer.created < offerTtl
+
+            if (!shouldLive) {
+              peer.destroy()
+            }
+
+            return shouldLive
+          })),
+        offerTtl * 1.03
+      )
+    }
+
+    const announceIntervals = initPromises.map(() => announceIntervalMs)
+    const announceTimeouts = []
+
+    const unsubFns = initPromises.map(async (relayP, i) =>
+      subscribe(
+        await relayP,
+        await rootTopicP,
+        await selfTopicP,
+        handleMessage(i),
+        getOffers
+      )
+    )
+
+    all([rootTopicP, selfTopicP]).then(([rootTopic, selfTopic]) => {
+      const queueAnnounce = async (relay, i) => {
+        const ms = await announce(relay, rootTopic, selfTopic)
+
+        if (typeof ms === 'number') {
+          announceIntervals[i] = ms
+        }
+
+        announceTimeouts[i] = setTimeout(
+          () => queueAnnounce(relay, i),
+          announceIntervals[i]
+        )
+      }
+
+      unsubFns.forEach(async (didSub, i) => {
+        await didSub
+        queueAnnounce(await initPromises[i], i)
+      })
+    })
+
+    let onPeerConnect = noOp
+
+    occupiedRooms[appId] ||= {}
+
+    return (occupiedRooms[appId][roomId] = room(
+      f => (onPeerConnect = f),
+      id => delete connectedPeers[id],
+      () => {
+        delete occupiedRooms[appId][roomId]
+        announceTimeouts.forEach(clearTimeout)
+        unsubFns.forEach(async f => (await f)())
+        clearInterval(offerCleanupTimer)
+      }
+    ))
+  }
+};
+return {default: __default};
+  })();
+
+  const M_nostr = (() => {
+'use strict';
+const {schnorr} = M_noble;
+const strategy = M_strategy.default;
+const {hashWith} = M_crypto;
+const {fromJson, genId, getRelays, libName, makeSocket, selfId, socketGetter, strToNum, toHex, toJson} = M_utils;
+
+const clients = {}
+const defaultRedundancy = 5
+const tag = 'x'
+const eventMsgType = 'EVENT'
+const {secretKey, publicKey} = schnorr.keygen()
+const pubkey = toHex(publicKey)
+const subIdToTopic = {}
+const msgHandlers = {}
+const kindCache = {}
+
+const now = () => Math.floor(Date.now() / 1000)
+
+const topicToKind = topic =>
+  (kindCache[topic] ??= strToNum(topic, 10_000) + 20_000)
+
+const createEvent = async (topic, content) => {
+  const payload = {
+    kind: topicToKind(topic),
+    tags: [[tag, topic]],
+    created_at: now(),
+    content,
+    pubkey
+  }
+
+  const id = await hashWith(
+    'SHA-256',
+    toJson([
+      0,
+      payload.pubkey,
+      payload.created_at,
+      payload.kind,
+      payload.tags,
+      payload.content
+    ])
+  )
+
+  return toJson([
+    eventMsgType,
+    {
+      ...payload,
+      id: toHex(id),
+      sig: toHex(await schnorr.signAsync(id, secretKey))
+    }
+  ])
+}
+
+const subscribe = (subId, topic) => {
+  subIdToTopic[subId] = topic
+  return toJson([
+    'REQ',
+    subId,
+    {
+      kinds: [topicToKind(topic)],
+      since: now(),
+      ['#' + tag]: [topic]
+    }
+  ])
+}
+
+const unsubscribe = subId => {
+  delete subIdToTopic[subId]
+  return toJson(['CLOSE', subId])
+}
+
+const joinRoom = strategy({
+  init: config =>
+    getRelays(config, defaultRelayUrls, defaultRedundancy, true).map(url => {
+      const client = makeSocket(url, data => {
+        const [msgType, subId, payload, relayMsg] = fromJson(data)
+
+        if (msgType !== eventMsgType) {
+          const prefix = `${libName}: relay failure from ${client.url} - `
+
+          if (msgType === 'NOTICE') {
+            console.warn(prefix + subId)
+          } else if (msgType === 'OK' && !payload) {
+            console.warn(prefix + relayMsg)
+          }
+          return
+        }
+
+        msgHandlers[subId]?.(subIdToTopic[subId], payload.content)
+      })
+
+      clients[url] = client
+
+      return client.ready
+    }),
+
+  subscribe: (client, rootTopic, selfTopic, onMessage) => {
+    const rootSubId = genId(64)
+    const selfSubId = genId(64)
+
+    msgHandlers[rootSubId] = msgHandlers[selfSubId] = (topic, data) =>
+      onMessage(topic, data, async (peerTopic, signal) =>
+        client.send(await createEvent(peerTopic, signal))
+      )
+
+    client.send(subscribe(rootSubId, rootTopic))
+    client.send(subscribe(selfSubId, selfTopic))
+
+    return () => {
+      client.send(unsubscribe(rootSubId))
+      client.send(unsubscribe(selfSubId))
+      delete msgHandlers[rootSubId]
+      delete msgHandlers[selfSubId]
+    }
+  },
+
+  announce: async (client, rootTopic) =>
+    client.send(await createEvent(rootTopic, toJson({peerId: selfId})))
+})
+
+const getRelaySockets = socketGetter(clients)
+
+const __re_selfId = M_utils.selfId;
+
+const defaultRelayUrls = [
+  'black.nostrcity.club',
+  'ftp.halifax.rwth-aachen.de/nostr',
+  'nos.lol',
+  'nostr.cool110.xyz',
+  'nostr.data.haus',
+  'nostr.sathoarder.com',
+  'nostr.vulpem.com',
+  'relay.agorist.space',
+  'relay.binaryrobot.com',
+  'relay.damus.io',
+  'relay.fountain.fm',
+  'relay.mostro.network',
+  'relay.nostraddress.com',
+  'relay.nostrdice.com',
+  'relay.nostromo.social',
+  'relay.oldenburg.cool',
+  'relay.verified-nostr.com',
+  'yabu.me/v2'
+].map(url => 'wss://' + url);
+return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, defaultRelayUrls};
+  })();
+
+  api = Object.freeze({ joinRoom: M_nostr.joinRoom, selfId: M_nostr.selfId, getRelaySockets: M_nostr.getRelaySockets,
+    defaultRelayUrls: M_nostr.defaultRelayUrls, schnorr: M_noble.schnorr, version: "0.21.8" });
+  return api;
+  };
+})();
+</script>
+<script>/* src/net/protocol.js */
+/* A game between two browsers (the P2P spike: NET.md), the protocol. Pure and deterministic like the rules
+   (core/): no DOM, timers, clock or random source; the page passes the nonces in (main.js draws them from the
+   browser's crypto). A Session is one player's side of a room: each call takes what happened (a message from the
+   peer, the player's move) and returns { send, events }: the messages for the peer, in order, and what the page
+   shows. The transport (net/transports.js) only carries the messages.
+   - hello: the protocol's version (another one ends the room), the build (another one warns), the player's deck,
+     the game they are in (its id, ply and the hash of its board, or how it ended off the board) and, while they
+     want a game, the commit of a fresh nonce (its SHA-256). A hello that isn't a reply gets one.
+   - reveal: once both commits are known each side sends its nonce, which must hash to its commit. The game's id
+     is the hash of both nonces, and one bit of it gives White to the smaller or the larger, so neither side picks
+     the colours (a peer that leaves and rejoins until it gets White can, as with any rematch).
+   - move: the ply, the move (core/chess.js's int) and the hash of the FEN after it. Both sides check every move
+     with DG.Chess: an illegal move, a gap or a hash that differs asks the peer for a sync.
+   - sync: the whole move list. Each side is the authority over its own moves only: a list that changes the
+     receiver's moves, holds an illegal one or ends on another board stops the game for both (abort).
+   - resign; draw (offer, accept, decline: an offer stands at its ply, and its maker can't move until it is
+     answered, so an accept never crosses a move); rematch (a new commit); abort.
+   Not in G.CORE: the AI's worker doesn't need it. */
+(function net() {
+  const G = (window.DG = window.DG || {});
+  const VERSION = 1;
+  const MAX_PLY = 6000, MAX_MOVE = 1 << 30, KEEP_USED = 16;
+
+  // ------------------------------------------------------------------ SHA-256
+  // of a string's UTF-8 bytes, as 64 hex digits (FIPS 180-4; its constants are the primes' roots, computed:
+  // the fractions of the square roots of the first 8 primes, of the cube roots of the first 64)
+  const K = [], H0 = [];
+  for (let n = 2; K.length < 64; n++) {
+    let prime = true;
+    for (let d = 2; d * d <= n; d++) if (n % d === 0) { prime = false; break; }
+    if (!prime) continue;
+    if (H0.length < 8) H0.push((Math.pow(n, 1 / 2) * 4294967296) | 0);
+    K.push((Math.pow(n, 1 / 3) * 4294967296) | 0);
+  }
+  const ror = (x, n) => (x >>> n) | (x << (32 - n));
+  const utf8 = (s) => {
+    const u = [];
+    for (let i = 0; i < s.length; i++) {
+      let c = s.charCodeAt(i);
+      if (c >= 0xd800 && c < 0xdc00 && i + 1 < s.length) {
+        const d = s.charCodeAt(i + 1);
+        if (d >= 0xdc00 && d < 0xe000) { c = 0x10000 + ((c - 0xd800) << 10) + (d - 0xdc00); i++; }
+      }
+      if (c < 0x80) u.push(c);
+      else if (c < 0x800) u.push(0xc0 | (c >> 6), 0x80 | (c & 63));
+      else if (c < 0x10000) u.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+      else u.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+    }
+    return u;
+  };
+  const sha256 = (s) => {
+    const u = utf8(String(s)), bits = u.length * 8;
+    u.push(0x80);
+    while (u.length % 64 !== 56) u.push(0);
+    for (const x of [Math.floor(bits / 4294967296), bits >>> 0]) u.push((x >>> 24) & 255, (x >>> 16) & 255, (x >>> 8) & 255, x & 255);
+    const h = H0.slice(), w = new Array(64);
+    for (let i = 0; i < u.length; i += 64) {
+      for (let t = 0; t < 16; t++) w[t] = (u[i + 4 * t] << 24) | (u[i + 4 * t + 1] << 16) | (u[i + 4 * t + 2] << 8) | u[i + 4 * t + 3];
+      for (let t = 16; t < 64; t++) {
+        const x = w[t - 15], y = w[t - 2];
+        w[t] = (w[t - 16] + (ror(x, 7) ^ ror(x, 18) ^ (x >>> 3)) + w[t - 7] + (ror(y, 17) ^ ror(y, 19) ^ (y >>> 10))) | 0;
+      }
+      let [a, b, c, d, e, f, g, k] = h;
+      for (let t = 0; t < 64; t++) {
+        const t1 = (k + (ror(e, 6) ^ ror(e, 11) ^ ror(e, 25)) + ((e & f) ^ (~e & g)) + K[t] + w[t]) | 0;
+        const t2 = ((ror(a, 2) ^ ror(a, 13) ^ ror(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+        k = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+      }
+      const v = [a, b, c, d, e, f, g, k];
+      for (let j = 0; j < 8; j++) h[j] = (h[j] + v[j]) | 0;
+    }
+    return h.map((x) => (x >>> 0).toString(16).padStart(8, "0")).join("");
+  };
+  // a board's hash: its TFEN's (the traits and the move counters with it), 64 bits of it
+  const fenHash = (chess) => sha256(chess.fen()).slice(0, 16);
+
+  // ------------------------------------------------------------------ decks
+  // a deck as text, the way Deck.parse reads it: "RNBQKBNR:b1=stride,d2=ward+ember" (its squares sorted)
+  const deckText = (deck) => {
+    const items = Object.keys(deck.traits || {}).sort().filter((sq) => deck.traits[sq].length).map((sq) => sq + "=" + deck.traits[sq].join("+"));
+    return deck.back + (items.length ? ":" + items.join(",") : "");
+  };
+  // the peer's deck from its text, or null: a back rank with the king on e1 and the caps on queens and rooks,
+  // known traits on pieces that can carry them, at most PER_PIECE a square. No budget and no rarity caps: a set's
+  // deck skips them (core/deck.js ofSet), and both players see both decks before the first move
+  const readDeck = (text) => {
+    if (typeof text !== "string" || text.length > 600) return null;
+    const parts = text.split(":"), back = parts[0];
+    if (parts.length > 2 || !/^[NBRQ]{4}K[NBRQ]{3}$/.test(back)) return null;
+    for (const l in G.Deck.CAPS) if ([...back].filter((x) => x === l).length > G.Deck.CAPS[l]) return null;
+    const deck = { v: 1, back, traits: {} };
+    for (const it of parts[1] ? parts[1].split(",") : []) {
+      const m = /^([a-h][12])=([a-z]+(?:\+[a-z]+)*)$/.exec(it);
+      if (!m || m[1] === "e1" || deck.traits[m[1]]) return null;
+      const ids = m[2].split("+"), t = G.Deck.pieceAt(deck, m[1]);
+      if (ids.length > G.Deck.PER_PIECE || new Set(ids).size !== ids.length) return null;
+      for (const id of ids) {
+        const x = G.TRAITS.find((y) => y.id === id);
+        if (!x || !G.Deck.TRAIT[id] || !x.on.includes(t)) return null;
+      }
+      deck.traits[m[1]] = ids;
+    }
+    return deck;
+  };
+  // a player's deck as a hello carries it: its set (the art's id, or ""), its name (the page shows it as text,
+  // never as markup) and its text; null when the text isn't a deck
+  const deckInfo = (x) => {
+    if (!x || typeof x !== "object") return null;
+    const deck = readDeck(x.text);
+    if (!deck) return null;
+    return {
+      set: typeof x.set === "string" && /^[a-z]{1,16}$/.test(x.set) ? x.set : "",
+      name: typeof x.name === "string" ? x.name.slice(0, 24) : "",
+      text: deckText(deck),
+    };
+  };
+
+  // ------------------------------------------------------------------ the session
+  const hex = (s, n) => typeof s === "string" && s.length === n && /^[0-9a-f]+$/.test(s);
+  const int = (x, lo, hi) => Number.isInteger(x) && x >= lo && x <= hi;
+  // why a game stopped off the board (abort's codes, and the ends a hello carries)
+  const STOP = {
+    boards: "the two boards disagree (another build of the game?)",
+    illegal: "your friend's page sent an illegal move",
+    moves: "your friend's page changed your moves",
+    lost: "your friend's page lost this game (a new browser, or its data cleared)",
+  };
+  const out = () => ({ send: [], events: [] });
+
+  class Session {
+    // o: nonce() (32 hex digits of fresh randomness, the page's), deck {set, name, text}, build (a label: another
+    // one warns), saved (a save()'s text, to carry on after a reload)
+    constructor(o) {
+      this.nonce = o.nonce;
+      this.build = String(o.build || "").slice(0, 64);
+      this.deck = deckInfo(o.deck) || deckInfo({ text: deckText(G.Deck.CLASSIC) });
+      this.phase = "lobby"; // lobby (no game yet), play, over, dead (the versions differ: nothing more is read)
+      this.peer = null; // the peer's last hello: {deck, build}
+      this.mine = null; // my offer of a game, {nonce, commit, deck}, and the peer's, {commit, deck, nonce once revealed}
+      this.theirs = null;
+      this.used = []; // the commits the last games started from: a hello or rematch with one is old news
+      this.lastReveal = null; // the reveal that started this game, again for a peer that missed it
+      this.game = null; // {id, seed, colour (mine: 0 White), fen, decks [White's, Black's], moves, hashes, start}
+      this.chess = null;
+      this.draw = null; // an offer standing at a ply: {by: "me" | "them", ply}
+      this.end = null; // how the game ended off the board: {how: "resign", by} | {how: "agreed"} | {how: "abort", why}
+      this.warned = false;
+      if (o.saved) this.load(o.saved);
+    }
+
+    // the hello: when the transport finds the peer, after a reload, and every so often (a lost message shows as
+    // another ply). In the lobby it brings my offer of a game
+    hello() {
+      const o = out();
+      if (this.phase === "dead") return o;
+      if (this.phase === "lobby" && !this.mine) this.offer();
+      o.send.push(this.helloMsg(false));
+      return o;
+    }
+    helloMsg(re) {
+      const g = this.game, m = { t: "hello", v: VERSION, build: this.build, deck: this.mine ? this.mine.deck : this.deck, game: g ? g.id : "", ply: g ? g.moves.length : 0, fh: g ? this.hash() : "" };
+      if (this.mine) m.commit = this.mine.commit;
+      if (this.phase === "over" && this.end) m.end = this.end;
+      if (re) m.re = 1;
+      return m;
+    }
+    offer(deck) {
+      const n = this.nonce();
+      if (!hex(n, 32)) throw new Error("Net.Session: nonce() must give 32 hex digits");
+      this.mine = { nonce: n, commit: sha256(n), deck: deck || this.deck };
+    }
+
+    // a message from the peer
+    receive(msg) {
+      const o = out();
+      if (this.phase === "dead" || !msg || typeof msg !== "object") return o;
+      if (msg.t === "hello") this.onHello(msg, o);
+      else if (msg.t === "reveal") this.onReveal(msg, o);
+      else if (msg.t === "move") this.onMove(msg, o);
+      else if (msg.t === "sync") this.onSync(msg, o);
+      else if (msg.t === "resign") { if (this.current(msg)) this.finish({ how: "resign", by: 1 - this.game.colour }, o); }
+      else if (msg.t === "draw") this.onDraw(msg, o);
+      else if (msg.t === "rematch") this.onRematch(msg, o);
+      else if (msg.t === "abort") { if (this.current(msg)) this.finish({ how: "abort", why: STOP[msg.why] ? msg.why : "boards" }, o); }
+      return o;
+    }
+    // a message about the game in play
+    current(m) { return this.phase === "play" && m.game === this.game.id; }
+
+    onHello(m, o) {
+      if (m.v !== VERSION) {
+        this.phase = "dead";
+        const theirs = int(m.v, 0, 1e6) ? "v" + m.v : "an unknown one";
+        o.events.push({ type: "error", fatal: true, reason: "version", text: `Your friend's page speaks another version of the game's protocol (${theirs}, this page v${VERSION}): reload both pages.` });
+        return;
+      }
+      const deck = deckInfo(m.deck);
+      if (!deck) {
+        this.phase = "dead";
+        o.events.push({ type: "error", fatal: true, reason: "deck", text: "Your friend's deck has pieces or powers this page doesn't know: reload both pages." });
+        return;
+      }
+      const build = typeof m.build === "string" ? m.build.slice(0, 64) : "";
+      if (build !== this.build && !this.warned) {
+        this.warned = true;
+        o.events.push({ type: "warn", reason: "build", text: "Your friend's page is another build of the game: if the boards disagree, reload both." });
+      }
+      if (!this.peer) o.events.push({ type: "peer", deck });
+      this.peer = { deck, build };
+      const g = this.game, commit = hex(m.commit, 64) ? m.commit : "", theirGame = hex(m.game, 16) ? m.game : "";
+      if (g && theirGame === g.id) {
+        // the same game: the longer list (or both, on another board at the same ply) goes over; an end I missed
+        const ply = int(m.ply, 0, MAX_PLY) ? m.ply : 0;
+        if (g.moves.length > ply || (g.moves.length === ply && m.fh !== this.hash())) o.send.push(this.syncMsg());
+        if (this.phase === "play" && m.end && typeof m.end === "object") {
+          const e = m.end;
+          if (e.how === "resign" && e.by === 1 - g.colour) this.finish({ how: "resign", by: e.by }, o);
+          else if (e.how === "agreed") this.finish({ how: "agreed" }, o);
+          else if (e.how === "abort") this.finish({ how: "abort", why: STOP[e.why] ? e.why : "boards" }, o);
+        }
+      } else if (commit && this.used.includes(commit)) {
+        // still offering the commit this game started from: they missed my reveal
+        if (this.lastReveal && this.lastReveal.theirs === commit) o.send.push(this.lastReveal.msg);
+      } else if (g && this.phase === "play") {
+        // not in this game: their page lost it
+        this.finish({ how: "abort", why: "lost" }, o);
+      }
+      // their offer of a game, after my reply (the peer must know my commit before my reveal comes)
+      const offer = commit && !this.used.includes(commit), fresh = offer && this.phase === "lobby" && !this.mine;
+      if (fresh) this.offer();
+      if (!m.re || fresh) o.send.push(this.helloMsg(true));
+      if (offer) this.theirOffer(commit, deck, o);
+    }
+
+    // the peer wants a game (the lobby's, or a rematch): reveal when I want one too, else ask the player. A nonce
+    // revealed to another commit is spent: the peer knows it, and could pick a nonce of its own against it
+    theirOffer(commit, deck, o) {
+      if (this.phase === "play") return;
+      if (!this.theirs || this.theirs.commit !== commit) {
+        this.theirs = { commit, deck };
+        if (this.mine && this.mine.to) { this.offer(this.mine.deck); o.send.push(this.helloMsg(true)); }
+        else if (!this.mine) {
+          if (this.phase === "lobby") { this.offer(); o.send.push(this.helloMsg(true)); }
+          else o.events.push({ type: "rematchOffer", deck });
+        }
+      }
+      this.reveal(o);
+    }
+    // my nonce, for both offers (again on each hello: a reveal lost to a reload); the game once both are out
+    reveal(o) {
+      if (!this.mine || !this.theirs) return;
+      o.send.push({ t: "reveal", commit: this.mine.commit, nonce: this.mine.nonce });
+      this.mine.to = this.theirs.commit;
+      if (this.theirs.nonce) this.begin(o);
+    }
+    onReveal(m, o) {
+      if (!this.theirs || m.commit !== this.theirs.commit || !hex(m.nonce, 32)) return; // an old offer's
+      if (sha256(m.nonce) !== m.commit) {
+        this.phase = "dead";
+        o.events.push({ type: "error", fatal: true, reason: "commit", text: "Your friend's page broke the draw for colours: reload both pages." });
+        return;
+      }
+      this.theirs.nonce = m.nonce;
+      if (this.mine) { if (this.mine.to === this.theirs.commit) this.begin(o); else this.reveal(o); }
+    }
+    begin(o) {
+      const a = this.mine, b = this.theirs;
+      if (a.nonce === b.nonce) { // my own commit sent back to me
+        this.phase = "dead";
+        o.events.push({ type: "error", fatal: true, reason: "commit", text: "Your friend's page broke the draw for colours: reload both pages." });
+        return;
+      }
+      const id = sha256([a.nonce, b.nonce].sort().join(":")).slice(0, 16);
+      const lowWhite = (parseInt(id[0], 16) & 1) === 0, colour = (a.nonce < b.nonce) === lowWhite ? 0 : 1;
+      const decks = colour ? [b.deck, a.deck] : [a.deck, b.deck];
+      const fen = G.Deck.fen(readDeck(decks[0].text), readDeck(decks[1].text));
+      this.used = this.used.concat([a.commit, b.commit]).slice(-KEEP_USED);
+      this.lastReveal = { theirs: b.commit, msg: { t: "reveal", commit: a.commit, nonce: a.nonce } };
+      this.mine = this.theirs = null;
+      this.chess = new G.Chess(fen);
+      this.game = { id, seed: parseInt(id.slice(0, 8), 16) >>> 0, colour, fen, decks, moves: [], hashes: [], start: fenHash(this.chess) };
+      this.phase = "play"; this.draw = null; this.end = null;
+      o.events.push({ type: "start", id, colour, seed: this.game.seed, fen, decks });
+    }
+
+    // the board's hash after the last move
+    hash() { const g = this.game, h = g.hashes; return h.length ? h[h.length - 1] : g.start; }
+    syncMsg() { const g = this.game; return { t: "sync", game: g.id, moves: g.moves.slice(), fh: this.hash() }; }
+    // the player's turn: in play, my colour to move, no offer of mine waiting
+    myTurn() { return this.phase === "play" && this.chess.turn === this.game.colour && !(this.draw && this.draw.by === "me"); }
+
+    // the player's move (a legal move int): ok false when it isn't theirs to play
+    move(m) {
+      const o = out();
+      o.ok = this.myTurn() && this.chess.moves().includes(m);
+      if (!o.ok) return o;
+      const g = this.game;
+      this.chess.play(m); g.moves.push(m); g.hashes.push(fenHash(this.chess));
+      if (this.draw) { this.draw = null; o.events.push({ type: "drawLapsed" }); } // theirs, declined by playing on
+      o.send.push({ t: "move", game: g.id, ply: g.moves.length - 1, m, fh: this.hash() });
+      this.checkEnd(o);
+      return o;
+    }
+    onMove(m, o) {
+      if (!this.current(m) || !int(m.ply, 0, MAX_PLY) || !int(m.m, 0, MAX_MOVE) || !hex(m.fh, 16)) return;
+      const g = this.game, c = this.chess, n = g.moves.length;
+      if (m.ply < n) { if (g.moves[m.ply] !== m.m) o.send.push(this.syncMsg()); return; } // again, or another
+      if (m.ply > n) { o.send.push(this.syncMsg()); return; } // a gap: theirs comes back
+      if (c.turn === g.colour || !c.moves().includes(m.m)) {
+        o.events.push({ type: "warn", reason: "illegal", text: "A move that isn't legal here came in: checking the game with your friend's page." });
+        o.send.push(this.syncMsg());
+        return;
+      }
+      c.play(m.m);
+      if (fenHash(c) !== m.fh) {
+        c.undo();
+        o.events.push({ type: "warn", reason: "hash", text: "The boards differ after that move: checking the game with your friend's page." });
+        o.send.push(this.syncMsg());
+        return;
+      }
+      g.moves.push(m.m); g.hashes.push(m.fh);
+      if (this.draw) { this.draw = null; o.events.push({ type: "drawLapsed" }); }
+      o.events.push({ type: "move", m: m.m, ply: m.ply });
+      this.checkEnd(o);
+    }
+    onSync(m, o) {
+      const g = this.game;
+      if (!g || m.game !== g.id || (this.phase !== "play" && this.phase !== "over")) return;
+      if (!Array.isArray(m.moves) || m.moves.length > MAX_PLY || !m.moves.every((x) => int(x, 0, MAX_MOVE)) || !hex(m.fh, 16)) return;
+      const mine = g.moves, theirs = m.moves;
+      let k = 0;
+      while (k < mine.length && k < theirs.length && mine[k] === theirs[k]) k++;
+      if (k === theirs.length) {
+        if (k < mine.length) o.send.push(this.syncMsg()); // they are behind
+        else if (m.fh !== this.hash() && this.phase === "play") this.abort("boards", o); // the same moves, another board
+        return;
+      }
+      if (this.phase !== "play") return;
+      // theirs goes further: theirs to say for their own moves, never for mine (ply i is White's when even), and never a
+      // move I hold already (theirs rewritten would drop my replies after it)
+      if (k < mine.length) { this.abort("moves", o); return; }
+      for (let i = k; i < theirs.length; i++) if (i % 2 === g.colour) { this.abort("moves", o); return; }
+      const c = new G.Chess(g.fen), hashes = [];
+      for (const x of theirs) {
+        if (c.status().over || !c.moves().includes(x)) { this.abort("illegal", o); return; }
+        c.play(x); hashes.push(fenHash(c));
+      }
+      if (hashes[hashes.length - 1] !== m.fh) { this.abort("boards", o); return; }
+      g.moves = theirs.slice(); g.hashes = hashes; this.chess = c; this.draw = null;
+      o.events.push({ type: "resync", from: k, moves: g.moves.slice() });
+      this.checkEnd(o);
+    }
+    abort(why, o) {
+      o.send.push({ t: "abort", game: this.game.id, why });
+      this.finish({ how: "abort", why }, o);
+    }
+
+    resign() {
+      const o = out();
+      if (this.phase !== "play") return o;
+      o.send.push({ t: "resign", game: this.game.id });
+      this.finish({ how: "resign", by: this.game.colour }, o);
+      return o;
+    }
+    // a draw: offered at this ply (an offer of theirs standing, it accepts it)
+    offerDraw() {
+      const o = out();
+      if (this.phase !== "play") return o;
+      if (this.draw && this.draw.by === "them") return this.acceptDraw();
+      if (this.draw) return o;
+      const ply = this.game.moves.length;
+      this.draw = { by: "me", ply };
+      o.send.push({ t: "draw", game: this.game.id, a: "offer", ply });
+      return o;
+    }
+    acceptDraw() {
+      const o = out();
+      if (this.phase !== "play" || !this.draw || this.draw.by !== "them") return o;
+      o.send.push({ t: "draw", game: this.game.id, a: "accept", ply: this.draw.ply });
+      this.finish({ how: "agreed" }, o);
+      return o;
+    }
+    declineDraw() {
+      const o = out();
+      if (this.phase !== "play" || !this.draw || this.draw.by !== "them") return o;
+      o.send.push({ t: "draw", game: this.game.id, a: "decline", ply: this.draw.ply });
+      this.draw = null;
+      return o;
+    }
+    onDraw(m, o) {
+      if (!this.current(m) || !int(m.ply, 0, MAX_PLY)) return;
+      const d = this.draw, mine = d && d.by === "me" && d.ply === m.ply;
+      if (m.a === "offer" && m.ply === this.game.moves.length) {
+        if (mine) this.finish({ how: "agreed" }, o); // both offered at once
+        else if (!d) { this.draw = { by: "them", ply: m.ply }; o.events.push({ type: "drawOffer" }); }
+      } else if (m.a === "accept" && mine) this.finish({ how: "agreed" }, o);
+      else if (m.a === "decline" && mine) { this.draw = null; o.events.push({ type: "drawDeclined" }); }
+    }
+
+    // another game, after this one's end (deck: a new deck for it, else the last)
+    rematch(deck) {
+      const o = out();
+      if (this.phase !== "over" || this.mine) return o;
+      const d = deck && deckInfo(deck);
+      if (d) this.deck = d;
+      this.offer();
+      o.send.push({ t: "rematch", game: this.game.id, commit: this.mine.commit, deck: this.mine.deck });
+      this.reveal(o);
+      return o;
+    }
+    onRematch(m, o) {
+      if (this.phase === "play" || (this.phase === "over" && m.game !== this.game.id)) return;
+      const deck = deckInfo(m.deck);
+      if (!deck || !hex(m.commit, 64) || this.used.includes(m.commit)) return;
+      this.theirOffer(m.commit, deck, o);
+    }
+
+    // the end once the board says so (mate, stalemate, the draws by rule)
+    checkEnd(o) { if (this.chess.status().over) this.finish(null, o); }
+    finish(end, o) {
+      if (this.phase !== "play") return;
+      this.phase = "over"; this.end = end; this.draw = null;
+      o.events.push(Object.assign({ type: "over" }, this.result()));
+    }
+    // the game's end as core/chess.js's status() gives one (result, reason, winner: -1 none), and how
+    result() {
+      const e = this.end;
+      if (!e) { const s = this.chess.status(); return { how: "board", result: s.result, reason: s.reason, winner: s.winner }; }
+      if (e.how === "resign") return { how: "resign", result: e.by ? "1-0" : "0-1", reason: "resignation", winner: 1 - e.by };
+      if (e.how === "agreed") return { how: "agreed", result: "1/2-1/2", reason: "a draw agreed", winner: -1 };
+      return { how: "abort", why: e.why, result: "*", reason: STOP[e.why], winner: -1 };
+    }
+
+    // what to keep (localStorage, per room) to carry on after a reload: the game's moves, my offer's nonce
+    save() {
+      const g = this.game;
+      return JSON.stringify({
+        v: VERSION, phase: this.phase === "dead" ? "lobby" : this.phase, deck: this.deck,
+        mine: this.mine, theirs: this.theirs && { commit: this.theirs.commit, deck: this.theirs.deck },
+        used: this.used, last: this.lastReveal, draw: this.draw, end: this.end,
+        game: g && { id: g.id, seed: g.seed, colour: g.colour, fen: g.fen, decks: g.decks, moves: g.moves },
+      });
+    }
+    // a save() back (its own page's, but checked as the peer's would be: a bad one starts afresh)
+    load(text) {
+      let s;
+      try { s = JSON.parse(text); } catch (e) { return false; }
+      if (!s || s.v !== VERSION) return false;
+      try {
+        const g = s.game;
+        if (g) {
+          if (!hex(g.id, 16) || !(g.colour === 0 || g.colour === 1) || !Array.isArray(g.decks) || !Array.isArray(g.moves) || g.moves.length > MAX_PLY) return false;
+          const decks = g.decks.map(deckInfo);
+          if (decks.length !== 2 || !decks[0] || !decks[1]) return false;
+          const fen = G.Deck.fen(readDeck(decks[0].text), readDeck(decks[1].text)), c = new G.Chess(fen), hashes = [];
+          const start = fenHash(c);
+          for (const x of g.moves) { if (!c.moves().includes(x)) return false; c.play(x); hashes.push(fenHash(c)); }
+          this.game = { id: g.id, seed: g.seed >>> 0, colour: g.colour, fen, decks, moves: g.moves.slice(), hashes, start };
+          this.chess = c;
+        }
+        this.phase = g && (s.phase === "play" || s.phase === "over") ? s.phase : "lobby";
+        if (s.deck) this.deck = deckInfo(s.deck) || this.deck;
+        if (s.mine && hex(s.mine.nonce, 32) && sha256(s.mine.nonce) === s.mine.commit) this.mine = { nonce: s.mine.nonce, commit: s.mine.commit, deck: deckInfo(s.mine.deck) || this.deck, to: hex(s.mine.to, 64) ? s.mine.to : "" };
+        if (s.theirs && hex(s.theirs.commit, 64) && deckInfo(s.theirs.deck)) this.theirs = { commit: s.theirs.commit, deck: deckInfo(s.theirs.deck) };
+        if (Array.isArray(s.used)) this.used = s.used.filter((x) => hex(x, 64)).slice(-KEEP_USED);
+        if (s.last && s.last.msg && hex(s.last.theirs, 64)) this.lastReveal = { theirs: s.last.theirs, msg: { t: "reveal", commit: String(s.last.msg.commit), nonce: String(s.last.msg.nonce) } };
+        if (this.phase === "play" && s.draw && (s.draw.by === "me" || s.draw.by === "them") && s.draw.ply === this.game.moves.length) this.draw = { by: s.draw.by, ply: s.draw.ply };
+        if (this.phase === "over" && s.end && typeof s.end.how === "string") this.end = s.end;
+        if (this.phase === "play" && this.chess.status().over) { this.phase = "over"; this.end = null; }
+        return true;
+      } catch (e) {
+        this.game = this.chess = null; this.phase = "lobby";
+        return false;
+      }
+    }
+  }
+
+  G.Net = { VERSION, Session, sha256, fenHash, deckText, readDeck, deckInfo, STOP };
+})();
+
+</script>
+<script>/* src/net/transports.js */
+/* What carries a net Session's messages (NET.md): send(msg) to the peer, onMessage(cb(msg)), onPeer(cb("join" |
+   "leave")), close(). Each binds to one peer, the first it meets (another one joining the room is ignored until it
+   leaves); a message sent with no peer is dropped, and the Session's next hello heals it.
+   - loopback(): two ends in one page, for the self-tests (tools/net.html). Messages wait in a queue until flush(),
+     and tap(msg, to) can drop one (null) or change it on the way.
+   - channel(room): BroadcastChannel, two tabs of one browser (?net=bc): no network at all.
+   - trystero(room): WebRTC between two browsers, the peers finding each other through public Nostr relays
+     (vendor/trystero-nostr.js, Trystero 0.21.8). The room code is the room and its password: the relays see the
+     room's hash and encrypted offers, never the moves. STUN only, no TURN: two strict NATs can't connect. */
+(function transports() {
+  const G = (window.DG = window.DG || {});
+  const copy = (x) => JSON.parse(JSON.stringify(x)); // what a real wire does to it
+
+  const loopback = () => {
+    const queue = [], ends = [];
+    const pair = {
+      queue, ends, tap: null, delivered: 0,
+      // both ends meet (each gets onPeer("join"))
+      connect() { for (const e of ends) e.up = true; for (const e of ends) for (const cb of e.peerCbs) cb("join"); },
+      // deliver the queue, the answers too, until it's empty: false when it doesn't stop (a loop)
+      flush(max = 5000) {
+        for (let n = 0; queue.length; n++) {
+          if (n >= max) return false;
+          const { to, msg } = queue.shift(), e = ends[to];
+          const m = pair.tap ? pair.tap(msg, to) : msg;
+          if (m == null || !e.up) continue;
+          pair.delivered++;
+          for (const cb of e.msgCbs) cb(copy(m));
+        }
+        return true;
+      },
+    };
+    for (const i of [0, 1]) {
+      const e = { up: false, msgCbs: [], peerCbs: [] };
+      e.send = (msg) => { if (e.up && ends[1 - i].up) queue.push({ to: 1 - i, msg: copy(msg) }); };
+      e.onMessage = (cb) => e.msgCbs.push(cb);
+      e.onPeer = (cb) => e.peerCbs.push(cb);
+      e.close = () => {
+        e.up = false;
+        for (const cb of ends[1 - i].peerCbs) cb("leave");
+      };
+      ends.push(e);
+    }
+    return pair;
+  };
+
+  // envelopes: {k: "join" | "here" | "leave" | "msg", from, to?, msg?}
+  const channel = (room, self) => {
+    const bc = new BroadcastChannel("deckchess-net-" + room), msgCbs = [], peerCbs = [];
+    let peer = null;
+    const peerEvent = (what) => { for (const cb of peerCbs) cb(what); };
+    bc.onmessage = (ev) => {
+      const d = ev.data;
+      if (!d || typeof d !== "object" || typeof d.from !== "string" || d.from === self || (d.to && d.to !== self)) return;
+      if (d.k === "join" || d.k === "here") {
+        if (d.k === "join") bc.postMessage({ k: "here", from: self, to: d.from });
+        if (!peer) { peer = d.from; peerEvent("join"); }
+      } else if (d.k === "leave") {
+        if (d.from === peer) { peer = null; peerEvent("leave"); }
+      } else if (d.k === "msg" && d.from === peer) for (const cb of msgCbs) cb(d.msg);
+    };
+    bc.postMessage({ k: "join", from: self });
+    return {
+      send(msg) { if (peer) bc.postMessage({ k: "msg", from: self, to: peer, msg }); },
+      onMessage(cb) { msgCbs.push(cb); },
+      onPeer(cb) { peerCbs.push(cb); },
+      close() { bc.postMessage({ k: "leave", from: self }); bc.close(); },
+      peer: () => peer,
+    };
+  };
+
+  // o: relays (how many Nostr relays to use, Trystero's relayRedundancy), onError(text)
+  const trystero = (room, o = {}) => {
+    if (typeof window.TrysteroNostr !== "function") throw new Error("vendor/trystero-nostr.js isn't loaded");
+    const T = window.TrysteroNostr(), msgCbs = [], peerCbs = [], present = [];
+    // the join error's text carries the password (the room code): only a fixed line goes out
+    const joined = T.joinRoom({ appId: "deckchess-lab", password: room, relayRedundancy: o.relays || 4 }, room, () => {
+      if (o.onError) o.onError("The room's offers couldn't be read: is the invite link complete?");
+    });
+    const [sendMsg, getMsg] = joined.makeAction("dc");
+    let peer = null;
+    const peerEvent = (what) => { for (const cb of peerCbs) cb(what); };
+    joined.onPeerJoin((id) => {
+      if (!present.includes(id)) present.push(id);
+      if (!peer) { peer = id; peerEvent("join"); }
+    });
+    // the friend's page reloaded: its new id may join before its old one leaves
+    joined.onPeerLeave((id) => {
+      const i = present.indexOf(id);
+      if (i >= 0) present.splice(i, 1);
+      if (id !== peer) return;
+      peer = null;
+      peerEvent("leave");
+      if (present.length) { peer = present[0]; peerEvent("join"); }
+    });
+    getMsg((data, id) => { if (id === peer && data && typeof data === "object") for (const cb of msgCbs) cb(data); });
+    return {
+      send(msg) { if (peer) sendMsg(msg, peer).catch(() => {}); },
+      onMessage(cb) { msgCbs.push(cb); },
+      onPeer(cb) { peerCbs.push(cb); },
+      close() { joined.leave(); },
+      peer: () => peer,
+      // how many relays are open (the status line)
+      relays() { const s = T.getRelaySockets(); return Object.values(s).filter((x) => x && x.readyState === 1).length; },
+    };
+  };
+
+  G.NetTransports = { loopback, channel, trystero };
+})();
+
+</script>
+<script>/* src/net/room.js */
+/* A room (NET.md): a net Session (protocol.js) on a transport (transports.js), for the page (main.js). It draws the
+   nonces, keeps the Session's save per room and per seat (localStorage; a seat is a tab's) to carry on after a
+   reload, says hello when the friend comes and every so often, and shows the room's bar: the invite link, how the
+   friend is, Offer draw, Accept, Decline, Resign, Rematch. The board is main.js's: on.start(game, moves),
+   on.move(m, ply), on.resync(moves), on.over(result) tell it what the two pages agreed.
+     new DG.NetRoom({ code, via: "trystero" | "bc", deck: {set, name, text}, build, bar: element | null, on,
+                      transport, seat })   (transport and seat: the tests')
+     DG.NetRoom.newCode() (a fresh room code), DG.NetRoom.invite(code, via) (the room's link) */
+(function room() {
+  const G = (window.DG = window.DG || {});
+  const KEY = "deckchess-room-", SEAT = "deckchess-seat-", CODE = /^[a-z0-9]{6,32}$/, SEAT_ID = /^[0-9a-f]{8}$/;
+  const TICK_MS = 2000, HELLO_TICKS = 10, NOTE_MS = 6000, SURE_MS = 3000, FREE_MS = 75000;
+  const ABC = "abcdefghijklmnopqrstuvwxyz0123456789";
+
+  const hexOf = (b) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  const nonce = () => hexOf(crypto.getRandomValues(new Uint8Array(16)));
+  // 12 letters and digits (about 62 bits), drawn without a bias (252 = 7 x 36)
+  const newCode = () => {
+    let s = "";
+    while (s.length < 12) for (const x of crypto.getRandomValues(new Uint8Array(16))) if (x < 252 && s.length < 12) s += ABC[x % 36];
+    return s;
+  };
+  // this page with the room's code (file:// has no origin, so the page's own address, its query off)
+  const invite = (code, via) => location.href.split(/[?#]/)[0] + "?room=" + code + (via === "bc" ? "&net=bc" : "");
+  // the room's save, per room and per seat: "deckchess-room-<code>.<seat>" = {at, free, save}. A seat is a tab's
+  // (sessionStorage keeps it over a reload), so two tabs of one browser in one room are two players; a tab that
+  // comes back to the room (the link opened again) takes the seat that a closed page let go (free), or that no
+  // page has kept for FREE_MS (a crash; a hidden tab's timers can slow to one a minute), else a new one
+  const store = {
+    key: (code, seat) => KEY + code + "." + seat,
+    read(k) { try { const v = JSON.parse(localStorage.getItem(k)); return v && typeof v.save === "string" && typeof v.at === "number" ? v : null; } catch (e) { return null; } },
+    get(code, seat) { const v = store.read(store.key(code, seat)); return v ? v.save : null; },
+    set(code, seat, text, free) {
+      try { localStorage.setItem(store.key(code, seat), JSON.stringify({ at: Date.now(), free: !!free, save: text })); } catch (e) { /* storage blocked: no carrying on after a reload */ }
+    },
+    seat(code) {
+      let seat = null, best = null;
+      try { seat = sessionStorage.getItem(SEAT + code); } catch (e) { /* no session storage: a seat per page */ }
+      if (SEAT_ID.test(seat || "")) return seat;
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i), s = k && k.startsWith(KEY + code + ".") ? k.slice(KEY.length + code.length + 1) : "";
+          const v = SEAT_ID.test(s) && store.read(k);
+          if (v && (v.free || Date.now() - v.at > FREE_MS) && (!best || v.at > best.at)) best = { s, at: v.at };
+        }
+      } catch (e) { /* storage blocked */ }
+      seat = best ? best.s : hexOf(crypto.getRandomValues(new Uint8Array(4)));
+      try { sessionStorage.setItem(SEAT + code, seat); } catch (e) { /* no session storage */ }
+      return seat;
+    },
+  };
+
+  class Room {
+    // o.transport: the tests' (a loopback end), else BroadcastChannel (via "bc") or Trystero; o.seat: the tests'
+    // (two rooms in one page), else the tab's (store.seat)
+    constructor(o) {
+      if (!CODE.test(o.code)) throw new Error("NetRoom: a room code is 6 to 32 lower-case letters and digits");
+      this.code = o.code; this.via = o.via === "bc" ? "bc" : "trystero"; this.on = o.on || {};
+      this.seat = SEAT_ID.test(o.seat || "") ? o.seat : store.seat(o.code);
+      this.session = new G.Net.Session({ nonce, deck: o.deck, build: o.build, saved: store.get(o.code, this.seat) });
+      this.here = false; this.dead = ""; this.note = ""; this.sure = 0; this.ticks = 0; this.timers = [];
+      this.ui = o.bar ? this.bar(o.bar) : null;
+      try {
+        this.t = o.transport || (this.via === "bc" ? G.NetTransports.channel(o.code, nonce()) : G.NetTransports.trystero(o.code, { onError: (text) => this.fail(text) }));
+      } catch (e) {
+        this.t = null;
+        this.fail("This browser can't open the room (" + String((e && e.message) || e).slice(0, 80) + ").");
+        return;
+      }
+      this.t.onMessage((m) => this.run(this.session.receive(m)));
+      this.t.onPeer((what) => {
+        this.here = what === "join";
+        if (this.here) this.run(this.session.hello()); else this.paint();
+      });
+      // the status line (the relays open), the seat kept, and a hello now and then: a lost message shows as another ply
+      this.timer = setInterval(() => {
+        this.keep();
+        if (this.here && ++this.ticks % HELLO_TICKS === 0) this.run(this.session.hello()); else this.paint();
+      }, TICK_MS);
+      this.keep();
+      this.paint();
+    }
+
+    // a Session's answer: its messages out, its save kept, its events to the page and the bar
+    run(o) {
+      if (this.t) for (const m of o.send) this.t.send(m);
+      if (o.send.length || o.events.length) this.keep();
+      for (const e of o.events) this.event(e);
+      this.paint();
+      return o;
+    }
+    event(e) {
+      const on = this.on;
+      if (e.type === "start") { if (on.start) on.start(this.session.game, []); }
+      else if (e.type === "move") { if (on.move) on.move(e.m, e.ply); }
+      else if (e.type === "resync") { this.say("The board caught up with your friend's."); if (on.resync) on.resync(e.moves); }
+      else if (e.type === "over") { if (on.over) on.over(e); }
+      else if (e.type === "error") this.fail(e.text);
+      else if (e.type === "warn") this.say(e.text);
+      else if (e.type === "drawOffer") this.say("Your friend offers a draw.");
+      else if (e.type === "drawLapsed") this.say("The draw offer lapsed: the game goes on.");
+      else if (e.type === "drawDeclined") this.say("Your friend declined the draw.");
+      else if (e.type === "rematchOffer") this.say("Your friend wants a rematch.");
+    }
+
+    // the player's side
+    canMove() { return this.session.myTurn(); }
+    // a move of the player's (a legal move int): true once it went out (the page plays it then)
+    move(m) { const o = this.session.move(m); this.run(o); return o.ok; }
+    resign() { this.run(this.session.resign()); }
+    offerDraw() { this.run(this.session.offerDraw()); }
+    acceptDraw() { this.run(this.session.acceptDraw()); }
+    declineDraw() { this.run(this.session.declineDraw()); }
+    rematch(deck) { this.run(this.session.rematch(deck)); }
+    // after a reload: the game kept for this room, back on the board (and its end, when it ended off the board;
+    // the board's own end the page sees for itself)
+    resume() {
+      const s = this.session;
+      if (!s.game || s.phase === "lobby" || !this.on.start) return;
+      this.on.start(s.game, s.game.moves.slice());
+      if (s.phase === "over" && s.end && this.on.over) this.on.over(Object.assign({ type: "over" }, s.result()));
+    }
+    // the save, with the seat held (free: the page is going, another tab of this browser may take it)
+    keep(free) { if (!this.closed) store.set(this.code, this.seat, this.session.save(), free); }
+    close() {
+      this.keep(true); this.closed = true;
+      clearInterval(this.timer);
+      for (const t of this.timers) clearTimeout(t);
+      if (this.t) try { this.t.close(); } catch (e) { /* closing anyway */ }
+      this.t = null;
+    }
+
+    fail(text) { this.dead = text; this.paint(); }
+    say(text) {
+      this.note = text;
+      clearTimeout(this.noteT);
+      this.noteT = setTimeout(() => { this.note = ""; this.paint(); }, NOTE_MS);
+      this.timers.push(this.noteT);
+    }
+    // the status line: the friend, the colours, whose turn
+    status() {
+      if (this.dead) return this.dead;
+      const s = this.session, g = s.game;
+      if (!this.here) {
+        const n = this.t && this.t.relays ? this.t.relays() : -1;
+        if (n === 0) return "Reaching the relays…";
+        return (s.peer ? "Your friend left: waiting for them to come back" : "Waiting for your friend: send them the link") + (n > 0 ? ` (${n} relay${n > 1 ? "s" : ""} open)` : "");
+      }
+      if (s.phase === "lobby") return "Your friend is here: drawing the colours…";
+      const you = "You play " + (g.colour ? "Black" : "White");
+      if (s.phase === "play") {
+        if (s.draw) return you + (s.draw.by === "me" ? " · draw offered" : " · your friend offers a draw");
+        return you + (s.myTurn() ? " · your move" : " · your friend's move");
+      }
+      return "Game over" + (s.mine ? " · rematch offered" : s.theirs ? " · your friend wants a rematch" : "");
+    }
+
+    // the bar: built once (text only, never markup from the peer), painted after each change
+    bar(where) {
+      const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
+      const box = el("div", "panel"), status = el("div", "net-status"), note = el("div", "net-note");
+      const share = el("div", "net-share"), link = el("input"), copy = el("button", "chip", "Copy link");
+      box.id = "net";
+      link.readOnly = true; link.value = invite(this.code, this.via); link.setAttribute("aria-label", "Invite link");
+      share.append(link, copy);
+      const acts = el("div", "net-acts"), b = {};
+      for (const [k, text] of [["draw", "Offer draw"], ["accept", "Accept draw"], ["decline", "Decline"], ["resign", "Resign"], ["rematch", "Rematch"]]) {
+        b[k] = el("button", "chip", text); b[k].dataset.a = k; acts.append(b[k]);
+      }
+      box.append(status, share, note, acts);
+      where.append(box);
+      copy.onclick = () => {
+        link.select();
+        const done = () => { copy.textContent = "Copied"; this.timers.push(setTimeout(() => (copy.textContent = "Copy link"), 1500)); };
+        try { navigator.clipboard.writeText(link.value).then(done, () => {}); } catch (e) { /* selected: Ctrl+C copies it */ }
+      };
+      acts.onclick = (ev) => {
+        const a = ev.target.closest("button") && ev.target.closest("button").dataset.a;
+        if (a === "draw") this.offerDraw();
+        else if (a === "accept") this.acceptDraw();
+        else if (a === "decline") this.declineDraw();
+        else if (a === "rematch") this.rematch();
+        else if (a === "resign") {
+          // two taps: the first asks
+          if (this.sure > Date.now()) { this.sure = 0; this.resign(); return; }
+          this.sure = Date.now() + SURE_MS;
+          this.timers.push(setTimeout(() => this.paint(), SURE_MS + 50));
+          this.paint();
+        }
+      };
+      return { box, status, note, share, b };
+    }
+    paint() {
+      const u = this.ui;
+      if (!u) return;
+      const s = this.session, play = s.phase === "play" && !this.dead, them = play && s.draw && s.draw.by === "them";
+      u.status.textContent = this.status();
+      u.status.classList.toggle("bad", !!this.dead);
+      u.note.textContent = this.note;
+      u.share.hidden = this.here && !this.dead;
+      u.b.draw.hidden = !play || !!s.draw;
+      u.b.accept.hidden = u.b.decline.hidden = !them;
+      u.b.resign.hidden = !play;
+      u.b.resign.textContent = this.sure > Date.now() ? "Sure? Resign" : "Resign";
+      u.b.rematch.hidden = s.phase !== "over" || !!this.dead;
+      u.b.rematch.disabled = !!s.mine;
+      u.b.rematch.textContent = s.mine ? "Rematch offered" : s.theirs ? "Accept rematch" : "Rematch";
+    }
+  }
+  Room.newCode = newCode;
+  Room.invite = invite;
+  G.NetRoom = Room;
 })();
 
 </script>
@@ -23111,7 +26307,8 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
    deck) or Deck.parse's text; ?deck= skips the deck screen, which ?selftest and ?match always do, classic unless
    these say), ?kit=reef:P=ember,B=leap+ember;.. (other kits for the sets, Deck.setKits: "classic:" plays the
    Staunton set as plain chess), ?decks=1 (the deck builder), ?hotseat=1 (both sides by hand), ?match=1 (the AI
-   against itself to the end, JSON report into #result),
+   against itself to the end, JSON report into #result), ?ink=0..1 (the Lithograph's ink edge round the
+   Tessellate figures, scaled; 0 none), ?print=0 (the Lithograph without its print's pattern: a look-up),
    ?selftest=1 (picking by the grid at many angles, every square in view, a scripted move by touch and mouse,
    the AI's reply and an undo, a capture's burst, the stand-in's fields; timings and errors into #result). */
 (async function () {
@@ -23128,6 +26325,8 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
     const density = { vs: ME.VS, hero: heroVS, small };
     ME.log("DENSITY", density);
     const match = ME.qn("match", 0) === 1, selftest = ME.qn("selftest", 0) === 1;
+    // a room (?room=CODE, NET.md): a friend's page over the net (Trystero), or with ?net=bc another tab of this browser
+    const roomQ = !selftest && !match && /^[a-z0-9]{6,32}$/.test(ME.q("room", "")) ? ME.q("room", "") : "", via = ME.q("net", "") === "bc" ? "bc" : "trystero";
     if (ME.qn("worker", 1) === 0) G.AIWorker.off = true;
     // Mossheart's sound banks render while the GPU starts and the bake runs; its G.Audio takes the promise
     const banks = window.MA && MG.SOUND_BANKS ? MA.renderBanks(MG.SOUND_BANKS, { cache: !ME.qn("nocache", 0) }) : null;
@@ -23135,7 +26334,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
     // the piece sets a side can play: the Staunton set, then the themed ones (art/sets.js)
     const SETS = ["classic"].concat(C.sets.LIST.map((s) => s.id));
     let ctl = null;
-    const hud = new G.Hud({ sets: SETS, themes: C.themes.list.map((t) => t.id), undo: () => ctl.undo(), newGame: () => ctl.build() });
+    const hud = new G.Hud({ sets: SETS, themes: C.themes.list.map((t) => t.id), undo: () => ctl.undo(), newGame: () => (ctl.net ? ctl.net.rematch() : ctl.build()) });
     // the theme (art/themes.js): the view panel's pick (hud.settings.theme, ?theme=), the first under ?selftest
     // and ?match unless ?theme= says. It names the board, unless ?board= names another: that board as it is
     let theme = C.themes.get(ME.q("theme", "") || (selftest || match ? "" : hud.settings.theme));
@@ -23152,17 +26351,19 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
     ME.onDeviceLost = () => { const l = document.getElementById("lost"); if (l) l.style.display = "grid"; };
     const gpu = await ME.initGPU(canvas);
     ME.log("ADAPTER", gpu.info, "features", [...gpu.features]);
-    const hooks = G.shaderHooks({ hues: C.pieces.HUES, board: boardId, region: C.boards.regionOf() }), pipelines = ME.compilePipelines(gpu, hooks);
+    // (?print=0: the board's hooks as another board's, the Lithograph's materials kept: the d6-e6 smudge's bisect)
+    const hooks = G.shaderHooks({ hues: C.pieces.HUES, board: ME.qn("print", 1) === 0 ? "" : boardId, region: C.boards.regionOf() }), pipelines = ME.compilePipelines(gpu, hooks);
     pipelines.then(() => ME.log("PIPELINES", { ms: Math.round(ME.now() - t0) }), () => {});
 
     // the piece sets (art/sets.js): each side's from the deck screen's picker (hud.settings set and oppSet, a
     // random opponent's rolled once a load), ?set=<id> both sides'; ?selftest and ?match play the Staunton set
     // unless ?set= says. The bake takes the Staunton set (its parts dress every set) and the themed ones in
-    // play, ?sets=all (or grove,reef,..) more; a set picked that isn't baked reloads the page (main.js pickSet)
+    // play, ?sets=all (or grove,reef,..) more, a room all (the friend's may be any); a set picked that isn't baked
+    // reloads the page (main.js pickSet)
     const forced = SETS.includes(ME.q("set", "")) ? ME.q("set", "") : selftest || match ? "classic" : null;
     const rolled = SETS[Math.floor(Math.random() * SETS.length)];
     const sideSets = () => (forced ? [forced, forced] : [hud.settings.set, hud.settings.oppSet === "random" ? rolled : hud.settings.oppSet]);
-    const setIds = [...new Set(sideSets().concat(ME.q("sets", "") ? C.sets.pick(ME.q("sets", "")) : []))].filter((s) => s !== "classic");
+    const setIds = [...new Set(sideSets().concat(roomQ || ME.q("sets", "") === "all" ? SETS : ME.q("sets", "").split(",").filter((s) => SETS.includes(s))))].filter((s) => s !== "classic");
 
     // the board's world and the piece sets, baked, or the engine's cached copy of the bake in parts (E3; ?nocache=1
     // skips it): the board (its mesh and grass) in one record, the models one record each, keyed on their source,
@@ -23197,8 +26398,8 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
     const bakeOnlyMs = Math.round(ME.now() - t0);
     // each side's models (DC.pieces.bind's models[color][type]) from its set: dressed for the player's colour (see
     // ctl.dress), the Staunton set's until then
-    const themed = C.sets.bind(MB, setIds), staunton = C.pieces.bind(MB), parts = C.pieces.bindParts(MB);
-    const setOf = (id) => (id !== "classic" && themed[id]) || staunton;
+    const themed = C.sets.bind(MB, setIds), staunton = C.pieces.bind(MB), parts = C.pieces.bindParts(MB, G.TRAITS);
+    const setOf = (id) => (id !== "classic" && Object.hasOwn(themed, id) && themed[id]) || staunton; // a peer's id: own keys only
     let models = [setOf(sideSets()[0])[0], setOf(sideSets()[1])[1]];
     // the theme's colours on the style (the bakes keep material names, so one bake serves every theme on a board)
     C.themes.paint(st, theme);
@@ -23267,15 +26468,19 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
     };
     // the board's lighting over the mood (view/lighting.js), its gain on the glow into Renderer.user[0].x
     const lights = new G.Lighting(R);
-    lights.set(light0);
+    // in it from the start (no ease in from Mossheart's look, its canopy on for the first slow frames)
+    lights.set(light0); lights.apply(0, true);
 
     // ------------------------------------------------------------------ board, pieces, the game
     const board = new G.BoardView({ st, T, R }, region), pieces = new G.PiecesView(board, models, parts);
     sim.layers.push(pieces);
+    // on the Lithograph the Tessellate figures carry its ink edge (the Line role's ink, Art's #545 note)
+    if (boardId === "litho") pieces.ink = new Set(["tess"]);
     const stars = new G.Stars(7);
-    // the team colours (the pieces' rims, the territory, the selected square: view/shaders.js), the theme's
-    const TEAM = [[1, 0.9, 0.65], [0.6, 0.45, 1]];
-    const teamOf = (t) => { for (const c of [0, 1]) R.user.set([...(t.team || TEAM)[c], 1], (4 + c) * 4); };
+    // the team colours (the pieces' rims, the territory, the selected square: view/shaders.js), the theme's;
+    // in w each side's ink edge (only the Lithograph's hooks draw it): graphite round white strong, bone round black softer
+    const TEAM = [[1, 0.9, 0.65], [0.6, 0.45, 1]], INK = [0.85, 0.5].map((v) => v * Math.max(0, Math.min(1, ME.qn("ink", 1))));
+    const teamOf = (t) => { for (const c of [0, 1]) R.user.set([...(t.team || TEAM)[c], INK[c]], (4 + c) * 4); };
     teamOf(theme);
     const seed0 = ME.params.has("seed") || selftest || match ? ME.qn("seed", 1) >>> 0 : (Date.now() ^ (Math.random() * 1e9)) >>> 0;
     const kingSq = (game, c) => { const k = game.king[c]; return (k >> 4) * 8 + (k & 7); };
@@ -23361,6 +26566,9 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
       game: null, ai: [null, null], you: [0], sel: -1, targets: [], last: null, status: null,
       thinking: false, ended: false, promoOpen: false, seq: 0, seed: seed0, side: -1,
       building: false, opp: null, fen: null, decks: null,
+      // a room's (net/room.js, made at the end of the boot): the friend's moves waiting their turn on the board,
+      // and each side's set as the two pages drew them (mine, the friend's)
+      room: roomQ, net: null, inbox: [], roomSets: null,
       // the deck builder (?decks=1, the self-test's), else each side plays its set's deck
       builder: ME.qn("decks", 0) === 1 || selftest,
       // the opponent's deck: ?ai=, else its set's, or with the builder the AI's pick by the level and the seed
@@ -23388,7 +26596,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
       mine() { return this.you.length === 1 ? this.you[0] : 0; },
       // each side's set on the board: the player's (hud's set) on their colour, the opponent's (oppSet) on the other
       dress() {
-        const [a, b] = sideSets(), c = this.mine(), m = [];
+        const [a, b] = this.roomSets || sideSets(), c = this.mine(), m = [];
         m[c] = setOf(a)[c]; m[1 - c] = setOf(b)[1 - c];
         if (m[0] !== models[0] || m[1] !== models[1]) { models = m; pieces.setModels(m); }
       },
@@ -23407,12 +26615,13 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
         this.newGame(hud.settings, G.Deck.fen(w, b), [w, b]);
         frameView(true);
       },
-      // decks: White's and Black's for the fen (their sets, for the card), kept with it
-      newGame(s, fen, decks) {
+      // decks: White's and Black's for the fen (their sets, for the card), kept with it; you: the sides the
+      // player moves (a room's colour), else the settings'
+      newGame(s, fen, decks, you) {
         this.seq++; G.AIWorker.cancel();
         if (fen) { this.fen = fen; this.decks = decks || null; } else if (!this.fen) this.decks = null;
         this.game = new G.Chess(this.fen || undefined);
-        this.you = match ? [] : ME.qn("hotseat", 0) ? [0, 1] : [s.side];
+        this.you = you || (match ? [] : ME.qn("hotseat", 0) ? [0, 1] : [s.side]);
         const L = hud.level, depth = ME.qn("depth", match ? 2 : L.depth);
         for (const c of [0, 1]) this.ai[c] = new G.AI({ depth, jitter: L.jitter, seed: this.seed++, maxNodes: 250000 });
         this.sel = -1; this.targets = []; this.last = null; this.thinking = false; this.ended = false;
@@ -23453,11 +26662,14 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
       },
       // a human's move to take back (with the AI's answer to it)
       canUndo() {
-        if (this.thinking || this.promoOpen || !this.you.length) return false;
+        if (this.room || this.thinking || this.promoOpen || !this.you.length) return false;
         return this.game.history.length >= (this.you.length === 1 && this.you[0] === 1 ? 2 : 1);
       },
-      play(m) {
+      // theirs: the friend's move, from the room; the player's in a room goes to the friend's page first, and one
+      // the room refuses (not the player's turn) isn't played
+      play(m, theirs) {
         if (!m) return;
+        if (this.net && !theirs && !this.net.move(m)) { this.sel = -1; this.targets = []; this.refresh(); return; }
         const info = G.info(m);
         this.game.play(m);
         pieces.animate(info, this.game);
@@ -23469,6 +26681,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
         const g = this.game;
         if (this.building) { if (this.builder) sheet.select(sq >= 0 ? deckSq(sq, this.mine()) : ""); return; }
         if (this.ended || this.thinking || this.promoOpen || !this.you.includes(g.turn) || pieces.busy) return;
+        if (this.room && !(this.net && this.net.canMove())) return;
         if (this.sel >= 0 && sq >= 0) {
           const from = this.sel, ms = this.targets.filter((m) => G.info(m).to === sq);
           if (ms.length > 1) {
@@ -23489,6 +26702,24 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
         this.refresh();
       },
       cancel() { if (this.building) { if (sheet.sel) sheet.select(""); return; } if (this.sel >= 0) { this.sel = -1; this.targets = []; this.refresh(); } },
+      // a room's game (net/room.js on.start): the two pages' decks, sets and colours, then its moves so far
+      netStart(g, moves) {
+        const c = g.colour, decks = g.decks.map((d) => Object.assign(G.Net.readDeck(d.text), { set: d.set || "classic", name: d.name }));
+        this.roomSets = [g.decks[c].set || "classic", g.decks[1 - c].set || "classic"];
+        if (this.building) { this.building = false; sheet.close(); uiEl.classList.remove("building"); }
+        this.newGame(hud.settings, g.fen, decks, [c]);
+        if (moves.length) this.netSync(moves);
+      },
+      // the board as the room has it (on.resync, a move off its ply, a reload): the game's moves replayed at once
+      netSync(moves) {
+        const g = (this.game = new G.Chess(this.fen));
+        for (const m of moves) g.play(m);
+        const h = g.history;
+        this.inbox = []; this.sel = -1; this.targets = []; this.ended = false;
+        this.last = h.length ? G.info(h[h.length - 1]) : null;
+        pieces.reset(g); phys.clear(); hud.hideEnd();
+        this.refresh();
+      },
       undo() {
         if (!this.canUndo()) return;
         const g = this.game;
@@ -23501,14 +26732,21 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
         fx.mateT = 0;
         this.refresh();
       },
-      // every frame: the AI's turn once the last move has landed, the end once it has
+      // every frame: the friend's next move or the AI's turn once the last move has landed, the end once it has
       update() {
-        const st = this.status;
         if (pieces.busy || this.building) return;
+        if (this.inbox.length) {
+          // the friend's move, played when the board is at its ply (the room checked it on its own copy)
+          const { m, ply } = this.inbox.shift(), g = this.game;
+          if (g.history.length === ply && g.moves().includes(m)) this.play(m, true); else this.netSync(this.net.session.game.moves);
+          return;
+        }
+        const st = this.status;
         if (st.over) {
           if (!this.ended) { this.ended = true; ME.log("END", { result: st.result, reason: st.reason, plies: this.game.history.length }); if (!match) hud.showEnd(st, this.you); }
           return;
         }
+        if (this.room) return; // the friend's side moves on the friend's page
         if (this.thinking || this.you.includes(this.game.turn)) return;
         this.thinking = true; this.refresh();
         const my = this.seq, g = this.game;
@@ -23541,6 +26779,9 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
     const sheet = new G.DeckSheet({
       onChange: () => ctl.preview(), onPlay: (d) => ctl.start(d), opponent: () => ctl.opp, builder: () => ctl.builder,
       sets: () => ({ list: setList, mine: forced || hud.settings.set, opp: forced || hud.settings.oppSet, fixed: !!forced, now: sideSets() }), onSet: pickSet,
+      // a new room (NET.md): this page with its code (and the builder's deck, which the invite link leaves out:
+      // the friend plays their own), the invite link on the room's bar
+      onFriend: () => { location.href = G.NetRoom.invite(G.NetRoom.newCode(), via) + (ctl.builder ? "&deck=" + encodeURIComponent(G.DeckSheet.code(sheet.deck)) : ""); },
     });
 
     // ------------------------------------------------------------------ camera
@@ -23658,7 +26899,29 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
     setCam(hud.settings.camera);
     frameView(true); // the row now shows: the board fitted above it, at the mode's home
     document.getElementById("loading").style.display = "none";
-    if (!selftest && !match && !deckQ) ctl.build();
+    if (roomQ) {
+      // the room: the player's set's deck (or ?deck=) against the friend's, the colours drawn by the two pages; the
+      // board waits on the bar (net/room.js) till the friend comes. Rematch asks the friend for another game
+      const d = deckQ || G.Deck.ofSet(sideSets()[0]);
+      ctl.net = new G.NetRoom({
+        code: roomQ, via, deck: { set: sideSets()[0], name: d.name || "", text: G.Net.deckText(d) }, build: G.VERSION.label, bar: uiEl,
+        on: {
+          start: (g, moves) => ctl.netStart(g, moves),
+          move: (m, ply) => ctl.inbox.push({ m, ply }),
+          resync: (moves) => ctl.netSync(moves),
+          // a resignation, an agreed draw or a stop (the board's own end, update() sees)
+          over: (r) => {
+            if (r.how === "board") return;
+            ctl.ended = true; ctl.refresh();
+            hud.showEnd(r.how === "abort" ? Object.assign({ title: "Game stopped" }, r) : r, ctl.you);
+          },
+        },
+      });
+      uiEl.classList.add("room");
+      $("e-again").textContent = "Rematch";
+      addEventListener("pagehide", () => ctl.net && ctl.net.close());
+      ctl.net.resume();
+    } else if (!selftest && !match && !deckQ) ctl.build();
 
     // ------------------------------------------------------------------ pointer and keys
     const toCanvas = (e) => { const r = canvas.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * canvas.width, ((e.clientY - r.top) / r.height) * canvas.height]; };
