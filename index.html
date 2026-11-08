@@ -44,16 +44,17 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 #hearttxt { font-size: calc(16px * var(--ts)); }
 .hbar { width: 150px; height: 12px; background: #d9d1b8; border-radius: 7px; overflow: hidden; margin-top: 3px; }
 #heartfill { height: 100%; width: 100%; background: var(--blossom); border-radius: 7px; transition: width 0.25s; }
-/* the dew gauge (the user's asks, 2026-10-26: "consolidate dew meter and counter", then "sits more flush to the
-   side of screen, have dew count be better integrated with the bar design and have bar fill up with liquid"): a
-   glass thermometer against the right edge, from under the almanac down to the wave button. The tube (#dewbar)
-   runs down into the bulb (#dew), the count, which holds the same water. The water's colours are the tier's
-   (--la, --lb, --lc and its glow --lg: on the tube by data-tier, on the bulb by data-bank, the same tiers) */
+/* the dew gauge (the user, 2026-11-08, HUD A: "the dew collection bar must be more prominent, would keep it at bottom
+   and still with liquid shifting color and agitation based on how filled it is ... if it can be made to work
+   horizontal that is probably cleanest"): a glass tube lying along the top edge of the bottom tray, the full
+   width of it, filling left to right. The count (#dew) is the tube's bulb at its left end, holding the same water,
+   and the odds tag rides on the water's front. It stays in view with a plant's card or the Rites open (they open
+   in the tray, under it). The water's colours are the tier's (--la, --lb, --lc and its glow --lg: on the tube by
+   data-tier, on the bulb by data-bank, the same tiers) */
 @property --la { syntax: "<color>"; inherits: true; initial-value: #4f93c2; }
 @property --lb { syntax: "<color>"; inherits: true; initial-value: #8fd0f2; }
 @property --lc { syntax: "<color>"; inherits: true; initial-value: #5aa5d2; }
-#dewgauge { position: fixed; right: calc(4px + var(--sr)); width: 52px; top: calc(120px + var(--st)); bottom: calc(22px + 104px * var(--ts) + 12px + var(--sb));
-  display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+#dewgauge { position: relative; display: flex; flex-direction: row; align-items: center; height: 40px; pointer-events: none; }
 /* (the user, 2026-11-04: "have dew bar liquid match rarity level color and become increasingly agitée with higher
    levels": the water is the colour of the gifts the tier opens, the cards' own (common moss, rare blue, legendary
    ember, exquisite opal), and it stirs more at each: the waves' height (--dwh) and pace (--dwt, a duration factor),
@@ -63,21 +64,19 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 #dewbar[data-tier="1"], #dew[data-bank="1"] { --la: #5b80c4; --lb: #b4cdf6; --lc: #6f92d2; --lg: rgba(91, 134, 214, 0.75); --dink: #0d1f44; --dwh: 1; --dwt: 1; --dsl: 3deg; --dst: 2.4s; --dbt: 1; }
 #dewbar[data-tier="2"], #dew[data-bank="2"] { --la: #e0602a; --lb: #ffc08a; --lc: #f07a3a; --lg: rgba(255, 138, 74, 0.9); --dink: #3a1204; --dwh: 1.4; --dwt: 0.7; --dsl: 9deg; --dst: 1.5s; --dbt: 0.65; }
 #dewbar[data-tier="3"], #dew[data-bank="3"] { --la: #d9c8ff; --lb: #fff3fb; --lc: #c9f3ff; --lg: rgba(220, 200, 255, 1); --dink: #3a2a5a; --dwh: 1.9; --dwt: 0.45; --dsl: 16deg; --dst: 0.9s; --dbt: 0.4; }
-/* the dew bank, the bulb: full of the tube's water, the count in dark ink on it (it reads on every tier's
-   water), the drop the dew flies to (fx.js) above it. Not a button: no pointer. Its rim goes gold at the top
+/* the dew bank, the bulb: a pill full of the tube's water, the count in dark ink on it (it reads on every tier's
+   water), the drop the dew flies to (fx.js) in it. Not a button: no pointer. Its rim goes violet at the top
    tier (data-bank 1-3; the tube shows the level); it glows with the rate the dew comes in (data-hot 1-3).
    hud.js counts it up and pulses it */
-/* (the user, 2026-11-04: "change the bulb design at base, have it more streamlined": a drop, not a pill, slimmer
-   and with a finer rim, its shoulders curving in to the tube) */
-#dew { position: relative; z-index: 1; flex: none; width: 46px; padding: 8px 1px 7px; border-radius: 50% 50% 50% 50% / 36% 36% 64% 64%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; isolation: isolate;
-  pointer-events: none; color: var(--dink); font-size: calc(18px * var(--ts)); font-weight: 800; line-height: 1; white-space: nowrap; letter-spacing: -0.04em; transform-origin: 50% 100%;
+#dew { position: relative; z-index: 1; flex: none; min-width: 64px; height: 36px; box-sizing: border-box; padding: 0 12px 0 10px; border-radius: 18px 9px 9px 18px; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 4px; isolation: isolate;
+  pointer-events: none; color: var(--dink); font-size: calc(19px * var(--ts)); font-weight: 800; line-height: 1; white-space: nowrap; letter-spacing: -0.04em; transform-origin: 0 50%;
   border: 1.5px solid rgba(26, 23, 18, 0.7); text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
-  background: radial-gradient(ellipse 34% 26% at 34% 30%, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0) 70%), linear-gradient(90deg, var(--la), var(--lb) 45%, var(--lc));
-  box-shadow: inset -3px -6px 8px rgba(0, 20, 40, 0.28), inset 2px 2px 3px rgba(255, 255, 255, 0.55), 0 0 8px var(--lg), 0 2px 3px rgba(0, 0, 0, 0.35);
+  background: radial-gradient(ellipse 30% 34% at 26% 30%, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0) 70%), linear-gradient(180deg, var(--la), var(--lb) 45%, var(--lc));
+  box-shadow: inset -3px -5px 8px rgba(0, 20, 40, 0.28), inset 2px 2px 3px rgba(255, 255, 255, 0.55), 0 0 8px var(--lg), 0 2px 3px rgba(0, 0, 0, 0.35);
   transition: --la 0.6s, --lb 0.6s, --lc 0.6s, filter 0.4s, border-color 0.6s, color 0.6s; }
-/* (the neck: the tube's water flares on into the bulb, over its rim, in one curve) */
-#dew::before { content: ""; position: absolute; left: 50%; top: -3px; width: 30px; height: 9px; margin-left: -15px; background: linear-gradient(90deg, var(--la), var(--lb) 45%, var(--lc));
-  clip-path: path("M6 0H24C24 5 28 7 30 9H0C2 7 6 5 6 0Z"); }
+/* (the neck: the bulb's water flares on into the tube, over its rim, in one curve) */
+#dew::before { content: ""; position: absolute; right: -8px; top: 50%; width: 9px; height: 24px; margin-top: -12px; background: linear-gradient(180deg, var(--la), var(--lb) 45%, var(--lc));
+  clip-path: path("M0 0C2 2 4 4 9 4V20C4 20 2 22 0 24Z"); }
 #dew svg { width: 0.55em; height: 0.73em; flex: none; fill: currentColor; fill-opacity: 0.8; transition: filter 0.4s; }
 #dew svg .glint { fill: none; stroke: #fff; stroke-opacity: 0.8; stroke-width: 1.2; stroke-linecap: round; }
 #dew[data-hot="1"] svg { filter: drop-shadow(0 0 3px var(--lg)); }
@@ -89,57 +88,59 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 #dew[data-bank="3"]::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
   background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.6) 50%, transparent 65%) -60px 0 / 120px 100% no-repeat; animation: dewshine 3.2s ease-in-out infinite; }
 @keyframes dewshine { 0%, 40% { background-position: -60px 0; } 100% { background-position: 60px 0; } }
-/* the dew bar, the thermometer's tube: it runs down into the bulb, its water rising with the bank (--fill, hud.js
-   barFill: the tiers at the ticks, 30/55/80%). At each tier (data-tier 1-3, Defs.DEW_TIERS) the water takes the colour of the gifts it opens and stirs more (above); the
-   tag beside its surface says the gifts' odds are up (Defs.DEW_LUCK). The water's surface rolls (two waves,
-   the bright one in front, its crest the meniscus) and bubbles rise through it. The rate's glow (data-hot) brightens it, and
-   a fast gain bounces its surface and sprays droplets from it (hud.js dewPulse). The open almanac hides it */
-#dewbar { position: relative; flex: 1 1 auto; min-height: 40px; width: 22px; margin-bottom: -7px; /* (it takes the pointer, for its tooltip) */
-  border-radius: 11px 11px 0 0; border: 2px solid rgba(26, 23, 18, 0.75); background: linear-gradient(90deg, rgba(20, 30, 36, 0.6), rgba(46, 62, 70, 0.45) 60%, rgba(20, 30, 36, 0.6));
+/* the dew bar, the thermometer's tube, lying down: it runs out of the bulb to the right, its water filling along it
+   with the bank (--fill, hud.js barFill: the tiers at the ticks, 30/55/80%). At each tier (data-tier 1-3,
+   Defs.DEW_TIERS) the water takes the colour of the gifts it opens and stirs more (above); the tag on its front
+   says the gifts' odds are up (Defs.DEW_LUCK). The water's front rolls (two waves, the bright one in front, its
+   crest the meniscus) and bubbles drift along it. The rate's glow (data-hot) brightens it, and a fast gain bounces
+   its front and sprays droplets from it (hud.js dewPulse) */
+#dewbar { position: relative; flex: 1 1 auto; min-width: 60px; height: 26px; box-sizing: border-box; margin-left: -6px; /* (it takes the pointer, for its tooltip) */
+  border-radius: 0 13px 13px 0; border: 2px solid rgba(26, 23, 18, 0.75); background: linear-gradient(180deg, rgba(20, 30, 36, 0.62), rgba(46, 62, 70, 0.48) 60%, rgba(20, 30, 36, 0.62));
   box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.35); pointer-events: auto; transition: --la 0.6s, --lb 0.6s, --lc 0.6s, filter 0.4s; }
 #dewbar > * { pointer-events: none; }
-/* (the glass: a streak of light down the tube, over the water) */
-#dewbar::after { content: ""; position: absolute; left: 3px; top: 5px; bottom: 4px; width: 3px; z-index: 3; border-radius: 2px; background: linear-gradient(rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.18)); }
-body.alm-open #dewbar { visibility: hidden; } /* (the bulb stays, under the almanac) */
-#dewbar .tick { position: absolute; left: -4px; right: -4px; bottom: calc(var(--at) * 100%); height: 2px; margin-bottom: -1px; z-index: 2; background: rgba(255, 255, 255, 0.55); border-radius: 1px; }
-/* (the water: a column to the level, kept under the tube's rounded top; the waves ride on it) */
-#dewbar .fill { position: absolute; left: 1px; right: 1px; bottom: 0; height: min(calc(var(--fill, 0) * (100% - 2px)), calc(100% - 12px)); transform-origin: 50% 100%;
-  background: linear-gradient(90deg, var(--la), var(--lb) 45%, var(--lc)); box-shadow: 0 0 7px var(--lg); transition: height 0.8s ease-out, box-shadow 0.6s; }
+/* (the glass: a streak of light along the tube, over the water) */
+#dewbar::after { content: ""; position: absolute; left: 8px; right: 6px; top: 3px; height: 3px; z-index: 3; border-radius: 2px; background: linear-gradient(90deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.18)); }
+#dewbar .tick { position: absolute; top: -4px; bottom: -4px; left: calc(var(--at) * 100%); width: 2px; margin-left: -1px; z-index: 2; background: rgba(255, 255, 255, 0.55); border-radius: 1px; }
+/* (the water: a run to the level, kept short of the tube's rounded end; the waves ride on its front) */
+#dewbar .fill { position: absolute; left: 0; top: 1px; bottom: 1px; width: min(calc(var(--fill, 0) * (100% - 2px)), calc(100% - 12px)); transform-origin: 0 50%;
+  background: linear-gradient(180deg, var(--la), var(--lb) 45%, var(--lc)); box-shadow: 0 0 7px var(--lg); transition: width 0.8s ease-out, box-shadow 0.6s; }
 #dewbar[data-tier="2"] .fill { box-shadow: 0 0 10px rgba(255, 150, 80, 0.95), 0 0 20px rgba(224, 96, 42, 0.6); }
-/* (the exquisite water: the opal's colours drift up through it, and it glows in and out) */
-#dewbar[data-tier="3"] .fill { background: linear-gradient(180deg, rgba(255, 214, 240, 0.7), rgba(201, 243, 255, 0.7), rgba(255, 243, 184, 0.7), rgba(217, 200, 255, 0.7), rgba(255, 214, 240, 0.7)) 0 0 / 100% 120px repeat-y, linear-gradient(90deg, var(--la), var(--lb) 45%, var(--lc));
+/* (the exquisite water: the opal's colours drift along it, and it glows in and out) */
+#dewbar[data-tier="3"] .fill { background: linear-gradient(90deg, rgba(255, 214, 240, 0.7), rgba(201, 243, 255, 0.7), rgba(255, 243, 184, 0.7), rgba(217, 200, 255, 0.7), rgba(255, 214, 240, 0.7)) 0 0 / 120px 100% repeat-x, linear-gradient(180deg, var(--la), var(--lb) 45%, var(--lc));
   box-shadow: 0 0 12px rgba(220, 200, 255, 1), 0 0 26px rgba(255, 190, 240, 0.7); animation: dewbarglow 1.6s ease-in-out infinite alternate, dewopal 6s linear infinite; }
 @keyframes dewbarglow { to { box-shadow: 0 0 16px rgba(235, 220, 255, 1), 0 0 34px rgba(200, 240, 255, 0.9); } }
-@keyframes dewopal { to { background-position: 0 -120px, 0 0; } }
-/* (the waves: water above the column's top, cut to a wave by a mask that slides along; the back one paler,
-   higher, rolling the other way. The front one's bright top is the meniscus. They shrink away as the tube empties, and grow,
-   quicken and slosh (a skew to and fro, the two out of step) with the tier: transforms and masks only, no layout) */
-#dewbar .fill::before, #dewbar .fill::after { content: ""; position: absolute; left: 0; right: 0; bottom: calc(100% - 1px); height: calc(min(1, var(--fill, 0) * 40) * 7px * var(--dwh)); transform-origin: 50% 100%;
-  --wave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 7' preserveAspectRatio='none'%3E%3Cpath d='M0 3.5C4 0.5 4 0.5 8 3.5S12 6.5 16 3.5V7H0z'/%3E%3C/svg%3E");
-  -webkit-mask: var(--wave) 0 0 / 16px 100% repeat-x; mask: var(--wave) 0 0 / 16px 100% repeat-x; }
-#dewbar .fill::before { height: calc(min(1, var(--fill, 0) * 40) * 9px * var(--dwh)); opacity: 0.55; background: var(--lb); animation: dewwave calc(2.6s * var(--dwt)) linear infinite reverse, dewslosh var(--dst) ease-in-out calc(var(--dst) * -0.5) infinite; }
-#dewbar .fill::after { background: linear-gradient(rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 4px) 0 1px / 100% 100% no-repeat, linear-gradient(90deg, var(--la), var(--lb) 45%, var(--lc)); animation: dewwave calc(1.7s * var(--dwt)) linear infinite, dewslosh var(--dst) ease-in-out infinite; }
-@keyframes dewwave { to { -webkit-mask-position: 16px 0; mask-position: 16px 0; } }
-@keyframes dewslosh { 0%, 100% { transform: skewY(calc(var(--dsl) * -1)); } 50% { transform: skewY(var(--dsl)) scaleY(1.12); } }
-/* (the bubbles: each a dot that rises the column's height, at its own pace) */
-#dewbar .bub { position: absolute; top: 2px; bottom: 0; width: 5px; background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0 1.1px, rgba(16, 60, 90, 0.4) 1.5px, transparent 2px) 50% 100% / 5px 5px no-repeat;
+@keyframes dewopal { to { background-position: -120px 0, 0 0; } }
+/* (the waves: water past the run's front, cut to a wave by a mask that slides along it; the back one paler,
+   longer, rolling the other way. The front one's bright edge is the meniscus. They shrink away as the tube
+   empties, and grow, quicken and slosh (a skew to and fro, the two out of step) with the tier: transforms and
+   masks only, no layout) */
+#dewbar .fill::before, #dewbar .fill::after { content: ""; position: absolute; top: 0; bottom: 0; left: calc(100% - 1px); width: calc(min(1, var(--fill, 0) * 40) * 7px * var(--dwh)); transform-origin: 0 50%;
+  --wave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 16' preserveAspectRatio='none'%3E%3Cpath d='M0 0H3.5C0.5 4 0.5 4 3.5 8S6.5 12 3.5 16H0z'/%3E%3C/svg%3E");
+  -webkit-mask: var(--wave) 0 0 / 100% 16px repeat-y; mask: var(--wave) 0 0 / 100% 16px repeat-y; }
+#dewbar .fill::before { width: calc(min(1, var(--fill, 0) * 40) * 9px * var(--dwh)); opacity: 0.55; background: var(--lb); animation: dewwave calc(2.6s * var(--dwt)) linear infinite reverse, dewslosh var(--dst) ease-in-out calc(var(--dst) * -0.5) infinite; }
+#dewbar .fill::after { background: linear-gradient(270deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 4px) -1px 0 / 100% 100% no-repeat, linear-gradient(180deg, var(--la), var(--lb) 45%, var(--lc)); animation: dewwave calc(1.7s * var(--dwt)) linear infinite, dewslosh var(--dst) ease-in-out infinite; }
+@keyframes dewwave { to { -webkit-mask-position: 0 16px; mask-position: 0 16px; } }
+@keyframes dewslosh { 0%, 100% { transform: skewX(calc(var(--dsl) * -1)); } 50% { transform: skewX(var(--dsl)) scaleX(1.12); } }
+/* (the bubbles: each a dot that drifts the run's length, at its own pace) */
+#dewbar .bub { position: absolute; left: 2px; right: 0; height: 5px; background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0 1.1px, rgba(16, 60, 90, 0.4) 1.5px, transparent 2px) 0% 50% / 5px 5px no-repeat;
   animation: dewbub calc(3.1s * var(--dbt)) ease-in infinite; }
-#dewbar .bub:nth-child(1) { left: 3px; }
-#dewbar .bub:nth-child(2) { left: 10px; animation-duration: calc(4.3s * var(--dbt)); animation-delay: -1.6s; }
-#dewbar .bub:nth-child(3) { left: 6px; animation-duration: calc(3.7s * var(--dbt)); animation-delay: -2.9s; }
+#dewbar .bub:nth-child(1) { top: 3px; }
+#dewbar .bub:nth-child(2) { top: 12px; animation-duration: calc(4.3s * var(--dbt)); animation-delay: -1.6s; }
+#dewbar .bub:nth-child(3) { top: 7px; animation-duration: calc(3.7s * var(--dbt)); animation-delay: -2.9s; }
 #dewbar:not([data-tier="1"], [data-tier="2"], [data-tier="3"]) .bub:nth-child(n+2) { display: none; } /* (one bubble in the calm water) */
-@keyframes dewbub { 0% { background-position-y: 100%; opacity: 0; } 15%, 85% { opacity: 1; } 100% { background-position-y: 0%; opacity: 0; } }
+@keyframes dewbub { 0% { background-position-x: 0%; opacity: 0; } 15%, 85% { opacity: 1; } 100% { background-position-x: 100%; opacity: 0; } }
 #dewbar[data-hot="1"] { filter: brightness(1.12); }
 #dewbar[data-hot="2"] { filter: brightness(1.22) drop-shadow(0 0 5px var(--lg)); }
 #dewbar[data-hot="3"] { filter: brightness(1.32) drop-shadow(0 0 9px var(--lg)); }
-/* (the odds tag, beside the water's surface: rare+, then the band that opens the legendary gifts, then the exquisite ones) */
-#dewbar .luck { position: absolute; right: calc(100% + 6px); bottom: calc(var(--fill, 0) * 100%); margin-bottom: -0.7em; padding: 1px 6px; border-radius: 8px; white-space: nowrap;
-  font-size: calc(12px * var(--ts)); font-weight: 800; letter-spacing: 0.03em; color: #0d1f44; background: #c8dafc; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); transition: bottom 0.8s ease-out; }
+/* (the odds tag, on the water just past its front, kept inside the tube: rare+, then the band that opens the
+   legendary gifts, then the exquisite ones) */
+#dewbar .luck { position: absolute; left: min(calc(var(--fill, 0) * 100% + 8px), calc(100% - 7.5em)); top: 50%; transform: translateY(-50%); z-index: 4; padding: 1px 6px; border-radius: 8px; white-space: nowrap;
+  font-size: calc(12px * var(--ts)); font-weight: 800; letter-spacing: 0.03em; color: #0d1f44; background: #c8dafc; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); transition: left 0.8s ease-out; }
 #dewbar .luck:empty { display: none; }
 #dewbar[data-tier="2"] .luck { background: linear-gradient(180deg, #ffb070, #e0602a); color: #3a1204; box-shadow: 0 0 7px rgba(255, 140, 70, 0.9); }
 #dewbar[data-tier="3"] .luck { background: linear-gradient(90deg, #ffd6f0, #c9f3ff, #fff3b8, #d9c8ff); color: #3a2a5a; box-shadow: 0 0 9px rgba(220, 200, 255, 0.95); }
-/* (the droplets: they leap from the water's surface) */
-#dewbar .spray { position: absolute; left: 50%; bottom: calc(var(--fill, 0) * 100%); width: 8px; height: 10px; margin: 0 0 -2px -4px; border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%; background: var(--lb); box-shadow: 0 0 4px var(--lg); opacity: 0; }
+/* (the droplets: they leap from the water's front) */
+#dewbar .spray { position: absolute; left: calc(var(--fill, 0) * 100%); top: 50%; width: 8px; height: 10px; margin: -5px 0 0 -4px; border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%; background: var(--lb); box-shadow: 0 0 4px var(--lg); opacity: 0; }
 #wave { font-size: calc(22px * var(--ts)); }
 #topright { position: fixed; right: calc(12px + var(--sr)); top: calc(12px + var(--st)); display: flex; gap: 8px; align-items: center; pointer-events: none; }
 #topright > * { pointer-events: auto; }
@@ -310,15 +311,15 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 #inspbody .tips .ei { white-space: nowrap; margin-right: 4px; font-weight: 800; }
 #inspbody .tips .ei svg { width: 1em; height: 1em; vertical-align: -0.15em; }
 /* the choice of a Lv III branch (hud.js inspect, this.forking): two tiles, each in its branch's tint */
-#inspbody .forks { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 2px 0 4px; }
-#inspbody .fork { display: flex; flex-direction: column; gap: 2px; text-align: left; font: inherit; color: #38452e; background: #efe4c4; border: 2px solid var(--acc); border-left-width: 6px; border-radius: 10px; padding: 6px 7px; cursor: pointer; min-width: 0; }
-#inspbody .fork b { font-weight: 800; }
-#inspbody .fork span { font-size: 0.86em; line-height: 1.25; }
-#inspbody .fork small { font-size: 0.78em; font-weight: 800; color: #6a8a3a; }
-#inspbody .fork:disabled { opacity: 0.55; cursor: default; }
+#inspbody .forks, #ritebody .forks { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 2px 0 4px; }
+#inspbody .fork, #ritebody .fork { display: flex; flex-direction: column; gap: 2px; text-align: left; font: inherit; color: #38452e; background: #efe4c4; border: 2px solid var(--acc); border-left-width: 6px; border-radius: 10px; padding: 6px 7px; cursor: pointer; min-width: 0; }
+#inspbody .fork b, #ritebody .fork b { font-weight: 800; }
+#inspbody .fork span, #ritebody .fork span { font-size: 0.86em; line-height: 1.25; }
+#inspbody .fork small, #ritebody .fork small { font-size: 0.78em; font-weight: 800; color: #6a8a3a; }
+#inspbody .fork:disabled, #ritebody .fork:disabled { opacity: 0.55; cursor: default; }
 /* the rites (hud.js inspect, this.riting): three tiles, each in its rite's colour */
-#inspbody .forks.rites { grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
-#inspbody .forks.rites .fork { padding: 5px 6px; border-left-width: 5px; }
+#inspbody .forks.rites, #ritebody .forks.rites { grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
+#inspbody .forks.rites .fork, #ritebody .forks.rites .fork { padding: 5px 6px; border-left-width: 5px; }
 #inspbody .more { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #cdbf98; }
 #inspbody .tglyph { letter-spacing: 0.08em; font-weight: 800; color: #8a5a2a; }
 #inspector:not(.open) .more { display: none; }
@@ -616,14 +617,6 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   body[data-seedcols="4"] .seed b, body[data-seedcols="5"] .seed b { font-size: calc(11px * var(--ts)); max-width: calc(100% - 14px); }
   body[data-seedcols="4"] #wavebtn, body[data-seedcols="5"] #wavebtn { font-size: calc(13px * var(--ts)); }
   body[data-seedcols="4"] #wavebtn.early, body[data-seedcols="5"] #wavebtn.early { font-size: calc(12px * var(--ts)); }
-  /* (the dew gauge: under the turn buttons, against the edge, from under the almanac to above the seed rows,
-     clear of the hint on its left; the open almanac reaches down over it, so it hides) */
-  #dewgauge { right: calc(3px + var(--sr)); width: 44px; top: calc(160px + var(--st)); bottom: calc(27px + 128px * var(--ts) + var(--sb)); }
-  body.alm-open #dewgauge, body:has(#inspector.show) #dewgauge { visibility: hidden; } /* (and under the docked card, which spans its place) */
-  #dew { width: 40px; padding: 7px 1px 6px; font-size: calc(15px * var(--ts)); gap: 1px; }
-  #dew::before { width: 24px; height: 8px; margin-left: -12px; clip-path: path("M5 0H19C19 4 22 6 24 8H0C2 6 5 4 5 0Z"); }
-  #dewbar { width: 18px; margin-bottom: -6px; border-radius: 9px 9px 0 0; }
-  #dewbar .bub:nth-child(2) { left: 8px; }
   #dewbar .luck { font-size: calc(11px * var(--ts)); padding: 1px 5px; }
   /* (the card, a plant's or a seed's while placing, docks just above the two rows at their width: the field stays clear) */
   #inspector { left: calc(6px + var(--sl)); right: calc(6px + var(--sr)); top: auto; bottom: calc(23px + 128px * var(--ts) + var(--sb)); max-height: calc(var(--vh) - 55px - 204px * var(--ts) - var(--st) - var(--sb)); transform: none; width: auto; padding: 10px 12px; gap: 6px; }
@@ -652,6 +645,107 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   #top { flex-direction: column; align-items: flex-start; gap: 1px; padding: 4px 9px 5px; }
   #wave { font-size: calc(14px * var(--ts)); line-height: 1.1; }
   #giftbox { top: calc(74px + var(--st)); }
+}
+/* HUD A (the user, 2026-11-08): the HUD never covers the garden. A strip along the top (the heart, the wave that
+   opens the Almanac, the speed, a turn and the menu) and a tray along the bottom: the dew tube on its top edge,
+   then the seed chips, the Rites and the wave button, or a plant's card or the Rites in that row's place. The
+   weather, sound and music sit in the pause card (menu.js). main.js frames the garden in the room between the
+   two (hud.js freeRect) and nudges it when the tray grows */
+#wave { background: none; border: 0; padding: 0; font: inherit; font-size: calc(22px * var(--ts)); font-weight: 700; color: inherit; cursor: pointer; white-space: nowrap; }
+#almtog { display: none; } /* (the wave count opens it) */
+.help { display: none; } /* (the keys are in How to play) */
+body:not(:has(#menus .veil.show)) #version { display: none; } /* (in the pause card's debug line in play) */
+#pquick { display: flex; gap: 8px; justify-content: center; margin: -4px 0 12px; }
+#pdebug { margin-top: 10px; font: calc(11px * var(--ts)) ui-monospace, Consolas, monospace; text-align: center; overflow-wrap: anywhere; }
+#tray { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2; box-sizing: border-box; padding: 0 calc(12px + var(--sr)) calc(12px + var(--sb)) calc(12px + var(--sl));
+  display: flex; flex-direction: column; align-items: stretch; gap: 6px; pointer-events: none; }
+#tray > * { pointer-events: auto; }
+#tray #dewgauge { pointer-events: none; }
+#trayrow { display: flex; gap: 8px; align-items: stretch; }
+#tray #seeds { position: static; left: auto; right: auto; bottom: auto; flex: 1 1 auto; min-width: 0; display: flex; gap: 8px; pointer-events: none; }
+#tray #wavebtn, #tray #rites { position: static; flex: none; }
+#rites { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; width: 64px; padding: 0; line-height: 1; }
+#rites .lb { font-size: calc(22px * var(--ts)); color: #7a5ab8; }
+#rites small { font-size: calc(11px * var(--ts)); font-weight: 700; }
+#tray #inspector { position: static; left: auto; right: auto; top: auto; bottom: auto; transform: none; }
+#ritepanel { display: none; flex-direction: column; gap: 6px; padding: 10px 12px; background: rgb(250, 242, 219); }
+#ritepanel.show { display: flex; }
+#ritepanel .rhead { display: flex; align-items: center; gap: 8px; }
+#ritepanel .rhead b { font-size: calc(18px * var(--ts)); white-space: nowrap; }
+#ritepanel .rhead .dim { flex: 1; min-width: 0; font-size: calc(12px * var(--ts)); line-height: 1.2; }
+#ritepanel .rhead .btn.small { flex: none; width: 40px; height: 36px; font-size: calc(16px * var(--ts)); }
+#ritebody { overflow-y: auto; font-size: calc(14px * var(--ts)); }
+#seedcap { display: none; }
+#toast { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* (the desktop: the tray centred, its chips named; the card docks in the right margin, the Rites in the left one,
+   the margins hud.js freeRect keeps clear) */
+@media (min-width: 761px) {
+  #tray { left: 0; right: 0; margin: 0 auto; width: min(960px, calc(var(--vw) - 24px)); padding: 0 0 calc(12px + var(--sb)); }
+  #tray #dewgauge { height: 34px; }
+  #tray .seed { flex: 1 1 0; height: calc(72px * var(--ts)); padding: 6px 8px 5px; }
+  #tray .seed .el { display: none; }
+  #tray #wavebtn { width: 170px; height: auto; font-size: calc(19px * var(--ts)); padding: 2px 8px; line-height: 1.1; }
+  #tray #rites { width: 64px; }
+  #tray #inspector, #tray #ritepanel { position: fixed; top: calc(84px + var(--st)); bottom: auto; width: calc(min(280px, var(--vw) * 0.17) - 20px); box-sizing: border-box;
+    max-height: calc(var(--vh) - 84px - 150px * var(--ts) - var(--st) - var(--sb)); }
+  #tray #inspector { right: calc(12px + var(--sr)); left: auto; }
+  #tray #ritepanel { left: calc(12px + var(--sl)); right: auto; }
+  #tray #inspector #inspbody { min-height: 0; overflow-y: auto; }
+  #ritepanel .forks.rites { grid-template-columns: 1fr; }
+  #toast { bottom: calc(160px * var(--ts) + 12px + var(--sb)); }
+  #hint { top: calc(84px + var(--st)); }
+}
+/* (a phone: one 40 px strip on top, a 56 px chip row at the bottom under the tube; a chip is the plant's icon, its
+   price and the up or down tag of its counter, the picked one rising with a one-line caption over the tube) */
+@media (max-width: 760px) {
+  #top, #topright { top: var(--st); height: 40px; box-sizing: border-box; }
+  #top { left: var(--sl); flex-direction: row; align-items: center; gap: 10px; padding: 0 10px; border-radius: 0 0 12px 0; }
+  #heart { display: flex; align-items: center; gap: 6px; }
+  #hearttxt { font-size: calc(12px * var(--ts)); white-space: nowrap; }
+  .hbar { width: 48px; height: 8px; margin-top: 0; }
+  #wave { font-size: calc(15px * var(--ts)); line-height: 1; }
+  #topright { right: var(--sr); display: flex; gap: 4px; padding: 2px 4px; }
+  #topright .btn.small { width: 44px; height: 36px; font-size: calc(16px * var(--ts)); border-radius: 10px; }
+  #turnl, #fps { display: none; }
+  #pquick .btn.small { width: 52px; height: 46px; }
+  #almanac { top: calc(44px + var(--st)); right: calc(6px + var(--sr)); max-height: calc(var(--vh) * 0.45); }
+  body:not(.alm-open) #almanac { display: none; }
+  #giftbox { top: calc(44px + var(--st)); }
+  #sky { top: calc(44px + var(--st)); }
+  #toast { top: calc(44px + var(--st)); bottom: auto; transform: translate(-50%, -6px); padding: 5px 12px; font-size: calc(14px * var(--ts)); }
+  #toast.show { transform: translate(-50%, 0); }
+  #hint { top: auto; bottom: calc(118px + var(--sb)); }
+  .coach { top: auto; bottom: calc(118px + var(--sb)); }
+  body:has(#inspector.show) .coach, body.rites-open .coach { top: calc(48px + var(--st)); bottom: auto; }
+  #tray { padding: 0 calc(6px + var(--sr)) calc(6px + var(--sb)) calc(6px + var(--sl)); gap: 4px; }
+  #tray #dewgauge { height: 30px; }
+  #tray #dew { height: 28px; min-width: 54px; font-size: calc(16px * var(--ts)); }
+  #tray #dewbar { height: 22px; }
+  #trayrow { gap: 5px; height: 56px; }
+  #tray #seeds { display: flex; grid-template-columns: none; grid-template-rows: none; gap: 5px; }
+  #tray .seed { flex: 1 1 0; height: 56px; padding: 3px 2px; border-radius: 12px; border-width: 2px; align-items: center; justify-content: center; gap: 0; }
+  #tray .seed b, #tray .seed .el { display: none; }
+  #tray .seed .picon { position: static; width: 24px; height: 24px; }
+  #tray .seed .dot { position: static; width: 14px; height: 14px; margin: 5px; }
+  #tray .seed .cost { font-size: calc(12.5px * var(--ts)); font-weight: 800; line-height: 1.1; }
+  #tray .seed .tag { position: absolute; left: 4px; top: 2px; font-size: calc(11px * var(--ts)); line-height: 1; }
+  #tray #rites { width: 50px; height: 56px; border-radius: 12px; }
+  #tray #rites .lb { font-size: calc(18px * var(--ts)); }
+  #tray #rites small { font-size: calc(10px * var(--ts)); }
+  #tray #wavebtn, body[data-seedcols] #tray #wavebtn { width: 76px; height: 56px; padding: 2px 3px; font-size: calc(13px * var(--ts)); line-height: 1.1; border-radius: 12px; }
+  #tray #wavebtn.early { font-size: calc(12px * var(--ts)); }
+  #tray #wavebtn small { font-size: 0.78em; }
+  body.seed-picked #seedcap { display: block; order: -1; align-self: center; max-width: 100%; padding: 2px 10px; border-radius: 9px; background: rgba(26, 38, 13, 0.72); color: #f4f1e2;
+    font-size: calc(12.5px * var(--ts)); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* (a plant's card or the Rites take the chip row's place; the seed's card is the caption) */
+  #tray #inspector.seedinfo { display: none; }
+  #tray:has(#inspector.show:not(.seedinfo)) #trayrow, body.rites-open #trayrow { display: none; }
+  body.rites-open #tray #inspector { display: none; }
+  #tray #inspector { width: auto; max-height: calc(var(--vh) * 0.22); padding: 8px 10px; gap: 5px; flex-direction: row; flex-wrap: wrap; align-content: flex-start; }
+  #tray #inspector > #insptitle, #tray #inspector > #inspbody, #tray #inspector > #grafts { flex: 1 1 100%; }
+  #tray #inspector > .btn { flex: 1 1 0; min-height: 40px; }
+  #tray #inspector.open { max-height: calc(var(--vh) * 0.6); }
+  #tray #ritepanel { max-height: calc(var(--vh) * 0.24); padding: 8px 10px; }
 }
 @media (prefers-reduced-motion: reduce) { #dew::after, #dewbar .fill, #dewbar .fill::before, #dewbar .fill::after, #dewbar .bub, #dewbar .luck, .veil, .seed, #heartfill, #bar, .boon, .boon .aura, .boon .shine::before, .boon .rays, .boon .ribbon { animation: none !important; transition: none; } }
 body.calm #dew::after, body.calm #dewbar .fill, body.calm #dewbar .fill::before, body.calm #dewbar .fill::after, body.calm #dewbar .bub, body.calm #dewbar .luck, body.calm .veil, body.calm .seed, body.calm #heartfill, body.calm #bar, body.calm .boon, body.calm .boon .aura, body.calm .boon .shine::before, body.calm .boon .rays, body.calm .boon .ribbon { animation: none !important; transition: none; } /* (the Motion setting) */
@@ -721,10 +815,10 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
   html.tight #setbody .note.dim:not(:has(.btn)):not(.open) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
   /* (and the card's tiles, a Lv III branch's two and the three rites, one under the other: in columns a long
      name, as Bramblecrown or Downpour, is wider than its tile. A rite's price beside its name) */
-  html.tight #inspbody .forks, html.tight #inspbody .forks.rites { grid-template-columns: 1fr; }
-  html.tight #inspbody .forks.rites .fork { display: grid; grid-template-columns: 1fr auto; column-gap: 6px; align-items: baseline; }
-  html.tight #inspbody .forks.rites .fork span { grid-column: 1 / -1; }
-  html.tight #inspbody .forks.rites .fork small { grid-row: 1; grid-column: 2; }
+  html.tight #inspbody .forks, html.tight #inspbody .forks.rites, html.tight #ritebody .forks.rites { grid-template-columns: 1fr; }
+  html.tight #inspbody .forks.rites .fork, html.tight #ritebody .forks.rites .fork { display: grid; grid-template-columns: 1fr auto; column-gap: 6px; align-items: baseline; }
+  html.tight #inspbody .forks.rites .fork span, html.tight #ritebody .forks.rites .fork span { grid-column: 1 / -1; }
+  html.tight #inspbody .forks.rites .fork small, html.tight #ritebody .forks.rites .fork small { grid-row: 1; grid-column: 2; }
   .howto p { font-size: calc(13.5px * var(--ts)); margin: 0 0 7px; line-height: 1.32; }
   #boonrow { gap: 10px; }
   .boon { padding: 13px 12px 10px; gap: 4px; }
@@ -841,18 +935,22 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 <div id="ui">
   <div id="top" class="panel">
     <div id="heart"><div id="hearttxt">Heart 20/20</div><div class="hbar"><div id="heartfill"></div></div></div>
-    <div id="wave">Wave 0</div>
+    <button id="wave" title="the Almanac: what the next wave brings">Wave 0</button>
   </div>
   <div id="topright"><span id="fps"><span id="fpsn"></span> · <span id="vox"></span></span><div id="viewctl"><button id="skybtn" class="btn small" title="mood and weather">☁</button><button id="turnl" class="btn small" title="turn left">↺</button><button id="turnr" class="btn small" title="turn right">↻</button></div><button id="sound" class="btn small" title="sound (M)"><span class="lb">♪</span></button><button id="musicbtn" class="btn small" title="music style"><span class="lb">♫</span><small id="musicname">Ambient</small></button><button id="speed" class="btn small" title="speed (F)"><span class="lb">1x</span></button><button id="pausebtn" class="btn small" title="menu (Esc)">☰</button></div>
   <div id="giftbox"><div id="chal"></div><div id="boonbar"></div></div>
   <div id="almanac"><button id="almtog">Almanac ▸</button><div id="almbody"></div></div>
   <div id="sky" class="panel"><div class="skyrow"><b>Mood</b><div class="seg" id="moodseg"></div></div><div class="skyrow"><b>Weather</b><div class="seg" id="wxseg"></div></div></div>
   <div id="hint">Tap a seed, then tap the meadow twice to plant it</div>
-  <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspbody"></div><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="deepen" class="btn"><span class="lb">Deepen</span></button><div id="grafts"></div><button id="rites" class="btn"><span class="lb">Rites</span></button><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div>
-  <div id="seeds"></div>
   <div id="toast" role="status" aria-live="polite"></div>
-  <div id="dewgauge"><div id="dewbar" role="meter" aria-label="Dew bank" aria-valuemin="0" aria-valuenow="0"><i class="tick" style="--at: 0.3"></i><i class="tick" style="--at: 0.55"></i><i class="tick" style="--at: 0.8"></i><i class="fill"><i class="bub"></i><i class="bub"></i><i class="bub"></i></i><b class="luck"></b></div><div id="dew" role="status" aria-label="Dew 0"><svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 .6C4.4 3.4 1 7.2 1 10.6a5 5 0 0 0 10 0C11 7.2 7.6 3.4 6 .6z"/><path class="glint" d="M3.6 10.2a2.6 2.6 0 0 0 1.9 3.1"/></svg><b id="dewn">0</b></div></div>
-  <button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button>
+  <!-- the bottom tray (HUD A): the dew tube along its top edge, then the seed row, or a plant's card or the Rites in its place -->
+  <div id="tray">
+    <div id="dewgauge"><div id="dew" role="status" aria-label="Dew 0"><svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 .6C4.4 3.4 1 7.2 1 10.6a5 5 0 0 0 10 0C11 7.2 7.6 3.4 6 .6z"/><path class="glint" d="M3.6 10.2a2.6 2.6 0 0 0 1.9 3.1"/></svg><b id="dewn">0</b></div><div id="dewbar" role="meter" aria-label="Dew bank" aria-valuemin="0" aria-valuenow="0"><i class="tick" style="--at: 0.3"></i><i class="tick" style="--at: 0.55"></i><i class="tick" style="--at: 0.8"></i><i class="fill"><i class="bub"></i><i class="bub"></i><i class="bub"></i></i><b class="luck"></b></div></div>
+    <div id="ritepanel" class="panel"><div class="rhead"><b>✦ Rites</b><span class="dim">once each, on the whole garden; dearer each time this run</span><button id="riteclose" class="btn small" title="close">✕</button></div><div id="ritebody"></div></div>
+    <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspbody"></div><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="deepen" class="btn"><span class="lb">Deepen</span></button><div id="grafts"></div><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div>
+    <div id="seedcap"></div>
+    <div id="trayrow"><div id="seeds"></div><button id="rites" class="btn" title="Rites: once each, on the whole garden"><span class="lb">✦</span><small>Rites</small></button><button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button></div>
+  </div>
   <div id="boons" class="veil"><div class="col"><h2>The garden offers a gift</h2><div id="boonrow"></div><div id="boonbuy"><button id="reroll" class="btn"></button><button id="morepick" class="btn"></button></div></div></div>
   <div id="over" class="veil dark"><div class="panel card"><h2>The Heart Tree sleeps</h2><div class="cscroll"><p id="overtxt"></p><div id="oversum" class="oversum"></div><div id="overboard" class="lboard" style="display:none"></div></div><button id="again" class="btn pink">Plant anew</button></div></div>
   <div class="help">drag pan · wheel zoom · Q/E turn · 1–5 seeds · space wave</div>
@@ -5705,7 +5803,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 
   // ---- The bake's view of a map: per tile its top Z (tiles), its height (for comparing neighbours) and
   // its kind (null: no ground); the water distance (null: none, or whole tiles with wholeWater); the
-  // props as [model, options, x, y, at]; the frame; the bake box (tiles); the map's point lights.
+  // props as [model, options, x, y, at]; the frame; the bake box (tiles); the map's point lights. quiet: no
+  // warning lines (the rules' bake, whose map the load's bake has already checked)
   const FIXED_BOX = { o: [-1, -1, -2.5], size: [26, 26, 10] }; // a generator map's
   // st.area = [x, y, w, h, ring] (tiles, W0): the bake is a slice of the map, its box the area and ring tiles
   // round it within the map's box, with the map's z span; props and lamps outside it are left out
@@ -5724,13 +5823,13 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const m = st.map, box = m.v !== undefined ? ME.validateMap(m, CT.kinds || {}).box : FIXED_BOX;
     return box && st.area ? areaBox(box, st.area) : box;
   };
-  const gridOf = (st, CT) => {
+  const gridOf = (st, CT, quiet) => {
     const m = st.map;
     if (m.v !== undefined) { // a versioned map (the validator refuses any version but 1)
       const kinds = CT.kinds || {}, v = ME.validateMap(m, kinds), f = m.frame || {};
       for (const p of m.props || []) if (Array.isArray(p) && !window.MODELS[p[0]]) v.errors.push("props: no model " + p[0] + " loaded");
       if (v.errors.length) throw new Error("map " + m.id + ": " + v.errors.join("; "));
-      for (const w of v.warnings) ME.log("WARN map " + m.id + ": " + w);
+      if (!quiet) for (const w of v.warnings) ME.log("WARN map " + m.id + ": " + w);
       const hs = heights(m), hStep = m.hStep ?? 0.5, z = new Float64Array(hs.length), names = kindNames(m);
       for (let i = 0; i < hs.length; i++) z[i] = hs[i] * hStep;
       const wd = ME.waterDist(m.water), flood = new Float64Array(hs.length).fill(NaN), floodKind = new Array(hs.length).fill(null);
@@ -6084,10 +6183,14 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 
   // P1: the bake goes by regions (?regions=1 at a density that is a multiple of 4); the terrain key (cache.js) and the
   // mesh (greedy.js, by T.stats.regions) follow it
-  ME.regionsOn = () => ME.VS % 4 === 0 && ME.qn("regions", 0) > 0;
+  ME.regionsOn = (vs = ME.VS) => vs % 4 === 0 && ME.qn("regions", 0) > 0;
 
-  ME.bakeTerrain = async function (st, pal) {
-    const t0 = ME.now(), VS = ME.VS, CT = ME.content || {}, G = gridOf(st, CT), F = G.frame, jar = F.type === "jar";
+  // o.vs: the density (ME.VS by default); o.rules: the rules' bake (P2, R1: ME.terrain16), the voxels, tops,
+  // water and tiles only, whole (no regions), quiet (no progress bar, no map warnings), with no mips and no
+  // coarse grid (T.mips, T.coarse, T.cdims, T.CPU null; T.stats.solid and .zTop null)
+  ME.bakeTerrain = async function (st, pal, o = {}) {
+    const RULES = !!o.rules, progress = RULES ? () => {} : ME.progress;
+    const t0 = ME.now(), VS = o.vs || ME.VS, CT = ME.content || {}, G = gridOf(st, CT, RULES), F = G.frame, jar = F.type === "jar";
     // the jar (Momiji's island): a circle of radius RI round (C, CY), over a strata drum and a wooden plinth
     const C = jar ? F.c[0] : 0, CY = jar ? F.c[1] : 0, RI = jar ? F.r : 0;
     const RG = RI + 0.35, DRUM = F.foot, PL_R = RG + 0.45, PL_ZB = -2.15, PL_ZT = -1.5, ZF = G.floorZ;
@@ -6373,7 +6476,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       const bx0 = ci0 >> 4, bx1 = (ci1 + 15) >> 4, s0 = bx0 * 16, s1 = Math.min(NX, bx1 * 16);
       if (box) pre.fill(0);
       for (let j = cj0; j < cj1; j++) {
-        if (!box && (j & 31) === 0) { ME.progress("terrain columns " + Math.round((j / NY) * 100) + "%", 0.05 + 0.15 * (j / NY)); await ME.tick(); }
+        if (!box && (j & 31) === 0) { progress("terrain columns " + Math.round((j / NY) * 100) + "%", 0.05 + 0.15 * (j / NY)); await ME.tick(); }
         const Y = O[1] + (j + 0.5) / VS;
         if ((j & 15) === 0 || j === cj0) {
           if (!box) band.fill(0);
@@ -6481,7 +6584,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 
       // Moss overhangs: where a column stands 4+ voxels above a neighbour, hang 0-3 voxels over the lip. A cell
       // takes the first lobe in j-major order, so a region (its sources in C, its cells in W) takes the same one
-      if (!box) { ME.progress("moss overhangs", 0.21); await ME.tick(); }
+      if (!box) { progress("moss overhangs", 0.21); await ME.tick(); }
       const W = box && box.W;
       for (let j = Math.max(1, cj0); j < Math.min(NY - 1, cj1); j++) for (let i = Math.max(1, ci0); i < Math.min(NX - 1, ci1); i++) {
         const col = j * NX + i, tk = top[col];
@@ -6502,7 +6605,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       if (box) { grid.clip = W; grid.own = R || [0, 0, 0, 0]; }
       for (const s of stamps) {
         if (box) { stamped += ME.stampModel(s.md || (s.md = ME.modelOf(s.name, s.o)), s.place, grid, pal); continue; }
-        if ((s.n & 7) === 0) { ME.progress("stamping props " + s.n + "/" + deco.length, 0.22 + 0.1 * (s.n / deco.length)); await ME.tick(); }
+        if ((s.n & 7) === 0) { progress("stamping props " + s.n + "/" + deco.length, 0.22 + 0.1 * (s.n / deco.length)); await ME.tick(); }
         stamped += ME.stampModel(ME.modelOf(s.name, s.o), s.place, grid, pal);
       }
       for (let n = 0; n < lampN; n++) {
@@ -6518,10 +6621,11 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // region's mips are the whole bake's there). First the bricks the props and lobes split and left one material
     // fold back. Then one pass over the bricks: the solid count, the top (the highest k with a solid cell among
     // every 7th cell of its plane) and mip0, the occupancy (255 where solid) of each 2x2x2 averaged; a uniform brick
-    // is its size, its top and an 8^3 block of mip0 at once. Then mip1, mip0's 2x2x2 averaged
+    // is its size, its top and an 8^3 block of mip0 at once. Then mip1, mip0's 2x2x2 averaged. The rules' bake
+    // has none
     let solid = 0, kMax = 0;
-    const MX = NX >> 1, MY = NY >> 1, MZ = NZ >> 1, d1 = new Uint8Array(MX * MY * MZ);
-    const LX = MX >> 1, LY = MY >> 1, LZ = MZ >> 1, d2 = new Uint8Array(LX * LY * LZ);
+    const MX = NX >> 1, MY = NY >> 1, MZ = NZ >> 1, d1 = RULES ? null : new Uint8Array(MX * MY * MZ);
+    const LX = MX >> 1, LY = MY >> 1, LZ = MZ >> 1, d2 = RULES ? null : new Uint8Array(LX * LY * LZ);
     const s7 = (j, i0) => i0 + (7 - (j * NX + i0) % 7) % 7; // row j's first 7th cell from i0
     const mips = (G, I0, I1, J0, J1) => {
       G.compact([I0 << 4, J0 << 4, 0], [Math.min(NX, I1 << 4) - 1, Math.min(NY, J1 << 4) - 1, NZ - 1]);
@@ -6567,7 +6671,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // regions: the count, the lamp pre-pass and each region's time (ms: its fill, mips and adoption; mipMs: its
     // mips), kept in T.stats.regions
     let regions = null;
-    if (!ME.regionsOn()) await fill(g, null, lamps.length);
+    if (RULES || !ME.regionsOn(VS)) await fill(g, null, lamps.length);
     else {
       const RT = 4 * VS, NRX = Math.ceil(NX / RT), NRY = Math.ceil(NY / RT), N = NRX * NRY, tl = ME.now();
       const grow = (b, d) => [Math.max(0, b[0] - d), Math.max(0, b[1] - d), Math.min(NX, b[2] + d), Math.min(NY, b[3] + d)];
@@ -6578,7 +6682,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       }
       regions = { n: N, rt: RT, size: [NRX, NRY], lamps: lamps.length, lampMs: Math.round(ME.now() - tl), ms: [], mipMs: [] };
       for (let r = 0; r < N; r++) {
-        ME.progress("terrain region " + (r + 1) + "/" + N, 0.05 + 0.27 * (r / N)); await ME.tick();
+        progress("terrain region " + (r + 1) + "/" + N, 0.05 + 0.27 * (r / N)); await ME.tick();
         const i0 = (r % NRX) * RT, j0 = Math.floor(r / NRX) * RT, R = [i0, j0, Math.min(NX, i0 + RT), Math.min(NY, j0 + RT)], rg = new BrickGrid(NX, NY, NZ), tr = ME.now();
         const I0 = R[0] >> 4, I1 = (R[2] + 15) >> 4, J0 = R[1] >> 4, J1 = (R[3] + 15) >> 4;
         await fill(rg, { C: grow(R, 2), W: grow(R, 1), R }, lamps.length);
@@ -6672,19 +6776,19 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // The density mips over the whole grid (by regions, each region's came with it; mipMs: their time), then the
     // coarse occupancy (about 8 cells per tile at any VS, taller than the voxel grid so the tree canopies fit) that
     // feeds the sun volume.
-    ME.progress("density mips", 0.33); await ME.tick();
+    progress("density mips", 0.33); await ME.tick();
     let mipMs = 0;
     if (regions) mipMs = +regions.mipMs.reduce((s, x) => s + x, 0).toFixed(1);
-    else { const tm = ME.now(); mips(g, 0, g.BX, 0, g.BY); mipMs = +(ME.now() - tm).toFixed(1); }
+    else if (!RULES) { const tm = ME.now(); mips(g, 0, g.BX, 0, g.BY); mipMs = +(ME.now() - tm).toFixed(1); }
     // the coarse grid is 3 tiles taller than the box (13 tiles for a generator map), f voxels a cell
-    const f = ME.coarseStep(VS), CPU = VS / f, QX = NX / f, QY = NY / f, QZ = (B.size[2] + 3) * CPU, coarse = new Uint8Array(QX * QY * QZ);
+    const f = ME.coarseStep(VS), CPU = VS / f, QX = NX / f, QY = NY / f, QZ = (B.size[2] + 3) * CPU, coarse = RULES ? null : new Uint8Array(QX * QY * QZ);
 
     // Beams stand on the tile below their foot point (px3 P.lightAt needs bm.z).
     const beams = (st.light.beams || []).map((b) => Object.assign({}, b, { z: b.z ?? G.z[Math.min(G.H - 1, Math.floor(b.y)) * G.W + Math.min(G.W - 1, Math.floor(b.x))] }));
 
     // Walkable ground: first solid voxel scanning down from zFrom.
 
-    const stats = { dims: [NX, NY, NZ], solid, wetCols, lobes, props: propCount, lanterns: lights.length, stampedVoxels: stamped, water: water.length, falls: falls.length, flooded: G.flood ? water.filter((w) => fullAt(w.x, w.y)).length : 0, edgeBreak: EB ? Object.assign({ cols: ebCols, carved: ebCarved }, LW ? { waved: lwCols } : null) : null, zTop: O[2] + (kMax + 1) / VS, mipMs, ms: Math.round(ME.now() - t0) };
+    const stats = { dims: [NX, NY, NZ], solid: RULES ? null : solid, wetCols, lobes, props: propCount, lanterns: lights.length, stampedVoxels: stamped, water: water.length, falls: falls.length, flooded: G.flood ? water.filter((w) => fullAt(w.x, w.y)).length : 0, edgeBreak: EB ? Object.assign({ cols: ebCols, carved: ebCarved }, LW ? { waved: lwCols } : null) : null, zTop: RULES ? null : O[2] + (kMax + 1) / VS, mipMs, ms: Math.round(ME.now() - t0) };
     if (regions) stats.regions = regions; // regions mode only: the whole path's stats keep their keys
     if (st.area) stats.area = { area: st.area.slice(), box: { o: O.slice(), size: B.size.slice() } }; // a slice's (W0)
     // bounds: the world box in tiles; frame: the map's (jar or box); geo: the jar's measures (null in a box)
@@ -6692,9 +6796,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // tiles: per tile of the map, its top (tiles), its kind's name (null on a generator map) and recipe (null:
     // no ground), and whether it grows grass (what the sim and the grass read instead of the map's letters)
     const tiles = { W: G.W, H: G.H, z: G.z, name: G.names, recipe: G.kinds.map((k) => (k ? k.recipe : null)), grass: Uint8Array.from(G.kinds, (k) => (k && k.grass ? 1 : 0)), wet: wetT, depth: depthT };
-    const T = { O, NX, NY, NZ, VS, grid: g, top, mips: [d1, d2], coarse, cdims: [QX, QY, QZ], CPU, volumes, walkers, water, looks, falls, beams, lights, stats, bounds, frame: F, tiles,
+    const T = { O, NX, NY, NZ, VS, grid: g, top, mips: RULES ? null : [d1, d2], coarse, cdims: RULES ? null : [QX, QY, QZ], CPU: RULES ? null : CPU, volumes, walkers, water, looks, falls, beams, lights, stats, bounds, frame: F, tiles,
       geo: jar ? { C, RI, RG, DRUM, PL_R, PL_ZB, PL_ZT, glassZt: F.glassTop } : null };
-    ME.coarseFill(T, [0, 0, 0], [QX - 1, QY - 1, NZ / f - 1]); // the cells above the voxel grid stay empty
+    if (!RULES) ME.coarseFill(T, [0, 0, 0], [QX - 1, QY - 1, NZ / f - 1]); // the cells above the voxel grid stay empty
     T.groundAt = ME.groundAt(T);
     return T;
   };
@@ -6702,6 +6806,12 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // the bake cache key's code: the bake's helpers and its tables (cache.js)
   ME.bakeTerrain.parts = [ME.validateMap, ME.waterDist, gridOf, propsOf, decoSets, propRole, areaOk, areaBox, inArea, resolve, mottleCut, pave, heights, kindNames, rows, impure, BrickGrid, ...Object.values(RECIPE),
     JSON.stringify({ B36, STEPS, RECIPES, FLAGS, AT, FIXED_BOX })];
+
+  // P2 (R1, docs/designs/2026-11-07-engine-opt-progressive-density.md section 4.9): the terrain the rules read,
+  // map st's at vs16 whatever ME.VS is, with a palette of its own (the app's keeps its ids). It carries VS, O,
+  // NX, NY, NZ, top, grid, tiles, water and groundAt (bakeTerrain's o.rules). It runs on the main thread, as
+  // the load's bake does, until the bake moves to workers (P1c).
+  ME.terrain16 = (st) => ME.bakeTerrain(st, new ME.Palette(st), { vs: 16, rules: true });
 
   // The coarse occupancy (docs/decisions/2026-10-20-sun-volume-density.md): one cell is f voxels on a side,
   // f the largest divisor of VS that keeps VS / f >= 8 cells per tile, and at least 2 (f = 2 up to vs=20,
@@ -8169,6 +8279,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
      part alone keeps it: the terrain record per slot, a record per model per app (the slot's "#models" list
      names the ones its map uses; a model no list names is dropped). tools\bake-rev.ps1 in Mossheart checks
      that a changed bake raised its number.
+   - ME.rulesKey()/getRules()/putRules() (P2, R1): a game's rules record (Mossheart's core/rules.js: the ground
+     and the roads read off the map's vs16 bake, ME.terrain16, whatever the density), in a slot of its own per
+     app and map ("<app>/<map id>#rules/"), so the terrain's writes keep it.
    Any failure (no IndexedDB, quota, clone error) falls back to baking. ?nocache=1 skips it. */
 (function () {
   const ME = window.ME, DB = "mossheart", STORE = "bake";
@@ -8374,6 +8487,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   const off = () => !!ME.qn("nocache", 0) || !window.indexedDB;
   const keyHash = (s) => fnv(s) + fnv("|" + s) + s.length.toString(36);
   const MODELS = "~models/", REFS = "#models";
+  // a map's rules slot, next to its slot ("<app>/<map id>/" -> "<app>/<map id>#rules/"; an id is URI-encoded, so
+  // no map's own id ends in "#rules")
+  const RULES = "#rules/", rulesSlot = (slot) => slot.slice(0, -1) + RULES;
   const appOf = (o) => encodeURIComponent(o.app ?? pageApp()) + "/";
   // the parts waiting for flush: the terrain record ([key, snapshot]) and the model records ([key, packed copy]);
   // a model's answer kept after the flush is written at once (chain: one write at a time). wanted: every model key
@@ -8470,10 +8586,11 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           } catch (e) {
             ME.log("WARN bake cache write failed:", e && e.message);
             noteWrite(key, "failed " + name(e));
-            // the store is full: drop every other app's and map's records but this app's models, for the next launch
+            // the store is full: drop every other app's and map's records but this app's models and this map's
+            // rules, for the next launch
             if (e && e.name === "QuotaExceededError") try {
               const tx = (await db()).transaction(STORE, "readwrite"), s = tx.objectStore(STORE), g = s.getAllKeys();
-              g.onsuccess = () => { for (const k of g.result) if (typeof k !== "string" || (slotOf(k) !== slot && !k.startsWith(app + MODELS))) s.delete(k); };
+              g.onsuccess = () => { for (const k of g.result) if (typeof k !== "string" || (slotOf(k) !== slot && slotOf(k) !== rulesSlot(slot) && !k.startsWith(app + MODELS))) s.delete(k); };
               ME.bakeCache.evicted = true;
             } catch (_) {}
           }
@@ -8573,16 +8690,36 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       } catch (e) {
         ME.log("WARN bake cache write failed:", e && e.message);
         noteWrite(key, "failed " + name(e));
-        // the store is full (one record per app and map adds up): drop every other slot, so the next launch's
-        // put fits. Not retried now: the record has changed since the call (see above)
+        // the store is full (one record per app and map adds up): drop every other slot but this map's rules, so
+        // the next launch's put fits. Not retried now: the record has changed since the call (see above)
         if (e && e.name === "QuotaExceededError") {
           try {
             const db = held || (await open()), tx = db.transaction(STORE, "readwrite"), s = tx.objectStore(STORE), g = s.getAllKeys();
-            g.onsuccess = () => { for (const k of g.result) if (typeof k !== "string" || slotOf(k) !== slot) s.delete(k); };
+            g.onsuccess = () => { for (const k of g.result) if (typeof k !== "string" || (slotOf(k) !== slot && slotOf(k) !== rulesSlot(slot))) s.delete(k); };
             ME.bakeCache.evicted = true;
           } catch (_) {}
         }
       }
+    },
+    // P2 (R1): a map's rules record (key: ME.rulesKey). getRules gives it, or null (the cache off, no record, a
+    // failed read); putRules stores it in place of the rules slot's other records (an older salt or revision). The
+    // record is small (plain arrays by tile and road), so neither packs it. Neither throws, nor changes status (the
+    // terrain's)
+    async getRules(key) {
+      if (off()) return null;
+      try { return (await req((await db()).transaction(STORE).objectStore(STORE).get(key))) || null; }
+      catch (e) { ME.log("WARN bake cache: rules read failed:", e && e.message); return null; }
+    },
+    async putRules(key, rec) {
+      if (off()) return;
+      const slot = slotOf(key);
+      try {
+        const tx = (await db()).transaction(STORE, "readwrite"), s = tx.objectStore(STORE);
+        s.put(rec, key);
+        const g = s.getAllKeys();
+        g.onsuccess = () => { for (const k of g.result) if (k !== key && typeof k === "string" && slotOf(k) === slot) s.delete(k); };
+        await done(tx);
+      } catch (e) { ME.log("WARN bake cache: rules write failed:", e && e.message); }
     },
     // the stored keys (for checks and tools)
     async keys() {
@@ -8592,6 +8729,14 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         return await new Promise((res, rej) => { const r = db.transaction(STORE).objectStore(STORE).getAllKeys(); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
       } catch (e) { return []; }
     },
+  };
+  // the rules record's key (P2, R1): the map's content as terrainKey takes it, BAKE_REV.terrain, the code of the
+  // engine's roads (ME.roadOn.parts: the record keeps the roads ME.roadOn builds) and the salt (what else the record
+  // depends on: the game's rules code and revision, its routes), at vs16 whatever ME.VS is, in the map's rules
+  // slot. o.app as in key()
+  ME.rulesKey = (st, salt = "", o = {}) => {
+    const { slot, own, lists } = inputOf(st, "", o), roads = ((ME.roadOn && ME.roadOn.parts) || []).map(String).join("|");
+    return `${rulesSlot(slot)}r16:T${ME.BAKE_REV.terrain}:${keyHash(assetSrc(own) + own + lists + "|" + roads + "|" + salt)}`;
   };
 })();
 
@@ -8620,6 +8765,44 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       while (x !== x1 || y !== y1) { if (x !== x1) x += Math.sign(x1 - x); else y += Math.sign(y1 - y); out.push([x, y]); }
     }
     return out;
+  };
+
+  // A road from a route (a polyline of tile corners) on terrain T: { cells, route, len, at(s, o) }.
+  // cells: its tiles in walking order; route: the ground line at voxel spacing, smoothed; len: its length in
+  // tiles; at(s, o): the point s tiles along it, as sim.at. It reads the terrain (T.VS, T.tiles, T.groundAt)
+  // and changes nothing. sim.road on the sim's terrain; ME.roadOn on any (the rules' vs16 bake: ME.terrain16).
+  const roadOf = (T, route) => {
+    const VS = T.VS, cells = route && route.length ? cellsOf(route) : [];
+    const TL = T.tiles, tz = (c) => TL.z[c[1] * TL.W + c[0]], isW = (c) => TL.recipe[c[1] * TL.W + c[0]] === "water" || (TL.wet && TL.wet[c[1] * TL.W + c[0]] === 1);
+    // nominal height per cell; water cells take the higher bank around their crossing plus the bridge rise
+    const zc = cells.map((c, i) => {
+      if (!isW(c)) return tz(c);
+      let a = i, b = i;
+      while (a > 0 && isW(cells[a])) a--;
+      while (b < cells.length - 1 && isW(cells[b])) b++;
+      return Math.max(tz(cells[a]), tz(cells[b])) + 0.45;
+    });
+    // dense polyline at voxel spacing, ground from the voxel grid, then smoothed
+    const pts = [];
+    for (let i = 0; i + 1 < cells.length; i++) {
+      const [x0, y0] = cells[i], [x1, y1] = cells[i + 1], n = VS;
+      for (let s = 0; s < n; s++) {
+        const u = s / n, X = x0 + 0.5 + (x1 - x0) * u, Y = y0 + 0.5 + (y1 - y0) * u;
+        pts.push([X, Y, T.groundAt(X, Y, Math.max(zc[i], zc[i + 1]) + 0.6)]);
+      }
+    }
+    const last = cells[cells.length - 1];
+    if (last) pts.push([last[0] + 0.5, last[1] + 0.5, T.groundAt(last[0] + 0.5, last[1] + 0.5, zc[zc.length - 1] + 0.6)]);
+    const sz = pts.map((_, i) => { let s = 0, w = 0; for (let k = -5; k <= 5; k++) { const p = pts[Math.min(pts.length - 1, Math.max(0, i + k))]; s += p[2]; w++; } return s / w; });
+    // never sink below the raw ground (stair noses)
+    const line = pts.map((p, i) => [p[0], p[1], Math.max(p[2], sz[i])]);
+    // the road at arc length s: [x, y, z, dx, dy], into o if given (no allocation)
+    const at = (s, o = [0, 0, 0, 0, 0]) => {
+      const f = Math.max(0, Math.min(line.length - 1.001, s * VS)), i = Math.floor(f), u = f - i, a = line[i], b = line[i + 1];
+      o[0] = a[0] + (b[0] - a[0]) * u; o[1] = a[1] + (b[1] - a[1]) * u; o[2] = a[2] + (b[2] - a[2]) * u; o[3] = b[0] - a[0]; o[4] = b[1] - a[1];
+      return o;
+    };
+    return { cells, route: line, len: Math.max(0, line.length - 1) / VS, at };
   };
 
   class Sim {
@@ -8656,42 +8839,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       this.mx = { R: new Float64Array(9), P: new Float64Array(9), F: new Float64Array(9), S: new Float64Array(9), H: new Float64Array(9), A: new Float64Array(9), B: new Float64Array(9), C: new Float64Array(9), L: new Float64Array(9) };
       this.sh2 = [0, 0]; this.sc3 = [0, 0, 0]; this.at5 = [0, 0, 0, 0, 0]; this.dirty = [0, 0];
     }
-    // A road from a route (a polyline of tile corners) on this sim's terrain: { cells, route, len, at(s, o) }.
-    // cells: its tiles in walking order; route: the ground line at voxel spacing, smoothed; len: its length in
-    // tiles; at(s, o): the point s tiles along it, as sim.at. It reads the terrain and changes nothing.
-    road(route) {
-      const T = this.T, VS = this.VS, cells = route && route.length ? cellsOf(route) : [];
-      const TL = T.tiles, tz = (c) => TL.z[c[1] * TL.W + c[0]], isW = (c) => TL.recipe[c[1] * TL.W + c[0]] === "water" || (TL.wet && TL.wet[c[1] * TL.W + c[0]] === 1);
-      // nominal height per cell; water cells take the higher bank around their crossing plus the bridge rise
-      const zc = cells.map((c, i) => {
-        if (!isW(c)) return tz(c);
-        let a = i, b = i;
-        while (a > 0 && isW(cells[a])) a--;
-        while (b < cells.length - 1 && isW(cells[b])) b++;
-        return Math.max(tz(cells[a]), tz(cells[b])) + 0.45;
-      });
-      // dense polyline at voxel spacing, ground from the voxel grid, then smoothed
-      const pts = [];
-      for (let i = 0; i + 1 < cells.length; i++) {
-        const [x0, y0] = cells[i], [x1, y1] = cells[i + 1], n = VS;
-        for (let s = 0; s < n; s++) {
-          const u = s / n, X = x0 + 0.5 + (x1 - x0) * u, Y = y0 + 0.5 + (y1 - y0) * u;
-          pts.push([X, Y, T.groundAt(X, Y, Math.max(zc[i], zc[i + 1]) + 0.6)]);
-        }
-      }
-      const last = cells[cells.length - 1];
-      if (last) pts.push([last[0] + 0.5, last[1] + 0.5, T.groundAt(last[0] + 0.5, last[1] + 0.5, zc[zc.length - 1] + 0.6)]);
-      const sz = pts.map((_, i) => { let s = 0, w = 0; for (let k = -5; k <= 5; k++) { const p = pts[Math.min(pts.length - 1, Math.max(0, i + k))]; s += p[2]; w++; } return s / w; });
-      // never sink below the raw ground (stair noses)
-      const line = pts.map((p, i) => [p[0], p[1], Math.max(p[2], sz[i])]);
-      // the road at arc length s: [x, y, z, dx, dy], into o if given (no allocation)
-      const at = (s, o = [0, 0, 0, 0, 0]) => {
-        const f = Math.max(0, Math.min(line.length - 1.001, s * VS)), i = Math.floor(f), u = f - i, a = line[i], b = line[i + 1];
-        o[0] = a[0] + (b[0] - a[0]) * u; o[1] = a[1] + (b[1] - a[1]) * u; o[2] = a[2] + (b[2] - a[2]) * u; o[3] = b[0] - a[0]; o[4] = b[1] - a[1];
-        return o;
-      };
-      return { cells, route: line, len: Math.max(0, line.length - 1) / VS, at };
-    }
+    // A road from a route on this sim's terrain (roadOf)
+    road(route) { return roadOf(this.T, route); }
     // demo walkers, cycling through the content's walker kinds (ME.content.walkers)
     setCount(n) {
       n = Math.max(0, Math.min(500, n | 0));
@@ -8864,6 +9013,10 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     }
   }
   ME.Sim = Sim;
+  ME.roadOn = roadOf;
+  // the code a road comes from, for the rules key (cache.js: ME.rulesKey hashes it, so a cached rules record's
+  // roads follow any change to it)
+  ME.roadOn.parts = [roadOf, cellsOf, ME.groundAt, ME.BrickGrid && ME.BrickGrid.prototype.down];
   ME.INST_FLOATS = INST_FLOATS;
 })();
 
@@ -17944,7 +18097,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.88.0", name: "Mossheart", commit: "d845aca" };
+  G.VERSION = { v: "0.89.0", name: "Mossheart", commit: "87bdae8" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -24161,6 +24314,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const NARROW = window.matchMedia("(max-width: 760px)");
   // the inspector's buttons wait GRACE_MS after it opens on a plant; Uproot's first tap asks for ARM_MS
   const GRACE_MS = 450, ARM_MS = 3000;
+  // (HUD A: a toast stays TOAST_MS; the first wave's hint HINT_MS from the run's start)
+  const TOAST_MS = 3000, HINT_MS = 10000;
   // the dew bank's rate tiers (dew a second, State.gained; each gain adds amount / DEW_TAU): one kill's dew
   // (about 6) makes tier 1, a few kills together or a wave's clearing bonus (about 11/s) tier 2, a pile-up or
   // a boon's dew tier 3. Its pulse grows by DEW_PULSE per tier, and it sprays up to SPRAY droplets
@@ -24230,17 +24385,20 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       // the almanac: folded unless the player left it open
       try { this.almOpen = !!JSON.parse(localStorage.getItem(HUD_KEY) || "{}").almanac; } catch (e) { this.almOpen = false; }
       this.almSummary = "";
-      $("almtog").addEventListener("click", () => {
+      // (its fold, or the wave count up top: HUD A's way in to it on a phone)
+      const almToggle = () => {
         // (folded only for the inspector: a tap opens it over the inspector, as asked)
         if (this.almFolded()) { this.almOver = true; this.showAlmanac(); return; }
         this.almOpen = !this.almOpen; this.showAlmanac();
         try { localStorage.setItem(HUD_KEY, JSON.stringify({ almanac: this.almOpen })); } catch (e) { /* storage blocked */ }
-      });
+      };
+      $("almtog").addEventListener("click", almToggle);
+      $("wave").addEventListener("click", almToggle);
       this.showAlmanac();
       NARROW.addEventListener("change", () => this.showAlmanac());
       // easy close (dismiss.js): the almanac on a phone closes on a tap outside it; the card by its ✕ or a swipe
       // down (not by a tap outside: a meadow tap places or picks); the gifts and the run's end minimise to a tab
-      G.Dismiss.add($("almanac"), { outside: true, dir: "any", open: () => NARROW.matches && this.almOpen && !this.almFolded(), skip: (t) => !!t.closest("#almtog"),
+      G.Dismiss.add($("almanac"), { outside: true, dir: "any", open: () => NARROW.matches && this.almOpen && !this.almFolded(), skip: (t) => !!t.closest("#almtog, #wave"),
         close: () => { if (this.almOver) this.almOver = false; else { this.almOpen = false; try { localStorage.setItem(HUD_KEY, JSON.stringify({ almanac: false })); } catch (e) { /* storage blocked */ } } this.showAlmanac(); } });
       G.Dismiss.add($("inspector"), { close: () => this.act.closeCard() });
       G.Dismiss.add($("boons"), { veil: true, panel: $("boons").querySelector(".col"), hit: ".boon", dir: "any", tab: "Choose a gift" });
@@ -24294,15 +24452,18 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         this.graftArmed = null; this.game.graft(t, p.other);
         if (this.inspected === t) this.inspect(t);
       });
-      // (Rites, while a wave runs: the button opens a tile per rite on the card, Defs.RITES; a tile performs
-      // it, and the button, then "Back", shuts them; the tiles' prices and greying follow the dew, refresh)
+      // (Rites, while a wave runs: the tray's ✦ chip opens their panel, a tile per rite (Defs.RITES), in place of
+      // the seed row on a phone and in the left margin on a desktop; a tile performs it and shuts the panel, as
+      // do ✕ and the chip again; the tiles' prices and greying follow the dew, refresh)
+      const riteTile = (r) => `<button class="fork" data-rite="${r.id}" style="--acc:${G.css(r.color)}"><b>${esc(r.name)}</b><span>${esc(r.desc)}</span><small></small></button>`;
+      $("ritebody").innerHTML = `<div class="forks rites">${D.RITES.map(riteTile).join("")}</div>`;
       this.riting = false;
-      $("rites").addEventListener("click", () => { if (!settled() || !this.inspected) return; this.riting = !this.riting; this.inspect(this.inspected); });
-      $("inspector").addEventListener("click", (e) => {
-        const b = e.target.closest("[data-rite]"), t = this.inspected;
-        if (!b || b.disabled || !t || !settled()) return;
-        this.riting = false; this.game.rite(b.dataset.rite);
-        if (this.inspected === t) this.inspect(t);
+      $("rites").addEventListener("click", () => this.rites(!this.riting));
+      $("riteclose").addEventListener("click", () => this.rites(false));
+      $("ritebody").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-rite]");
+        if (!b || b.disabled) return;
+        this.game.rite(b.dataset.rite); this.rites(false);
       });
       $("uproot").addEventListener("click", () => {
         if (!settled() || !this.inspected) return;
@@ -24328,11 +24489,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (e.settled) {
           this.chalDone = e.chal; clearTimeout(this.chalT);
           this.chalT = setTimeout(() => { this.chalDone = null; this.chalPill(); }, 2600);
-          if (e.chal.state === "met") {
-            const t = $("toast");
-            t.textContent = `Challenge met: +${fmtDew(e.chal.pay)} dew`;
-            t.classList.add("show"); clearTimeout(this.toastT); this.toastT = setTimeout(() => t.classList.remove("show"), 2200);
-          }
+          if (e.chal.state === "met") this.toast(`Challenge met: +${fmtDew(e.chal.pay)} dew`);
         }
         this.chalPill();
       });
@@ -24369,7 +24526,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("dewn").animate([{ transform: "none" }, { transform: `translateY(${-2 * t}px) scale(${kn.toFixed(3)})`, offset: 0.3 }, { transform: "none" }], { duration: [220, 280, 360, 440][t], easing: "ease-out" });
       // (the bar's water: it swells up and flashes, more as the dew comes faster)
       const sw = 1 + [0.02, 0.04, 0.07, 0.11][t];
-      $("dewbar").querySelector(".fill").animate([{ transform: "none", filter: "none" }, { transform: `scale(${(1 + (sw - 1) * 3).toFixed(3)}, ${sw.toFixed(3)})`, filter: `brightness(${(1.15 + 0.15 * t).toFixed(2)})`, offset: 0.3 }, { transform: "none", filter: "none" }],
+      $("dewbar").querySelector(".fill").animate([{ transform: "none", filter: "none" }, { transform: `scale(${sw.toFixed(3)}, ${(1 + (sw - 1) * 3).toFixed(3)})`, filter: `brightness(${(1.15 + 0.15 * t).toFixed(2)})`, offset: 0.3 }, { transform: "none", filter: "none" }],
         { duration: [240, 300, 400, 500][t], easing: "ease-out" });
       if (t >= 2 && now - this.sprayAt > 220) { this.sprayAt = now; this.dewSpray(t === 3 ? 6 : 3); }
     }
@@ -24415,17 +24572,21 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("uproot").classList.toggle("armed", armed);
     }
     clearSeed() { this.selected = ""; this.refresh(); }
+    // a toast: one line under the top strip, gone after TOAST_MS
+    toast(s) {
+      const t = $("toast");
+      t.textContent = s;
+      t.classList.add("show"); clearTimeout(this.toastT); this.toastT = setTimeout(() => t.classList.remove("show"), TOAST_MS);
+    }
     // a seed too dear (a pick or a tap where it could go, main.js): the seed's card says so (its "Need N more
     // dew" line nudges), or without the card a toast with the dew it needs and has; the counter shakes
     short(kind) {
       const cost = S.towerCost(D.TOWERS[kind].cost, kind), t = $("toast"), d = $("dew");
       this.seedInfo();
-      const line = this.selected === kind && this.showing("seedinfo") && $("inspbody").querySelector(".tips .short");
+      // (a phone hides the seed's card behind its one-line caption: the toast says it there)
+      const line = this.selected === kind && this.showing("seedinfo") && !NARROW.matches && $("inspbody").querySelector(".tips .short");
       if (line) line.animate([{ transform: "none" }, { transform: "translateX(-4px)" }, { transform: "translateX(4px)" }, { transform: "none" }], { duration: 320, easing: "ease-out" });
-      else {
-        t.textContent = `Need ${fmtDew(cost)} dew (you have ${fmtDew(S.dew)})`;
-        t.classList.add("show"); clearTimeout(this.toastT); this.toastT = setTimeout(() => t.classList.remove("show"), 1800);
-      }
+      else this.toast(`Need ${fmtDew(cost)} dew (you have ${fmtDew(S.dew)})`);
       d.classList.remove("short"); void d.offsetWidth; d.classList.add("short"); // (restarts the shake)
     }
     // On a phone the open almanac folds while a plant is inspected (the two would overlap) and opens again
@@ -24601,9 +24762,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const box = $("inspector");
       if (this.forking && (this.forking !== t || !this.forkable(t))) this.forking = null;
       if (!t) {
-        box.classList.remove("show", "anchored"); this.inspected = null; this.foe = null; this.gift = ""; this.riting = false;
+        box.classList.remove("show", "anchored"); this.inspected = null; this.foe = null; this.gift = "";
         this.arm(null); this.almOver = false; this.showAlmanac(); this.seedInfo(); return;
       }
+      // (a phone's tray has room for one: the plant's card shuts the Rites)
+      if (this.riting && NARROW.matches) this.rites(false);
       if (t !== this.inspected || !this.showing("tower")) { this.openedAt = performance.now(); this.arm(null); }
       this.seedKey = ""; this.foe = null; this.gift = "";
       const def = D.TOWERS[t.kind];
@@ -24642,28 +24805,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, `${ROMAN[t.level]} ▸ ${ROMAN[t.level + 1]}`, "step"), [],
           [`<div class="forks">${tile("a")}${tile("b")}</div>`, `<span class="dim">${can ? `Choose a branch: ${cost} dew, for good` : "Not enough dew"}</span>`], "");
         label($("grow"), "Back"); $("grow").disabled = false;
-        $("deepen").style.display = "none"; $("grafts").innerHTML = ""; $("rites").style.display = "none";
+        $("deepen").style.display = "none"; $("grafts").innerHTML = "";
         this.uprootLabel(t);
         box.classList.add("show"); this.showAlmanac();
         return;
       }
       $("grow").style.display = $("uproot").style.display = "";
-      if (this.riting && S.phase !== G.Phase.WAVE) this.riting = false;
-      if (this.riting) {
-        // the rites: a tile for each (its name, what it does, its price now), in its colour; Rites, now "Back",
-        // shuts them (the card's other buttons wait)
-        const tile = (r) => `<button class="fork" data-rite="${r.id}" style="--acc:${G.css(r.color)}"><b>${esc(r.name)}</b><span>${esc(r.desc)}</span><small></small></button>`;
-        this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, "Rites"), [],
-          [`<div class="forks rites">${D.RITES.map(tile).join("")}</div>`, `<span class="dim">Once each, on the whole garden; dearer each time this run</span>`], "");
-        $("grow").style.display = $("uproot").style.display = $("deepen").style.display = "none"; $("grafts").innerHTML = "";
-        label($("rites"), "Back"); $("rites").style.display = "";
-        this.riteTiles();
-        box.classList.add("show"); this.showAlmanac();
-        return;
-      }
-      // (Rites: the button, while a wave runs, with the cheapest price)
-      $("rites").style.display = S.phase === G.Phase.WAVE ? "" : "none";
-      if (S.phase === G.Phase.WAVE) this.riteLabel();
       this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, `Lv ${ROMAN[t.level]}`),
         [["Damage", t.damage().toFixed(0)], ["Reach", t.range().toFixed(1)], ["Rate", `${t.rate().toFixed(2)}/s`], ["Aims", AIMS[t.kind] || "nearest"]],
         tips, `${now}${next}${links ? "<br>" + links : ""}${zone ? "<br>" + zone : ""}<br>Aims at ${esc(TARGETS[t.kind] || "the creature nearest the Heart Tree")}<br><span class="dim">${esc(this.matchupsOf(t.kind))}</span>`);
@@ -24691,12 +24838,21 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // the Rites button's cheapest price, which rises with the wave (one called early starts while the card
     // stays up) and with each rite cast (in place, only when it changed)
     riteLabel() {
-      const txt = `Rites ▸  (from ${Math.min(...D.RITES.map((r) => this.game.riteCost(r.id)))} dew)`;
-      if ($("rites").querySelector(".lb").textContent !== txt) label($("rites"), txt);
+      const txt = `${Math.min(...D.RITES.map((r) => this.game.riteCost(r.id)))}+`, sm = $("rites").querySelector("small");
+      if (sm.textContent !== txt) sm.textContent = txt;
+    }
+    // the Rites panel opened or shut (only while a wave runs); on a phone it takes the tray row's place, and a
+    // card there shuts
+    rites(on) {
+      on = !!on && S.phase === G.Phase.WAVE;
+      this.riting = on;
+      $("ritepanel").classList.toggle("show", on);
+      document.body.classList.toggle("rites-open", on);
+      if (on) { if (NARROW.matches && (this.inspected || this.foe || this.gift)) this.act.closeCard(); this.riteTiles(); }
     }
     // the rite tiles' prices and greying, as the dew stands (in place, so a tap mid-press still lands)
     riteTiles() {
-      for (const b of $("inspbody").querySelectorAll("[data-rite]")) {
+      for (const b of $("ritebody").querySelectorAll("[data-rite]")) {
         const id = b.dataset.rite, why = this.game.riteBlocked(id), txt = why || `${this.game.riteCost(id)} dew`;
         b.disabled = !!why;
         if (b.lastChild.textContent !== txt) b.lastChild.textContent = txt;
@@ -24710,6 +24866,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     seedInfo() {
       const box = $("inspector"), kind = this.selected;
       const on = !!kind && !this.inspected && !this.foe && !this.gift && (S.phase === G.Phase.BUILD || S.phase === G.Phase.WAVE);
+      // (a phone shows the seed in hand as one line over the raised chip, #seedcap, in place of its card)
+      document.body.classList.toggle("seed-picked", on);
+      if (on) {
+        const c = S.towerCost(D.TOWERS[kind].cost, kind), lack = c - S.dew;
+        setText($("seedcap"), lack > 0 ? `${D.TOWERS[kind].name} · need ${fmtDew(lack)} more dew`
+          : `${D.TOWERS[kind].name} · ${fmtDew(c)} dew · ${TOUCH.matches ? "tap a spot, tap again to plant" : "click a spot to plant"}`);
+      }
       if (!on) {
         if (box.classList.contains("seedinfo")) { box.classList.remove("show", "seedinfo", "anchored"); this.seedKey = ""; this.showAlmanac(); }
         return;
@@ -24771,39 +24934,25 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
 
     // Each frame (main.js, after the ghost's tag): a creature's card follows its HP and shuts when it is gone;
-    // the creatures' trait tags sit beside their HP bars; and on a desktop the card stands beside what it
-    // tells of (the plant, the creature, or the ghost under the mouse: `cell`), on the side away from the
-    // screen's middle, clear of the HUD. (A phone docks it above the seeds: game.css.)
-    frame(cam, canvas, cell) {
-      const E = this.game.enemies, box = $("inspector"), f = this.foe;
+    // the creatures' trait tags sit beside their HP bars. (The card no longer floats over the garden, HUD A: a
+    // phone opens it in the tray, a desktop docks it in the right margin: game.css.)
+    frame(cam, canvas) {
+      const E = this.game.enemies, f = this.foe;
       if (f && f.i >= 0) {
         if (!E.isValid(f.i, f.uid)) this.closeCard();
         else { const s = this.foeHp(f.i); if (this.foeFig && this.foeFig.textContent !== s) this.foeFig.textContent = s; }
       }
       const dpr = canvas.width / Math.max(1, canvas.clientWidth), scr = (p) => { const q = cam.toScreen(p, canvas.width, canvas.height); return [q[0] / dpr, q[1] / dpr]; };
       this.foeTags(E, scr);
-      let at = null;
-      if (box.classList.contains("show") && !NARROW.matches && !TOUCH.matches) {
-        if (box.classList.contains("tower") && this.inspected) at = this.inspected.origin();
-        else if (this.foe && this.foe.i >= 0) at = E.centre(this.foe.i);
-        else if (box.classList.contains("seedinfo") && cell && this.game.world.inside(cell[0], cell[1])) at = this.game.world.viewCentre(cell[0], cell[1]);
-      }
-      if (!at) { if (box.classList.contains("anchored")) { box.classList.remove("anchored"); box.style.left = box.style.top = ""; } return; }
-      // (in screen px: a UI scale zooms the card, so its size is its rect and its left and top are set unzoomed, G.uiScale)
-      const br = box.getBoundingClientRect(), [ax, ay] = scr(at), w = br.width, h = br.height, W = innerWidth, GAP = 40, k = G.uiScale || 1;
-      let low = innerHeight - 8, high = 8, right = W - 8;
-      for (const id of ["seeds", "wavebtn"]) { const e = $(id); if (e && e.offsetWidth) low = Math.min(low, e.getBoundingClientRect().top - 8); }
-      for (const id of ["top", "topright"]) { const e = $(id); if (e && e.offsetWidth) high = Math.max(high, e.getBoundingClientRect().bottom + 8); }
-      const bar = $("dewgauge"); if (bar && bar.offsetWidth) right = Math.min(right, bar.getBoundingClientRect().left - 8);
-      // (away from the middle; the other side if it does not fit there)
-      let x = ax < W / 2 ? ax - GAP - w : ax + GAP;
-      if (x < 8 || x + w > right) x = ax < W / 2 ? ax + GAP : ax - GAP - w;
-      x = Math.max(8, Math.min(x, right - w));
-      const y = Math.max(high, Math.min(ay - h / 2, low - h));
-      box.classList.add("anchored");
-      const l = `${(x / k).toFixed(0)}px`, tp = `${(y / k).toFixed(0)}px`;
-      if (box.style.left !== l) box.style.left = l;
-      if (box.style.top !== tp) box.style.top = tp;
+    }
+    // The garden's room (CSS px): the screen less the top strip, the tray, and on a desktop the margins the
+    // plant card and the Rites dock in. main.js fits the dome into it, so the HUD never covers the garden.
+    freeRect() {
+      let top = 0, bottom = innerHeight, left = 0, right = innerWidth;
+      for (const id of ["top", "topright"]) { const e = $(id); if (e && e.offsetWidth) top = Math.max(top, e.getBoundingClientRect().bottom); }
+      const tr = $("tray"); if (tr && tr.offsetWidth) bottom = Math.min(bottom, tr.getBoundingClientRect().top);
+      if (!NARROW.matches) { const m = Math.min(280, 0.17 * innerWidth); left = m; right = innerWidth - m; }
+      return { x: left, y: top, w: Math.max(1, right - left), h: Math.max(1, bottom - top) };
     }
     // trait tags (★ ◆ » ˄ ✚ ⋔ ▾ ↻) beside the HP bars of the hurt creatures and of the one on the card,
     // nearest the Heart Tree first, at most TAGS: pooled divs in #floats, the glyphs made once per kind
@@ -24942,7 +25091,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.dewTo = S.dew;
       if (this.dewGain && S.dew > this.dewShown) this.dewRun(); else { this.dewShown = S.dew; setText($("dewn"), fmtDew(S.dew)); }
       this.dewGain = false;
-      setText($("wave"), `Wave ${S.wave}`);
+      setText($("wave"), `Wave ${S.wave} ▾`);
       for (const kind in this.cards) {
         const b = this.cards[kind], cost = S.towerCost(D.TOWERS[kind].cost, kind), m = this.matchup[kind] || 0;
         setText(b.querySelector(".cost"), `${cost} dew`);
@@ -24962,16 +25111,18 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("wavebtn").classList.toggle("early", waving);
       setHtml($("wavebtn").querySelector(".lb"), early ? `Next wave <small>+${this.game.earlyBonus()} dew</small>`
         : waving ? `Next wave <small>${this.game.earlyBlocked()}</small>` : `Begin Wave ${S.wave + 1}`);
-      $("hint").style.display = S.wave === 0 && building && !this.selected ? "" : "none"; // (a picked seed's info says what to do)
+      // (a picked seed's info says what to do; the hint itself goes HINT_MS after it first shows)
+      let hint = S.wave === 0 && building && !this.selected;
+      if (hint && !this.hintAt) { this.hintAt = performance.now(); setTimeout(() => this.refresh(), HINT_MS + 50); }
+      if (hint && performance.now() - this.hintAt > HINT_MS) hint = false;
+      $("hint").style.display = hint ? "" : "none";
       if (S.phase === G.Phase.GAME_OVER && $("inspector").classList.contains("show")) this.inspect(null);
-      // (a plant's card as a wave starts or ends: its Rites come or go; the rite tiles follow the dew, the
-      // button's price the wave)
-      else if (this.inspected && this.showing("tower") && !this.forking) {
-        const wave = S.phase === G.Phase.WAVE;
-        if (this.riting && wave) this.riteTiles();
-        else if (this.riting || ($("rites").style.display !== "none") !== wave) this.inspect(this.inspected);
-        else if (wave) this.riteLabel();
-      }
+      // (the Rites chip while a wave runs, its price on it; the open panel's tiles follow the dew, and it shuts
+      // as the wave ends)
+      const wave = S.phase === G.Phase.WAVE;
+      $("rites").style.display = wave ? "" : "none";
+      if (wave) this.riteLabel();
+      if (this.riting) { if (!wave) this.rites(false); else this.riteTiles(); }
       this.seedInfo();
       this.boonBar();
       this.chalPill();
@@ -26119,11 +26270,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         <div id="jars" class="veil menu void" tabindex="-1" aria-label="Choose a terrarium"></div>
         <div id="pause" class="veil menu"><div class="panel card">
           <h2>Paused</h2>
+          <div id="pquick"></div>
           <button class="btn pink big" data-a="resume">Resume</button>
           <button class="btn big" data-a="settings">Settings</button>
           <button class="btn big" data-a="howto">How to play</button>
           <button class="btn big" data-a="restart">Plant anew</button>
           <button class="btn big" data-a="title">Main menu</button>
+          <div id="pdebug" class="dim"></div>
         </div></div>
         <div id="settings" class="veil menu"><div class="panel card wide"><h2>Settings</h2><div id="setbody" class="cscroll"></div>
           <button class="btn pink big" data-a="back">Done</button></div></div>
@@ -26137,6 +26290,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       ME.keys.onChange(() => { root.querySelector(".howto").innerHTML = HOWTO(); });
       root.addEventListener("click", (e) => { const b = e.target.closest("[data-a]"); if (b) this.action(b.dataset.a); });
       $("pausebtn").addEventListener("click", () => this.show("pause"));
+      // (HUD A: the weather, sound and music buttons live in the pause card, off the play screen; the weather
+      // button closes the card to show its panel over the garden)
+      $("pquick").append($("skybtn"), $("sound"), $("musicbtn"));
+      $("skybtn").addEventListener("click", () => { if (this.open === "pause") this.action("resume"); });
       // easy close (dismiss.js): a tap on the backdrop, the ✕ or a swipe resumes or steps back (not the title or the jars)
       for (const id of ["pause", "settings", "howto", "board"]) G.Dismiss.add($(id), { veil: true, panel: $(id).querySelector(".card"), dir: "any", close: () => this.action(id === "pause" ? "resume" : "back") });
       // menus hold the game's keys back; Esc opens the pause menu or steps back out of a menu
@@ -26174,6 +26331,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       for (const b of document.querySelectorAll("#menus [data-a=\"board\"]")) b.style.display = lb ? "" : "none";
       if (name === "board") G.Leaderboard.board($("lbbody")); // (All first, then the tab last picked)
       if (name === "settings") this.renderSettings();
+      // (the pause card's debug line: the fps and the build, which the play screen no longer shows on a phone)
+      if (name === "pause") $("pdebug").textContent = [$("fpsn").textContent, G.VERSION ? G.VERSION.name + " " + G.VERSION.label : ""].filter(Boolean).join(" · ");
       if (name === "jars") this.terr.open(); else this.terr.close();
       if (name === "title") {
         // Continue: the run played last, with its garden and wave, "off the board" if a wave of it was skipped
@@ -26400,7 +26559,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const STEPS = [
     { id: "seed", text: "Tap a seed below to pick a plant.", spot: "seeds", done: (t) => !!t.app.hud.selected || t.app.game.towers.length > 0 },
     { id: "plant", text: "Now tap the moss beside the path: the ring shows its reach. Tap the same spot again to plant it. It fires on its own at creatures in reach.", spot: null, done: (t) => t.app.game.towers.length > 0 },
-    { id: "almanac", text: "The Almanac shows what the next wave brings and what each creature is weak to. Open it.", spot: "almtog", ok: true, done: (t) => t.app.hud.almOpen },
+    { id: "almanac", text: "Tap the wave count up top to open the Almanac. It shows what the next wave brings and what each creature is weak to.", spot: "wave", ok: true, done: (t) => t.app.hud.almOpen },
     { id: "wave", text: "Plant more while you have dew, then tap Begin Wave.", spot: "wavebtn", done: () => S.wave > 0 },
     { id: "after", text: "Tap a plant to grow it or uproot it. After each wave the garden offers a gift.", spot: null, ok: true, secs: 9, done: () => S.phase === G.Phase.CHOOSE_BOON || S.phase === G.Phase.GAME_OVER },
   ];
@@ -29427,14 +29586,46 @@ function MG_SFX(L) {
       R.resize(w, h);
     };
     app.fitCanvas = fitCanvas;
-    const frameView = () => {
-      cam.fit(canvas.width, canvas.height);
-      // leave room for the HUD: a little more zoom on wide screens, centred a touch higher on tall ones
-      if (canvas.width < canvas.height) { cam.zoom *= 1.12; cam.pan = [0.4, -1.6]; }
+    // The view frames the dome in the garden's room, the screen less the HUD (HUD A: the HUD never covers the
+    // garden; hud.freeRect, set once the HUD is made), a little closer on a tall screen. When that room moves (the
+    // tray grows with a plant's card or the Rites, the window is resized) the view slides by as much, its zoom
+    // kept: `roomAt` is the room's centre's offset from the canvas's, in CSS px, the view was last put at.
+    let freeRect = null, roomAt = [0, 0];
+    const room = () => {
+      const cw = canvas.clientWidth, ch = canvas.clientHeight, r = freeRect ? freeRect() : { x: 0, y: 0, w: cw, h: ch };
+      return { r, at: [r.x + r.w / 2 - cw / 2, r.y + r.h / 2 - ch / 2] };
     };
+    const slide = (at) => {
+      const k = canvas.width / Math.max(1, canvas.clientWidth);
+      cam.pan[0] -= ((at[0] - roomAt[0]) * k) / cam.zoom; cam.pan[1] -= ((at[1] - roomAt[1]) * k) / cam.zoom; // (as a drag moves it: camera.js attach)
+      roomAt = at;
+    };
+    const frameView = () => {
+      const k = canvas.width / Math.max(1, canvas.clientWidth), { r, at } = room();
+      cam.fit(r.w * k, r.h * k);
+      if (r.w < r.h) cam.zoom *= 1.12;
+      roomAt = [0, 0]; slide(at);
+    };
+    const nudgeView = () => { const { at } = room(); if (at[0] !== roomAt[0] || at[1] !== roomAt[1]) slide(at); };
     fitCanvas(); frameView();
     cam.attach(canvas);
-    window.addEventListener("resize", fitCanvas);
+    window.addEventListener("resize", () => { fitCanvas(); nudgeView(); });
+    // a two-finger twist turns the view a quarter (past 35°, then again from there), as ↻ and Q/E do
+    {
+      const fingers = new Map();
+      let base = null;
+      const angle = () => { const [a, b] = [...fingers.values()]; return Math.atan2(b[1] - a[1], b[0] - a[0]); };
+      canvas.addEventListener("pointerdown", (e) => { if (e.pointerType === "mouse") return; fingers.set(e.pointerId, [e.clientX, e.clientY]); base = fingers.size === 2 ? angle() : null; });
+      canvas.addEventListener("pointermove", (e) => {
+        if (!fingers.has(e.pointerId)) return;
+        fingers.set(e.pointerId, [e.clientX, e.clientY]);
+        if (base === null || fingers.size !== 2) return;
+        const a = angle(), d = Math.atan2(Math.sin(a - base), Math.cos(a - base));
+        if (Math.abs(d) > (35 * Math.PI) / 180) { cam.snap(d > 0 ? 1 : -1); base = a; }
+      });
+      const lift = (e) => { fingers.delete(e.pointerId); base = null; };
+      canvas.addEventListener("pointerup", lift); canvas.addEventListener("pointercancel", lift);
+    }
     // and when the screen's density changes without a resize (the window dragged to another screen): Full follows it
     const watchDpr = () => matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener("change", () => { fitCanvas(); watchDpr(); }, { once: true });
     watchDpr();
@@ -29479,6 +29670,9 @@ function MG_SFX(L) {
       deselect: () => deselect(),
       closeCard: () => { pending = null; hud.clearSeed(); scene.seed = ""; deselect(); hud.closeCard(); },
     });
+    // (the view framed again in the room the HUD leaves, and slid as the tray grows or shrinks)
+    freeRect = () => hud.freeRect(); frameView();
+    if (window.ResizeObserver) new ResizeObserver(nudgeView).observe(document.getElementById("tray"));
     const refreshWaves = () => {
       if (S.phase === G.Phase.WAVE) hud.showWaves(game.plan(S.wave), game.remaining(), game.plan(S.wave + 1));
       else hud.showWaves(game.plan(S.wave + 1), {}, game.plan(S.wave + 2));
