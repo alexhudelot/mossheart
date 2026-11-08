@@ -21735,6 +21735,14 @@ function MG_SFX(L) {
      Ultra cosy: honey maple and walnut in a cherry rim, a dark warm room, pools of lamplight drifting.
      Cyberpunk: dark steel squares under a violet night with its stars, the room dark, the game's lines and
      the pieces' rims lit in neon cyan and magenta.
+     Kawaii: candy-pink and mint squares in a lavender rim on butter pads, a pale sky, the soft light; its sides
+       in sunshine and sky blue, the black pieces grape.
+     Mechatech: brushed steel and gunmetal in an iron rim on hazard-amber pads, a dark workshop, a low hard sun
+       (Day); amber against electric blue.
+     Mossheart: lichen stone and moss in a bark rim, a deep forest under Mossheart's own light (Current, the
+       canopy's dapple); firefly gold against the stream's water.
+     E-sport: cool grey and slate blue in a black rim on lime pads, a dark navy stage, the Tournament light;
+       electric blue against red-orange.
        DC.themes.list            [{ id, name, board, light, stars, team, fog?, ramps?, pieces? }]: the first is
                                  the default. team: white's and black's colours (0..1); fog: 0..255; ramps:
                                  the style's ramps it replaces (a spec or a list of hex); pieces: each side's
@@ -21785,6 +21793,57 @@ function MG_SFX(L) {
         sky: ["#05030a", "#06040c", "#07040e", "#080510", "#090612", "#0a0614", "#0b0716", "#0c0818"],
       },
       pieces: [{ to: "#9ff6ff", k: 0.35 }, { to: "#8a1f6e", k: 0.45 }],
+    },
+    // the next four: Kawaii from the identity mockups' Toybox (sky, mint, sun), Mossheart from the game's own
+    // moss, bark and water (MossheartEngine's style), Mechatech and E-sport new
+    {
+      id: "kawaii", name: "Kawaii", board: "space", light: "soft", stars: false,
+      team: [[1, 0.74, 0.3], [0.33, 0.66, 1]], fog: [206, 230, 248],
+      ramps: {
+        dcMaple: ["#ffe3ea", 8, 0.62, 0.96, 0.03, 0.7], dcMaple2: ["#fdd9e3", 8, 0.6, 0.94, 0.03, 0.7],
+        dcWalnut: ["#8fdcc0", 8, 0.4, 0.85, 0.03, 0.8], dcWalnut2: ["#84d4b6", 8, 0.38, 0.83, 0.03, 0.8],
+        dcRim: ["#b9a4e6", 8, 0.36, 0.86, 0.03, 0.7], dcRimDk: ["#a28dd6", 8, 0.3, 0.8, 0.03, 0.7],
+        dcFelt: ["#ffd76a", 6, 0.4, 0.86, 0.03],
+        sky: ["#a9d8f5", "#b2dcf6", "#bce1f7", "#c5e5f8", "#cfe9f9", "#d8eefa", "#e2f2fb", "#ecf6fc"],
+      },
+      pieces: [{ to: "#fff6ee", k: 0.4 }, { to: "#5b3b8c", k: 0.45 }],
+    },
+    {
+      id: "mech", name: "Mechatech", board: "space", light: "day", stars: false,
+      team: [[1, 0.62, 0.12], [0.25, 0.55, 1]], fog: [30, 34, 40],
+      ramps: {
+        dcMaple: ["#a7afb8", 8, 0.36, 0.86, 0.04, 0.4], dcMaple2: ["#9aa3ad", 8, 0.34, 0.82, 0.04, 0.4],
+        dcWalnut: ["#454c55", 8, 0.1, 0.46, 0.04, 0.5], dcWalnut2: ["#3b4149", 8, 0.08, 0.42, 0.04, 0.5],
+        dcRim: ["#2a2f35", 8, 0.06, 0.36, 0.04, 0.4], dcRimDk: ["#1e2227", 8, 0.04, 0.28, 0.04, 0.4],
+        dcFelt: ["#ffb000", 6, 0.2, 0.6, 0.05],
+        sky: ["#101317", "#13171c", "#171b21", "#1a1f26", "#1e242b", "#222830", "#262d35", "#2a323b"],
+      },
+      pieces: [{ to: "#dfe4ea", k: 0.4 }, { to: "#2a2f36", k: 0.45 }],
+    },
+    {
+      // the team: a firefly's gold and the stream's water #3d8a8f lifted; a violet would go muddy on the moss
+      id: "moss", name: "Mossheart", board: "space", light: "current", stars: false,
+      team: [[1, 0.8, 0.35], [0.3, 0.9, 1]], fog: [70, 88, 72],
+      ramps: {
+        dcMaple: ["#c3c4a4", 8, 0.36, 0.86, 0.08, 0.6], dcMaple2: ["#b8ba98", 8, 0.34, 0.82, 0.08, 0.6],
+        dcWalnut: ["#5b8a36", 8, 0.12, 0.56, 0.08], dcWalnut2: ["#4e7a30", 8, 0.1, 0.52, 0.08],
+        dcRim: ["#6b4631", 8, 0.08, 0.44, 0.1], dcRimDk: ["#523424", 8, 0.06, 0.36, 0.1],
+        dcFelt: ["#3e6d3c", 6, 0.1, 0.46, 0.08],
+        sky: ["#24302a", "#2c3a31", "#36463a", "#425243", "#4f5f4d", "#5e6d58", "#6e7c64", "#7f8b71"],
+      },
+      pieces: [{ to: "#efe8d2", k: 0.3 }, { to: "#3a2a1e", k: 0.35 }],
+    },
+    {
+      id: "esport", name: "E-sport", board: "space", light: "hall", stars: false,
+      team: [[0.15, 0.55, 1], [1, 0.3, 0.12]], fog: [16, 20, 30],
+      ramps: {
+        dcMaple: ["#e4e9f0", 8, 0.5, 0.96, 0.03, 0.5], dcMaple2: ["#dbe1ea", 8, 0.48, 0.94, 0.03, 0.5],
+        dcWalnut: ["#4a5a78", 8, 0.14, 0.6, 0.03, 0.7], dcWalnut2: ["#425170", 8, 0.12, 0.56, 0.03, 0.7],
+        dcRim: ["#14171c", 8, 0.03, 0.22, 0.03], dcRimDk: ["#0d0f13", 8, 0.02, 0.16, 0.03],
+        dcFelt: ["#b6ff2e", 6, 0.2, 0.62, 0.03],
+        sky: ["#060912", "#080c17", "#0a0f1c", "#0c1221", "#0e1526", "#10182b", "#121b30", "#141e35"],
+      },
+      pieces: [{ to: "#f4f7fb", k: 0.45 }, { to: "#1c2230", k: 0.45 }],
     },
   ];
   // each side's piece ramps: the Staunton set's ivory and ebony, the themed sets' roles (art/sets.js names)
@@ -23196,7 +23255,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.30.0", name: "DeckChess", commit: "1eadb35" };
+  G.VERSION = { v: "0.31.0", name: "DeckChess", commit: "387f682" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -26357,8 +26416,9 @@ return {selfId: __re_selfId, createEvent, subscribe, joinRoom, getRelaySockets, 
    The view panel (🎥): the theme (art/themes.js: the board, its colours, the light and the stars), the
    lighting (view/lighting.js), the camera's mode and its quick views (view/camera.js); the camera row over the
    buttons: guided's quarter turns, its preset (your side, top, low) and guided / free.
-   URL options: ?side=w|b, ?level=0..2, ?promo=queen|choose, ?theme=litho|dream|cosy|cyber (Lithograph by
-   default; its light unless ?light= says), ?light=current|day|hall|glow|soft|lamp (hall, Tournament, by
+   URL options: ?side=w|b, ?level=0..2, ?promo=queen|choose,
+   ?theme=litho|dream|cosy|cyber|kawaii|mech|moss|esport (Lithograph by default; its light unless ?light= says),
+   ?light=current|day|hall|glow|soft|lamp (hall, Tournament, by
    default), ?cam=guided|free|locked|dynamic (view/hud.js), ?calm=1 (guided without its moves, as under reduced motion),
    ?mood= ?weather= (Mossheart's; the weather is a clear sky unless ?weather= or the sky panel's pick says),
    ?set=tess|classic|grove|brass|reef (both sides' piece set; Tessellate by default), ?board=litho|space (that
