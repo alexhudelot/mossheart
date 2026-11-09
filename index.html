@@ -339,7 +339,13 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 #inspector .btn { height: 52px; font-size: calc(18px * var(--ts)); }
 /* a picked seed's info (hud.js seedInfo): the panel without Grow and Uproot */
 #inspector.seedinfo .btn { display: none; }
-/* a plant's grafts (hud.js inspect, Game.graftPartners): a moss row per partner, above Uproot; the first tap asks */
+/* (a plant's actions in one strip under its head, the user 2026-11-08: Grow and Uproot side by side, Deepen under
+   them while it shows; on a phone all three in one row. The card's text comes last and is what scrolls) */
+#inspact { display: flex; flex-wrap: wrap; gap: 6px; }
+#inspact > .btn { flex: 1 1 0; min-width: 0; height: auto; min-height: 44px; padding: 3px 6px; line-height: 1.15; font-size: calc(15px * var(--ts)); }
+#inspact > #deepen { order: 1; flex-basis: 100%; min-height: 40px; font-size: calc(14px * var(--ts)); }
+#inspector.seedinfo #inspact, #inspector.foe #inspact, #inspector.gift #inspact { display: none; }
+/* a plant's grafts (hud.js inspect, Game.graftPartners): a moss row per partner, under the actions; the first tap asks */
 #grafts { display: flex; flex-direction: column; gap: 6px; }
 #grafts:empty, #inspector.seedinfo #grafts, #inspector.foe #grafts, #inspector.gift #grafts { display: none; }
 #inspector #grafts .btn { height: 44px; font-size: calc(15px * var(--ts)); border-color: var(--moss); }
@@ -741,9 +747,19 @@ body:not(:has(#menus .veil.show)) #version { display: none; } /* (in the pause c
   #tray #inspector.seedinfo { display: none; }
   #tray:has(#inspector.show:not(.seedinfo)) #trayrow, body.rites-open #trayrow { display: none; }
   body.rites-open #tray #inspector { display: none; }
-  #tray #inspector { width: auto; max-height: calc(var(--vh) * 0.22); padding: 8px 10px; gap: 5px; flex-direction: row; flex-wrap: wrap; align-content: flex-start; }
-  #tray #inspector > #insptitle, #tray #inspector > #inspbody, #tray #inspector > #grafts { flex: 1 1 100%; }
-  #tray #inspector > .btn { flex: 1 1 0; min-height: 40px; }
+  #tray #inspector { width: auto; max-height: calc(var(--vh) * 0.22); padding: 8px 10px; gap: 5px; }
+  #tray #inspector:not(.open):has(#grafts .btn) { max-height: calc(var(--vh) * 0.28); }
+  /* (compact, the user 2026-11-08: the buttons were cut off under the card's text. Its head, its actions in one row
+     (a long label on two lines), the graft rows one high and scrolling, then its stats and the first tip, the rest
+     under More; only the text gives way, so the buttons stay on screen above the tray's safe edge) */
+  #tray #inspact { flex-wrap: nowrap; gap: 5px; }
+  #tray #inspact > .btn, #tray #inspact > #deepen { order: 0; flex: 1 1 0; min-height: 40px; padding: 2px 4px; font-size: calc(13px * var(--ts)); }
+  #tray #inspector > #grafts { flex: 0 0 auto; min-height: 0; max-height: 46px; }
+  #tray #inspector #grafts .btn { min-height: 36px; font-size: calc(13px * var(--ts)); }
+  #tray #inspector > #inspbody { flex: 0 1 auto; min-height: 0; }
+  #tray #inspector.tower:not(.open) #inspbody .chips + .tips > div + div { display: none; }
+  #tray #inspector #inspbody .chips { margin-bottom: 3px; }
+  #tray #inspector #inspbody .tomore { padding: 6px 0 2px; }
   #tray #inspector.open { max-height: calc(var(--vh) * 0.6); }
   #tray #ritepanel { max-height: calc(var(--vh) * 0.24); padding: 8px 10px; }
 }
@@ -947,7 +963,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   <div id="tray">
     <div id="dewgauge"><div id="dew" role="status" aria-label="Dew 0"><svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 .6C4.4 3.4 1 7.2 1 10.6a5 5 0 0 0 10 0C11 7.2 7.6 3.4 6 .6z"/><path class="glint" d="M3.6 10.2a2.6 2.6 0 0 0 1.9 3.1"/></svg><b id="dewn">0</b></div><div id="dewbar" role="meter" aria-label="Dew bank" aria-valuemin="0" aria-valuenow="0"><i class="tick" style="--at: 0.3"></i><i class="tick" style="--at: 0.55"></i><i class="tick" style="--at: 0.8"></i><i class="fill"><i class="bub"></i><i class="bub"></i><i class="bub"></i></i><b class="luck"></b></div></div>
     <div id="ritepanel" class="panel"><div class="rhead"><b>✦ Rites</b><span class="dim">once each, on the whole garden; dearer each time this run</span><button id="riteclose" class="btn small" title="close">✕</button></div><div id="ritebody"></div></div>
-    <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspbody"></div><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="deepen" class="btn"><span class="lb">Deepen</span></button><div id="grafts"></div><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div>
+    <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspact"><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="deepen" class="btn"><span class="lb">Deepen</span></button><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div><div id="grafts"></div><div id="inspbody"></div></div>
     <div id="seedcap"></div>
     <div id="trayrow"><div id="seeds"></div><button id="rites" class="btn" title="Rites: once each, on the whole garden"><span class="lb">✦</span><small>Rites</small></button><button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button></div>
   </div>
@@ -4513,16 +4529,21 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // for a later per-device tier. ?vsmax=N overrides it (tests).
   ME.vsCeiling = (adapter = null) => (ME.params.has("vsmax") ? ME.qn("vsmax", 24) : 64);
 
-  // Let the page paint between bake steps, but only every ~40 ms: each real yield costs a frame, and the
-  // bake calls this often. A message-channel post is not clamped like setTimeout.
+  // Let the page paint between bake steps, but only every ~40 ms (ME.tickMs): each real yield costs a frame, and
+  // the bake calls this often. A message-channel post is not clamped like setTimeout. The terrain stream (stream.js)
+  // bakes while the game plays, so it lowers ME.tickMs to a few ms for its time and sets ME.quiet, which keeps the
+  // bake's progress off the loading bar.
   const ch = new MessageChannel(), waiting = [];
   ch.port1.onmessage = () => waiting.shift()();
   let lastYield = 0;
+  ME.tickMs = 40;
+  ME.quiet = false;
   ME.tick = () => {
-    if (performance.now() - lastYield < 40) return Promise.resolve();
+    if (performance.now() - lastYield < ME.tickMs) return Promise.resolve();
     return new Promise((r) => { waiting.push(() => { lastYield = performance.now(); r(); }); ch.port2.postMessage(0); });
   };
   ME.progress = (label, f) => {
+    if (ME.quiet) return;
     const bar = document.getElementById("bar"), txt = document.getElementById("bartxt");
     if (bar) bar.style.width = Math.round(f * 100) + "%";
     if (txt) txt.textContent = label;
@@ -4932,7 +4953,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
    dPrim / evalModel are copied verbatim from vendor/gen/px.js (private there), plus a function prim (k: 5);
    the voxeliser samples them on a grid, skipping 4^3 bricks whose centre distance proves them all-empty or all-solid,
    and in the others evaluating only the prims that can matter there (cull). */
-(function () {
+(function sdfModule() {
   const ME = window.ME, P = window.PX, noise = P.noise, clamp = P.clamp;
 
   // ---- verbatim port of px.js dPrim / evalModel (EV_M = material of the nearest primitive)
@@ -5335,6 +5356,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // it, and grid.own (the same form) counts only the writes inside it, so a map's regions add up to the whole.
   // The bricks keep the anchors the whole stamp has (ix0, iy0, the foot), so a column inside the clip gets the
   // voxels the whole stamp gives it. No clip: every column, as before.
+  // P1c (a region's bake in a worker, or its emulation): grid.defer(md, x, y, z, lx, ly, lz, m, nx, ny, nz, tv)
+  // takes each md.detail call instead of making it, with the arguments it would have had, and the voxel gets 255
+  // (detail never gives air); the main thread makes the calls later, in the same order, and paints their materials
   ME.stampModel = function (md, place, grid, pal) {
     const { vs, O, NX, NY, NZ, vox, bricks } = grid, K = md.k, R = md.r * K * 1.6 + 0.2, H = md.h * K * 1.45 + 0.2;
     const CL = grid.clip || [0, 0, NX, NY], OWN = grid.own || CL;
@@ -5388,6 +5412,12 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         let m = EV_M;
         if (md.detail && e > -2 / vs) {
           const nn = normalAt(ev, lx, ly, lz, h); ev(lx, ly, lz);
+          if (grid.defer) {
+            grid.defer(md, x, y, z, lx / K, ly / K, lz / K, EV_M, nn[0], nn[1], nn[2], 1 / (vs * K));
+            if (bricks) bricks.put(x, y, z, 255); else vox[(z * NY + y) * NX + x] = 255;
+            if (x >= OWN[0] && x < OWN[2] && y >= OWN[1] && y < OWN[3]) n++;
+            continue;
+          }
           m = md.detail(lx / K, ly / K, lz / K, EV_M, nn[0], nn[1], nn[2], 1 / (vs * K)) || m;
         }
         const id = pal.id(m || (ME.content || {}).defaultMaterial);
@@ -5424,6 +5454,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 
   // cull: false turns prim culling off (tools/cull-check.js compares the two)
   ME.sdf = { dPrim, evalModel, mat: () => EV_M, cull: true, setInfo, evalRaw, cullPrims: cull, MAT, SMOOTH, stats: CS, paintDetail, workerSrc, tightBox };
+  // this whole file, for a terrain worker to run as it is (src/bake-terrain.js, terrainWorkerSrc)
+  ME.sdf.module = sdfModule;
 })();
 
 </script>
@@ -5431,7 +5463,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 /* Materials: name -> 8-bit id, resolved through the style's mats/ramps exactly like px.js does
    (mat.ramp || name). Each material gets a base albedo (its ramp near s = 0.6 + bias), a lighting
    class, and its whole hue-shifted ramp resampled to 16 steps for the ramp-shading mode. */
-(function () {
+(function paletteModule() {
   const ME = window.ME, P = window.PX;
   // lighting classes; which material is which comes from the content (ME.content.materialClass)
   const CLS = (ME.CLS = { DEFAULT: 0, MOSS: 1, FOLIAGE: 2, EMISSIVE: 3, WATER: 4, ROCK: 5, BARK: 6, SKIN: 7 });
@@ -5483,6 +5515,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     }
   }
   ME.Palette = Palette;
+  // this whole file, for a terrain worker (src/bake-terrain.js, terrainWorkerSrc)
+  ME.Palette.module = paletteModule;
 })();
 
 </script>
@@ -5497,7 +5531,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
    the island is clipped to its circle over a strata drum and a wooden plinth (the jar frame), and static
    props are stamped in from their SDFs. Which deco become volumes or walkers instead of terrain comes from the content
    (ME.content.volumeDeco, .walkers); the jar frame takes its materials from ME.content.terrain (until L4). */
-(function () {
+(function terrainModule() {
   const ME = window.ME, P = window.PX, sm = P.smooth;
   // deco names asset packs want as ray-marched volumes (added to the content's volumeDeco)
   ME.VOLUME_DECO = ME.VOLUME_DECO || new Set();
@@ -6116,6 +6150,19 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         this.pool.set(rg.pool.subarray(e, e + 4096), s * 4096); T[b] = 256 + s;
       }
     }
+    // a grid of bricks I0..I1-1 x J0..J1-1 x K0..K1-1 of this one (W1, a region at a second density): uniform
+    // bricks as they are, the mixed ones' slots copied (the pool made once)
+    crop(I0, I1, J0, J1, K0, K1) {
+      const c = new BrickGrid(Math.min(this.NX, I1 << 4) - (I0 << 4), Math.min(this.NY, J1 << 4) - (J0 << 4), Math.min(this.NZ, K1 << 4) - (K0 << 4));
+      const S = this.table, T = c.table, mix = [];
+      for (let K = K0; K < K1; K++) for (let J = J0; J < J1; J++) for (let I = I0; I < I1; I++) {
+        const e = S[(K * this.BY + J) * this.BX + I], b = ((K - K0) * c.BY + J - J0) * c.BX + I - I0;
+        if (e < 256) T[b] = e; else { T[b] = 256 + mix.length; mix.push(e - 256); }
+      }
+      c.pool = new Uint8Array(mix.length * 4096); c.used = mix.length;
+      mix.forEach((s, n) => c.pool.set(this.pool.subarray(s * 4096, s * 4096 + 4096), n * 4096));
+      return c;
+    }
     // the first solid cell's k in column (i, j) from kFrom down (air bricks skipped), -1 if none
     down(i, j, kFrom) {
       const c = (j >> 4) * this.BX + (i >> 4), o = ((j & 15) << 4) + (i & 15);
@@ -6185,12 +6232,174 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // mesh (greedy.js, by T.stats.regions) follow it
   ME.regionsOn = (vs = ME.VS) => vs % 4 === 0 && ME.qn("regions", 0) > 0;
 
+  // P1c: the regions bake on workers (?terrainworkers=N: 2 by default, at most one less than the cores; 0: all
+  // here; ME.bakeWorkers false: none). A worker runs this file, sdf.js and palette.js from their own sources (each
+  // one's .module) over a PX rebuilt from window.PX's, and is trusted once pxProbe gives the same numbers as here.
+  // It bakes the map up to its regions itself (o.serve: no lamp pre-pass, the lamps' heights and the models from
+  // o.plan, the main thread's) and must reach the same digest; then each region it bakes comes back as the record
+  // region(r) makes here, its buffers transferred, and take lays it in, in region order. The main thread bakes
+  // regions too, the same way, while it waits, and a region whose worker is late or fails (an error, no answer
+  // within ME.bakeJobMs, a record that would take the palette past 255) bakes here. The terrain stream's bake
+  // (o.bg, P3) bakes no region here: it waits on the workers, and throws (noWorkers) when none is ready or a
+  // region would fall to the main thread, so the game keeps the terrain it has
+  const fnv = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return (h >>> 0).toString(36); };
+  const noWorkers = (why) => Object.assign(new Error("terrain stream: " + why), { noWorkers: true });
+  // vs: the bake's own density; force: the terrain stream's bake (o.bg) takes the workers whether or not ?regions
+  // is on
+  const terrainWorkerN = (vs, force) => {
+    if (typeof Worker === "undefined" || ME.bakeWorkers === false || !(force || ME.regionsOn(vs))) return 0;
+    const hc = (typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 2;
+    return Math.max(0, Math.min(Math.round(ME.qn("terrainworkers", 2)), hc - 1));
+  };
+  // what the bake reads of PX, at a few points (strataAt: the three textures and above the top)
+  const pxProbe = (P) => {
+    const st = { strata: [{ top: 0.5, tex: "pebbles", ramp: "a", ramp2: "b", gap: "c" }, { top: 2, tex: "fiber", ramp: "d" }, { top: 3, ramp: "e" }] };
+    return [[0.37, 1.7, 2.2, 7], [-5.13, 3.3, 0.91, 7], [12.25, -8.5, 4.75, 3]].map(([x, y, z, s]) => {
+      const c = P.cell2(x, y, s);
+      return [P.noise(x, y, z, s), P.fbm(x, y, z, s), c.f1, c.f2, c.id, c.x, c.y, P.smooth(0, 1, x - Math.floor(x)), P.hash(Math.floor(x), Math.floor(y), Math.floor(z), s), P.strataAt(st, x, z, 0), P.strataAt(st, y, z * 0.5, 1)];
+    });
+  };
+  // the worker's source: PX's parts the bake reads (with px.js's closure: clamp, hash, fade, noise, CELL), an ME
+  // of its own, then sdf.js, palette.js, this file and terrainServe
+  const terrainWorkerSrc = () => {
+    const s = (f) => String(window.PX[f]);
+    return [
+      "self.window = self;",
+      "const P = {}; const clamp = " + s("clamp") + "; P.clamp = clamp; P.smooth = " + s("smooth") + "; const hash = " + s("hash") + "; P.hash = hash;",
+      "const fade = (t) => t * t * (3 - 2 * t); const noise = " + s("noise") + "; P.noise = noise; P.fbm = " + s("fbm") + ";",
+      "const CELL = { f1: 0, f2: 0, x: 0, y: 0, z: 0, id: 0 }; P.cell2 = " + s("cell2") + "; P.strataAt = " + s("strataAt") + "; window.PX = P;",
+      "const ME = window.ME = { now: () => performance.now(), tick: () => Promise.resolve(), progress: () => {}, log: () => {}, qn: (k, d) => d, VS: 16, content: {}, VOLUME_DECO: new Set() };",
+      "window.MODELS = {};",
+      "(" + ME.sdf.module + ")();", "(" + ME.Palette.module + ")();", "(" + terrainModule + ")();", "(" + terrainServe + ")();",
+    ].join("\n");
+  };
+  // the worker's side (runs there, from its source): { probe } -> { probe }; { init } -> { ready, digest } (or
+  // { err }); { job: r } -> { r, res } with res's buffers transferred, { r, full } or { r, err }, in order
+  const terrainServe = () => {
+    let region = null, chain = Promise.resolve();
+    self.onmessage = (e) => {
+      const m = e.data;
+      if (m.probe) { postMessage({ probe: ME.bakeTerrain.pxProbe(window.PX) }); return; }
+      if (m.init) {
+        const I = m.init;
+        ME.VS = I.VS; ME.content = I.CT; ME.qn = (k, d) => (k in I.QN ? I.QN[k] : d); ME.VOLUME_DECO = new Set(I.vdeco); ME.sdf.cull = I.cull; window.MODELS = I.models;
+        if (I.water) I.st.map.waterD = ME.waterDist(I.water);
+        const pal = new ME.Palette(I.st);
+        pal.names = I.plan.names; pal.ids = I.plan.ids;
+        ME.bakeTerrain(I.st, pal, { vs: I.VS, plan: I.plan, serve: (rg, digest) => { region = rg; postMessage({ ready: true, digest }); } })
+          .catch((er) => postMessage({ err: String((er && er.stack) || er) }));
+        return;
+      }
+      const r = m.job;
+      chain = chain.then(async () => {
+        try {
+          const res = await region(r, true), gr = res.grid;
+          postMessage({ r, res }, [gr.table.buffer, gr.pool.buffer, gr.free.buffer, res.d1.buffer, res.d2.buffer, res.top.buffer]);
+        } catch (er) { postMessage(er && er.full ? { r, full: true } : { r, err: String((er && er.stack) || er) }); }
+      });
+    };
+  };
+  // n workers from terrainWorkerSrc (a Blob: the engine runs from file://), each sent its probe at once so it boots
+  // during the lamp pre-pass; null where none starts. recv(w, ms): its next answer that is not a region's (null:
+  // none within ms, or lost). jobs(N) queues the regions; answer(r) takes region r's answer (undefined: none yet;
+  // null: bake it here); grab() takes the next queued region for the main thread (-1: none in the window); drop(r)
+  // drops region r's answer when it comes (the main thread baked r). Each worker holds 2 regions at most, and a
+  // region is posted or grabbed only while it is fewer than `ahead` past the one taken, so the records waiting
+  // here stay few. The watchdog (ME.bakeJobMs, 30 s; restarted on each answer) loses a worker that holds regions
+  // and sends nothing; its regions, and the queue once no worker is left, answer null
+  const terrainPool = (n) => {
+    let url = null;
+    try { url = URL.createObjectURL(new Blob([terrainWorkerSrc()], { type: "text/javascript" })); } catch (e) { return null; }
+    const limit = ME.bakeJobMs || 30000, ahead = n * 3, ws = [], got = new Map(), dropped = new Set(), queue = [], ch = new MessageChannel();
+    let taken = 0, stopped = false;
+    // waiters: the stream's bake waiting on an answer (pool.wait); an answer, a lost worker or stop wakes them
+    const waiters = [], wake = () => { for (const f of waiters.splice(0)) f(); };
+    const settle = (r, m) => { if (!dropped.delete(r)) got.set(r, m); wake(); };
+    const lose = (w, why) => {
+      if (w.lost) return;
+      w.lost = true; clearTimeout(w.dog); w.terminate(); w.onmessage = w.onerror = null;
+      if (why) ME.log("WARN TERRAIN worker: " + why + "; its regions bake on the main thread");
+      if (w.next) { const f = w.next; w.next = null; f(null); }
+      for (const r of w.held) settle(r, null);
+      w.held.clear();
+      if (!ws.some((v) => !v.lost)) while (queue.length) settle(queue.shift(), null);
+    };
+    const arm = (w) => { clearTimeout(w.dog); w.dog = w.held.size ? setTimeout(() => lose(w, "no answer in " + limit + " ms"), limit) : 0; };
+    const send = (w, msg) => { try { w.postMessage(msg); return true; } catch (e) { lose(w, e.message || String(e)); return false; } };
+    for (let i = 0; i < n; i++) {
+      let w;
+      try { w = new Worker(url); } catch (e) { break; }
+      Object.assign(w, { held: new Set(), lost: false, ready: false, next: null, inbox: [], dog: 0 });
+      w.onmessage = (e) => {
+        const m = e.data;
+        if (m.r !== undefined) { if (w.held.delete(m.r)) { settle(m.r, m); arm(w); pool.feed(); } return; }
+        if (w.next) { const f = w.next; w.next = null; f(m); } else w.inbox.push(m);
+      };
+      w.onerror = (e) => { if (e.preventDefault) e.preventDefault(); lose(w, e.message || "worker error"); };
+      ws.push(w);
+      send(w, { probe: true });
+    }
+    if (!ws.length) { URL.revokeObjectURL(url); return null; }
+    const pool = {
+      ws,
+      recv: (w, ms) => new Promise((res) => {
+        if (w.inbox.length) { res(w.inbox.shift()); return; }
+        if (w.lost) { res(null); return; }
+        const t = setTimeout(() => { w.next = null; res(null); }, ms);
+        w.next = (m) => { clearTimeout(t); res(m); };
+      }),
+      send, lose,
+      live: () => ws.filter((w) => w.ready && !w.lost).length,
+      jobs: (N) => { for (let r = 0; r < N; r++) queue.push(r); pool.feed(); },
+      // round by round (one region each), so the regions spread over the workers
+      feed: () => {
+        if (stopped) return;
+        for (let k = 1; k <= 2; k++) for (const w of ws) {
+          if (w.lost || !w.ready || w.held.size >= k || !queue.length || queue[0] >= taken + ahead) continue;
+          const r = queue.shift(), was = w.held.size;
+          if (!send(w, { job: r })) { queue.unshift(r); if (!ws.some((v) => !v.lost)) while (queue.length) settle(queue.shift(), null); continue; }
+          w.held.add(r);
+          if (!was) arm(w);
+        }
+      },
+      answer: (r) => {
+        taken = Math.max(taken, r); pool.feed();
+        if (!got.has(r)) return undefined;
+        const m = got.get(r); got.delete(r); return m;
+      },
+      grab: () => (queue.length && queue[0] < taken + ahead ? queue.shift() : -1),
+      drop: (r) => { dropped.add(r); },
+      // one real yield (a message-channel task, which a hidden page does not throttle as it does setTimeout): the
+      // answers the workers have sent come in first
+      idle: () => new Promise((f) => { ch.port1.onmessage = () => f(); ch.port2.postMessage(0); }),
+      // until the next answer (or a lost worker), ms at most: the stream's bake waits here instead of baking
+      wait: (ms) => new Promise((f) => {
+        const t = setTimeout(() => { const i = waiters.indexOf(g); if (i >= 0) waiters.splice(i, 1); f(); }, ms);
+        const g = () => { clearTimeout(t); f(); };
+        waiters.push(g);
+      }),
+      stop: () => {
+        stopped = true; wake();
+        for (const w of ws) { w.held.clear(); lose(w, null); }
+        got.clear(); dropped.clear(); queue.length = 0;
+        ch.port1.close();
+        if (url) { URL.revokeObjectURL(url); url = null; }
+      },
+    };
+    return pool;
+  };
+
   // o.vs: the density (ME.VS by default); o.rules: the rules' bake (P2, R1: ME.terrain16), the voxels, tops,
   // water and tiles only, whole (no regions), quiet (no progress bar, no map warnings), with no mips and no
-  // coarse grid (T.mips, T.coarse, T.cdims, T.CPU null; T.stats.solid and .zTop null)
+  // coarse grid (T.mips, T.coarse, T.cdims, T.CPU null; T.stats.solid and .zTop null). In a terrain worker (P1c,
+  // terrainServe): o.plan, the main thread's models (mdT, key), the lamps' heights (lampZ) and the litter trees;
+  // o.serve(region, digest), called where the regions would bake, in place of the rest of the bake. o.bg: the
+  // terrain stream's bake (P3, src/stream.js), while the game plays: quiet, by regions on the terrain workers
+  // (with or without ?regions), none of them on the main thread, the coarse grid a tile row at a time; it throws
+  // an error with .noWorkers where it would bake a region here
   ME.bakeTerrain = async function (st, pal, o = {}) {
-    const RULES = !!o.rules, progress = RULES ? () => {} : ME.progress;
-    const t0 = ME.now(), VS = o.vs || ME.VS, CT = ME.content || {}, G = gridOf(st, CT, RULES), F = G.frame, jar = F.type === "jar";
+    const RULES = !!o.rules, progress = RULES || o.serve || o.bg ? () => {} : ME.progress;
+    const t0 = ME.now(), VS = o.vs || ME.VS, CT = ME.content || {}, G = gridOf(st, CT, RULES || !!o.serve), F = G.frame, jar = F.type === "jar";
     // the jar (Momiji's island): a circle of radius RI round (C, CY), over a strata drum and a wooden plinth
     const C = jar ? F.c[0] : 0, CY = jar ? F.c[1] : 0, RI = jar ? F.r : 0;
     const RG = RI + 0.35, DRUM = F.foot, PL_R = RG + 0.45, PL_ZB = -2.15, PL_ZT = -1.5, ZF = G.floorZ;
@@ -6403,7 +6612,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       return F.spill && wetAt(tx, ty) && kOf(G.z[ty * G.W + tx]) < kD ? ty * G.W + tx : -1;
     };
     let wetCols = 0;
-    const trees = TR.litterTree ? G.props.filter((d) => TR.litterTree(d)).map((d) => [d[2] + 0.5, d[3] + 0.5]) : [];
+    const trees = o.plan ? o.plan.trees : TR.litterTree ? G.props.filter((d) => TR.litterTree(d)).map((d) => [d[2] + 0.5, d[3] + 0.5]) : [];
     const nameAt = (x, y) => (G.names && x >= 0 && y >= 0 && x < G.W && y < G.H ? G.names[y * G.W + x] : null);
     const c = { VS, X: 0, Y: 0, cx: 0, cy: 0, trees, wetV, fringes, nameAt }, out = {};
     const skirt = !jar && F.edge && F.edge.skirt ? id(F.edge.skirt) : 0, e1 = 1 / VS; // e1: the outermost voxel ring of the map
@@ -6425,6 +6634,15 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       stamps.push({ n, name, o, place, md: null });
     }
     const propCount = stamps.length;
+    // P1c: the models the stamps (by regions) and the lamps take, each made once (ME.modelOf makes a new one each
+    // call): mdT the list, mdK a model's index there by its name and options (a bake worker gets both made, in the
+    // main thread's plan), mdI the index of each
+    const mdT = o.plan ? o.plan.mdT : [], mdI = new Map(mdT.map((m, i) => [m, i])), mdK = o.plan ? o.plan.key : {};
+    const modelOf = (name, mo) => {
+      const k = name + JSON.stringify(mo || {});
+      if (mdK[k] === undefined) { const md = ME.modelOf(name, mo); if (!mdI.has(md)) { mdI.set(md, mdT.length); mdT.push(md); } mdK[k] = mdI.get(md); }
+      return mdT[mdK[k]];
+    };
 
     // Ground lamps (content.groundLamps): one kind lining the lanes, another by the water, on moss tiles
     // clear of the props, at least `spacing` tiles apart. Stamped into the grid after the props, each on the
@@ -6455,7 +6673,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         const side = (P.hash(c.cx, c.cy, 1, 61) - 0.5) * 0.4;
         const X = c.cx + 0.5 + c.dir[0] * 0.3 + (c.dir[1] ? side : 0), Y = c.cy + 0.5 + c.dir[1] * 0.3 + (c.dir[0] ? side : 0);
         if (lamps.some((p) => Math.hypot(p.X - X, p.Y - Y) < GL.spacing) || taken.some(([tx, ty]) => Math.hypot(tx - X, ty - Y) < 0.75)) continue;
-        lamps.push({ X, Y, z0: G.z[c.cy * G.W + c.cx] + 0.6, md: ME.modelOf(c.kind.model, { seed: 1 + lamps.length * 7 }), L: c.kind.light, Z: null });
+        lamps.push({ X, Y, z0: G.z[c.cy * G.W + c.cx] + 0.6, md: modelOf(c.kind.model, { seed: 1 + lamps.length * 7 }), L: c.kind.light, Z: null });
       }
       // a slice keeps the whole map's choice (and seeds) of lamps, then only the ones inside its box
       if (st.area) for (let n = lamps.length - 1; n >= 0; n--) {
@@ -6468,7 +6686,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // map. Else a region's (P1): box.C, the columns computed (voxel columns [i0, j0, i1, j1], end exclusive),
     // box.W, the columns written (the lobes, the stamps), and box.R (null: none), the columns counted in the
     // stats; every column of W comes out as the whole map's when C is W and 1 round it
-    let lobes = 0, stamped = 0;
+    // deferTo (P1c, a region's bake that defers): the props' and lamps' grid.defer (ME.stampModel)
+    let lobes = 0, stamped = 0, deferTo = null;
     const fill = async (g, box, lampN) => {
       const [ci0, cj0, ci1, cj1] = box ? box.C : [0, 0, NX, NY], R = box && box.R;
       const own = (i, j) => !box || (!!R && i >= R[0] && i < R[2] && j >= R[1] && j < R[3]);
@@ -6603,8 +6822,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       // the props, then the lamps (a region: clipped to W, counted in R; a prop's model made once)
       const grid = { bricks: g, NX, NY, NZ, O, vs: VS };
       if (box) { grid.clip = W; grid.own = R || [0, 0, 0, 0]; }
+      if (deferTo) grid.defer = deferTo;
       for (const s of stamps) {
-        if (box) { stamped += ME.stampModel(s.md || (s.md = ME.modelOf(s.name, s.o)), s.place, grid, pal); continue; }
+        if (box) { stamped += ME.stampModel(s.md || (s.md = modelOf(s.name, s.o)), s.place, grid, pal); continue; }
         if ((s.n & 7) === 0) { progress("stamping props " + s.n + "/" + deco.length, 0.22 + 0.1 * (s.n / deco.length)); await ME.tick(); }
         stamped += ME.stampModel(ME.modelOf(s.name, s.o), s.place, grid, pal);
       }
@@ -6622,13 +6842,19 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // fold back. Then one pass over the bricks: the solid count, the top (the highest k with a solid cell among
     // every 7th cell of its plane) and mip0, the occupancy (255 where solid) of each 2x2x2 averaged; a uniform brick
     // is its size, its top and an 8^3 block of mip0 at once. Then mip1, mip0's 2x2x2 averaged. The rules' bake
-    // has none
+    // has none. cut (P1c, a region's bake apart from the map's): into D1 and D2, blocks that hold only those
+    // bricks' cells (cut(I0, I1, J0, J1) gives their boxes), and no fold first (a brick of one material in the
+    // pool gives what the uniform brick gives)
     let solid = 0, kMax = 0;
-    const MX = NX >> 1, MY = NY >> 1, MZ = NZ >> 1, d1 = RULES ? null : new Uint8Array(MX * MY * MZ);
-    const LX = MX >> 1, LY = MY >> 1, LZ = MZ >> 1, d2 = RULES ? null : new Uint8Array(LX * LY * LZ);
+    const MX = NX >> 1, MY = NY >> 1, MZ = NZ >> 1, d1 = RULES || o.serve ? null : new Uint8Array(MX * MY * MZ);
+    const LX = MX >> 1, LY = MY >> 1, LZ = MZ >> 1, d2 = RULES || o.serve ? null : new Uint8Array(LX * LY * LZ);
     const s7 = (j, i0) => i0 + (7 - (j * NX + i0) % 7) % 7; // row j's first 7th cell from i0
-    const mips = (G, I0, I1, J0, J1) => {
-      G.compact([I0 << 4, J0 << 4, 0], [Math.min(NX, I1 << 4) - 1, Math.min(NY, J1 << 4) - 1, NZ - 1]);
+    // a region's blocks: [x0, y0, w, h] of mip0's, then of mip1's (each block every z)
+    const cut = (I0, I1, J0, J1) => [I0 << 3, J0 << 3, Math.min(MX, I1 << 3) - (I0 << 3), Math.min(MY, J1 << 3) - (J0 << 3),
+      I0 << 2, J0 << 2, Math.min(LX, I1 << 2) - (I0 << 2), Math.min(LY, J1 << 2) - (J0 << 2)];
+    const mips = (G, I0, I1, J0, J1, D1 = d1, D2 = d2, cb = null) => {
+      const [ax, ay, aw, ah, bx, by, bw, bh] = cb || [0, 0, MX, MY, 0, 0, LX, LY];
+      if (!cb) G.compact([I0 << 4, J0 << 4, 0], [Math.min(NX, I1 << 4) - 1, Math.min(NY, J1 << 4) - 1, NZ - 1]);
       const GP = G.pool;
       G.bricks((I, J, K, v, s) => {
         if (v === 0) return;
@@ -6637,7 +6863,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         if (v > 0) {
           solid += (i1 - i0) * (j1 - j0) * (k1 - k0);
           if (k1 - 1 > kMax) for (let j = j0; j < j1; j++) if (s7(j, i0) < i1) { kMax = k1 - 1; break; }
-          for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let c = (z * MY + y) * MX + x0, e = c + x1 - x0; c < e; c++) d1[c] = 255;
+          for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let c = (z * ah + y - ay) * aw + x0 - ax, e = c + x1 - x0; c < e; c++) D1[c] = 255;
           return;
         }
         let n = 0;
@@ -6652,14 +6878,14 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         }
         for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
           const o = s + (((2 * z) & 15) << 8) + (((2 * y) & 15) << 4) + ((2 * x) & 15);
-          d1[(z * MY + y) * MX + x] = ((GP[o] ? 255 : 0) + (GP[o + 1] ? 255 : 0) + (GP[o + 16] ? 255 : 0) + (GP[o + 17] ? 255 : 0) +
+          D1[(z * ah + y - ay) * aw + x - ax] = ((GP[o] ? 255 : 0) + (GP[o + 1] ? 255 : 0) + (GP[o + 16] ? 255 : 0) + (GP[o + 17] ? 255 : 0) +
             (GP[o + 256] ? 255 : 0) + (GP[o + 257] ? 255 : 0) + (GP[o + 272] ? 255 : 0) + (GP[o + 273] ? 255 : 0)) >> 3;
         }
       }, I0, I1, J0, J1);
       for (let z = 0; z < LZ; z++) for (let y = J0 << 2, y1 = Math.min(LY, J1 << 2); y < y1; y++) for (let x = I0 << 2, x1 = Math.min(LX, I1 << 2); x < x1; x++) {
         let s = 0;
-        for (let c = 0; c < 8; c++) s += d1[((2 * z + (c >> 2)) * MY + 2 * y + ((c >> 1) & 1)) * MX + 2 * x + (c & 1)];
-        d2[(z * LY + y) * LX + x] = s >> 3;
+        for (let c = 0; c < 8; c++) s += D1[((2 * z + (c >> 2)) * ah + 2 * y + ((c >> 1) & 1) - ay) * aw + 2 * x + (c & 1) - ax];
+        D2[(z * bh + y - by) * bw + x - bx] = s >> 3;
       }
     };
 
@@ -6667,31 +6893,194 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // multiple of 4 (a region's edge is then a brick edge), bakes the map by regions of 4x4 tiles, each in a
     // grid of its own whose bricks in the region g then adopts, with their mips. The voxels are the whole bake's;
     // the palette's ids may come in another order (a material is named where a region first meets it). The
-    // lamps' Z come first, each from its own column baked with the props and the lamps before it.
-    // regions: the count, the lamp pre-pass and each region's time (ms: its fill, mips and adoption; mipMs: its
-    // mips), kept in T.stats.regions
+    // lamps' Z come first, each from its own column baked with the props and the lamps before it. P1c: a region
+    // bakes apart from the map's state (region, as a worker would) into a record that take lays into the map's.
+    // regions: the count, the lamp pre-pass and each region's time (ms: its bake and its take; mipMs: its mips),
+    // kept in T.stats.regions
     let regions = null;
-    if (RULES || !ME.regionsOn(VS)) await fill(g, null, lamps.length);
+    if (RULES || !(o.serve || o.bg || ME.regionsOn(VS))) await fill(g, null, lamps.length);
     else {
       const RT = 4 * VS, NRX = Math.ceil(NX / RT), NRY = Math.ceil(NY / RT), N = NRX * NRY, tl = ME.now();
       const grow = (b, d) => [Math.max(0, b[0] - d), Math.max(0, b[1] - d), Math.min(NX, b[2] + d), Math.min(NY, b[3] + d)];
-      for (let n = 0; n < lamps.length; n++) {
-        const lp = lamps[n], i = Math.floor((lp.X - O[0]) * VS), j = Math.floor((lp.Y - O[1]) * VS), b = [i, j, i + 1, j + 1], rg = new BrickGrid(NX, NY, NZ);
-        await fill(rg, { C: grow(b, 2), W: grow(b, 1), R: null }, n);
-        lp.Z = surfZ(rg, lp.X, lp.Y, lp.z0);
-      }
+      // P1c: the workers start (and boot) during the lamp pre-pass; a worker takes the lamps' heights from the plan
+      const nw = o.serve ? 0 : terrainWorkerN(VS, !!o.bg), pool = nw > 0 ? terrainPool(nw) : null;
+      if (o.bg && !pool) throw noWorkers("no terrain workers");
+      // o.only (W1, a single region's bake): only the lamps within 3 tiles of region o.only get their heights (a
+      // lamp's stamp reaches less than 1.5 tiles); the others' stamps are clipped out of it
+      const near = o.only === undefined ? null : grow([(o.only % NRX) * RT, Math.floor(o.only / NRX) * RT, (o.only % NRX + 1) * RT, (Math.floor(o.only / NRX) + 1) * RT], 3 * VS);
+      if (o.plan) lamps.forEach((lp, n) => { lp.Z = o.plan.lampZ[n]; });
+      else try {
+        for (let n = 0; n < lamps.length; n++) {
+          const lp = lamps[n], i = Math.floor((lp.X - O[0]) * VS), j = Math.floor((lp.Y - O[1]) * VS), b = [i, j, i + 1, j + 1];
+          if (near && (i < near[0] || j < near[1] || i >= near[2] || j >= near[3])) continue;
+          const rg = new BrickGrid(NX, NY, NZ);
+          await fill(rg, { C: grow(b, 2), W: grow(b, 1), R: null }, n);
+          lp.Z = surfZ(rg, lp.X, lp.Y, lp.z0);
+        }
+      } catch (e) { if (pool) pool.stop(); throw e; }
       regions = { n: N, rt: RT, size: [NRX, NRY], lamps: lamps.length, lampMs: Math.round(ME.now() - tl), ms: [], mipMs: [] };
-      for (let r = 0; r < N; r++) {
-        progress("terrain region " + (r + 1) + "/" + N, 0.05 + 0.27 * (r / N)); await ME.tick();
-        const i0 = (r % NRX) * RT, j0 = Math.floor(r / NRX) * RT, R = [i0, j0, Math.min(NX, i0 + RT), Math.min(NY, j0 + RT)], rg = new BrickGrid(NX, NY, NZ), tr = ME.now();
-        const I0 = R[0] >> 4, I1 = (R[2] + 15) >> 4, J0 = R[1] >> 4, J1 = (R[3] + 15) >> 4;
-        await fill(rg, { C: grow(R, 2), W: grow(R, 1), R }, lamps.length);
-        const tm = ME.now();
-        mips(rg, I0, I1, J0, J1);
-        regions.mipMs.push(+(ME.now() - tm).toFixed(1));
+      // region(r, def) bakes region r into a record of its own (its grid, its mips blocks, its top and its stats)
+      // and take(res) lays the record into the map's, in region order. The region's palette is a fork of the
+      // map's: the materials it names first are res.names (ids res.base.. in the fork), which take numbers in the
+      // map's. def (the map's palette has room): a prop's detail (content code) is left to take, the cell gets
+      // 255 and an entry (its model, cell, local point, material, normal, voxel size); take makes every entry's
+      // call in order, as the whole bake makes them, then paints the entries whose cell is still 255 (a stamp's
+      // put overwrites the stamps before it). A fork that would number a material 255 throws full, and the
+      // region bakes again without def
+      const PAL = pal, DEF = () => PAL.names.length <= 255;
+      const forkPal = (P0, cap) => {
+        const f = Object.create(P0, { names: { value: P0.names.slice(), writable: true }, ids: { value: Object.assign({}, P0.ids), writable: true } });
+        f.id = function (name) {
+          if (name === undefined) name = this.defaultName();
+          if (cap && this.ids[name] === undefined && this.names.length >= 255) throw Object.assign(new Error("a region's palette is full"), { full: true });
+          return P0.id.call(this, name);
+        };
+        return f;
+      };
+      // ring (W1): the columns round the region that come out as the map's (1 by default); at 16 or more the mips
+      // (and res.M, the bricks they cover) take ring >> 4 bricks round the region too
+      const region = async (r, def, ring = 1) => {
+        const i0 = (r % NRX) * RT, j0 = Math.floor(r / NRX) * RT, R = [i0, j0, Math.min(NX, i0 + RT), Math.min(NY, j0 + RT)], tr = ME.now();
+        const I0 = R[0] >> 4, I1 = (R[2] + 15) >> 4, J0 = R[1] >> 4, J1 = (R[3] + 15) >> 4, rb = ring >> 4;
+        const Mb = [Math.max(0, I0 - rb), Math.min((NX + 15) >> 4, I1 + rb), Math.max(0, J0 - rb), Math.min((NY + 15) >> 4, J1 + rb)];
+        const sv = [wetCols, ebCols, ebCarved, lwCols, lobes, stamped, solid, kMax], base = PAL.names.length, entries = [], mats = [], mi = new Map();
+        wetCols = ebCols = ebCarved = lwCols = lobes = stamped = solid = kMax = 0;
+        pal = forkPal(PAL, def);
+        if (def) deferTo = (md, x, y, z, lx, ly, lz, m, nx, ny, nz, tv) => {
+          let k = mi.get(m);
+          if (k === undefined) { k = mats.length; mats.push(m); mi.set(m, k); }
+          entries.push(mdI.get(md), x, y, z, lx, ly, lz, k, nx, ny, nz, tv);
+        };
+        try {
+          const rg = new BrickGrid(NX, NY, NZ);
+          await fill(rg, { C: grow(R, ring + 1), W: grow(R, ring), R }, lamps.length);
+          const tm = ME.now(), cb = cut(...Mb), D1 = new Uint8Array(cb[2] * cb[3] * MZ), D2 = new Uint8Array(cb[6] * cb[7] * LZ);
+          mips(rg, ...Mb, D1, D2, cb);
+          const mipMs = +(ME.now() - tm).toFixed(1), w = R[2] - R[0], tp = new Int16Array(w * (R[3] - R[1]));
+          for (let j = R[1]; j < R[3]; j++) tp.set(top.subarray(j * NX + R[0], j * NX + R[2]), (j - R[1]) * w);
+          return { r, R, I: [I0, I1, J0, J1], M: Mb, grid: rg.record(), cb, d1: D1, d2: D2, top: tp, counts: [wetCols, ebCols, ebCarved, lwCols, lobes, stamped, solid],
+            kMax, base, names: pal.names.slice(base), entries, mats, ms: ME.now() - tr, mipMs };
+        } finally {
+          [wetCols, ebCols, ebCarved, lwCols, lobes, stamped, solid, kMax] = sv;
+          pal = PAL; deferTo = null;
+        }
+      };
+      const take = (res) => {
+        const tk = ME.now(), rg = BrickGrid.from(res.grid), [I0, I1, J0, J1] = res.I, R = res.R, E = res.entries, nE = E.length / 12;
+        // the entries whose cell is still 255, before the renumbering (a fork's own ids stay under 255)
+        const live = new Uint8Array(nE), ids = new Uint8Array(nE), LUT = new Uint8Array(256).map((_, i) => i);
+        for (let e = 0; e < nE; e++) live[e] = rg.get(E[e * 12 + 1], E[e * 12 + 2], E[e * 12 + 3]) === 255 ? 1 : 0;
+        let same = true;
+        res.names.forEach((n, i) => { LUT[res.base + i] = pal.id(n); if (LUT[res.base + i] !== res.base + i) same = false; });
+        for (let e = 0, o = 0; e < nE; e++, o += 12) {
+          const m0 = res.mats[E[o + 7]], m = mdT[E[o]].detail(E[o + 4], E[o + 5], E[o + 6], m0, E[o + 8], E[o + 9], E[o + 10], E[o + 11]) || m0;
+          ids[e] = pal.id(m || (ME.content || {}).defaultMaterial);
+        }
+        if (!same) {
+          const T = rg.table, P = rg.pool;
+          for (let b = 0; b < T.length; b++) if (T[b] < 256) T[b] = LUT[T[b]];
+          for (let i = 0, n = rg.used * 4096; i < n; i++) P[i] = LUT[P[i]];
+        }
+        for (let e = 0; e < nE; e++) if (live[e]) rg.put(E[e * 12 + 1], E[e * 12 + 2], E[e * 12 + 3], ids[e]);
+        rg.compact([I0 << 4, J0 << 4, 0], [Math.min(NX, I1 << 4) - 1, Math.min(NY, J1 << 4) - 1, NZ - 1]);
+        const [ax, ay, aw, ah, bx, by, bw, bh] = res.cb, w = R[2] - R[0];
+        for (let z = 0; z < MZ; z++) for (let y = 0; y < ah; y++) d1.set(res.d1.subarray((z * ah + y) * aw, (z * ah + y + 1) * aw), (z * MY + ay + y) * MX + ax);
+        for (let z = 0; z < LZ; z++) for (let y = 0; y < bh; y++) d2.set(res.d2.subarray((z * bh + y) * bw, (z * bh + y + 1) * bw), (z * LY + by + y) * LX + bx);
         g.adopt(rg, I0, I1, J0, J1);
-        regions.ms.push(Math.round(ME.now() - tr));
-      }
+        for (let j = R[1]; j < R[3]; j++) top.set(res.top.subarray((j - R[1]) * w, (j - R[1] + 1) * w), j * NX + R[0]);
+        const c = res.counts;
+        wetCols += c[0]; ebCols += c[1]; ebCarved += c[2]; lwCols += c[3]; lobes += c[4]; stamped += c[5]; solid += c[6]; kMax = Math.max(kMax, res.kMax);
+        regions.mipMs.push(res.mipMs);
+        regions.ms.push(Math.round(res.ms + ME.now() - tk));
+      };
+      const bake = (r) => region(r, DEF()).catch((e) => { if (!e.full) throw e; return region(r, false); });
+      // P1c: what the regions read that a worker makes itself (the kinds and the roles' ids, the props, the lamps,
+      // the litter trees, the palette's length): the same digest here and there, or the worker is left out
+      const digest = o.serve || pool ? fnv(JSON.stringify([[...R.values()], M, stamps.map((s) => [s.n, s.name, s.o, s.place]), lamps.map((l) => [l.X, l.Y, l.z0, l.Z]), trees, pal.names.length])) : null;
+      if (o.serve) return o.serve(region, digest);
+      let ready = 0, took = 0, late = 0, fell = 0;
+      try {
+        // a worker's region always defers (def), so none bakes once the palette is full here
+        if (pool && DEF()) {
+          const limit = ME.bakeJobMs || 30000, probe = JSON.stringify(pxProbe(window.PX));
+          const pick = (src, ks) => { const d = {}; for (const k of ks) if (k in src) d[k] = src[k]; return d; };
+          const keys = (x) => Object.fromEntries(Object.keys(x || {}).map((k) => [k, 1]));
+          // a copy without functions, at any depth, for postMessage (the generated maps of vendor/gen carry waterD and
+          // gravelD); class instances, typed arrays, Maps go as they are. The bake reads waterD (G.wd): a worker
+          // rebuilds it from the style's water shapes (ME.content.gardenWater, ME.waterDist's arithmetic is the
+          // closure's) when they give the closure's numbers on a 1/8-tile grid; else no worker bakes this map
+          const noFn = (x) => {
+            if (typeof x === "function") return undefined;
+            if (Array.isArray(x)) return x.map(noFn);
+            if (!x || typeof x !== "object") return x;
+            const p = Object.getPrototypeOf(x);
+            if (p !== Object.prototype && p !== null) return x;
+            return Object.fromEntries(Object.entries(x).filter(([, v]) => typeof v !== "function").map(([k, v]) => [k, noFn(v)]));
+          };
+          // the content and the map as the bake reads them (no functions: the litter trees come in the plan)
+          const ct = pick(CT, ["kinds", "edgeRound", "edgeBreak", "sand", "groundLamps", "volumeDeco", "defaultMaterial", "modelScale"]);
+          if ("terrain" in CT) ct.terrain = Object.fromEntries(Object.entries(TR).filter(([, v]) => typeof v !== "function"));
+          if ("walkers" in CT) ct.walkers = keys(CT.walkers);
+          const sw = pick(st, ["map", "deco", "clip", "glassZt", "strata", "spill"]), dn = Object.keys(st.ramps || {})[0];
+          sw.ramps = dn === undefined ? {} : { [dn]: 1 };
+          const QN = {};
+          for (const k of ["regions", "edgebreak"]) if (ME.params && ME.params.has(k)) QN[k] = ME.qn(k, 0);
+          for (const s of stamps) if (!s.md) s.md = modelOf(s.name, s.o);
+          const plan = { trees, mdT: mdT.map((md) => ({ k: md.k, r: md.r, h: md.h, prims: md.prims, detail: !!md.detail })), key: mdK, lampZ: lamps.map((l) => l.Z), names: pal.names, ids: pal.ids };
+          const mp = st.map || {}, fnW = typeof mp.waterD === "function";
+          let water = fnW ? (CT.gardenWater || {})[st.id] || null : null;
+          if (water) {
+            const wd = ME.waterDist(water);
+            for (let y = -1; water && y <= mp.H + 1; y += 1 / 8) for (let x = -1; x <= mp.W + 1; x += 1 / 8) if (wd(x, y) !== mp.waterD(x, y)) { water = null; break; }
+          }
+          if (fnW && !water) for (const w of pool.ws) pool.lose(w, "the map's waterD is a closure with no matching water shapes (ME.content.gardenWater." + st.id + ")");
+          const init = { VS, cull: ME.sdf.cull, vdeco: [...ME.VOLUME_DECO], QN, models: keys(window.MODELS), CT: noFn(ct), st: noFn(sw), water, plan };
+          await Promise.all(pool.ws.map(async (w) => {
+            if (w.lost) return;
+            const p = await pool.recv(w, 10000);
+            if (!p || JSON.stringify(p.probe) !== probe) { pool.lose(w, p ? "its PX gives other numbers" : "no probe answer in 10 s"); return; }
+            if (!pool.send(w, { init })) return;
+            const m = await pool.recv(w, limit);
+            if (m && m.ready && m.digest === digest) w.ready = true;
+            else pool.lose(w, !m ? "no answer to its plan in " + limit + " ms" : m.err ? m.err.split("\n")[0] : "its bake differs (digest " + m.digest + ", here " + digest + ")");
+          }));
+          ready = pool.live();
+        }
+        if (o.bg && !ready) throw noWorkers(pool && DEF() ? "no terrain worker is ready" : "the palette is full");
+        if (pool && !ready) pool.stop();
+        else if (pool) pool.jobs(N);
+        // the main thread never waits on a worker: while region r is out, it bakes the next region no worker holds
+        // (mine, taken in its turn) and looks again; with none left in the window, it bakes r too and drops the
+        // worker's answer (late). A record that would take the palette here past 255 (the full a region baked here
+        // would throw; a record from mine was forked before the regions taken since) bakes again here
+        const fits = (res) => PAL.names.length + res.names.filter((n) => PAL.ids[n] === undefined).length <= 255;
+        const mine = new Map();
+        for (let r = 0; r < N; r++) {
+          progress("terrain region " + (r + 1) + "/" + N, 0.05 + 0.27 * (r / N)); await ME.tick();
+          let m = null, stole = false;
+          if (ready) for (let yielded = false; !mine.has(r); ) {
+            m = pool.answer(r);
+            if (m !== undefined) break;
+            // the stream: the page plays while a live worker bakes r
+            if (o.bg && pool.live()) { await pool.wait(50); continue; }
+            const q = pool.grab();
+            if (q >= 0) { mine.set(q, await bake(q)); await ME.tick(); continue; }
+            // ME.tick yields once per ME.tickMs at most: one real yield, so an answer already sent comes in first
+            if (!yielded) { yielded = true; await pool.idle(); continue; }
+            pool.drop(r); m = null; stole = true; break;
+          }
+          const own = mine.get(r);
+          mine.delete(r);
+          if (own && fits(own)) { take(own); continue; }
+          if (m && m.res && fits(m.res)) { take(m.res); took++; continue; }
+          if (o.bg) throw noWorkers("region " + r + (m && m.err ? ": " + m.err.split("\n")[0] : m ? ": the palette is full" : ": its worker was lost"));
+          if (m && m.err) ME.log("WARN TERRAIN worker: region " + r + ": " + m.err.split("\n")[0] + "; baked on the main thread");
+          take(await bake(r));
+          if (stole) late++;
+          else if (ready && !own) fell++;
+        }
+        if (pool) regions.workers = { n: pool.ws.length, ready, took, here: N - took, late, fell };
+      } finally { if (pool) pool.stop(); }
     }
 
     // The lamps' lights, then the map's point lights (tiles)
@@ -6798,7 +7187,10 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const tiles = { W: G.W, H: G.H, z: G.z, name: G.names, recipe: G.kinds.map((k) => (k ? k.recipe : null)), grass: Uint8Array.from(G.kinds, (k) => (k && k.grass ? 1 : 0)), wet: wetT, depth: depthT };
     const T = { O, NX, NY, NZ, VS, grid: g, top, mips: RULES ? null : [d1, d2], coarse, cdims: RULES ? null : [QX, QY, QZ], CPU: RULES ? null : CPU, volumes, walkers, water, looks, falls, beams, lights, stats, bounds, frame: F, tiles,
       geo: jar ? { C, RI, RG, DRUM, PL_R, PL_ZB, PL_ZT, glassZt: F.glassTop } : null };
-    if (!RULES) ME.coarseFill(T, [0, 0, 0], [QX - 1, QY - 1, NZ / f - 1]); // the cells above the voxel grid stay empty
+    // the cells above the voxel grid stay empty. The stream's bake (o.bg) fills a tile row of cells at a time
+    // (cells are independent, so the slabs give the same bytes), with a yield between
+    if (o.bg) for (let y = 0; y < QY; y += CPU) { ME.coarseFill(T, [0, y, 0], [QX - 1, Math.min(QY, y + CPU) - 1, NZ / f - 1]); await ME.tick(); }
+    else if (!RULES) ME.coarseFill(T, [0, 0, 0], [QX - 1, QY - 1, NZ / f - 1]);
     T.groundAt = ME.groundAt(T);
     return T;
   };
@@ -6806,12 +7198,58 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // the bake cache key's code: the bake's helpers and its tables (cache.js)
   ME.bakeTerrain.parts = [ME.validateMap, ME.waterDist, gridOf, propsOf, decoSets, propRole, areaOk, areaBox, inArea, resolve, mottleCut, pave, heights, kindNames, rows, impure, BrickGrid, ...Object.values(RECIPE),
     JSON.stringify({ B36, STEPS, RECIPES, FLAGS, AT, FIXED_BOX })];
+  // this whole file, for a terrain worker (terrainWorkerSrc), and what a worker's PX must give to be trusted
+  ME.bakeTerrain.module = terrainModule;
+  ME.bakeTerrain.pxProbe = pxProbe;
+  // the terrain workers the stream's bake (o.bg) would take: 0, and the stream stays off (src/stream.js)
+  ME.bakeTerrain.workers = () => terrainWorkerN(ME.VS, true);
 
   // P2 (R1, docs/designs/2026-11-07-engine-opt-progressive-density.md section 4.9): the terrain the rules read,
   // map st's at vs16 whatever ME.VS is, with a palette of its own (the app's keeps its ids). It carries VS, O,
-  // NX, NY, NZ, top, grid, tiles, water and groundAt (bakeTerrain's o.rules). It runs on the main thread, as
-  // the load's bake does, until the bake moves to workers (P1c).
+  // NX, NY, NZ, top, grid, tiles, water and groundAt (bakeTerrain's o.rules). It runs on the main thread: the
+  // rules' bake is whole (no regions), so the terrain workers (P1c) never take it.
   ME.terrain16 = (st) => ME.bakeTerrain(st, new ME.Palette(st), { vs: 16, rules: true });
+
+  // W1 (docs/designs/2026-11-08-whole-game-128.md): region r of the regions bake (4 x 4 tiles) at a second density
+  // vs, apart from the map's terrain, on the main thread. Its grid is cropped to its bricks with one brick round
+  // (the ring the mesh's faces and the density's samples read, baked as the map's) and, in z, from a brick under
+  // the lowest one with a surface to two over the highest that isn't air; its mips cover the same bricks. pal is
+  // the app's: the grid's ids are its ids (a material it hasn't yet is added, with a WARN: the draw's material
+  // table doesn't know it). Returns { r, vs, grid, dims (the crop's voxels), origin (its corner, in vs voxels),
+  // box (the region in the crop, for greedyMesh's opt.boxes), rect (the region in the map's grid at VS), d1, d2,
+  // bakeMs, MB }
+  ME.bakeRegionHi = async (st, pal, r, vs = 128, VS = ME.VS) => {
+    const t0 = ME.now(), n0 = pal.names.length;
+    const res = await ME.bakeTerrain(st, pal, { vs, only: r, serve: (region) => region(r, false, 16) });
+    const g = BrickGrid.from(res.grid), [I0, I1, J0, J1] = res.M, S = g.table;
+    // the names the region's fork added, in the app's palette
+    const LUT = new Uint8Array(256).map((_, i) => i);
+    let same = true;
+    res.names.forEach((n, i) => { LUT[res.base + i] = pal.id(n); if (LUT[res.base + i] !== res.base + i) same = false; });
+    if (pal.names.length > n0) ME.log("WARN W1: materials new to the map at vs" + vs + ": " + pal.names.slice(n0).join(","));
+    let K0 = g.BZ, K1 = 0;
+    for (let J = J0; J < J1; J++) for (let I = I0; I < I1; I++) for (let K = 0; K < g.BZ; K++) {
+      const e = S[(K * g.BY + J) * g.BX + I];
+      if (K < K0 && (e >= 256 || (K + 1 < g.BZ && (e === 0) !== (S[((K + 1) * g.BY + J) * g.BX + I] === 0)))) K0 = K;
+      if (e !== 0) K1 = Math.max(K1, K + 1);
+    }
+    K0 = Math.max(0, Math.min(K0, K1) - 1); K1 = Math.min(g.BZ, K1 + 1);
+    const c = g.crop(I0, I1, J0, J1, K0, K1);
+    if (!same) {
+      const T = c.table, P = c.pool;
+      for (let b = 0; b < T.length; b++) if (T[b] < 256) T[b] = LUT[T[b]];
+      for (let i = 0; i < P.length; i++) P[i] = LUT[P[i]];
+    }
+    // the mips' z rows of the crop's bricks (8 a brick at the first level, 4 at the second)
+    const [, , aw, ah, , , bw, bh] = res.cb, MZ = res.d1.length / (aw * ah), LZ = res.d2.length / (bw * bh);
+    const d1 = res.d1.slice(K0 * 8 * aw * ah, Math.min(MZ, K1 * 8) * aw * ah), d2 = res.d2.slice(K0 * 4 * bw * bh, Math.min(LZ, K1 * 4) * bw * bh);
+    const x0 = I0 << 4, y0 = J0 << 4, R = res.R, f = VS / vs;
+    return {
+      r, vs, grid: c, dims: [c.NX, c.NY, c.NZ], origin: [x0, y0, K0 << 4], d1, d2,
+      box: [R[0] - x0, R[1] - y0, R[2] - x0, R[3] - y0], rect: R.map((v) => Math.round(v * f)),
+      bakeMs: Math.round(ME.now() - t0), MB: +((c.table.byteLength + c.pool.byteLength + d1.byteLength + d2.byteLength) / 1048576).toFixed(1),
+    };
+  };
 
   // The coarse occupancy (docs/decisions/2026-10-20-sun-volume-density.md): one cell is f voxels on a side,
   // f the largest divisor of VS that keeps VS / f >= 8 cells per tile, and at least 2 (f = 2 up to vs=20,
@@ -6895,10 +7333,12 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const t0 = ME.now(), { grid, NX, NY, NZ } = T, PLANE = NX * NY;
     const rt = opt.rt ?? ((T.stats && T.stats.regions && T.stats.regions.rt) || 0);
     // the boxes meshed, [x0, y0, x1, y1] in voxel columns: the regions in their order (row by row), or the map
-    const boxes = [];
-    if (rt > 0) for (let y = 0; y < NY; y += rt) for (let x = 0; x < NX; x += rt) boxes.push([x, y, Math.min(NX, x + rt), Math.min(NY, y + rt)]);
+    // (opt.boxes: these boxes only, as regions; W1 meshes one region of a cropped grid, its ring read as neighbours)
+    const boxes = opt.boxes ? opt.boxes.slice() : [], byR = rt > 0 || !!opt.boxes;
+    if (opt.boxes) { /* given */ } else if (rt > 0) for (let y = 0; y < NY; y += rt) for (let x = 0; x < NX; x += rt) boxes.push([x, y, Math.min(NX, x + rt), Math.min(NY, y + rt)]);
     else boxes.push([0, 0, NX, NY]);
-    const BW = rt > 0 ? Math.min(NX, rt) : NX, BH = rt > 0 ? Math.min(NY, rt) : NY; // the widest box
+    let BW = 0, BH = 0; // the widest box
+    for (const b of boxes) { BW = Math.max(BW, b[2] - b[0]); BH = Math.max(BH, b[3] - b[1]); }
     // the voxels are read a plane or a row at a time from T.grid (pa, pb: two planes; rb: a row)
     const pa = new Uint8Array(PLANE), pb = new Uint8Array(PLANE), rb = new Uint8Array(NX);
     // the layers with terrain (each plane sampled every third cell); a layer of air bricks is skipped whole
@@ -6973,12 +7413,13 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const meshBox = async (X0, Y0, X1, Y1, whole) => {
       const W = X1 - X0, H = Y1 - Y0, IA = X0 >> 4, IB = (X1 + 15) >> 4, JA = Y0 >> 4, JB = (Y1 + 15) >> 4;
       const read = (k, dst) => { if (whole) grid.plane(k, dst); else for (let j = Y0; j < Y1; j++) grid.row(j, k, X0, X1, dst, (j - Y0) * W); };
+      const step = whole || ME.quiet; // the terrain stream (ME.quiet) yields inside a region too
 
       // +z faces: slice planes between z = s-1 and s
       let below = pa, cur = pb;
       if (kLo > 0) read(kLo - 1, below); else below.fill(0);
       for (let s = kLo; s <= kHi + 1; s++) {
-        if (whole && (s & 15) === 0) { ME.progress("meshing tops " + s, 0.36 + 0.04 * ((s - kLo) / ZN)); await ME.tick(); }
+        if (step && (s & 15) === 0) { ME.progress("meshing tops " + s, 0.36 + 0.04 * ((s - kLo) / ZN)); await ME.tick(); }
         if (s < NZ) read(s, cur); else cur.fill(0);
         let any = false;
         const Ka = s > 0 ? (s - 1) >> 4 : -1, Kb = s < NZ ? s >> 4 : -1;
@@ -6993,10 +7434,10 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       // x faces: mask over (y, z) per slice s. A slab of XS slices is filled in one pass along the voxel rows
       // (reading the grid column-wise per slice was cache-hostile), then merged slice by slice; the slab's
       // masks are reused (merge leaves them zero). All NX + 1 slices at once was 2 bytes a voxel (~600 MB at vs40).
-      if (whole) { ME.progress("meshing x sides", 0.4); await ME.tick(); }
+      if (step) { ME.progress("meshing x sides", 0.4); await ME.tick(); }
       const SL = H * ZN, SE = X1 === NX ? NX : X1 - 1;
       for (let s0 = X0; s0 <= SE; s0 += XS) {
-        if (whole) { ME.progress("meshing x sides " + s0, 0.4 + 0.04 * (s0 / NX)); await ME.tick(); }
+        if (step) { ME.progress("meshing x sides " + s0, 0.4 + 0.04 * (s0 / NX)); await ME.tick(); }
         const s1 = Math.min(SE, s0 + XS - 1), r0 = Math.max(0, s0 - 1), r1 = Math.min(NX, s1 + 1);
         xany.fill(0);
         // a row of bricks all air, or all solid away from the grid's x ends, has no x face in this slab
@@ -7050,7 +7491,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       if (Y0 > 0) { skips(Y0, sk); rowRuns(Y0 - 1, ya, (n) => !sk[n]); } else ya.fill(0);
       const SY = Y1 === NY ? NY : Y1 - 1;
       for (let s = Y0; s <= SY; s++) {
-        if (whole && (s & 31) === 0) { ME.progress("meshing y sides " + s, 0.44 + 0.04 * (s / NY)); await ME.tick(); }
+        if (step && (s & 31) === 0) { ME.progress("meshing y sides " + s, 0.44 + 0.04 * (s / NY)); await ME.tick(); }
         let any = false;
         skips(s, sk); skips(s + 1, sn);
         if (s < NY) rowRuns(s, yb, (n) => !(sk[n] && sn[n])); else yb.fill(0);
@@ -7076,10 +7517,10 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 
     const starts = [], bms = []; // bms: each box's meshing time (a whole map's includes its yields to the page)
     for (let r = 0; r < boxes.length; r++) {
-      if (rt > 0) { ME.progress("meshing region " + (r + 1) + "/" + boxes.length, 0.36 + 0.12 * (r / boxes.length)); await ME.tick(); }
+      if (byR) { ME.progress("meshing region " + (r + 1) + "/" + boxes.length, 0.36 + 0.12 * (r / boxes.length)); await ME.tick(); }
       starts.push(nq);
       const tb = ME.now();
-      await meshBox(boxes[r][0], boxes[r][1], boxes[r][2], boxes[r][3], !(rt > 0));
+      await meshBox(boxes[r][0], boxes[r][1], boxes[r][2], boxes[r][3], !byR);
       bms.push(+(ME.now() - tb).toFixed(1));
     }
     starts.push(nq);
@@ -7088,7 +7529,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     ME.progress("sorting quads per snap", 0.49); await ME.tick();
     const snaps = [], lists = [];
     let total = 0;
-    if (!(rt > 0)) {
+    if (!byR) {
       for (let k = 0; k < 4; k++) {
         const th = (k * Math.PI) / 2, c = Math.round(Math.cos(th)), s = Math.round(Math.sin(th));
         const vis = [c + s > 0, c + s < 0, c - s > 0, c - s < 0, true];
@@ -7111,6 +7552,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // By regions: each region with quads, its box (x0, y0, z0, x1, y1, z1 in voxels, from its vertices)
     const regions = [];
     for (let r = 0; r < boxes.length; r++) {
+      if (ME.quiet) await ME.tick(); // (the terrain stream: no long task in the sort either)
       const q0 = starts[r], q1 = starts[r + 1];
       if (q1 === q0) continue;
       const b = [65535, 65535, 65535, 0, 0, 0];
@@ -7128,6 +7570,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       const rk = regions.map(({ box: b }) => ((c + s) * (b[0] + b[3]) + (c - s) * (b[1] + b[4]) + b[2] + b[5]) / 2);
       const order = regions.map((R, n) => n).sort((a, b) => rk[b] - rk[a]), list = [];
       for (const n of order) {
+        if (ME.quiet) await ME.tick();
         const R = regions[n], qe = R.q0 + R.quads;
         for (let c0 = R.q0; c0 < qe; c0 += CH) {
           const ids = [];
@@ -7141,6 +7584,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const IDX = new Uint16Array(total * 6);
     let o = 0;
     for (let k = 0; k < 4; k++) {
+      if (ME.quiet) await ME.tick();
       const parts = new Uint32Array(lists[k].length * 4), first = o;
       lists[k].forEach(([n, c0, arr], p) => {
         const f = o;
@@ -7488,6 +7932,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       if (front) queue.unshift(...more); else queue.push(...more);
       deal();
     };
+    // first(ids): those jobs still queued moved to its front, in their order (P4: MB.prog.want)
+    run.first = (ids) => { const s = new Set(ids), mv = queue.filter((j) => s.has(j.id)); if (mv.length) { for (let k = queue.length - 1; k >= 0; k--) if (s.has(queue[k].id)) queue.splice(k, 1); queue.unshift(...mv); } };
     for (const w of ws) {
       w.held = [];
       w.onmessage = (e) => {
@@ -7577,30 +8023,45 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // A critter's flipbook does too when its model is named in opts.progCritters (the small critters aren't worth a
   // swap each). Off with opts.progressive = false, ME.progressive = false or ?progressive=0, with a focus bake and
   // without the workers.
-  ME.PROG_MIN = 32;
+  // P4 (M1b): opts.boot, a density below ME.VS (a streaming game's boot terrain's, 16), makes that the coarse step,
+  // not the tile's: a frame's first bake has kf = VS x fine / boot times fewer voxels a tile edge (kfOf), and the
+  // static volumes' flipbooks (the props) upgrade too, ME.PROG_BATCH frames a swap. opts.progLazy: opts.models and
+  // critter keys a run may never show (the graft models, a game's spare kit): their full bakes come last, or next
+  // once the game asks for them (MB.prog.want(key)). A lazy critter is progressive without opts.progCritters, and
+  // under opts.boot a lazy model is whatever its fine (kf > 1 at fine 1 too).
+  ME.PROG_MIN = 32; ME.PROG_BATCH = 8;
   // The full bakes start once the game's frames settle (its first frames after READY compile pipelines, and the
   // bakes' CPU would make that freeze longer): ME.PROG_SETTLE ms of frames, none longer than ME.PROG_HITCH ms, or
   // ME.PROG_SETTLE_MAX ms after R's first frame at the latest.
   ME.PROG_SETTLE = 1500; ME.PROG_HITCH = 100; ME.PROG_SETTLE_MAX = 10000;
   const progOn = (opts = {}) => opts.progressive !== false && ME.progressive !== false && ME.qn("progressive", 1) !== 0 && !opts.focus && workersOn(opts);
   const hollowOn = () => ME.poolHollow !== false && ME.qn("hollow", 1) !== 0;
-  // the progressive flipbooks, [{ key, vs }] in variant order: every frame data-only, finer than tile density,
-  // used by that flipbook only (a variant shared with a static, a walker or a critter keeps one bake), and the
-  // frames numbered next to each other
+  // the factor a progressive frame's first bake is drawn at: its fine (a fine-1 copy) or, under opts.boot, VS x
+  // fine / boot (a copy at the boot density)
+  function kfOf(vf, opts) { return opts.boot && opts.boot < ME.VS ? (ME.VS * vf) / opts.boot : vf; }
+  // the progressive flipbooks, [{ key, vs, lazy? }]: every frame data-only, coarser at its first bake (kfOf),
+  // ME.PROG_MIN or more at full density, used by that flipbook only (a variant shared with a walker, a critter or
+  // another flipbook keeps one bake; a static flipbook counts once however many volumes place it), and the frames
+  // numbered next to each other. The heroes first, then the critters and the props (opts.boot), the lazy ones last
   function progOf(L, mds, opts) {
     if (!progOn(opts)) return [];
-    const uses = new Uint32Array(L.variants.length), count = (a) => { for (const i of a) uses[i]++; };
-    L.statics.forEach(count);
+    const uses = new Uint32Array(L.variants.length), count = (a) => { for (const i of a) uses[i]++; }, sl = [...new Map(L.statics.map((a) => [a.join(), a])).values()];
+    sl.forEach(count);
     for (const m of [L.walkerFrames, L.extraFrames, L.critterFrames]) Object.values(m).forEach(count);
-    const groups = [], crit = new Set(opts.progCritters || []);
-    const each = (frames, on) => { for (const key in frames) {
-      const vs = frames[key];
-      if (!on(vs) || vs.some((i, j) => i !== vs[0] + j)) continue;
-      if (vs.every((i) => { const { md, vf } = mds[i]; return vf > 1 && ME.VS * vf >= ME.PROG_MIN && !notData(md, opts) && uses[i] === 1; })) groups.push({ key, vs: vs.slice() });
-    } };
+    const groups = [], crit = new Set(opts.progCritters || []), lazy = new Set(opts.progLazy || []);
+    const ok = (vs) => vs.every((i, j) => { const { md, vf } = mds[i]; return i === vs[0] + j && kfOf(vf, opts) > 1 && ME.VS * vf >= ME.PROG_MIN && !notData(md, opts) && uses[i] === 1; });
+    const each = (frames, on) => { for (const key in frames) { const vs = frames[key]; if (on(key, vs) && ok(vs)) groups.push(lazy.has(key) ? { key, vs: vs.slice(), lazy: true } : { key, vs: vs.slice() }); } };
     each(L.extraFrames, () => true);
-    each(L.critterFrames, (vs) => crit.has(L.variants[vs[0]].name));
-    return groups;
+    each(L.critterFrames, (key, vs) => crit.has(L.variants[vs[0]].name) || lazy.has(key));
+    // the props, in batches of up to ME.PROG_BATCH frames a swap (a longer flipbook alone), keyed by their names
+    if (opts.boot && opts.boot < ME.VS) {
+      let b = null;
+      for (const vs of sl.filter(ok)) {
+        if (!b || b.vs.length + vs.length > ME.PROG_BATCH) groups.push((b = { key: "props", vs: [] }));
+        b.vs.push(...vs); b.key += " " + L.variants[vs[0]].name;
+      }
+    }
+    return groups.filter((g) => !g.lazy).concat(groups.filter((g) => g.lazy));
   }
   // E4: a progressive bake's MB as the bake cache stores it, a new pool and map beside MB's (the game goes on
   // playing MB): the upgrade's pool is sized for its peak and holds the freed slots of the coarse frames, MB.inner
@@ -7641,31 +8102,33 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   }
   // all a bake's worker jobs depend on but the models' sources: the variants, in order, the density, the cull, the
   // default material, which variants go to the workers and whether flipbooks bake progressively
-  const sigOf = (L, def, opts) => JSON.stringify([L.variants.map((v) => v.key), ME.VS, ME.sdf.cull, def, !!opts.focus, workersOn(opts), progOn(opts), opts.progCritters || []]);
+  const sigOf = (L, def, opts) => JSON.stringify([L.variants.map((v) => v.key), ME.VS, ME.sdf.cull, def, !!opts.focus, workersOn(opts), progOn(opts), opts.progCritters || [], opts.boot || 0, opts.progLazy || []]);
 
   // A bake's models built and its data-only ones posted to the workers (opts.worker = false or ME.bakeWorkers =
   // false keeps them here), largest first, so a long job doesn't start last: h.mds, h.offWorker, h.ready
   // (resolved once the workers answer their probe, h.ws and h.res set), h.cancel() (safe twice: ends the workers,
   // every job not yet answered resolves to null). A progressive flipbook's frames (h.prog: progOf's) go as two jobs
-  // each: id i its fine-1 copy, sized with the full bake's box (r.full), with the others; id nv + i the full bake, in
-  // variant order, held back (h.full) till the upgrade starts them (once R's frames settle) or the fallback asks
-  // for them, so the boot has the workers for its own jobs and the CPU to itself once they are done.
+  // each: id i its coarse copy (k / kfOf: fine 1, or the boot density under opts.boot), sized with the full bake's
+  // box (r.full), with the others; id nv + i the full bake, in h.prog's order, held back (h.full) till the upgrade
+  // starts them (once R's frames settle) or the fallback asks for them, so the boot has the workers for its own jobs
+  // and the CPU to itself once they are done.
   // opts.cache (E3): the workers' answers read from and kept in the bake cache (ME.bakeCache.modelCache), read while
   // the workers start; a job it answers is not posted, and the workers end when it answers them all (and no
   // progressive flipbook needs them). Without workers, a progressive frame's stored fine-1 answer is not taken (the
   // frame then bakes here at full density).
   function launch(L, pal, opts) {
     const def = defOf(pal), mds = modelsOf(L.variants), offWorker = {}, jobs = [], on = workersOn(opts), nv = L.variants.length;
-    const prog = progOf(L, mds, opts), pv = new Set(prog.flatMap((g) => g.vs)), full = [];
+    const prog = progOf(L, mds, opts), pv = new Map(prog.flatMap((g, n) => g.vs.map((i) => [i, n]))), full = []; // pv: frame -> its group
     mds.forEach(({ md, vf }, i) => {
       const name = L.variants[i].name, why = on ? notData(md, opts) : "off";
       if (why) { offWorker[name] = why; return; }
       const cost = md.prims.length * (md.r || 1) ** 2 * (md.h || 1) * md.k ** 3, q = { id: i, md: { prims: md.prims, k: md.k, r: md.r, h: md.h }, vs: ME.VS, cull: ME.sdf.cull, def, detail: !!md.detail };
       if (!pv.has(i)) { jobs.push({ id: i, name, cost, q }); return; }
-      jobs.push({ id: i, name, cost: cost / vf ** 3, q: Object.assign({}, q, { md: Object.assign({}, q.md, { k: md.k / vf }), fullK: md.k, vf, hollow: hollowOn() && ME.VS * vf > ME.POOL_HOLLOW }) });
-      full.push({ id: nv + i, name, cost, q: Object.assign({}, q, { id: nv + i }), miss: "kept the fine-1 model" });
+      const kf = kfOf(vf, opts);
+      jobs.push({ id: i, name, cost: cost / kf ** 3, q: Object.assign({}, q, { md: Object.assign({}, q.md, { k: md.k / kf }), fullK: md.k, vf: kf, hollow: hollowOn() && ME.VS * vf > ME.POOL_HOLLOW }) });
+      full.push({ id: nv + i, name, cost, q: Object.assign({}, q, { id: nv + i }), miss: "kept the coarse model" });
     });
-    jobs.sort((a, b) => b.cost - a.cost);
+    jobs.sort((a, b) => b.cost - a.cost); full.sort((a, b) => pv.get(a.id - nv) - pv.get(b.id - nv));
     const h = { sig: sigOf(L, def, opts), mds, offWorker, prog, nv, full, ws: [], res: new Map(), run: null, done: false };
     h.cancel = () => { if (h.done) return; h.done = true; if (h.run) h.run.stop(); };
     const mc = opts.cache && jobs.length && ME.bakeCache && ME.bakeCache.modelCache ? ME.bakeCache.modelCache() : null;
@@ -7734,8 +8197,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // voxelising here, taking in worker volumes (md.detail)
     let inWorkers = 0, readyMs = 0, waitMs = 0, hereMs = 0, takeMs = 0, ws, run, res;
     // E4: the palette's size before the bake (rankOf), the ids each variant's bake met (recIds), the progressive
-    // flipbooks (h.prog; none without workers) and each of their frames' group. Such a frame bakes here at fine 1
-    // (mdc) with kf = vf, the factor its voxels are drawn at (sim.put), and full, its full bake's box.
+    // flipbooks (h.prog; none without workers) and each of their frames' group. Such a frame bakes here coarse (mdc:
+    // k / kf, kf = kfOf's, fine 1 or the boot density), kf the factor its voxels are drawn at (sim.put), and full,
+    // its full bake's box.
     const n0 = pal.names.length, nv = variants.length, lists = variants.map(() => []);
     let prog = null;
     const gOf = new Map();
@@ -7747,7 +8211,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       ws = h.ws; run = h.run;
       if (h.prog && h.prog.length && ws.length) { prog = h.prog; for (const g of prog) for (const i of g.vs) gOf.set(i, g); }
       for (let i = 0; i < variants.length; i++) {
-        const v = variants[i], { md, vf } = mds[i], g = gOf.get(i), mdc = g ? Object.assign({}, md, { k: md.k / vf }) : md;
+        const v = variants[i], { md, vf } = mds[i], g = gOf.get(i), kf = g ? kfOf(vf, opts) : 1, mdc = g ? Object.assign({}, md, { k: md.k / kf }) : md;
         if ((i & 1) === 0) { ME.progress("voxelising " + v.name + " (" + (i + 1) + "/" + variants.length + ")", 0.5 + 0.3 * (i / variants.length)); await ME.tick(); }
         t = ME.now();
         const r = res.has(i) ? await res.get(i) : null;
@@ -7756,8 +8220,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         if (r) { inWorkers++; takeMs += ME.now() - t; } else hereMs += ME.now() - t;
         vx.md = md; vx.name = v.name; vx.fine = vf;
         if (g) {
-          vx.kf = vf; vx.full = (r && r.full) || ME.sdf.tightBox(md, VS);
-          vx.est = (r && r.est) || estOf(vx.dims, vx.mat, vf, [0, 1, 2].map((k) => vx.box[k] - vx.full[k] / vf), vx.full.slice(3), hollowOn() && VS * vf > ME.POOL_HOLLOW);
+          vx.kf = kf; vx.full = (r && r.full) || ME.sdf.tightBox(md, VS);
+          vx.est = (r && r.est) || estOf(vx.dims, vx.mat, kf, [0, 1, 2].map((k) => vx.box[k] - vx.full[k] / kf), vx.full.slice(3), hollowOn() && VS * vf > ME.POOL_HOLLOW);
         }
         vols.push(vx);
       }
@@ -7892,10 +8356,10 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     for (const v of all) { drive(putVol(v)); if (v.box) solid += v.nsolid; }
     // E4: the pool's slots as an upgrade takes and frees them: used[k] (one byte a slot; the pool is sized to the
     // peak, so a free list never has to grow it), lw the lowest slot that may be free, inUse their count, touched
-    // the pool's z-layers written since the last upload
+    // the slots written since the last upload (P4, #492's PERF-E11: R.uploadSlots writes only theirs)
     const slots = (PZ / 8) * PB * PB, used = prog ? new Uint8Array(slots).fill(1, 0, nb) : null, touched = new Set();
     let lw = nb, inUse = nb;
-    const take = () => { let k = lw; while (used[k]) k++; if (k >= slots) throw new Error("the progressive pool is full"); used[k] = 1; lw = k + 1; inUse++; touched.add(Math.floor(k / (PB * PB))); return k; };
+    const take = () => { let k = lw; while (used[k]) k++; if (k >= slots) throw new Error("the progressive pool is full"); used[k] = 1; lw = k + 1; inUse++; touched.add(k); return k; };
     // the bricks of a volume's place in the layout (base, dims) out of the map, their slots freed: the box in bricks
     const clear = (base, dims) => {
       const b = base.map((n) => n / 8), e = dims.map((n, a) => b[a] + Math.ceil(n / 8));
@@ -7908,11 +8372,12 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     };
 
     // static volumes shade the sun volume: splat their voxels into the coarse occupancy (foliage half weight),
-    // at the size they are drawn (1 / fine of their voxel scale: fine heroes and critters, chunky toys)
+    // at the size they are drawn (1 / fine of their voxel scale: fine heroes and critters, chunky toys; a P4 prop's
+    // coarse model kf / fine, its upgrade leaves the splat as it is)
     const [CX, CY, CZ] = T.cdims, CPU = T.CPU, acc = new Float32Array(CX * CY * CZ);
     const FOL = new Set((CT.sunShadeHalf || []).map((n) => pal.ids[n]).filter((i) => i !== undefined));
     for (const s of statics) {
-      const v = vols[s.frames[0]], [nx, ny, nz] = v.dims, [ox, oy, oz] = v.box, p = s.place, U = VS * v.fine, w = (CPU / U) ** 3; // w: one drawn voxel's share of a cell
+      const v = vols[s.frames[0]], [nx, ny, nz] = v.dims, [ox, oy, oz] = v.box, p = s.place, U = (VS * v.fine) / (v.kf || 1), w = (CPU / U) ** 3; // w: one drawn voxel's share of a cell
       for (let z = 0; z < nz; z++) for (let yy = 0; yy < ny; yy++) for (let xx = 0; xx < nx; xx++) {
         const m = v.mat(xx, yy, z);
         if (!m) continue;
@@ -7963,17 +8428,27 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 
     // E4: MB.prog, a progressive bake's upgrade: { maxGroup (the most models one swap takes), started, stats (sp:
     // stats.prog), upgraded (a promise: true once every flipbook is swapped, false if one failed or it was
-    // cancelled), cancel() (ends the workers; safe twice), gen(R), compact() (compactOf: MB for the bake cache) }. R.init
-    // runs gen on R.addTask: for each
-    // flipbook, in variant order, each frame's full bake taken in from its worker (numbered and painted here, a
+    // cancelled), cancel() (ends the workers; safe twice), want(key) (P4: that flipbook upgraded next, its full
+    // bakes first in the workers' queue, if it is not started yet: a lazy one the game is about to show; true if
+    // so), gen(R), compact() (compactOf: MB for the bake cache) }. R.init runs gen on R.addTask: for each
+    // flipbook, in h.prog's order (or want's), each frame's full bake taken in from its worker (numbered and painted here, a
     // slice a frame), sent back for its interior and its 2x-down copy (finishOf; here if no worker is left), put
-    // into free slots and its proxy's place in the layout, then the touched pool layers and map boxes uploaded,
+    // into free slots and its proxy's place in the layout, then the touched pool slots and map boxes uploaded,
     // the palette too if it grew, and R.swapModel. Once the fade is done the coarse frames' places are cleared and
     // their slots freed. A frame that fails (its full bake lost, or no room) leaves that flipbook coarse.
     function progOf2() {
       let cancelled = false, finish;
       const upgraded = new Promise((r) => (finish = r)), maxGroup = Math.max(...prog.map((g) => g.vs.length));
       const cancel = () => { if (cancelled) return; cancelled = true; run.stop(); finish(false); };
+      // order: the flipbooks not started yet, the next first
+      const order = prog.slice();
+      const want = (key) => {
+        const n = order.findIndex((g) => g.key === key);
+        if (n < 0 || cancelled) return false;
+        const g = order.splice(n, 1)[0], ids = g.vs.map((i) => nv + i), s = new Set(ids);
+        order.unshift(g); h.full.sort((a, b) => s.has(b.id) - s.has(a.id)); run.first(ids);
+        return true;
+      };
       const gen = function* (R) {
         // palN: the materials R's tables hold (the app built them from pal after the bake)
         let ok = true, palN = pal.names.length;
@@ -7989,7 +8464,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           // to the first worker done, not behind the full bakes already posted (ME.bakeJobDepth of them)
           run.depth = 1;
           run.add(h.full);
-          for (const g of prog) {
+          while (order.length) {
+            const g = order.shift();
             if (cancelled) { ok = false; break; }
             const tg = ME.now(), cur = lists.slice(), recs = [], lrecs = [], put = [], boxes = [];
             let fail = null, wait = 0, got = 0;
@@ -8042,12 +8518,12 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
               for (const b of boxes) R.uploadBricks(b);
               touched.clear();
               ok = false; sp.failed.push({ key: g.key, why: fail });
-              if (!cancelled) ME.log(`WARN BAKE progressive ${g.key}: ${fail}; it stays at fine 1`);
+              if (!cancelled) ME.log(`WARN BAKE progressive ${g.key}: ${fail}; it stays coarse`);
               continue;
             }
-            // up to the GPU: the pool layers written, the proxies' boxes of the map, the palette if it grew
-            for (const bz of [...touched].sort((a, b) => a - b)) { R.uploadPool(bz); yield; }
-            touched.clear();
+            // up to the GPU: the pool slots written, the proxies' boxes of the map, the palette if it grew
+            R.uploadSlots(touched); touched.clear();
+            yield;
             for (const [b, d] of put) { const o = b.map((n) => n / 8); R.uploadBricks(o.concat(d.map((n, a) => o[a] + Math.ceil(n / 8)))); }
             if (pal.names.length > palN) { R.refreshPalette(pal); palN = pal.names.length; }
             yield "frame";
@@ -8065,7 +8541,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           if (cancelled) return;
           // the copies the full bakes' material order changes (halfOf's ties: rankOf) made again in their slots
           // (the same bricks: only a tie's material differs)
-          const rkF = rankOf(lists, n0), same = (bk) => { const k = (bricks[bk] & 0xffffff) - 1; touched.add(Math.floor(k / (PB * PB))); return k; };
+          const rkF = rankOf(lists, n0), same = (bk) => { const k = (bricks[bk] & 0xffffff) - 1; touched.add(k); return k; };
           // (none if a flipbook failed: the bake is no longer the single pass's)
           for (const { i, v, inner: li } of sp.failed.length ? [] : relod) {
             // its materials in id order (the order its copy was made in) against the single pass's (rkF)
@@ -8077,8 +8553,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
             sp.relod = (sp.relod || 0) + 1;
           }
           relod.length = 0;
-          for (const bz of [...touched].sort((a, b) => a - b)) { R.uploadPool(bz); yield; }
-          touched.clear();
+          R.uploadSlots(touched); touched.clear();
+          yield;
           if (inner && inner.mats.length > ni * 512) { MB.inner = inner = { mats: inner.mats.slice(0, ni * 512) }; MB.voxel = ME.brickVoxel(MB); }
           // the pool past its budget now (the copies kept on the estimate): no copies, as the single-pass bake
           if (lods.length && inUse > ME.poolBricks()) { for (const m of MB.models) m.lod = -1; R.refreshModels(); sp.lodDropped = true; ME.log(`WARN BAKE progressive: ${inUse} bricks, over the pool's budget: the 2x-down copies are dropped`); }
@@ -8087,12 +8563,12 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           sp.doneAt = Math.round(ME.now());
         } catch (e) { ok = false; throw e; } finally { run.stop(); finish(ok && !cancelled); }
       };
-      return { maxGroup, started: false, stats: sp, upgraded, cancel, gen, compact: () => compactOf(MB, slabOf) };
+      return { maxGroup, started: false, stats: sp, upgraded, cancel, want, gen, compact: () => compactOf(MB, slabOf) };
     }
   };
 
   // the private functions a model bake depends on, for the bake cache's key (src/cache.js)
-  ME.bakeModels.parts = [bricksOf, matOf, innerOf, halfOf, workerJob, finishOf, estOf, runJobs, listOf, modelsOf, launch, workersOn, notData, defOf, sigOf, progOf, compactOf, rankOf, progOn, hollowOn];
+  ME.bakeModels.parts = [bricksOf, matOf, innerOf, halfOf, workerJob, finishOf, estOf, runJobs, listOf, modelsOf, launch, workersOn, notData, defOf, sigOf, progOf, compactOf, rankOf, progOn, hollowOn, kfOf];
 
   // Starts a bake's worker jobs before the terrain bake, so the workers run during it (#185): the variant list
   // from st (ME.volumeDecoOf, the props bakeTerrain bakes as volumes), the models built, the jobs posted. Returns
@@ -8515,10 +8991,11 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       return `${slot}${ME.VERSION}:${id}:vs${ME.VS}:${fnv(code + assetSrc(own) + own + lists + (o.focus ? "|focus" : "") + knobs)}`;
     },
     // the terrain record's key: the map's content (as key() takes it, with the sources of the models the terrain
-    // bake stamps), BAKE_REV.terrain and the density. extra: anything else the terrain bake reads. Read with get()
+    // bake stamps), BAKE_REV.terrain and the density (o.vs, ME.VS by default; o.rg: a regions bake, as the terrain
+    // stream's is, with or without ?regions). extra: anything else the terrain bake reads. Read with get()
     terrainKey(st, extra = "", o = {}) {
       const { slot, own, lists } = inputOf(st, extra, o);
-      return `${slot}T${ME.BAKE_REV.terrain}:vs${ME.VS}${ME.regionsOn && ME.regionsOn() ? ":rg" : ""}:${keyHash(assetSrc(own) + own + lists)}`;
+      return `${slot}T${ME.BAKE_REV.terrain}:vs${o.vs || ME.VS}${o.rg || (ME.regionsOn && ME.regionsOn(o.vs || ME.VS)) ? ":rg" : ""}:${keyHash(assetSrc(own) + own + lists)}`;
     },
     // the terrain record, stored at the flush: its plain parts copied now (snap), its big arrays as they are then,
     // so the caller copies any it changes before (the model bake splats into T.coarse; R.init drops T.mips)
@@ -8812,7 +9289,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // opts.routes = several routes ([route, ...]), one road each in sim.roads (in place of opts.route); the walkers take the first
     // opts.walkers = how many walkers (default ?units=, else 36)
     constructor(T, st, MB, opts = {}) {
-      this.T = T; this.MB = MB; this.VS = T.VS;
+      this.T = T; this.MB = MB; this.VS = ME.VS; // the models' voxels a tile (the terrain may have fewer while it streams, P3)
       const map = st.map, routes = opts.routes && opts.routes.length ? opts.routes : [opts.route ?? (map.path && map.path[0])];
       this.roads = routes.map((r) => this.road(r));
       // the first road is the sim's own: its route, length and tiles, and at()
@@ -8841,6 +9318,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     }
     // A road from a route on this sim's terrain (roadOf)
     road(route) { return roadOf(this.T, route); }
+    // The terrain stream's finer bake of the same map in place of T (P3, src/stream.js). The roads stay as they
+    // were laid (their ground line, in tiles)
+    setTerrain(T) { this.T = T; this.wat = null; }
     // demo walkers, cycling through the content's walker kinds (ME.content.walkers)
     setCount(n) {
       n = Math.max(0, Math.min(500, n | 0));
@@ -9062,7 +9542,7 @@ struct U {
   grid: vec4f,    // voxel grid origin, voxels per unit
   dims: vec4f,    // voxel grid dims, frame
   cgrid: vec4f,   // coarse/sun grid origin, cells per unit
-  cdims: vec4f,   // coarse dims, light count
+  cdims: vec4f,   // coarse dims, w the models' voxels per unit (ME.VS; the terrain's grid.w may be fewer while it streams)
   look: vec4f,    // shade, pool, amb, aoK
   look2: vec4f,   // bevelK, rampMode, dome height (a box frame: minus its half y), canopyOn
   look3: vec4f,   // debugView, shaftK, bloomK, exposure
@@ -9349,6 +9829,13 @@ fn faceN(d: u32) -> vec3f {
   W.terrainCarve = W.terrain.replace("@fragment fn fs(i: VO) -> GO {", "@group(1) @binding(3) var<storage, read> carved: array<u32>;\n@fragment fn fs(i: VO) -> GO {")
     .replace("let vox = floor(tv - fnm * 0.5);", "let vox = floor(tv - fnm * 0.5);\n  let vi = vec3i(vox); let ci = u32((vi.z * i32(u.dims.y) + vi.y) * i32(u.dims.x) + vi.x);\n  if (((carved[ci >> 5u] >> (ci & 31u)) & 1u) != 0u) { discard; }");
   if (!W.terrainCarve.includes("discard")) throw new Error("terrainCarve: the terrain shader changed");
+  // W1 (docs/designs/2026-11-08-whole-game-128.md): a region baked at a second density draws with its own grid
+  // (origin, voxels per unit) and density texture's extent (rg.dims.xyz, in its voxels; rg.dims.w its density over
+  // the map's, so the AO taps reach as far in the world as the map's do). No carve: W3 edits a region
+  W.terrainHi = W.common + W.terrain.slice(W.common.length).replace("@vertex fn vs(", "struct RG { grid: vec4f, dims: vec4f };\n@group(1) @binding(3) var<uniform> rg: RG;\n@vertex fn vs(")
+    .replaceAll("u.grid", "rg.grid").replaceAll("u.dims", "rg.dims")
+    .replace("tv + n * 2.2, 0.0", "tv + n * 2.2 * rg.dims.w, 0.0").replace("tv + n * 5.0, 1.0", "tv + n * 5.0 * rg.dims.w, 1.0");
+  if (!W.terrainHi.includes("2.2 * rg.dims.w") || !W.terrainHi.includes("5.0 * rg.dims.w")) throw new Error("terrainHi: the terrain shader changed");
 
   // Ray-marched voxel volumes on instanced proxy boxes: two-level DDA (8^3 bricks, then voxels) in the
   // model's local voxel space, writing the true hit depth. Instances carry an affine transform, so
@@ -9512,7 +9999,7 @@ fn loOf(M: Model) -> vec3f { return vec3f(f32(M.base.w & 1023u), f32((M.base.w >
   let mb = I.info.z; let mv = bitcast<f32>(I.info.w);
   if (mb != 0u || mv > 0.0) {
     let ctr = select(vec3f(cell) + 0.5, (vec3f(cell) + 0.5 + om.xyz) * om.w, old); // the voxel's centre, in this entry's voxels
-    let g = hookMarkAlb(mb, mv, n, (ctr * kf - 0.5) / u.grid.w, hc, f32(i.ii), o.a.rgb);
+    let g = hookMarkAlb(mb, mv, n, (ctr * kf - 0.5) / u.cdims.w, hc, f32(i.ii), o.a.rgb);
     o.a = vec4f(mix(o.a.rgb, g.tint.rgb, g.tint.a), o.a.a);
     o.e = vec4f(g.emit, 1.0);
   }
@@ -11445,6 +11932,47 @@ fn boxOf(V: Vox) -> Box {
     }
 
     addLayer(L) { this.layers.push(L); if (this.pl) L.init(this); return L; }
+    // The terrain stream's swap (P3, src/stream.js): a finer bake of the same map (T, its mesh and its grass) in
+    // place of the one this renderer was made with, between two frames. The density and coarse textures, the
+    // terrain mesh, the grass and the lights go to the new T, with the bind groups that hold them; the models,
+    // water, glass, particles and the app's textures stay (all of them in tiles, the same at any density). The
+    // coarse grid has the same cells at any density (ME.coarseStep), so it goes into the same texture. After a
+    // carve, the carve's state goes (its bitsets and patch are the old grid's): the new terrain draws as baked,
+    // and the next carve starts it again at the new grid's size (P5: the stream mirrors the edits into T's grid
+    // before the swap, then carves those cells, so they show).
+    swapTerrain(T, mesh, grass) {
+      const d = this.dev, S = this.S, P = this.pl, bg = this.bg, old = S.T;
+      if (T.cdims.some((n, a) => n !== old.cdims[a])) throw new Error("swapTerrain: another coarse grid (" + T.cdims + " for " + old.cdims + ")");
+      if (this.carved) {
+        const D = this.carveDraw;
+        for (const b of [this.carvedBuf, D && D.vb, D && D.ib]) b && b.destroy();
+        this.carved = this.carvedCells = this.addedCells = this.carvedBuf = this.carveDraw = null;
+        this.blockCells = this.patchBlocks = this.patchDirtyList = this.patchDirtyBlock = this.patchScratch = this.patchAll = null;
+        this.patchDirty = false;
+      }
+      // W1: the region at a second density was the old terrain's
+      if (this.hi) this.setHiRegion(null);
+      S.T = T; S.mesh = mesh; S.grass = grass;
+      this.densTex.destroy();
+      this.densTex = ME.tex3d(d, "density", "r8unorm", [T.NX >> 1, T.NY >> 1, T.NZ >> 1], T.mips, 1);
+      T.mips = null;
+      d.queue.writeTexture({ texture: this.occTex }, T.coarse, { bytesPerRow: T.cdims[0], rowsPerImage: T.cdims[1] }, T.cdims);
+      this.sunDirty = true;
+      this.tVB.destroy(); this.tIB.destroy(); this.grassBuf.destroy();
+      this.tVB = ME.buffer(d, mesh.verts, BU.VERTEX, "terrain vb");
+      this.tIB = ME.buffer(d, mesh.index, BU.INDEX, "terrain ib");
+      this.grassBuf = ME.buffer(d, grass.blades, BU.STORAGE, "grass blades");
+      this.grassOf = this.grassZ = this.grassCells = null; this.regionOut = null;
+      const dens = this.densTex.createView();
+      this.g1.terrain = bg(P.terrain, 1, [dens, this.lin, { buffer: this.matBuf }]);
+      this.g1.partsim = bg(P.partsim, 1, [{ buffer: this.partBuf }, { buffer: this.srcBuf }, dens, this.lin]);
+      this.g1.grass = bg(P.grass, 1, [{ buffer: this.grassBuf }, { buffer: this.matBuf }, this.fieldTex.createView(), this.lin, ...(this.flooded ? [{ buffer: this.wcellBuf }] : [])]);
+      // the scene's lights in place (the critters hold the list), then binned again with the app's
+      const list = this.lightList;
+      this.lightList = null;
+      this.setLights(this.lightExtra || []);
+      if (list) { const now = this.lightList; list.length = 0; list.push(...now); this.lightList = list; }
+    }
     setWeather(kind, intensity = 1, seconds = 8) { this.weather.set(kind, intensity, seconds); }
     // the wind the sim, the critters and the shaders see this frame: R.set's, times the weather's (gust: the mix's once active)
     windNow() { const s = this.set, w = this.windE, W = this.weather; w[0] = s.wind ? s.windK * W.windF() : 0; w[1] = W.gust(s); return w; }
@@ -11601,6 +12129,25 @@ fn boxOf(V: Vox) -> Box {
     uploadPool(bz) {
       const MB = this.S.MB, [PX, PY] = MB.adims, layer = PX * PY * 8 * 4;
       this.dev.queue.writeTexture({ texture: this.atlasTex, origin: [0, 0, bz * 8] }, MB.atlas, { offset: bz * layer, bytesPerRow: PX * 4, rowsPerImage: PY }, [PX, PY, 8]);
+    }
+    // only the pool's slots ks (P4, #492's PERF-E11; slot k at ((k % PB), (k / PB) % PB, k / PB²) x 8, PB = PX / 8):
+    // a run of neighbours in one row of slots is one write, packed first into this.slotBuf (8 z x 8 rows of the run's
+    // 8w voxels), so what is staged is the run's bytes: a view of MB.atlas would stage ~7/8 of a pool layer a run (#562)
+    uploadSlots(ks) {
+      const MB = this.S.MB, [PX, PY] = MB.adims, PB = PX / 8, s = [...ks].sort((a, b) => a - b);
+      if (!this.slotBuf || this.slotBuf.length < 2048 * PB) this.slotBuf = new Uint8Array(2048 * PB);
+      const buf = this.slotBuf;
+      for (let n = 0; n < s.length; ) {
+        let e = n + 1;
+        while (e < s.length && s[e] === s[e - 1] + 1 && s[e] % PB) e++;
+        const k = s[n], qx = (k % PB) * 8, qy = (Math.floor(k / PB) % PB) * 8, qz = Math.floor(k / (PB * PB)) * 8, r = 32 * (e - n);
+        for (let z = 0; z < 8; z++) for (let y = 0; y < 8; y++) {
+          const src = (((qz + z) * PY + qy + y) * PX + qx) * 4;
+          buf.set(MB.atlas.subarray(src, src + r), (z * 8 + y) * r);
+        }
+        this.dev.queue.writeTexture({ texture: this.atlasTex, origin: [qx, qy, qz] }, buf, { bytesPerRow: r, rowsPerImage: 8 }, [8 * (e - n), 8, 8]);
+        n = e;
+      }
     }
     uploadBricks(b) { // b: [x0, y0, z0, x1, y1, z1] in bricks, x1.. exclusive
       const MB = this.S.MB, [BX, BY] = MB.bdims;
@@ -11863,6 +12410,7 @@ fn boxOf(V: Vox) -> Box {
       return { p: g.p, n: g.n, tile, kind: "terrain", layer: null, index: -1, t: g.t };
     }
     setLights(extra) {
+      this.lightExtra = extra; // (swapTerrain bins them again)
       const T = this.S.T, list = [...this.S.MB.lights, ...(T.lights || []), ...extra].slice(0, LIGHT_MAX);
       const data = new Float32Array(Math.max(1, list.length) * 8);
       list.forEach((l, i) => data.set([...l.p, l.r, ...l.col, l.k], i * 8));
@@ -12221,7 +12769,7 @@ fn boxOf(V: Vox) -> Box {
       const fno = this.pinFrame ?? this.frameNo; // the frame number the shaders see (R.pinFrame holds it for frozen shots)
       set4(u, O.dims, T.NX, T.NY, T.NZ, fno);
       u.set(T.O, O.cgrid); u[O.cgrid + T.O.length] = T.CPU;
-      u.set(T.cdims, O.cdims); u[O.cdims + T.cdims.length] = 0;
+      u.set(T.cdims, O.cdims); u[O.cdims + T.cdims.length] = ME.VS; // w: the models' voxels a tile (the terrain's while the stream bakes, P3, may be fewer)
       set4(u, O.look, s.shade, s.pool, s.amb, s.aoK);
       set4(u, O.look2, BEVEL, s.ramp ? 1 : 0, this.ext.jar ? this.ext.dome : -this.ext.half[1], s.canopy ? 1 : 0);
       // the moon, 0 by day to 1 at night (the dusk blend, as in daycycle.js): the shafts turn pale blue-silver,
@@ -12304,8 +12852,48 @@ fn boxOf(V: Vox) -> Box {
     drawSnap(r, k) {
       const sn = this.S.mesh.snaps[k];
       if (!sn.parts) { r.drawIndexed(sn.count, 1, sn.first, 0, 0); return; }
-      const p = sn.parts, out = this.regionOut;
-      for (let n = 0; n < p.length; n += 4) if (!out[p[n]]) r.drawIndexed(p[n + 3], 1, p[n + 2], p[n + 1], 0);
+      const p = sn.parts, out = this.regionOut, hn = this.hi ? this.hi.n : -1;
+      for (let n = 0; n < p.length; n += 4) if (!out[p[n]] && p[n] !== hn) r.drawIndexed(p[n + 3], 1, p[n + 2], p[n + 1], 0);
+    }
+
+    // W1 (docs/designs/2026-11-08-whole-game-128.md): one region drawn from a bake at a second density (h from
+    // ME.bakeRegionHi, its mesh from greedyMesh over h.grid) in place of the base mesh's parts there; null puts
+    // the base back. Its own pipeline (W.terrainHi, compiled on the first call), density texture and grid uniform
+    // (h.origin in the region's voxels, h.vs of them a unit); the materials are the map's (h's palette was mapped
+    // into it). Needs a mesh by regions with a region of h.rect
+    async setHiRegion(h, mesh) {
+      const d = this.dev, T = this.S.T, old = this.hi;
+      this.hi = null;
+      if (old) for (const b of [old.tex, old.ubuf, old.vb, old.ib]) b.destroy();
+      if (!h) return null;
+      const R = this.S.mesh.regions, n = R ? R.findIndex((g) => g.rect.every((v, a) => v === h.rect[a])) : -1;
+      if (n < 0) throw new Error("setHiRegion: no base region at " + h.rect + (R ? "" : " (a mesh not by regions)"));
+      if (!this.plHi) {
+        const k = kit(this.gpu, this.hooks);
+        this.plHi = await k.rp("terrainHi", k.mod("terrainHi"), { targets: ME.GBUFFER.G, depthStencil: ME.GBUFFER.DEPTH, vertex: { buffers: [{ arrayStride: 8, attributes: [{ shaderLocation: 0, offset: 0, format: "uint16x4" }] }] } });
+        this.g0hi = this.bg(this.plHi, 0, [{ buffer: this.ubuf }]);
+      }
+      const [cw, ch, cz] = h.dims, tex = ME.tex3d(d, "density hi", "r8unorm", [cw >> 1, ch >> 1, cz >> 1], [h.d1, h.d2], 1);
+      const iv = 1 / h.vs, u = new Float32Array([T.O[0] + h.origin[0] * iv, T.O[1] + h.origin[1] * iv, T.O[2] + h.origin[2] * iv, h.vs, cw, ch, cz, h.vs / T.VS]);
+      const ubuf = ME.buffer(d, u, BU.UNIFORM, "grid hi");
+      this.hi = {
+        n, tex, ubuf, snaps: mesh.snaps, idx: mesh.index.BYTES_PER_ELEMENT === 2 ? "uint16" : "uint32",
+        vb: ME.buffer(d, mesh.verts, BU.VERTEX, "terrain hi vb"), ib: ME.buffer(d, mesh.index, BU.INDEX, "terrain hi ib"),
+        g1: this.bg(this.plHi, 1, [tex.createView(), this.lin, { buffer: this.matBuf }, { buffer: ubuf }]),
+      };
+      return this.hi;
+    }
+    // the hi region's snaps k0 and k1, while its base region is on screen
+    drawHi(r, k0, k1) {
+      const H = this.hi;
+      if (!H || (this.regionOut && this.regionOut[H.n])) return;
+      r.setPipeline(this.plHi); r.setBindGroup(0, this.g0hi); r.setBindGroup(1, H.g1);
+      r.setVertexBuffer(0, H.vb); r.setIndexBuffer(H.ib, H.idx);
+      for (const k of k1 !== k0 ? [k0, k1] : [k0]) {
+        const sn = H.snaps[k];
+        if (!sn.parts) r.drawIndexed(sn.count, 1, sn.first, 0, 0);
+        else for (let m = 0; m < sn.parts.length; m += 4) r.drawIndexed(sn.parts[m + 3], 1, sn.parts[m + 2], sn.parts[m + 1], 0);
+      }
     }
 
     ts(name, begin = true, end = true) {
@@ -12420,6 +13008,7 @@ fn boxOf(V: Vox) -> Box {
       const k0 = cam.turning ? cam.snapIndex(cam.from) : cam.snapIndex(), k1 = cam.turning ? cam.snapIndex(cam.to) : k0;
       this.drawSnap(r, k0); if (k1 !== k0) this.drawSnap(r, k1);
       if (CD && CD.n) { r.setVertexBuffer(0, CD.vb); r.setIndexBuffer(CD.ib, "uint32"); r.drawIndexed(CD.n); }
+      if (this.hi) this.drawHi(r, k0, k1);
       if (s.grass && S.grass.count) { r.setPipeline(P.grass); r.setBindGroup(0, g0.grass); r.setBindGroup(1, g1.grass); r.draw(42, S.grass.count); }
       r.setPipeline(P.volume); r.setBindGroup(0, g0.volume); r.setBindGroup(1, g1.volume); r.draw(36, nInst);
       for (const L of this.layers) L.gbuffer(r);
@@ -12555,7 +13144,7 @@ fn boxOf(V: Vox) -> Box {
       this.ripples = []; this.stats = { impacts: 0, rings: 0, droplets: 0, settled: 0, lost: 0 }; this.pours = []; this.digs = []; this.time = 0;
       this.carveQ = []; this.carvedTotal = 0; this.nCarve = 0; // terrain cells carved on the CPU, given back on the GPU
       // dug sand: grains queued and loose on the GPU; steps (stepNo) and the last step whose settled grains
-      // are in T.grid (freeUpTo); orig = each changed terrain cell's baked value (resetTerrain); gen = resets
+      // are in T.grid (freeUpTo); orig = each changed terrain cell's baked value (resetTerrain); gen = resets and retargets
       this.keepQueued = 0; this.keepLive = 0; this.keepUntil = -1; this.keeps = false;
       this.stepNo = 0; this.freeUpTo = 0; this.orig = new Map(); this.gen = 0; this.occReset = 0;
       this.enabled = true; this.noDraw = false; this.timeScale = 1; // 0 freezes the simulation (it still draws)
@@ -12701,7 +13290,7 @@ fn boxOf(V: Vox) -> Box {
     // through MB.voxel(mi, x, y, z) (ME.brickVoxel's, made here when MB has none). A model still at its first,
     // coarser bake (m.kf, R.swapModel) has kf x fewer voxels a tile.
     shatter(MB, s, o = {}) {
-      const mi = s.frames[0], m = MB.models[mi], VS = (this.T.VS * (m.fine || 1)) / (m.kf || 1), [nx, ny, nz] = m.dims, [ox, oy, oz] = m.box, p = s.place, rnd = () => this.rng();
+      const mi = s.frames[0], m = MB.models[mi], VS = (ME.VS * (m.fine || 1)) / (m.kf || 1), [nx, ny, nz] = m.dims, [ox, oy, oz] = m.box, p = s.place, rnd = () => this.rng();
       const voxel = MB.voxel || ME.brickVoxel(MB), at = (x, y, z) => voxel(mi, x, y, z);
       const cz = p.Z + m.h * 0.35, sp0 = o.speed ?? 1.4, life = o.life ?? 16;
       let n = 0;
@@ -13175,6 +13764,30 @@ fn boxOf(V: Vox) -> Box {
       c.meanRestZ = c.resting ? +(zs / c.resting).toFixed(4) : 0;
       Object.defineProperty(c, "restCells", { value: Uint32Array.from(cells) });
       return c;
+    }
+    // The terrain stream's finer bake of the same map in place of T (P3, src/stream.js), while nothing is loose
+    // (the stream commits only when the layer is not active): the solid, terrain and wake bitsets at the new
+    // grid's size, the bind groups that hold them, and its cells read again. P5: T's grid has the old terrain's
+    // edits mirrored in, and orig (cell: its baked value) holds the cells they changed: the bitsets go up as T.grid
+    // is now, and occ0 (what a reset uploads) and orig are T as baked, so resetTerrain gives the target as baked
+    retarget(T, orig) {
+      if (this.active) throw new Error("retarget: the layer is busy");
+      this.gen++; // a readBack still mapping holds the old grid's cells: its settle is dropped, as resetTerrain's is
+      const d = this.dev, S = BU.STORAGE, bg = this.R.bg, B = (b) => ({ buffer: b }), words = Math.ceil((T.NX * T.NY * T.NZ) / 32);
+      this.T = T;
+      for (const b of [this.occBuf, this.terBuf, this.wakeBuf]) b.destroy();
+      this.occBuf = d.createBuffer({ label: "solid cells", size: words * 4, usage: S | BU.COPY_SRC | BU.COPY_DST });
+      this.terBuf = d.createBuffer({ label: "terrain cells", size: words * 4, usage: S | BU.COPY_DST });
+      this.wakeBuf = d.createBuffer({ label: "wake cells", size: this.mode.sleep ? words * 4 : 16, usage: S });
+      this.g.spawn1 = bg(this.plSpawn, 1, [B(this.ppBuf), B(this.vxBuf), B(this.occBuf), B(this.wakeBuf), B(this.spawnBuf), B(this.argsBuf), B(this.terBuf)]);
+      this.g.carve1 = bg(this.plCarve, 1, [B(this.ppBuf), B(this.occBuf), B(this.wakeBuf), B(this.carveBuf), B(this.terBuf)]);
+      for (const k in this.steps) this.steps[k].g1 = bg(this.steps[k].pl, 1, [B(this.ppBuf), B(this.vxBuf), B(this.occBuf), B(this.wakeBuf), B(this.listBuf), B(this.argsBuf), B(this.watBuf), B(this.terBuf)]);
+      this.occ0 = null;
+      const n = this.writeOcc(), O = this.occ0; // (writeBuffer has copied it: the baked bits from here)
+      let d0 = 0;
+      if (orig) for (const [i, o] of orig) if (!T.grid.at(i) !== !o) { O[i >>> 5] ^= 1 << (i & 31); d0 += o ? 1 : -1; }
+      this.staticBits = n; this.staticBits0 = n + d0;
+      this.orig = orig || new Map();
     }
     destroy() { for (const b of [this.vxBuf, this.occBuf, this.wakeBuf, this.listBuf, this.argsBuf, this.spawnBuf, this.ppBuf, this.watBuf, this.carveBuf, this.terBuf, ...(this.evFree || [])]) b && b.destroy(); }
   }
@@ -18471,7 +19084,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.90.0", name: "Mossheart", commit: "4c2b77f" };
+  G.VERSION = { v: "0.91.0", name: "Mossheart", commit: "aac3d912" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -25129,7 +25742,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
     // A plant's card: its level; damage, reach, rate and what it aims at; its links (or the plants it could
     // link with) and what it is strong against; under More what each level does and what growing it would
-    // add, its links in full and its matchups. Grow and Uproot under it, with their grace and Uproot's second tap.
+    // add, its links in full and its matchups. Grow, Deepen and Uproot over it (#inspact), with their grace and
+    // Uproot's second tap.
     // at Lv II with two Lv III branches to choose from
     forkable(t) { return t.level === D.MAX_LEVEL - 1 && !!D.FORKS[t.kind]; }
     inspect(t) {
