@@ -4788,8 +4788,8 @@ window.addEventListener("error", (e) => {
    docs/decisions/2026-10-21-map-format.md: heights, kinds from ME.content.kinds, water shapes, props, a
    frame) or a generator map (the diorama format: letters, heights, a water closure, deco), which the bake
    reads as a v1 map whose kinds come from the content's terrain roles (the old style path, until M6).
-   Columns rise from the floor to the tile's top; the kind's recipe gives the top (moss carpet, gravel lane
-   with stepping stones, pebble river bed, a layer with its trims and road marks), the next few voxels the
+   Columns rise from the floor (or from a tile's bottom on a floating map, tapering into a keel) to the
+   tile's top; the kind's recipe gives the top (moss carpet, gravel lane with stepping stones, pebble river bed, a layer with its trims and road marks), the next few voxels the
    kind's drape, everything below its under material. Lips get 1-3 voxel lobes of the kind's overhang,
    the island is clipped to its circle over a strata drum and a wooden plinth (the jar frame), and static
    props are stamped in from their SDFs. Which deco become volumes or walkers instead of terrain comes from the content
@@ -4804,9 +4804,9 @@ window.addEventListener("error", (e) => {
   const STEPS = [0.25, 0.5, 1];
   const RECIPES = {
     // required and optional parameters of each terrain recipe
-    layer: { need: ["top", "depth", "under"], may: ["mottle", "mottleK", "edge", "stripe"] },
-    carpet: { need: ["top", "under"], may: ["mottle", "cushions", "litter"] },
-    lane: { need: ["top", "under"], may: ["stones", "edge", "paving"] },
+    layer: { need: ["top", "depth", "under"], may: ["mottle", "mottleK", "edge", "stripe", "keel"] },
+    carpet: { need: ["top", "under"], may: ["mottle", "cushions", "litter", "keel"] },
+    lane: { need: ["top", "under"], may: ["stones", "edge", "paving", "keel"] },
     water: { need: ["bed", "under"], may: ["shore", "bank", "surface", "depth", "clarity", "tint", "absorb", "calm", "glint", "caustics", "bubbles", "falls", "spray"] },
   };
   // A water kind's look (any of LOOK set): the water pass, the caustics and the bubbles read it. A kind
@@ -4859,6 +4859,21 @@ window.addEventListener("error", (e) => {
     for (let y = 0; y < map.H; y++) for (let x = 0; x < map.W; x++) out.push((map.legend || {})[R[y][x]] ?? null);
     return out;
   };
+  // per tile, the bottom in steps (floating ground, F1): NaN where the column stands on the floor ("." in a
+  // string row, null in an array row); null for a map without bottom rows
+  const bottoms = (map) => {
+    const R = map.bottom !== undefined && rows(map, "bottom");
+    if (!R) return null;
+    const out = new Float64Array(map.W * map.H);
+    for (let y = 0; y < map.H; y++) for (let x = 0; x < map.W; x++) { const c = R[y][x]; out[y * map.W + x] = c === "." || c === null ? NaN : typeof c === "string" ? B36.indexOf(c) : c; }
+    return out;
+  };
+  // A kind's keel (F1, on a tile with a bottom): its column hangs below the bottom by d tiles per tile of
+  // distance to the island's edge (counted up to KEEL_R tiles, at most max), plus noise up to k tiles
+  const KEEL_R = 4;
+  const keelOk = (kl) => !!kl && typeof kl === "object" && kl.d >= 0 && (kl.k ?? 0) >= 0 && (kl.max === undefined || kl.max >= 0);
+  const bottomZ = (map, hStep) => { const b = bottoms(map); if (b) for (let i = 0; i < b.length; i++) b[i] *= hStep; return b; };
+  const keelMax = (kd) => (kd && keelOk(kd.keel) ? (kd.keel.max ?? kd.keel.d * KEEL_R) + (kd.keel.k ?? 0) : 0);
 
   // The water shapes as one signed distance (+ inside, in tiles): segments with a radius (streams) and
   // ellipses (ponds), with the generator's garden() arithmetic (styles4.js). null without shapes.
@@ -4927,15 +4942,45 @@ window.addEventListener("error", (e) => {
       for (const p of R.need) if (k[p] === undefined) err("kind " + name + " (" + k.recipe + "): needs " + p);
       for (const p in k) if (!R.need.includes(p) && !R.may.includes(p) && !FLAGS.includes(p)) warn("kind " + name + ": unknown parameter " + p);
       if (k.paving && !(Array.isArray(k.paving.stones) && k.paving.stones.length)) warn("kind " + name + ": paving without stones (it paves in its top, " + JSON.stringify(k.top) + ")");
+      if (k.keel !== undefined && !keelOk(k.keel)) err("kind " + name + ": keel is { d >= 0, k >= 0, max >= 0 } (tiles; k and max optional)");
     }
-    // floor: every column needs ground under its top
+    // bottoms (floating ground): rows like h, "." (or null) for a column on the floor
+    if (map.bottom !== undefined) {
+      const br = rows(map, "bottom");
+      if (!br) gerr("bottom: " + H + " rows");
+      else br.forEach((r, y) => {
+        if (r.length !== W) gerr("bottom[" + y + "]: " + W + " tiles, got " + r.length);
+        r.forEach((c, x) => {
+          const ok = c === "." || c === null || (typeof c === "string" ? B36.includes(c) && c.length === 1 : Number.isInteger(c) && c >= -64 && c <= 255);
+          if (!ok) gerr("bottom[" + y + "][" + x + "]: a base-36 digit or . (the floor) in a string row, an integer from -64 to 255 or null in an array row");
+        });
+      });
+    }
+    // floor: every column needs ground under its top, the floor or its bottom; on a void map (floor "void")
+    // there is no floor and every ground tile needs a bottom. range: the lowest bottom or floor tile top and
+    // the highest top (steps), and the lowest voxel (tiles, keels included)
     if (!gridBad) {
-      const hs = heights(map), ks = kindNames(map);
-      let lo = Infinity, hi = -Infinity;
-      for (let i = 0; i < hs.length; i++) if (ks[i] !== null) { lo = Math.min(lo, hs[i]); hi = Math.max(hi, hs[i]); }
-      if (!Number.isInteger(map.floor)) err("floor: an integer number of height steps");
-      else if (lo !== Infinity && map.floor >= lo) err("floor: must be below the lowest tile (" + lo + "), got " + map.floor);
-      range = [lo, hi];
+      const hs = heights(map), ks = kindNames(map), bs = bottoms(map), vd = map.floor === "void", bad = [];
+      let lo = Infinity, hi = -Infinity, zLo = Infinity, exact = false;
+      for (let i = 0; i < hs.length; i++) if (ks[i] !== null) {
+        const b = bs ? bs[i] : NaN, at = "[" + Math.floor(i / W) + "][" + (i % W) + "]";
+        hi = Math.max(hi, hs[i]);
+        if (b === b) {
+          if (b >= hs[i]) bad.push("bottom" + at + ": must be below the tile's top (" + hs[i] + "), got " + b);
+          lo = Math.min(lo, b); zLo = Math.min(zLo, b * hStep - keelMax(kinds && kinds[ks[i]]));
+        } else {
+          if (vd) bad.push("bottom" + at + ": a void map's ground tiles need a bottom");
+          lo = Math.min(lo, hs[i]);
+        }
+      }
+      for (const m of bad.slice(0, 5)) err(m);
+      if (bad.length > 5) err("bottom: " + (bad.length - 5) + " more tiles as above");
+      if (vd) { if (zLo === Infinity) zLo = lo === Infinity ? 0 : lo * hStep; }
+      else if (!Number.isInteger(map.floor)) err("floor: an integer number of height steps" + (bs ? ", or \"void\"" : ""));
+      else if (lo !== Infinity && map.floor >= lo) err("floor: must be below the lowest tile" + (bs ? " or bottom" : "") + " (" + lo + "), got " + map.floor);
+      // the floor sets the box's z unless a bottom or keel is lower: then exactly floor - 1 as before F1 (even a bad floor)
+      if (!vd && !(map.floor * hStep > zLo)) { zLo = map.floor * hStep; exact = true; }
+      range = [lo, hi, zLo, exact, !!bs];
     }
     // water shapes
     for (const [i, w] of (map.water || []).entries()) {
@@ -5067,13 +5112,13 @@ window.addEventListener("error", (e) => {
     }
     // the bake box: given, or derived
     if (range) {
-      const [, hi] = range, z0 = map.floor * hStep - 1, z1 = hi * hStep + 2.5;
+      const [, hi, zLo, exact, fl] = range, z0 = exact ? zLo - 1 : Math.floor((zLo - 1) * 4) / 4, z1 = hi * hStep + 2.5;
       box = map.box || { o: [-1, -1, z0], size: [W + 2, H + 2, Math.ceil(z1 - z0)] };
       if (map.box) {
         const ok = Array.isArray(box.o) && box.o.length === 3 && Array.isArray(box.size) && box.size.length === 3 && box.size.every((n) => Number.isInteger(n) && n > 0);
         if (!ok) { err("box: { o: [x, y, z], size: [w, h, d] } in tiles, sizes whole"); return { errors, warnings, box: null }; }
         if (!box.o.every((n) => Number.isFinite(n) && Number.isInteger(n * 4))) err("box: o in steps of 0.25 tile (on a voxel edge at every vs, all multiples of 4)");
-        else if (box.o[0] > 0 || box.o[1] > 0 || box.o[0] + box.size[0] < W || box.o[1] + box.size[1] < H || box.o[2] > map.floor * hStep || box.o[2] + box.size[2] < hi * hStep) err("box: must hold every tile from the floor to the highest top");
+        else if (box.o[0] > 0 || box.o[1] > 0 || box.o[0] + box.size[0] < W || box.o[1] + box.size[1] < H || box.o[2] > zLo || box.o[2] + box.size[2] < hi * hStep) err("box: must hold every tile from the floor" + (fl ? " or its bottom (keels too)" : "") + " to the highest top");
       }
       const cells24 = box.size[0] * box.size[1] * box.size[2] * 24 ** 3;
       if (cells24 > 256e6) warn("box: " + Math.round(cells24 / 1e6) + "M voxels at vs=24 (memory: keep a phone map under 256M)");
@@ -5133,7 +5178,10 @@ window.addEventListener("error", (e) => {
       for (const f of m.flood || []) for (const t of floodRegion(m, f)) if (names[t] !== null && z[t] < f.level) { flood[t] = f.level; floodKind[t] = f.water || null; }
       return {
         W: m.W, H: m.H, hv: hs, z, names, kinds: names.map((n) => (n === null ? null : kinds[n])), kindTable: kinds, flood, floodKind, laneKinds: (m.game && m.game.lane) || [],
-        floorZ: m.floor * hStep, wd, wholeWater: !wd,
+        floorZ: m.floor === "void" ? v.box.o[2] : m.floor * hStep, wd, wholeWater: !wd,
+        // floating ground (F1): each column's bottom in tiles (NaN on the floor), null without bottom rows;
+        // void: no floor under the grid (physics drops what falls off, ME.groundAt finds nothing)
+        bot: bottomZ(m, hStep), void: m.floor === "void",
         props: propsOf(st),
         frame: f.type === "jar"
           ? { type: "jar", c: f.c.slice(), r: f.r, foot: f.foot ?? 0.92, glassTop: f.glassTop ?? 3.4, strata: f.strata || [], spill: !!f.spill }
@@ -5746,6 +5794,33 @@ window.addEventListener("error", (e) => {
       return Math.max(0, Math.round(v));
     };
     const kPB = kOf(PL_ZB), kPT = kOf(PL_ZT), kD = kOf(DRUM), kF = kOf(ZF);
+    // Floating ground (F1): a column with a bottom starts there, not on the floor, and a kind with a keel
+    // hangs it lower towards the island's middle: d tiles per tile from the nearest edge (counted up to
+    // KEEL_R, at most max) plus k tiles of noise, fading in over the first tile. An edge is a tile with no
+    // ground, off the map, or whose top is at or below this tile's bottom (a lower step of the same island
+    // is not an edge). Each tile lists its edge tiles within KEEL_R once, as tileWet does.
+    const edgeNear = new Map();
+    const edgeDist = (X, Y, cx, cy) => {
+      const t = cy * G.W + cx;
+      let L = edgeNear.get(t);
+      if (!L) {
+        L = [];
+        const b = G.bot[t];
+        for (let y = cy - KEEL_R; y <= cy + KEEL_R; y++) for (let x = cx - KEEL_R; x <= cx + KEEL_R; x++) if (!kindAt(x, y) || G.z[y * G.W + x] <= b) L.push(x, y);
+        edgeNear.set(t, L);
+      }
+      let d = KEEL_R;
+      for (let i = 0; i < L.length; i += 2) { const x = L[i], y = L[i + 1]; d = Math.min(d, Math.hypot(Math.max(x - X, 0, X - x - 1), Math.max(y - Y, 0, Y - y - 1))); }
+      return d;
+    };
+    const kBottom = (kd, Xw, Yw, cx, cy) => {
+      const bz = G.bot ? G.bot[cy * G.W + cx] : NaN;
+      if (!(bz === bz)) return kF;
+      const kl = kd.keel;
+      let z = bz;
+      if (kl) { const e = edgeDist(Xw, Yw, cx, cy); z -= Math.min(kl.max ?? kl.d * KEEL_R, kl.d * e) + (kl.k || 0) * P.fbm(Xw * 1.7, Yw * 1.7, 0, 113) * Math.min(1, e); }
+      return Math.max(0, kOf(z));
+    };
     // Edge breakup (the voxel detail layer's PR 1, docs/designs/2026-10-29-voxel-detail-layer.md, option c):
     // ME.content.edgeBreak = { amp, core, rough, minVS, recipes, kinds, vary, laneWave } turns it on; it is off
     // without it, below minVS (16) and with ?edgebreak=0. Tile borders wander: a column within 2 amp of a side
@@ -5822,7 +5897,7 @@ window.addEventListener("error", (e) => {
     // the column's tile's (the upper tile of the step), times the column's vary factor, at most 2 AMAX, so
     // no content value undercuts the tile's core
     const EB_KEEP = 2;
-    const roughen = (Xw, Yw, tx, ty, kd, kEnd, bc) => {
+    const roughen = (Xw, Yw, tx, ty, kd, kEnd, bc, kB) => {
       const RD = Math.min(ebOf(kd)[1] * ebFr, 2 * AMAX) * VS;
       if (!(RD > 0)) return 0;
       const fx = Xw - tx, fy = Yw - ty, sx = fx < 0.5 ? -1 : 1, sy = fy < 0.5 ? -1 : 1, dx = (sx < 0 ? fx : 1 - fx) * VS, dy = (sy < 0 ? fy : 1 - fy) * VS;
@@ -5835,7 +5910,7 @@ window.addEventListener("error", (e) => {
       undefer(bc);
       const cut = 0.4 + 0.6 * (d / RD);
       let n = 0;
-      for (let k = Math.max(kN, kF); k < kEnd - EB_KEEP; k++) {
+      for (let k = Math.max(kN, kB); k < kEnd - EB_KEEP; k++) {
         const q = k * BPL + bc;
         if (band[q] && P.noise(Xw * 6, Yw * 6, ((k + 0.5) / VS) * 6, 97) > cut) { band[q] = 0; n++; }
       }
@@ -6023,24 +6098,24 @@ window.addEventListener("error", (e) => {
           const n1 = P.noise(X * 9, Y * 9, 0, 5);
           if (n1 > 0.52) dd += Math.round((n1 - 0.52) * 30);
           if (P.noise(X * 21, Y * 21, 0, 6) > 0.8) dd += 5;
-          const kEnd = kT + extra - soften(kd, Xw, Yw, cx, cy);
+          const kEnd = kT + extra - soften(kd, Xw, Yw, cx, cy), kB = kBottom(kd, Xw, Yw, cx, cy); // kB: the floor, or the bottom (F1)
           const sk = skirt && (X < e1 || Y < e1 || X > G.W - e1 || Y > G.H - e1);
           // the deep run: below the top voxels, the drape and a layer's top, and above what the jar wrote (the
           // skirt overwrites the whole column, so it has none)
-          const uHi = Math.min(kEnd, kEnd - (layer ? layer + extra : 1 + Math.max(two ? 1 : 0, dr && !bed ? dd : 0))), uLo = Math.max(kF, wHi[bc]);
+          const uHi = Math.min(kEnd, kEnd - (layer ? layer + extra : 1 + Math.max(two ? 1 : 0, dr && !bed ? dd : 0))), uLo = Math.max(kB, wHi[bc]);
           let a = -1;
           if (!sk && uHi > uLo) { a = uLo; dLo[bc] = uLo; dHi[bc] = uHi; dM[bc] = kd.under; }
-          if (kF < wLo[bc]) wLo[bc] = kF;
+          if (kB < wLo[bc]) wLo[bc] = kB;
           if (kEnd > wHi[bc]) wHi[bc] = kEnd;
-          for (let k = kF; k < kEnd; k++) {
+          for (let k = kB; k < kEnd; k++) {
             if (k === a && (k = uHi) >= kEnd) break;
             const dz = kEnd - 1 - k;
             band[k * BPL + bc] = layer ? (dz < layer + extra ? mTop : kd.under) : dz === 0 || (two && dz === 1) ? mTop : dr && dz <= dd && !bed ? (n1 > 0.7 ? dr[1] : dr[0]) : kd.under;
           }
-          if (EB) { const n = roughen(Xw, Yw, cx, cy, kd, kEnd, bc); if (own(i, j)) ebCarved += n; }
+          if (EB) { const n = roughen(Xw, Yw, cx, cy, kd, kEnd, bc, kB); if (own(i, j)) ebCarved += n; }
           if (jar) for (let k = kEnd; k < kD; k++) band[k * BPL + bc] = 0; // beds carved below the drum top
           // a box's skirt: the outer faces of the map's edge tiles, under their top voxel, in one material
-          if (sk) for (let k = kF; k < kEnd - 1; k++) band[k * BPL + bc] = skirt;
+          if (sk) for (let k = kB; k < kEnd - 1; k++) band[k * BPL + bc] = skirt;
           top[col] = kEnd;
         }
         if ((j & 15) === 15 || j === cj1 - 1) {
@@ -6448,7 +6523,7 @@ window.addEventListener("error", (e) => {
     // tiles: per tile of the map, its top (tiles), its kind's name (null on a generator map) and recipe (null:
     // no ground), and whether it grows grass (what the sim and the grass read instead of the map's letters)
     const tiles = { W: G.W, H: G.H, z: G.z, name: G.names, recipe: G.kinds.map((k) => (k ? k.recipe : null)), grass: Uint8Array.from(G.kinds, (k) => (k && k.grass ? 1 : 0)), wet: wetT, depth: depthT };
-    const T = { O, NX, NY, NZ, VS, grid: g, top, mips: RULES ? null : [d1, d2], coarse, cdims: RULES ? null : [QX, QY, QZ], CPU: RULES ? null : CPU, volumes, walkers, water, looks, falls, beams, lights, stats, bounds, frame: F, tiles,
+    const T = { O, NX, NY, NZ, VS, void: !!G.void, grid: g, top, mips: RULES ? null : [d1, d2], coarse, cdims: RULES ? null : [QX, QY, QZ], CPU: RULES ? null : CPU, volumes, walkers, water, looks, falls, beams, lights, stats, bounds, frame: F, tiles,
       geo: jar ? { C, RI, RG, DRUM, PL_R, PL_ZB, PL_ZT, glassZt: F.glassTop } : null };
     // the cells above the voxel grid stay empty. The stream's bake (o.bg) fills a tile row of cells at a time
     // (cells are independent, so the slabs give the same bytes), with a yield between
@@ -6459,8 +6534,8 @@ window.addEventListener("error", (e) => {
   };
   // the code the bake runs besides bakeTerrain itself (the bake cache key holds its source)
   // the bake cache key's code: the bake's helpers and its tables (cache.js)
-  ME.bakeTerrain.parts = [ME.validateMap, ME.waterDist, gridOf, propsOf, decoSets, propRole, areaOk, areaBox, inArea, resolve, mottleCut, pave, heights, kindNames, rows, impure, BrickGrid, ...Object.values(RECIPE),
-    JSON.stringify({ B36, STEPS, RECIPES, FLAGS, AT, FIXED_BOX })];
+  ME.bakeTerrain.parts = [ME.validateMap, ME.waterDist, gridOf, propsOf, decoSets, propRole, areaOk, areaBox, inArea, resolve, mottleCut, pave, heights, bottoms, bottomZ, keelOk, keelMax, kindNames, rows, impure, BrickGrid, ...Object.values(RECIPE),
+    JSON.stringify({ B36, STEPS, RECIPES, FLAGS, AT, FIXED_BOX, KEEL_R })];
   // this whole file, for a terrain worker (terrainWorkerSrc), and what a worker's PX must give to be trusted
   ME.bakeTerrain.module = terrainModule;
   ME.bakeTerrain.pxProbe = pxProbe;
@@ -6561,17 +6636,18 @@ window.addEventListener("error", (e) => {
   };
 
   // Walkable ground: first solid voxel scanning down from zFrom (rebuilt from the arrays on a cache hit, which
-  // is also where T gets the T.vox guard back: ME.voxGone).
+  // is also where T gets the T.vox guard back: ME.voxGone). Nothing under zFrom is the grid's floor, or null on
+  // a void map (T.void: no floor, F1)
   ME.groundAt = (T) => {
-    const { O, NX, NY, NZ, VS, grid } = T;
+    const { O, NX, NY, NZ, VS, grid } = T, none = T.void ? null : O[2];
     if (!Object.getOwnPropertyDescriptor(T, "vox")) ME.voxGone(T);
     return (X, Y, zFrom) => {
       const i = Math.floor((X - O[0]) * VS), j = Math.floor((Y - O[1]) * VS);
       if (i < 0 || j < 0 || i >= NX || j >= NY) return zFrom;
       const k = Math.floor((zFrom - O[2]) * VS);
-      if (k < 0) return O[2];
+      if (k < 0) return none;
       const g = grid.down(i, j, Math.min(NZ - 1, k));
-      return g < 0 ? O[2] : O[2] + (g + 1) / VS;
+      return g < 0 ? none : O[2] + (g + 1) / VS;
     };
   };
 })();
@@ -8498,21 +8574,37 @@ window.addEventListener("error", (e) => {
   const set9 = (O, a, b, c, d, e, f, g, h, i) => { O[0] = a; O[1] = b; O[2] = c; O[3] = d; O[4] = e; O[5] = f; O[6] = g; O[7] = h; O[8] = i; return O; };
 
   // Path cells in walking order, from polylines of cell corners (styles5.js cellsOf).
-  const cellsOf = (pts) => {
+  // A corner [x, y, { j }] is a join: one step from the cell before into the cell (x - j, y - j), which is
+  // drawn at (x, y), j tiles higher or lower (the copy rule: a point and its copy moved by j(1,1,1) share a
+  // pixel under the locked view). Its cell (x, y) comes next in the walk; joins, if given, gets
+  // { i, j } with i the index of that cell.
+  const cellsOf = (pts, joins) => {
+    if (pts[0][2]) throw new Error("route: a join can't be the first corner");
     const out = [pts[0].slice()];
     for (let k = 0; k + 1 < pts.length; k++) {
-      let [x, y] = pts[k]; const [x1, y1] = pts[k + 1];
+      let [x, y] = out[out.length - 1]; const [x1, y1, jn] = pts[k + 1];
+      if (jn) {
+        const j = jn.j, sx = x1 - j, sy = y1 - j;
+        if (!Number.isInteger(j) || !j || Math.abs(sx - x) + Math.abs(sy - y) !== 1) throw new Error(`route: the join at corner ${k + 1} ([${x1}, ${y1}, { j: ${j} }]) steps into (${sx}, ${sy}), which isn't next to (${x}, ${y})`);
+        out.push([x1, y1]);
+        if (joins) joins.push({ i: out.length - 1, j });
+        continue;
+      }
       while (x !== x1 || y !== y1) { if (x !== x1) x += Math.sign(x1 - x); else y += Math.sign(y1 - y); out.push([x, y]); }
     }
     return out;
   };
 
-  // A road from a route (a polyline of tile corners) on terrain T: { cells, route, len, at(s, o) }.
+  // A road from a route (a polyline of tile corners) on terrain T: { cells, route, len, at(s, o), joins }.
   // cells: its tiles in walking order; route: the ground line at voxel spacing, smoothed; len: its length in
   // tiles; at(s, o): the point s tiles along it, as sim.at. It reads the terrain (T.VS, T.tiles, T.groundAt)
   // and changes nothing. sim.road on the sim's terrain; ME.roadOn on any (the rules' vs16 bake: ME.terrain16).
+  // joins: [{ s, j }], where the road jumps by j(1,1,1) at s (a join corner, cellsOf). The line runs from the
+  // cell before to its edge, jumps, and runs on from the copy of that edge to the cell's centre; at() never
+  // mixes the two sides, and neither does the smoothing. It throws "join doesn't close" unless the tiles'
+  // heights differ by j, and "road over void at s = ..." where a void map has no ground under it.
   const roadOf = (T, route) => {
-    const VS = T.VS, cells = route && route.length ? cellsOf(route) : [];
+    const VS = T.VS, jc = [], cells = route && route.length ? cellsOf(route, jc) : [];
     const TL = T.tiles, tz = (c) => TL.z[c[1] * TL.W + c[0]], isW = (c) => TL.recipe[c[1] * TL.W + c[0]] === "water" || (TL.wet && TL.wet[c[1] * TL.W + c[0]] === 1);
     // nominal height per cell; water cells take the higher bank around their crossing plus the bridge rise
     const zc = cells.map((c, i) => {
@@ -8522,27 +8614,54 @@ window.addEventListener("error", (e) => {
       while (b < cells.length - 1 && isW(cells[b])) b++;
       return Math.max(tz(cells[a]), tz(cells[b])) + 0.45;
     });
+    const jAt = new Map(jc.map((q) => [q.i, q.j])), joins = [], jk = [];
+    for (const { i, j } of jc) {
+      const P = cells[i - 1], W = cells[i];
+      if (Math.abs(zc[i] - zc[i - 1] - j) > 0.3) throw new Error(`route: join doesn't close: (${P}) at ${zc[i - 1]} to (${W}) at ${zc[i]} is ${+(zc[i] - zc[i - 1]).toFixed(2)}, not j = ${j}`);
+    }
     // dense polyline at voxel spacing, ground from the voxel grid, then smoothed
     const pts = [];
+    const ground = (X, Y, z) => {
+      const g = T.groundAt(X, Y, z);
+      if (g === null) throw new Error(`route: road over void at s = ${(pts.length / VS).toFixed(2)} (${X.toFixed(2)}, ${Y.toFixed(2)})`);
+      return g;
+    };
     for (let i = 0; i + 1 < cells.length; i++) {
-      const [x0, y0] = cells[i], [x1, y1] = cells[i + 1], n = VS;
+      const [x0, y0] = cells[i], [x1, y1] = cells[i + 1], n = VS, j = jAt.get(i + 1);
+      if (j) {
+        // to the edge of the cell stepped into (x1 - j, y1 - j), then on from its copy at (x1, y1)
+        const h = n >> 1;
+        for (let s = 0; s < n; s++) {
+          const u = s / n, d = s < h ? 0 : j, X = x0 + 0.5 + (x1 - j - x0) * u + d, Y = y0 + 0.5 + (y1 - j - y0) * u + d;
+          pts.push([X, Y, ground(X, Y, (s < h ? zc[i] : zc[i + 1]) + 0.6)]);
+        }
+        jk.push(i * n + h); joins.push({ s: (i * n + h) / VS, j });
+        continue;
+      }
       for (let s = 0; s < n; s++) {
         const u = s / n, X = x0 + 0.5 + (x1 - x0) * u, Y = y0 + 0.5 + (y1 - y0) * u;
-        pts.push([X, Y, T.groundAt(X, Y, Math.max(zc[i], zc[i + 1]) + 0.6)]);
+        pts.push([X, Y, ground(X, Y, Math.max(zc[i], zc[i + 1]) + 0.6)]);
       }
     }
     const last = cells[cells.length - 1];
-    if (last) pts.push([last[0] + 0.5, last[1] + 0.5, T.groundAt(last[0] + 0.5, last[1] + 0.5, zc[zc.length - 1] + 0.6)]);
-    const sz = pts.map((_, i) => { let s = 0, w = 0; for (let k = -5; k <= 5; k++) { const p = pts[Math.min(pts.length - 1, Math.max(0, i + k))]; s += p[2]; w++; } return s / w; });
+    if (last) pts.push([last[0] + 0.5, last[1] + 0.5, ground(last[0] + 0.5, last[1] + 0.5, zc[zc.length - 1] + 0.6)]);
+    // the smoothing window stays on its side of a join: [lo, hi] is the sample's stretch between joins
+    const lo = new Int32Array(pts.length), hi = new Int32Array(pts.length).fill(pts.length - 1);
+    for (const k of jk) for (let i = 0; i < pts.length; i++) if (i < k) hi[i] = Math.min(hi[i], k - 1); else lo[i] = Math.max(lo[i], k);
+    const sz = pts.map((_, i) => { let s = 0, w = 0; for (let k = -5; k <= 5; k++) { const p = pts[Math.min(hi[i], Math.max(lo[i], i + k))]; s += p[2]; w++; } return s / w; });
     // never sink below the raw ground (stair noses)
     const line = pts.map((p, i) => [p[0], p[1], Math.max(p[2], sz[i])]);
-    // the road at arc length s: [x, y, z, dx, dy], into o if given (no allocation)
+    // the road at arc length s: [x, y, z, dx, dy], into o if given (no allocation). In the one step that
+    // holds a join, from the last sample before it to the edge's copy, it runs on the near side to the
+    // edge (b moved back by j) and jumps at the join's s.
+    const jStep = new Map(jk.map((k, q) => [k - 1, joins[q].j]));
     const at = (s, o = [0, 0, 0, 0, 0]) => {
       const f = Math.max(0, Math.min(line.length - 1.001, s * VS)), i = Math.floor(f), u = f - i, a = line[i], b = line[i + 1];
-      o[0] = a[0] + (b[0] - a[0]) * u; o[1] = a[1] + (b[1] - a[1]) * u; o[2] = a[2] + (b[2] - a[2]) * u; o[3] = b[0] - a[0]; o[4] = b[1] - a[1];
+      const j = jk.length ? jStep.get(i) || 0 : 0;
+      o[0] = a[0] + (b[0] - j - a[0]) * u; o[1] = a[1] + (b[1] - j - a[1]) * u; o[2] = a[2] + (b[2] - j - a[2]) * u; o[3] = b[0] - j - a[0]; o[4] = b[1] - j - a[1];
       return o;
     };
-    return { cells, route: line, len: Math.max(0, line.length - 1) / VS, at };
+    return { cells, route: line, len: Math.max(0, line.length - 1) / VS, at, joins };
   };
 
   class Sim {
@@ -8774,7 +8893,7 @@ window.addEventListener("error", (e) => {
   ME.wgsl = ME.wgsl || {};
 
   // float offsets into the uniform buffer (vec4 aligned)
-  ME.UOFF = { vp: 0, ivp: 16, vdir: 32, sun: 36, res: 40, grid: 44, dims: 48, cgrid: 52, cdims: 56, look: 60, look2: 64, look3: 68, fog: 72, beamCol: 76, canopy: 80, canopy2: 84, shadow: 88, shadow2: 92, beams: 96, beamK: 128, ids: 136, misc: 140, outres: 144, part: 148, psrc: 152, geo: 156, misc2: 160, look4: 164, wind: 168, canopy3: 172, water2: 176, lgrid: 180, field: 184, weather: 188, weather2: 192, weather3: 196, wclear: 200, weather4: 216, key: 220, key2: 224, sky: 228, sky2: 232, user: 236 };
+  ME.UOFF = { vp: 0, ivp: 16, vdir: 32, sun: 36, res: 40, grid: 44, dims: 48, cgrid: 52, cdims: 56, look: 60, look2: 64, look3: 68, fog: 72, beamCol: 76, canopy: 80, canopy2: 84, shadow: 88, shadow2: 92, beams: 96, beamK: 128, ids: 136, misc: 140, outres: 144, part: 148, psrc: 152, geo: 156, misc2: 160, look4: 164, wind: 168, canopy3: 172, water2: 176, lgrid: 180, field: 184, weather: 188, weather2: 192, weather3: 196, wclear: 200, weather4: 216, key: 220, key2: 224, sky: 228, sky2: 232, sky3: 236, user: 240 };
   // vec4 slots of app data at the end of the block (u.user[k], Renderer.user) for the shader hooks
   ME.USER_SLOTS = 6;
   ME.USIZE = ME.UOFF.user + 4 * ME.USER_SLOTS;
@@ -8836,9 +8955,10 @@ struct U {
   wclear: array<vec4f, 4>, // fog clearings: x, y, radius, softness (radius 0 = unused)
   weather4: vec4f, // rain streak layers (R.rainLayers: 3; 2 on compat, 1 on a phone), -, -, -
   key: vec4f,     // the key light's colour (look.sunCol, linear), w = 1 when the level tints its light
-  key2: vec4f,    // the ambient's colour (look.ambCol, linear; the key colour without), w = 1 for the night backdrop
-  sky: vec4f,     // night backdrop: zenith colour (linear), star density
-  sky2: vec4f,    // night backdrop: horizon colour (linear), moon disc radius (fraction of the screen height)
+  key2: vec4f,    // the ambient's colour (look.ambCol, linear; the key colour without), w = the backdrop: 0 forest, 1 night, 2 void
+  sky: vec4f,     // night and void backdrops: zenith colour (linear); w = star density (night), cloud amount (void)
+  sky2: vec4f,    // night and void: horizon colour (linear); w = moon disc radius (night, a share of the screen height), horizon height (void, a share of the screen from the top)
+  sky3: vec4f,    // void backdrop: mist colour (linear), w = the far islets' amount
   user: array<vec4f, ${ME.USER_SLOTS}>, // app data for the shader hooks (Renderer.user)
 };
 @group(0) @binding(0) var<uniform> u: U;
@@ -9519,11 +9639,38 @@ fn night(fc: vec2f, uv: vec2f) -> vec3f {
   let mar = 0.82 + 0.18 * vnoise(md / mr * 2.2 + 3.0);
   return mix(col, moonC * 1.6 * mar, disc);
 }
+// A level's void backdrop (look.backdrop "void", u.key2.w 2): no ground, only sky. The zenith (u.sky) at the
+// top of the screen down to a pale horizon band (u.sky2; u.sky2.w its height, a share of the screen from the
+// top), a mist (u.sky3) below it where the ground would be, three slow bands of cloud (u.sky.w: their amount)
+// and faint islets far off in the mist (u.sky3.w: their amount). In screen space, as night() and forest().
+fn voidSky(fc: vec2f, uv: vec2f) -> vec3f {
+  let hb = clamp(u.sky2.w, 0.1, 0.9); let y = uv.y;
+  let q = fc / u.res.y; // the screen height is 1
+  var col = select(mix(u.sky.rgb, u.sky2.rgb, sstep(0.0, hb, y)), mix(u.sky2.rgb, u.sky3.rgb, sstep(hb, min(hb + 0.4, 1.0), y)), y > hb);
+  let bd = (y - hb) / 0.05;
+  col = mix(col, mix(u.sky2.rgb, vec3f(1.0), 0.3), 0.45 * exp(-bd * bd)); // the pale band
+  // islets: one candidate a column of 7% of the screen height, a flat top over a keel that narrows downward
+  let cw = 0.07; let cx = floor(q.x / cw); let r = hash12(vec2f(cx, 5.0));
+  if (r < 0.45 * u.sky3.w) {
+    let top = hb + 0.05 + 0.22 * hash12(vec2f(cx, 17.0));
+    let hw = cw * (0.12 + 0.25 * hash12(vec2f(cx, 31.0))) * (1.0 - clamp((y - top) / 0.1, 0.0, 0.9));
+    if (y > top && abs(q.x - (cx + 0.5) * cw) < hw) { col = mix(col, u.sky3.rgb * 0.8, 0.3 * sstep(top + 0.2, top, y)); }
+  }
+  // clouds: two bands above the horizon and one below, drifting slowly sideways
+  for (var k = 0; k < 3; k++) {
+    let fk = f32(k);
+    let dy = (y - (hb - 0.22 + 0.17 * fk)) / (0.05 + 0.02 * fk);
+    let n = fbm2(vec2f(q.x * (1.4 + 0.5 * fk) + u.vdir.w * (0.004 + 0.002 * fk) + fk * 11.0, y * 6.0 + fk * 3.0));
+    col = mix(col, mix(u.sky2.rgb, vec3f(1.0), 0.5 - 0.15 * fk), 0.5 * u.sky.w * sstep(0.45, 0.75, n) * exp(-dy * dy));
+  }
+  return col;
+}
 @fragment fn fs(@builtin(position) fc: vec4f) -> @location(0) vec4f {
   let px = vec2i(fc.xy);
   let uv = fc.xy * u.res.zw;
   let d = textureLoad(gD, px, 0);
   if (d <= 0.0) {
+    if (u.key2.w > 1.5) { return vec4f(voidSky(fc.xy, uv), 1.0); }
     if (u.key2.w > 0.5) { return vec4f(night(fc.xy, uv), 1.0); }
     return vec4f(rampC(u32(u.ids.x), forest(uv)), 1.0);
   }
@@ -9818,7 +9965,7 @@ fn waves(p: vec2f, fl: vec2f, st: f32, t: f32, rough: f32) -> Wv {
   let cook = canopyS(i.w);
   let L = u.sun.xyz; let V = -u.vdir.xyz;
   let s = 0.5 - u.look.x * 0.6 + (u.look.x + u.look.y) * cook * sv * 0.75 - 0.2 * clamp(thick * 2.2, 0.0, 1.0) + (n.z - 0.97) * 2.5 - rough * 0.05;
-  // a level's key light (look.sunCol) tints the body and the foam; on a night backdrop the water mirrors its
+  // a level's key light (look.sunCol) tints the body and the foam; on a night or void backdrop the water mirrors its
   // sky (u.sky, u.sky2) and the glint takes the key's colour; without a look all three stay as they were
   var col = rampC(u32(u.ids.y), s) * keyTint(sv * (0.6 + 0.4 * cook));
   let fres = 0.04 + 0.96 * pow(1.0 - max(dot(n, V), 0.0), 5.0);
@@ -10386,7 +10533,7 @@ struct Vox { p: vec4f, v: vec3f, k: u32 };
 // friction per 1/60 s, settle speed, clock, wind pull; c = voxels in use, spawn count, ring slot of the
 // first spawn, flags (1 = clear all, 2 = for a terrain reset); d = grid dims, capacity; g = grid origin,
 // voxels per unit; h = dig: centre, radius (0 = none); e = this step's number, the last step whose
-// settled grains the CPU has written into the terrain
+// settled grains the CPU has written into the terrain, and 1 on a void map (no floor under the grid)
 struct PP { a: vec4f, b: vec4f, c: vec4u, d: vec4u, g: vec4f, h: vec4f, e: vec4u };
 const FADE = 0.5;
 const KEEP_MIN = 1e8; const SETTLED = 4e9; const SETTLED_MIN = 3e9; const SETTLE_S = 1.5; const SETCAP = 2048u;
@@ -10408,9 +10555,9 @@ override SLEEP: bool = true;
 fn cellOf(p: vec3f) -> vec3i { return vec3i(floor((p - pp.g.xyz) * pp.g.w)); }
 fn inGrid(c: vec3i) -> bool { return all(c >= vec3i(0)) && all(c < vec3i(pp.d.xyz)); }
 fn cellIdx(c: vec3i) -> u32 { return u32((c.z * i32(pp.d.y) + c.y) * i32(pp.d.x) + c.x); }
-// solid = terrain or held; below the grid is floor, around it is air
+// solid = terrain or held; below the grid is floor (air on a void map: pp.e.z), around it is air
 fn solid(c: vec3i) -> bool {
-  if (!inGrid(c)) { return c.z < 0; }
+  if (!inGrid(c)) { return c.z < 0 && pp.e.z == 0u; }
   let i = cellIdx(c);
   return (atomicLoad(&occ[i >> 5u]) & (1u << (i & 31u))) != 0u;
 }
@@ -10436,7 +10583,7 @@ fn release(i: u32) {
   const ARGS = /* wgsl */ `
 struct Args { verts: u32, inst: atomic<u32>, first: u32, firstInst: u32, evN: atomic<u32>, setN: atomic<u32>, lostN: atomic<u32>, e3: u32, ev: array<vec4f, 64>, settled: array<vec2u, SETCAP> };
 fn terrainAt(c: vec3i) -> bool {
-  if (!inGrid(c)) { return c.z < 0; }
+  if (!inGrid(c)) { return c.z < 0 && pp.e.z == 0u; }
   let i = cellIdx(c);
   return (atomicLoad(&ter[i >> 5u]) & (1u << (i & 31u))) != 0u;
 }
@@ -10621,7 +10768,8 @@ fn update(i: u32) -> u32 {
   let was = V.p.w;
   V.p.w -= dt;
   let held = st >= 2u && was > FADE;
-  if (V.p.w <= 0.0 || clearing) {
+  // a void map retires what falls 2 units below the grid (nothing holds a cell there)
+  if (V.p.w <= 0.0 || clearing || (pp.e.z != 0u && !held && V.p.z < pp.g.z - 2.0)) {
     if (held) { release(cellIdx(cellOf(V.p.xyz))); }
     V.k = withState(V.k, 0u); vx[i] = V; return 0u;
   }
@@ -10977,9 +11125,13 @@ fn boxOf(V: Vox) -> Box {
   // dusk blend and a game's mood start from them. Its other fields: sunCol, ambCol (the key light's and the
   // ambient's colour, linear RGB; ambCol defaults to sunCol, one tint for both), dusk (the dusk targets over
   // ME.DUSK: R.duskTo), windAz (ME.WIND_DIR), and backdrop "night" (a night sky with stars and the moon at
-  // L's azimuth; skyTop, skyLow, stars, moon tune it).
+  // L's azimuth; skyTop, skyLow, stars, moon tune it) or "void" (no ground: a sky around floating islands;
+  // skyTop, skyLow, horizon, mist, clouds, islets tune it, ME.VOID_SKY).
   ME.LOOK_SET = ["shade", "pool", "amb", "aoK", "shaftK", "bloomK", "exposure", "haze", "vignette", "mottle", "windK", "gust"];
   ME.NIGHT_SKY = { skyTop: [0.010, 0.012, 0.045], skyLow: [0.060, 0.074, 0.120], stars: 1, moon: 0.035 };
+  // the void backdrop: zenith, horizon band and mist (linear RGB), the horizon's height (a share of the screen from
+  // the top), the clouds' and the far islets' amounts (0 = none). Art sets a level's own in its look.
+  ME.VOID_SKY = { skyTop: [0.16, 0.30, 0.62], skyLow: [0.78, 0.80, 0.82], mist: [0.80, 0.66, 0.52], horizon: 0.55, clouds: 1, islets: 1 };
 
   // Every pipeline depends only on the device and the canvas format, so they compile (async, in parallel,
   // in the GPU process) while the CPU bake runs: slow phone shader compilers hide behind it. An app's
@@ -11175,11 +11327,12 @@ fn boxOf(V: Vox) -> Box {
       const wd = look.windAz != null ? ME.windDir(+look.windAz) : ME.WIND_DIR0;
       ME.WIND_DIR[0] = wd[0]; ME.WIND_DIR[1] = wd[1]; // in place: the sim, the critters and content hold the array
       this.duskTo = Object.assign({}, ME.DUSK || {}, look.dusk || {});
-      const ns = ME.NIGHT_SKY, c3 = (v, d) => (Array.isArray(v) && v.length >= 3 ? [+v[0], +v[1], +v[2]] : d);
+      const vd = look.backdrop === "void", ns = vd ? ME.VOID_SKY : ME.NIGHT_SKY, c3 = (v, d) => (Array.isArray(v) && v.length >= 3 ? [+v[0], +v[1], +v[2]] : d);
       this.key = look.sunCol ? c3(look.sunCol, [1, 1, 1]).concat(1) : [1, 1, 1, 0];
-      this.key2 = c3(look.ambCol, this.key.slice(0, 3)).concat(look.backdrop === "night" ? 1 : 0);
-      this.sky = c3(look.skyTop, ns.skyTop).concat(look.stars ?? ns.stars);
-      this.sky2 = c3(look.skyLow, ns.skyLow).concat(look.moon ?? ns.moon);
+      this.key2 = c3(look.ambCol, this.key.slice(0, 3)).concat(vd ? 2 : look.backdrop === "night" ? 1 : 0);
+      this.sky = c3(look.skyTop, ns.skyTop).concat(vd ? look.clouds ?? ns.clouds : look.stars ?? ns.stars);
+      this.sky2 = c3(look.skyLow, ns.skyLow).concat(vd ? look.horizon ?? ns.horizon : look.moon ?? ns.moon);
+      this.sky3 = c3(look.mist, ME.VOID_SKY.mist).concat(look.islets ?? ME.VOID_SKY.islets);
       this.set0 = Object.assign({}, this.set);
       this.L0 = st.L.slice();
       // app extension points (see the header); all empty for the plain engine scene
@@ -12087,7 +12240,7 @@ fn boxOf(V: Vox) -> Box {
       u.set(Wx.clear, O.wclear);
       if (this.rainLayers == null) this.rainLayers = ME.phone && ME.phone() ? 1 : ME.compat ? 2 : 3; // (read once; a probe may set it)
       set4(u, O.weather4, this.rainLayers, 0, 0, 0);
-      u.set(this.key, O.key); u.set(this.key2, O.key2); u.set(this.sky, O.sky); u.set(this.sky2, O.sky2);
+      u.set(this.key, O.key); u.set(this.key2, O.key2); u.set(this.sky, O.sky); u.set(this.sky2, O.sky2); u.set(this.sky3, O.sky3);
       u.set(this.user, O.user);
       this.dev.queue.writeBuffer(this.ubuf, 0, u);
     }
@@ -12944,7 +13097,7 @@ fn boxOf(V: Vox) -> Box {
       // a terrain reset: the bitset from T.grid, in the step after the clear (no voxel holds a cell then)
       if (this.occReset === 2) { this.writeOcc(); this.occReset = 0; }
       if (this.clearReq) { this.clearReq = false; this.activeUntil = this.clock; if (this.occReset === 1) this.occReset = 2; }
-      pu[24] = ++this.stepNo; pu[25] = this.freeUpTo;
+      pu[24] = ++this.stepNo; pu[25] = this.freeUpTo; pu[26] = T.void ? 1 : 0; // a void map: no floor under the grid
       this.dev.queue.writeBuffer(this.ppBuf, 0, pp);
       this.dev.queue.writeBuffer(this.argsBuf, 0, this.args0);
       this.nSpawn = k; this.stepping = true;
@@ -20833,9 +20986,11 @@ function MG_SFX(L) {
   // (art/sets.js). A set's deck skips problems(), whose budget and rarity caps are the deck builder's. First guesses
   // from the measured values above; tools/rules.html?selfplay=sets plays every pairing, and &kit= tries others.
   const SETS = {
-    classic: { name: "Classic", P: ["anointed"], Q: ["ward"] },
-    // the default set ships on the default kit until the user picks Classic's (decide 71637ea)
-    tess: { name: "Tessellate", P: ["anointed"], Q: ["ward"] },
+    // Classic's knights Ward, nothing else (the user, decide 71637ea C): 47.8 / 44.5 / 43.8% against Grove /
+    // Clockwork / Reef at #533's 17a0145, the one kit measured inside 40-60% (queen Ward and Anointed pawns won 65-74%)
+    classic: { name: "Classic", N: ["ward"] },
+    // the default set plays Classic's kit
+    tess: { name: "Tessellate", N: ["ward"] },
     grove: { name: "Grove", P: ["ward"], N: ["rally"], B: ["sanctuary"] },
     brass: { name: "Clockwork", P: ["squire"], N: ["stride"], R: ["vanguard"] },
     reef: { name: "Reef", P: ["ember"], B: ["leap"], R: ["glide"], Q: ["ember"] },
@@ -24059,7 +24214,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.34.0", name: "DeckChess", commit: "aac3d912" };
+  G.VERSION = { v: "0.35.0", name: "DeckChess", commit: "db90cc2d" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
