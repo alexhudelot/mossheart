@@ -325,8 +325,11 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 #inspector:not(.open) .more { display: none; }
 #inspector.foe, #inspector.gift { gap: 4px; }
 #inspector.foe .btn, #inspector.gift .btn { display: none; }
-/* (on a desktop the card stands beside what it tells of: hud.js frame sets left and top) */
-#inspector.anchored { transform: none; right: auto; bottom: auto; }
+/* (a plant's card stands beside its plant, out of the tray and its dock: hud.js placeCard sets left, top and its
+   max-height to the room between the top strip and the chip row; its text scrolls, its buttons stay in view) */
+#inspector.anchored, #tray #inspector.anchored { position: fixed; transform: none; right: auto; bottom: auto; width: 280px; box-shadow: var(--shadow), 0 6px 18px #0005; z-index: 3; }
+#inspector.anchored #inspbody { min-height: 0; overflow-y: auto; }
+@media (max-width: 760px) { #inspector.anchored, #tray #inspector.anchored { width: min(300px, calc(var(--vw) - 16px)); } }
 /* a creature's trait glyphs beside its HP bar (hud.js foeTags) */
 .foetag { position: absolute; left: 0; top: 0; font: 800 12px/1 system-ui, sans-serif; color: #fff4d8; letter-spacing: 0.05em; white-space: nowrap;
   text-shadow: 0 0 2px #2a1e10, 0 0 2px #2a1e10, 0 1px 1px #2a1e10; will-change: transform; }
@@ -673,7 +676,7 @@ body:not(:has(#menus .veil.show)) #version { display: none; } /* (in the pause c
 #rites { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; width: 64px; padding: 0; line-height: 1; }
 #rites .lb { font-size: calc(22px * var(--ts)); color: #7a5ab8; }
 #rites small { font-size: calc(11px * var(--ts)); font-weight: 700; }
-#tray #inspector { position: static; left: auto; right: auto; top: auto; bottom: auto; transform: none; }
+#tray #inspector { position: relative; left: auto; right: auto; top: auto; bottom: auto; transform: none; } /* (relative, not static: Dismiss.add would set it inline, over the plant card's fixed) */
 #ritepanel { display: none; flex-direction: column; gap: 6px; padding: 10px 12px; background: rgb(250, 242, 219); }
 #ritepanel.show { display: flex; }
 #ritepanel .rhead { display: flex; align-items: center; gap: 8px; }
@@ -743,9 +746,9 @@ body:not(:has(#menus .veil.show)) #version { display: none; } /* (in the pause c
   #tray #wavebtn small { font-size: 0.78em; }
   body.seed-picked #seedcap { display: block; order: -1; align-self: center; max-width: 100%; padding: 2px 10px; border-radius: 9px; background: rgba(26, 38, 13, 0.72); color: #f4f1e2;
     font-size: calc(12.5px * var(--ts)); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  /* (a plant's card or the Rites take the chip row's place; the seed's card is the caption) */
+  /* (a creature's or a gift's card or the Rites take the chip row's place; the seed's card is the caption; a plant's stands by it) */
   #tray #inspector.seedinfo { display: none; }
-  #tray:has(#inspector.show:not(.seedinfo)) #trayrow, body.rites-open #trayrow { display: none; }
+  #tray:has(#inspector.show:not(.seedinfo):not(.anchored)) #trayrow, body.rites-open #trayrow { display: none; }
   body.rites-open #tray #inspector { display: none; }
   #tray #inspector { width: auto; max-height: calc(var(--vh) * 0.22); padding: 8px 10px; gap: 5px; }
   #tray #inspector:not(.open):has(#grafts .btn) { max-height: calc(var(--vh) * 0.28); }
@@ -9494,17 +9497,36 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // 3x3 products into a scratch matrix (row-major, the same sums in the same order as before E9)
   const mul3 = (A, B, O) => { for (let r = 0; r < 3; r++) for (let k = 0; k < 3; k++) O[r * 3 + k] = A[r * 3] * B[k] + A[r * 3 + 1] * B[3 + k] + A[r * 3 + 2] * B[6 + k]; return O; };
   const set9 = (O, a, b, c, d, e, f, g, h, i) => { O[0] = a; O[1] = b; O[2] = c; O[3] = d; O[4] = e; O[5] = f; O[6] = g; O[7] = h; O[8] = i; return O; };
+  // a face leg's corner arcs, floor to face and back at right angles: their radius in tiles
+  const FACE_R = 0.5;
 
   // Path cells in walking order, from polylines of cell corners (styles5.js cellsOf).
   // A corner [x, y, { j }] is a join: one step from the cell before into the cell (x - j, y - j), which is
   // drawn at (x, y), j tiles higher or lower (the copy rule: a point and its copy moved by j(1,1,1) share a
   // pixel under the locked view). Its cell (x, y) comes next in the walk; joins, if given, gets
   // { i, j } with i the index of that cell.
-  const cellsOf = (pts, joins) => {
+  // An entry { face, at, path } is a face leg (#579 section 9.1): off the floor onto the wall face "+x" (the
+  // plane x = at) or "+y" (y = at), along path ([[a, z], ...]: a the cell along the wall, z the height) and back
+  // down. It leaves from the cell next to the wall on the row of path's first a and lands on the row of its
+  // last; the two floor cells under its arcs, w = floor(at + FACE_R) across, come next in the walk, and legs,
+  // if given, gets { i, leg, w } with i the index of the first.
+  const cellsOf = (pts, joins, legs) => {
+    if (!Array.isArray(pts[0])) throw new Error("route: a face leg can't be the first corner");
     if (pts[0][2]) throw new Error("route: a join can't be the first corner");
     const out = [pts[0].slice()];
     for (let k = 0; k + 1 < pts.length; k++) {
-      let [x, y] = out[out.length - 1]; const [x1, y1, jn] = pts[k + 1];
+      let [x, y] = out[out.length - 1];
+      if (!Array.isArray(pts[k + 1])) {
+        const L = pts[k + 1], X = L.face === "+x", P = L.path, nx = pts[k + 2];
+        if ((!X && L.face !== "+y") || !Number.isFinite(L.at) || !Array.isArray(P) || !P.length || P.some((q) => !Number.isInteger(q[0]) || !Number.isFinite(q[1]))) throw new Error(`route: the face leg at corner ${k + 1} needs face "+x" or "+y", a plane at and a path [[a, z], ...]`);
+        const w = Math.floor(L.at + FACE_R), a0 = P[0][0], a1 = P[P.length - 1][0], fx = X ? w + 1 : a0, fy = X ? a0 : w + 1;
+        if (x !== fx || y !== fy) throw new Error(`route: the face leg at corner ${k + 1} leaves from (${fx}, ${fy}), not (${x}, ${y})`);
+        if (!Array.isArray(nx) || nx[2]) throw new Error(`route: the face leg at corner ${k + 1} must be followed by a floor corner`);
+        out.push(X ? [w, a0] : [a0, w], X ? [w, a1] : [a1, w]);
+        if (legs) legs.push({ i: out.length - 2, leg: L, w, k: k + 1 });
+        continue;
+      }
+      const [x1, y1, jn] = pts[k + 1];
       if (jn) {
         const j = jn.j, sx = x1 - j, sy = y1 - j;
         if (!Number.isInteger(j) || !j || Math.abs(sx - x) + Math.abs(sy - y) !== 1) throw new Error(`route: the join at corner ${k + 1} ([${x1}, ${y1}, { j: ${j} }]) steps into (${sx}, ${sy}), which isn't next to (${x}, ${y})`);
@@ -9517,73 +9539,170 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     return out;
   };
 
-  // A road from a route (a polyline of tile corners) on terrain T: { cells, route, len, at(s, o), joins }.
-  // cells: its tiles in walking order; route: the ground line at voxel spacing, smoothed; len: its length in
-  // tiles; at(s, o): the point s tiles along it, as sim.at. It reads the terrain (T.VS, T.tiles, T.groundAt)
-  // and changes nothing. sim.road on the sim's terrain; ME.roadOn on any (the rules' vs16 bake: ME.terrain16).
+  // A face leg's samples (#579 section 9.1), after the last floor sample of the run before it (z zA) and up to
+  // the first of the run after it (z zB), pushed onto line; its up keyframes onto ups, and { face, at, s0, s1 }
+  // onto legs (s0, s1: its floor ends). The pieces, across the wall as n and along it as e: from the cell
+  // centre next to the wall to the arc's foot, the arc (centre (at + r) n + (zA + r) k, up sin φ n + cos φ k),
+  // the climb to path's first point, path, the descent to zB + r and the arc and run back out. Samples are
+  // evenly spaced by length, about 1/VS apart, on the plane x = at (or y = at): no ground, no smoothing. The
+  // two floor stretches run level at zA and zB, so the landings must be flat: ground(X, Y, z) (T.groundAt)
+  // under each, cell centre to arc foot every 1/VS, is within 0.3 of it, or it throws.
+  const legOf = (q, zA, zB, VS, line, ups, legs, ground) => {
+    const L = q.leg, X = L.face === "+x", P = L.path, r = FACE_R, at = L.at, w = q.w, a0 = P[0][0] + 0.5, a1 = P[P.length - 1][0] + 0.5;
+    if (P[0][1] < zA + r - 1e-6 || P[P.length - 1][1] < zB + r - 1e-6) throw new Error(`route: the face leg at corner ${q.k} must run at least ${r} above the floor at both ends (${+zA.toFixed(2)} and ${+zB.toFixed(2)}), not at ${P[0][1]} and ${P[P.length - 1][1]}`);
+    const fl = w + 1.5 - at - r, nf = Math.ceil(fl * VS);
+    for (const [a, zf] of [[a0, zA], [a1, zB]]) for (let k = 0; k <= nf; k++) {
+      const n = w + 1.5 - (fl * k) / nf, x = X ? n : a, y = X ? a : n, g = ground(x, y, zf + 0.6);
+      if (g === null || Math.abs(g - zf) > 0.3) throw new Error(`route: the face leg at corner ${q.k} needs a flat landing: the ground at (${+x.toFixed(2)}, ${+y.toFixed(2)}) is ${g === null ? "void" : +g.toFixed(2)}, not ${+zf.toFixed(2)}`);
+    }
+    // pieces in (n, e, z): a segment { a, b, u: [un, uz] } or an arc { c, d } (d = 1 onto the face, -1 off it)
+    const pc = [{ a: [w + 1.5, a0, zA], b: [at + r, a0, zA], u: [0, 1] }, { c: [at + r, a0, zA + r], d: 1 }, { a: [at, a0, zA + r], b: [at, a0, P[0][1]], u: [1, 0] }];
+    for (let k = 0; k + 1 < P.length; k++) pc.push({ a: [at, P[k][0] + 0.5, P[k][1]], b: [at, P[k + 1][0] + 0.5, P[k + 1][1]], u: [1, 0] });
+    pc.push({ a: [at, a1, P[P.length - 1][1]], b: [at, a1, zB + r], u: [1, 0] }, { c: [at + r, a1, zB + r], d: -1 }, { a: [at + r, a1, zB], b: [w + 1.5, a1, zB], u: [0, 1] });
+    for (const p of pc) p.len = p.c ? (r * Math.PI) / 2 : Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1], p.b[2] - p.a[2]);
+    const pcs = pc.filter((p) => p.len > 1e-9), Lt = pcs.reduce((t, p) => t + p.len, 0), N = Math.max(2, Math.round(Lt * VS)), base = line.length - 1;
+    const U = [[0, 0, 1]];
+    let m = 0, c0 = 0;
+    for (let k = 1; k < N; k++) {
+      const t = (k * Lt) / N;
+      while (m < pcs.length - 1 && t > c0 + pcs[m].len) c0 += pcs[m++].len;
+      const p = pcs[m], u = Math.min(1, Math.max(0, (t - c0) / p.len));
+      let n, e, z, un, uz;
+      if (p.c) {
+        const f = ((p.d > 0 ? u : 1 - u) * Math.PI) / 2, sf = Math.sin(f), cf = Math.cos(f);
+        n = p.c[0] - r * sf; e = p.c[1]; z = p.c[2] - r * cf; un = sf; uz = cf;
+      } else {
+        n = p.a[0] + (p.b[0] - p.a[0]) * u; e = p.a[1] + (p.b[1] - p.a[1]) * u; z = p.a[2] + (p.b[2] - p.a[2]) * u; un = p.u[0]; uz = p.u[1];
+      }
+      line.push(X ? [n, e, z] : [e, n, z]);
+      U.push(X ? [un, 0, uz] : [0, un, uz]);
+    }
+    U.push([0, 0, 1]);
+    // a keyframe wherever the up changes: the arcs' samples and their neighbours on the floor and the face
+    const ne = (a, b) => a[0] !== b[0] || a[1] !== b[1] || a[2] !== b[2];
+    for (let k = 0; k <= N; k++) if ((k > 0 && ne(U[k], U[k - 1])) || (k < N && ne(U[k], U[k + 1]))) ups.push([(base + k) / VS, U[k][0], U[k][1], U[k][2]]);
+    legs.push({ face: L.face, at, s0: base / VS, s1: (base + N) / VS });
+  };
+
+  // A road from a route (a polyline of tile corners) on terrain T: { cells, route, len, at(s, o), joins, ups,
+  // upAt(s, o), legs }. cells: its tiles in walking order; route: the ground line at voxel spacing, smoothed;
+  // len: its length in tiles; at(s, o): the point s tiles along it, as sim.at. It reads the terrain (T.VS,
+  // T.tiles, T.groundAt) and changes nothing. sim.road on the sim's terrain; ME.roadOn on any (the rules' vs16
+  // bake: ME.terrain16).
   // joins: [{ s, j }], where the road jumps by j(1,1,1) at s (a join corner, cellsOf). The line runs from the
   // cell before to its edge, jumps, and runs on from the copy of that edge to the cell's centre; at() never
   // mixes the two sides, and neither does the smoothing. It throws "join doesn't close" unless the tiles'
   // heights differ by j, and "road over void at s = ..." where a void map has no ground under it.
+  // Face legs (cellsOf) split the road into floor runs, each built and smoothed on its own as a whole road
+  // was, so a route with none is the same road to the byte; legOf lays each leg between two runs. ups:
+  // [[s, ux, uy, uz]], the up's keyframes (none on a floor-only road); upAt(s, o): the up at s, [ux, uy, uz],
+  // their nlerp (+z with no keyframes). legs: [{ face, at, s0, s1 }], each leg between its floor ends.
   const roadOf = (T, route) => {
-    const VS = T.VS, jc = [], cells = route && route.length ? cellsOf(route, jc) : [];
+    const VS = T.VS, jc = [], lc = [], cells = route && route.length ? cellsOf(route, jc, lc) : [];
     const TL = T.tiles, tz = (c) => TL.z[c[1] * TL.W + c[0]], isW = (c) => TL.recipe[c[1] * TL.W + c[0]] === "water" || (TL.wet && TL.wet[c[1] * TL.W + c[0]] === 1);
-    // nominal height per cell; water cells take the higher bank around their crossing plus the bridge rise
-    const zc = cells.map((c, i) => {
-      if (!isW(c)) return tz(c);
-      let a = i, b = i;
-      while (a > 0 && isW(cells[a])) a--;
-      while (b < cells.length - 1 && isW(cells[b])) b++;
-      return Math.max(tz(cells[a]), tz(cells[b])) + 0.45;
-    });
-    const jAt = new Map(jc.map((q) => [q.i, q.j])), joins = [], jk = [];
-    for (const { i, j } of jc) {
-      const P = cells[i - 1], W = cells[i];
-      if (Math.abs(zc[i] - zc[i - 1] - j) > 0.3) throw new Error(`route: join doesn't close: (${P}) at ${zc[i - 1]} to (${W}) at ${zc[i]} is ${+(zc[i] - zc[i - 1]).toFixed(2)}, not j = ${j}`);
-    }
-    // dense polyline at voxel spacing, ground from the voxel grid, then smoothed
-    const pts = [];
-    const ground = (X, Y, z) => {
-      const g = T.groundAt(X, Y, z);
-      if (g === null) throw new Error(`route: road over void at s = ${(pts.length / VS).toFixed(2)} (${X.toFixed(2)}, ${Y.toFixed(2)})`);
-      return g;
-    };
-    for (let i = 0; i + 1 < cells.length; i++) {
-      const [x0, y0] = cells[i], [x1, y1] = cells[i + 1], n = VS, j = jAt.get(i + 1);
-      if (j) {
-        // to the edge of the cell stepped into (x1 - j, y1 - j), then on from its copy at (x1, y1)
-        const h = n >> 1;
-        for (let s = 0; s < n; s++) {
-          const u = s / n, d = s < h ? 0 : j, X = x0 + 0.5 + (x1 - j - x0) * u + d, Y = y0 + 0.5 + (y1 - j - y0) * u + d;
-          pts.push([X, Y, ground(X, Y, (s < h ? zc[i] : zc[i + 1]) + 0.6)]);
+    // one floor run, cells [r0, r1): { line, joins: [{ k, j }] (k: the sample), bad: its first void sample }
+    const runOf = (r0, r1) => {
+      const C = cells.slice(r0, r1);
+      // nominal height per cell; water cells take the higher bank around their crossing plus the bridge rise
+      const zc = C.map((c, i) => {
+        if (!isW(c)) return tz(c);
+        let a = i, b = i;
+        while (a > 0 && isW(C[a])) a--;
+        while (b < C.length - 1 && isW(C[b])) b++;
+        return Math.max(tz(C[a]), tz(C[b])) + 0.45;
+      });
+      const jr = jc.filter((q) => q.i >= r0 && q.i < r1).map((q) => ({ i: q.i - r0, j: q.j }));
+      const jAt = new Map(jr.map((q) => [q.i, q.j])), joins = [], jk = [];
+      for (const { i, j } of jr) {
+        const P = C[i - 1], W = C[i];
+        if (Math.abs(zc[i] - zc[i - 1] - j) > 0.3) throw new Error(`route: join doesn't close: (${P}) at ${zc[i - 1]} to (${W}) at ${zc[i]} is ${+(zc[i] - zc[i - 1]).toFixed(2)}, not j = ${j}`);
+      }
+      // dense polyline at voxel spacing, ground from the voxel grid, then smoothed
+      const pts = [];
+      let bad = null;
+      const ground = (X, Y, z) => {
+        const g = T.groundAt(X, Y, z);
+        if (g === null) { if (!bad) bad = [pts.length, X, Y]; return 0; }
+        return g;
+      };
+      for (let i = 0; i + 1 < C.length; i++) {
+        const [x0, y0] = C[i], [x1, y1] = C[i + 1], n = VS, j = jAt.get(i + 1);
+        if (j) {
+          // to the edge of the cell stepped into (x1 - j, y1 - j), then on from its copy at (x1, y1)
+          const h = n >> 1;
+          for (let s = 0; s < n; s++) {
+            const u = s / n, d = s < h ? 0 : j, X = x0 + 0.5 + (x1 - j - x0) * u + d, Y = y0 + 0.5 + (y1 - j - y0) * u + d;
+            pts.push([X, Y, ground(X, Y, (s < h ? zc[i] : zc[i + 1]) + 0.6)]);
+          }
+          jk.push(i * n + h); joins.push({ k: i * n + h, j });
+          continue;
         }
-        jk.push(i * n + h); joins.push({ s: (i * n + h) / VS, j });
-        continue;
+        for (let s = 0; s < n; s++) {
+          const u = s / n, X = x0 + 0.5 + (x1 - x0) * u, Y = y0 + 0.5 + (y1 - y0) * u;
+          pts.push([X, Y, ground(X, Y, Math.max(zc[i], zc[i + 1]) + 0.6)]);
+        }
       }
-      for (let s = 0; s < n; s++) {
-        const u = s / n, X = x0 + 0.5 + (x1 - x0) * u, Y = y0 + 0.5 + (y1 - y0) * u;
-        pts.push([X, Y, ground(X, Y, Math.max(zc[i], zc[i + 1]) + 0.6)]);
-      }
+      const last = C[C.length - 1];
+      if (last) pts.push([last[0] + 0.5, last[1] + 0.5, ground(last[0] + 0.5, last[1] + 0.5, zc[zc.length - 1] + 0.6)]);
+      // the smoothing window stays on its side of a join: [lo, hi] is the sample's stretch between joins
+      const lo = new Int32Array(pts.length), hi = new Int32Array(pts.length).fill(pts.length - 1);
+      for (const k of jk) for (let i = 0; i < pts.length; i++) if (i < k) hi[i] = Math.min(hi[i], k - 1); else lo[i] = Math.max(lo[i], k);
+      const sz = pts.map((_, i) => { let s = 0, w = 0; for (let k = -5; k <= 5; k++) { const p = pts[Math.min(hi[i], Math.max(lo[i], i + k))]; s += p[2]; w++; } return s / w; });
+      // never sink below the raw ground (stair noses)
+      return { line: pts.map((p, i) => [p[0], p[1], Math.max(p[2], sz[i])]), joins, bad };
+    };
+    // the runs between the legs; each leg lands on the cell next to the wall on its last row
+    const runs = [];
+    let r0 = 0;
+    for (const q of lc) {
+      const X = q.leg.face === "+x", a1 = q.leg.path[q.leg.path.length - 1][0], ex = X ? q.w + 1 : a1, ey = X ? a1 : q.w + 1, c = cells[q.i + 2];
+      if (!c || c[0] !== ex || c[1] !== ey) throw new Error(`route: the face leg at corner ${q.k} lands on (${ex}, ${ey}), not ${c ? `(${c[0]}, ${c[1]})` : "nothing"}`);
+      runs.push(runOf(r0, q.i));
+      r0 = q.i + 2;
     }
-    const last = cells[cells.length - 1];
-    if (last) pts.push([last[0] + 0.5, last[1] + 0.5, ground(last[0] + 0.5, last[1] + 0.5, zc[zc.length - 1] + 0.6)]);
-    // the smoothing window stays on its side of a join: [lo, hi] is the sample's stretch between joins
-    const lo = new Int32Array(pts.length), hi = new Int32Array(pts.length).fill(pts.length - 1);
-    for (const k of jk) for (let i = 0; i < pts.length; i++) if (i < k) hi[i] = Math.min(hi[i], k - 1); else lo[i] = Math.max(lo[i], k);
-    const sz = pts.map((_, i) => { let s = 0, w = 0; for (let k = -5; k <= 5; k++) { const p = pts[Math.min(hi[i], Math.max(lo[i], i + k))]; s += p[2]; w++; } return s / w; });
-    // never sink below the raw ground (stair noses)
-    const line = pts.map((p, i) => [p[0], p[1], Math.max(p[2], sz[i])]);
-    // the road at arc length s: [x, y, z, dx, dy], into o if given (no allocation). In the one step that
+    runs.push(runOf(r0, cells.length));
+    const line = [], joins = [], jk = [], ups = [], legs = [];
+    runs.forEach((R, q) => {
+      const base = line.length;
+      if (R.bad) throw new Error(`route: road over void at s = ${((base + R.bad[0]) / VS).toFixed(2)} (${R.bad[1].toFixed(2)}, ${R.bad[2].toFixed(2)})`);
+      for (const p of R.line) line.push(p);
+      for (const { k, j } of R.joins) { jk.push(base + k); joins.push({ s: (base + k) / VS, j }); }
+      if (q < lc.length) legOf(lc[q], R.line[R.line.length - 1][2], runs[q + 1].line[0][2], VS, line, ups, legs, T.groundAt);
+    });
+    // the road at arc length s: [x, y, z, dx, dy, dz], into o if given (no allocation). In the one step that
     // holds a join, from the last sample before it to the edge's copy, it runs on the near side to the
     // edge (b moved back by j) and jumps at the join's s.
     const jStep = new Map(jk.map((k, q) => [k - 1, joins[q].j]));
-    const at = (s, o = [0, 0, 0, 0, 0]) => {
+    const at = (s, o = [0, 0, 0, 0, 0, 0]) => {
       const f = Math.max(0, Math.min(line.length - 1.001, s * VS)), i = Math.floor(f), u = f - i, a = line[i], b = line[i + 1];
       const j = jk.length ? jStep.get(i) || 0 : 0;
-      o[0] = a[0] + (b[0] - j - a[0]) * u; o[1] = a[1] + (b[1] - j - a[1]) * u; o[2] = a[2] + (b[2] - j - a[2]) * u; o[3] = b[0] - j - a[0]; o[4] = b[1] - j - a[1];
+      o[0] = a[0] + (b[0] - j - a[0]) * u; o[1] = a[1] + (b[1] - j - a[1]) * u; o[2] = a[2] + (b[2] - j - a[2]) * u; o[3] = b[0] - j - a[0]; o[4] = b[1] - j - a[1]; o[5] = b[2] - j - a[2];
       return o;
     };
-    return { cells, route: line, len: Math.max(0, line.length - 1) / VS, at, joins };
+    const upAt = (s, o = [0, 0, 0]) => {
+      if (!ups.length) { o[0] = 0; o[1] = 0; o[2] = 1; return o; }
+      let lo = 0, hi = ups.length - 1;
+      if (s <= ups[0][0]) hi = 0;
+      else if (s >= ups[hi][0]) lo = hi;
+      else while (hi - lo > 1) { const m = (lo + hi) >> 1; if (ups[m][0] <= s) lo = m; else hi = m; }
+      const a = ups[lo], b = ups[hi];
+      if (!(a[1] !== b[1] || a[2] !== b[2] || a[3] !== b[3])) { o[0] = a[1]; o[1] = a[2]; o[2] = a[3]; return o; }
+      const u = (s - a[0]) / (b[0] - a[0]), x = a[1] + (b[1] - a[1]) * u, y = a[2] + (b[2] - a[2]) * u, z = a[3] + (b[3] - a[3]) * u, l = Math.hypot(x, y, z);
+      o[0] = x / l; o[1] = y / l; o[2] = z / l;
+      return o;
+    };
+    return { cells, route: line, len: Math.max(0, line.length - 1) / VS, at, joins, ups, upAt, legs };
+  };
+
+  // A walker's frame for put (a 9-array, row-major, into O if given): model x along the heading (dx, dy, dz)
+  // made square to the up (ux, uy, uz), model z along the up, y = z × x. On the floor it is the turn by
+  // atan2(dy, dx); walking +y on the west wall it is ME.FACE_FRAMES["+x"]. put it with yaw 0 and pitch 0.
+  const frameOf = (dx, dy, dz, ux, uy, uz, O = new Float64Array(9)) => {
+    const d = dx * ux + dy * uy + dz * uz;
+    let fx = dx - d * ux, fy = dy - d * uy, fz = dz - d * uz, l = Math.hypot(fx, fy, fz);
+    if (l < 1e-9) { if (Math.abs(uz) < 0.9) { fx = -uy; fy = ux; fz = 0; } else { fx = uz; fy = 0; fz = -ux; } l = Math.hypot(fx, fy, fz); } // heading along the up: any square one
+    fx /= l; fy /= l; fz /= l;
+    return set9(O, fx, uy * fz - uz * fy, ux, fy, uz * fx - ux * fz, uy, fz, ux * fy - uy * fx, uz);
   };
 
   class Sim {
@@ -9617,8 +9736,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       // statics', so a second Sim over the same MB writes everything once; stillN counts the skipped statics
       const NS = MB.statics.length;
       this.stillAt = new Int32Array(NS).fill(-1); this.stillMi = new Int32Array(NS); this.stillP = new Float64Array(NS * 5); this.stillN = 0;
-      this.mx = { R: new Float64Array(9), P: new Float64Array(9), F: new Float64Array(9), S: new Float64Array(9), H: new Float64Array(9), A: new Float64Array(9), B: new Float64Array(9), C: new Float64Array(9), L: new Float64Array(9) };
-      this.sh2 = [0, 0]; this.sc3 = [0, 0, 0]; this.at5 = [0, 0, 0, 0, 0]; this.dirty = [0, 0];
+      this.mx = { R: new Float64Array(9), P: new Float64Array(9), F: new Float64Array(9), S: new Float64Array(9), H: new Float64Array(9), A: new Float64Array(9), B: new Float64Array(9), C: new Float64Array(9), L: new Float64Array(9), G: new Float64Array(9), W: new Float64Array(9) };
+      this.sh2 = [0, 0]; this.sc3 = [0, 0, 0]; this.at5 = [0, 0, 0, 0, 0, 0]; this.up3 = [0, 0, 1]; this.dirty = [0, 0];
     }
     // A road from a route on this sim's terrain (roadOf)
     road(route) { return roadOf(this.T, route); }
@@ -9640,15 +9759,19 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     }
     // a point the critters shy away from this frame
     avoid(x, y) { if (this.wn >= this.capacity) return; this.wpos[this.wn * 2] = x; this.wpos[this.wn * 2 + 1] = y; this.wn++; }
-    // the first road at arc length s: [x, y, z, dx, dy], into o if given (no allocation)
+    // the first road at arc length s: [x, y, z, dx, dy, dz], into o if given (no allocation)
     at(s, o) { return this.roads[0].at(s, o); }
+    // the first road's up at arc length s: [ux, uy, uz] (+z off its face legs), into o if given
+    upAt(s, o) { return this.roads[0].upAt(s, o); }
 
     // Write one instance: model m, placement, yaw, flip, scale [sx,sy,sz], shear [hx,hy] (x += hx*z), flags,
     // and an optional pitch (raises the model's +x end; climbing squirrels, leaping koi).
     // mark (bits) and markV (a float) are the app's marks: a marked instance is shaded by the hookMark
     // shader hook (see ME.SHADER_HOOKS).
+    // frame, if given (a 9-array, row-major: ME.frameOf, ME.FACE_FRAMES), turns the model before the yaw and
+    // pitch: R = frame * R(yaw) * P(pitch), a walker on a wall face. No frame: the floor's arithmetic, the same bytes.
     // (E9: scalar math on scratch matrices, no allocation; the same arithmetic as before, so the same bytes)
-    put(i, mi, X, Y, Z, yaw, flip, sc, sh, flags, pitch = 0, mark = 0, markV = 0) {
+    put(i, mi, X, Y, Z, yaw, flip, sc, sh, flags, pitch = 0, mark = 0, markV = 0, frame = null) {
       const m = this.MB.models[mi], vs = this.VS / (m.kf || 1), c = Math.cos(yaw), s = Math.sin(yaw), M = this.mx;
       // L = R * F * S * H / vs ; t = L * box + [X,Y,Z] (vs: a coarse model of a progressive bake, m.kf, has voxels kf times bigger)
       set9(M.H, 1, 0, sh[0], 0, 1, sh[1], 0, 0, 1);
@@ -9656,6 +9779,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       if (flip) set9(M.F, 0, 1, 0, 1, 0, 0, 0, 0, 1); else set9(M.F, 1, 0, 0, 0, 1, 0, 0, 0, 1);
       let R = set9(M.R, c, -s, 0, s, c, 0, 0, 0, 1);
       if (pitch) { const cp = Math.cos(pitch), sp = Math.sin(pitch); R = mul3(R, set9(M.P, cp, 0, -sp, 0, 1, 0, sp, 0, cp), M.A); }
+      if (frame) R = mul3(frame, R, M.G);
       const L = mul3(mul3(mul3(R, M.F, M.B), M.S, M.C), M.H, M.L);
       for (let k = 0; k < 9; k++) L[k] = L[k] / vs;
       const b = m.box;
@@ -9735,18 +9859,26 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       }
       this.staticCount = i;
       this.dirty[0] = hi < 0 ? 0 : lo; this.dirty[1] = hi + 1;
-      const A5 = this.at5;
+      const A5 = this.at5, U3 = this.up3, faces = this.roads[0].ups.length > 0;
       for (let w = 0; w < this.walkers.length; w++) {
         const u = this.walkers[w], s = (u.s0 + u.speed * time) % this.len, A = this.at(s, A5), X = A[0], Y = A[1], Z = A[2], dx = A[3], dy = A[4];
-        const yaw = Math.atan2(dy, dx), nx = -Math.sin(yaw), ny = Math.cos(yaw);
         const fr = MB.walkerFrames[u.type], g = u.w.gait, ph = s * u.w.rate + u.ph, k = Math.floor((ph % 1) * fr.length);
         let hop = 0, sq = 0;
         if (g === "hop") { const a = Math.abs(Math.sin(ph * Math.PI * 2)); hop = a * 0.06; sq = (0.5 - a) * 0.12; }
         else if (g === "fly") hop = u.w.fly + Math.sin(time * 2.1 + u.ph * 6.3) * 0.05; // hover with a slow bob
         else sq = Math.sin(ph * Math.PI * 4) * 0.03;
-        const px = X + nx * u.lat, py = Y + ny * u.lat, pz = Z + hop;
         sc[0] = 1 + sq * 0.5; sc[1] = 1 + sq * 0.5; sc[2] = 1 - sq; sh[0] = 0; sh[1] = 0;
-        this.put(i++, fr[k], px, py, pz, yaw, false, sc, sh, 1);
+        let px, py, pz;
+        if (faces && this.upAt(s, U3)[2] < 1) {
+          // on a face leg or its arcs: the walker's frame from the heading and the up; lateral is its y, the hop is along the up
+          const F = frameOf(dx, dy, A[5], U3[0], U3[1], U3[2], this.mx.W);
+          px = X + F[1] * u.lat + U3[0] * hop; py = Y + F[4] * u.lat + U3[1] * hop; pz = Z + F[7] * u.lat + U3[2] * hop;
+          this.put(i++, fr[k], px, py, pz, 0, false, sc, sh, 1, 0, 0, 0, F);
+        } else {
+          const yaw = Math.atan2(dy, dx), nx = -Math.sin(yaw), ny = Math.cos(yaw);
+          px = X + nx * u.lat; py = Y + ny * u.lat; pz = Z + hop;
+          this.put(i++, fr[k], px, py, pz, yaw, false, sc, sh, 1);
+        }
         this.wpos[w * 2] = px; this.wpos[w * 2 + 1] = py;
       }
       this.wn = this.walkers.length;
@@ -9800,7 +9932,12 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   ME.roadOn = roadOf;
   // the code a road comes from, for the rules key (cache.js: ME.rulesKey hashes it, so a cached rules record's
   // roads follow any change to it)
-  ME.roadOn.parts = [roadOf, cellsOf, ME.groundAt, ME.BrickGrid && ME.BrickGrid.prototype.down];
+  ME.roadOn.parts = [roadOf, cellsOf, legOf, ME.groundAt, ME.BrickGrid && ME.BrickGrid.prototype.down];
+  // a wall walker's frame (put's frame), and the two walkable faces' fixed frames (#579 section 9.1): G1 on "+x"
+  // (model x -> world y, y -> z, z -> x) and G2 = G1² on "+y" (x -> z, y -> x, z -> y). With one of them, put's
+  // yaw is the heading on the face: on "+x" yaw 0 runs +y and π/2 climbs, on "+y" yaw 0 climbs and π/2 runs +x
+  ME.frameOf = frameOf;
+  ME.FACE_FRAMES = { "+x": [0, 0, 1, 1, 0, 0, 0, 1, 0], "+y": [0, 1, 0, 0, 0, 1, 1, 0, 0] };
   ME.INST_FLOATS = INST_FLOATS;
 })();
 
@@ -17366,13 +17503,16 @@ fn boxOf(V: Vox) -> Box {
   //   stair   a stair climbing the face, its treads facing sideways
   //   lamp    an iron lamp standing out from the face
   // Anchored at the tile's middle at the panel's foot (the cell's h); panels in a run meet edge to edge.
+  // A walked wall (wall walkers, Escher design 9.1) takes o.flush: the face at the tile's front (x 0.5, flush
+  // with the next cell's edge, for the road's arc), no foot; and o.clear = [z0, z1], the walkers' band above
+  // the foot: the piece grows below z0 and nothing stands out of the face from z0 up.
   model("es_panel", (o = {}) => {
-    const H = o.h ?? 2, X0 = -0.5, F = -0.28, xm = (X0 + F) / 2, p = [];
+    const H = o.h ?? 2, F = o.flush ? 0.5 : -0.28, X0 = o.flush ? 0.28 : -0.5, xm = (X0 + F) / 2, G = o.clear ? o.clear[0] : H, p = [];
     p.push(B([xm, 0, H / 2], [(F - X0) / 2, 0.5, H / 2], 0, "stone"));
     cushions(p, xm + 0.02, -0.46, 0.46, H + 0.03, 8);
     // the foot: a rock wedge narrowing downward, two roots trailing out of it
-    p.push(C([xm, 0, 0.02], [xm + 0.02, 0.05, -0.75], 0.22, 0.04, "rock"), C([xm, -0.25, 0.02], [xm, -0.3, -0.35], 0.12, 0.03, "rock"), C([xm, 0.25, 0.02], [xm, 0.28, -0.4], 0.12, 0.03, "rock"));
-    p.push(C([xm + 0.05, -0.1, -0.2], [xm + 0.16, -0.2, -0.9], 0.025, 0.008, "bark"), C([xm + 0.04, 0.16, -0.25], [xm + 0.1, 0.24, -0.7], 0.02, 0.006, "bark"));
+    if (!o.flush) p.push(C([xm, 0, 0.02], [xm + 0.02, 0.05, -0.75], 0.22, 0.04, "rock"), C([xm, -0.25, 0.02], [xm, -0.3, -0.35], 0.12, 0.03, "rock"), C([xm, 0.25, 0.02], [xm, 0.28, -0.4], 0.12, 0.03, "rock"));
+    if (!o.flush) p.push(C([xm + 0.05, -0.1, -0.2], [xm + 0.16, -0.2, -0.9], 0.025, 0.008, "bark"), C([xm + 0.04, 0.16, -0.25], [xm + 0.1, 0.24, -0.7], 0.02, 0.006, "bark"));
     const piece = o.piece || "plain";
     // a tree growing along +x out of the face: the trunk from at, len out, its crown of leaves at the end
     const tree = (at, len, crown, lean) => {
@@ -17381,19 +17521,19 @@ fn boxOf(V: Vox) -> Box {
       p.push(E([tip[0] + crown * 0.6, y, tip[2]], [crown * 0.85, crown, crown * 0.9], "leaf"), E([tip[0] + crown * 0.9, y + 0.12, tip[2] + 0.1], [crown * 0.55, crown * 0.6, crown * 0.6], "leaf2"));
     };
     if (piece === "lawn") {
-      p.push(B([F + 0.04, 0, H * 0.5], [0.04, 0.44, H * 0.36], 0.02, "moss"));
-      for (let i = 0; i < 9; i++) p.push(E([F + 0.09, -0.38 + 0.095 * i, H * 0.2 + fr(i * 0.618) * H * 0.6], [0.045, 0.05, 0.05], "moss2"));
-      tree([F + 0.08, -0.15, H * 0.62], 0.28, 0.17, 0.04);
+      p.push(B([F + 0.04, 0, G * 0.5], [0.04, 0.44, G * 0.36], 0.02, "moss"));
+      for (let i = 0; i < 9; i++) p.push(E([F + 0.09, -0.38 + 0.095 * i, G * 0.2 + fr(i * 0.618) * G * 0.6], [0.045, 0.05, 0.05], "moss2"));
+      tree([F + 0.08, -0.15, G * 0.62], 0.28, 0.17, 0.04);
     } else if (piece === "tree") {
-      p.push(E([F, 0, H * 0.55], [0.08, 0.2, 0.15], "moss"));
-      tree([F + 0.02, 0, H * 0.55], 0.42, 0.25, 0.06);
+      p.push(E([F, 0, G * 0.55], [0.08, 0.2, 0.15], "moss"));
+      tree([F + 0.02, 0, G * 0.55], 0.42, 0.25, 0.06);
     } else if (piece === "stair") {
       // the floor of this stair is the panel's -y edge: each step stands further out toward +y
-      const n = 6, sh = (H * 0.75) / n;
-      for (let i = 0; i < n; i++) p.push(B([F + 0.08, -0.45 + 0.07 * (i + 1), H * 0.12 + sh * (i + 0.5)], [0.08, 0.07 * (i + 1), sh / 2], 0, "stone"));
-      p.push(B([F + 0.08, -0.47, H * 0.5], [0.09, 0.025, H * 0.4], 0, "rock"));
+      const n = 6, sh = (G * 0.75) / n;
+      for (let i = 0; i < n; i++) p.push(B([F + 0.08, -0.45 + 0.07 * (i + 1), G * 0.12 + sh * (i + 0.5)], [0.08, 0.07 * (i + 1), sh / 2], 0, "stone"));
+      p.push(B([F + 0.08, -0.47, G * 0.5], [0.09, 0.025, G * 0.4], 0, "rock"));
     } else if (piece === "lamp") {
-      lamp(p, [F, 0, H * 0.45], [1, 0, 0], 0.3);
+      lamp(p, [F, 0, G * 0.45], [1, 0, 0], 0.3);
     }
     return {
       prims: p, r: 0.75, h: H + 0.1, k: 1,
@@ -17468,7 +17608,8 @@ fn boxOf(V: Vox) -> Box {
   // the screen, a cool mist, the drifting clouds and far islets at their defaults
   CT.mapLight = Object.assign(CT.mapLight || {}, {
     everstair: {
-      L: [0.28, 0.45, 0.85],
+      // the sun at 55°, from +x+y (Escher design 9.1): the turned walls' faces lit, no wall shadow on the ground
+      L: [0.35, 0.45, 0.82],
       light: null,
       look: {
         sunCol: [1.0, 0.96, 0.88], ambCol: [0.82, 0.88, 0.96], amb: 0.32, shade: 0.55, shaftK: 0, mottle: 0, haze: 0, vignette: 0.3, windK: 0.6,
@@ -17492,7 +17633,7 @@ fn boxOf(V: Vox) -> Box {
 //   the causeway     3..4 x 20..21 and 3..10 x 22..23, 1.0 down to -0.25, with a moss shoulder at y = 24
 //   the Seen Bridge  the far deck 11..13 x 22..23 at -0.5 and the near deck 18..20 x 26..27 at 3.5, equally thick
 //   Heart Isle       21..25 x 21..27, top 3.5
-//   the turned walls stone panels floating on x = 0 and y = 0, decor only
+//   the turned walls stone panels floating on x = 0 and y = 0; the x = 0, y 8..19 run is route 1's walked wall
 // Cells on a join's two edges are plain kinds (es_tread, es_turf, es_deck: no world-space pattern to break there).
 //
 // Needs content/everstair.js (Art's kinds and models) first, and F1+F2 (Engine, #581): `bottom`, the kinds'
@@ -17543,6 +17684,9 @@ fn boxOf(V: Vox) -> Box {
   paint(17, 1, 17, 8, "r"); paint(15, 8, 16, 8, "r");
   paint(4, 4, 8, 4, "r"); paint(4, 6, 8, 6, "r"); paint(4, 7, 4, 19, "r"); paint(4, 20, 4, 21, "r"); paint(4, 22, 10, 22, "r");
   paint(21, 26, 22, 26, "r");
+  // route 1's wall leg (wall walkers v1, Escher design 9.1): out along rows 8 and 19 to the terrace's west edge, up the
+  // x = 0 wall at z 3 between them (its face x 1.0); x = 4 stays road, the other two routes walk it
+  paint(2, 8, 3, 8, "r"); paint(2, 19, 3, 19, "r");
   // plain ground on the joins' edges. The Overlook seam: the Overlook's x = 14 edge on screen meets the terrace's
   // x = 9 column, so both are plain, and the walked cells there are treads; the terrace's 10..13 strip is under
   // the Overlook on screen, plain and unplanted. The ring's seam: i31 (9, 7) and i0 (14, 11) are both treads,
@@ -17550,6 +17694,9 @@ fn boxOf(V: Vox) -> Box {
   paint(14, 1, 14, 10, "p"); paint(15, 9, 17, 10, "p"); paint(14, 8, 14, 10, "t");
   paint(9, 1, 9, 6, "p"); paint(9, 4, 9, 4, "t"); paint(9, 6, 9, 6, "t"); paint(8, 5, 8, 5, "p");
   paint(10, 1, 13, 6, "p");
+  // the walked wall's landings, (1, 8) and (1, 19) between the road and the face: plain turf, so no ground lamp
+  // (the lawn's, lining the road) stands on the arc's foot and the edge at x = 1.0 stays crisp
+  paint(1, 8, 1, 8, "p"); paint(1, 19, 1, 19, "p");
 
   // bottoms: each island's slab, deepened toward its middle (a BFS from its edge, capped)
   const dist = Array.from({ length: H }, () => Array(W).fill(-1)), q = [];
@@ -17573,14 +17720,17 @@ fn boxOf(V: Vox) -> Box {
   }
 
   // the turned walls: stone panels floating in the sky beyond the terrace's back edges, in runs of three with
-  // gaps, each run on its own height (the cell's h is the panel's foot; nothing walks them yet). None behind the
-  // Overlook or the hidden strip, so nothing hangs over a seam
+  // gaps, each run on its own height (the cell's h is the panel's foot). None behind the Overlook or the hidden
+  // strip, so nothing hangs over a seam. The walked wall (wall walkers, Escher design 9.1): one run on x = 0,
+  // y 8..19, from the terrace's top (1.0) to 4.0, its face flush with the terrace's edge at x = 1.0 for route
+  // 1's face leg; its pieces grow below the walkers' band (z 2.5 to 3.6), and its end columns, where the leg
+  // climbs and comes down, are plain
   const pieces = ["plain", "lawn", "plain", "tree", "stair", "plain", "lamp", "lawn"];
   const panels = [];
-  const run = (cells, rot, base, n0) => cells.forEach(([x, y], i) => { h[y][x] = base; panels.push(["es_panel", { piece: pieces[(n0 + i) % pieces.length], h: 2 }, x, y, rot ? { rot } : {}]); });
+  const run = (cells, rot, base, n0, o) => cells.forEach(([x, y], i) => { h[y][x] = base; panels.push(["es_panel", { piece: pieces[(n0 + i) % pieces.length], h: 2, ...o }, x, y, rot ? { rot } : {}]); });
   run([[0, 2], [0, 3], [0, 4]], 0, 8, 0);
-  run([[0, 8], [0, 9], [0, 10]], 0, 12, 3);
-  run([[0, 14], [0, 15], [0, 16]], 0, 16, 5);
+  run(Array.from({ length: 12 }, (_, i) => [0, 8 + i]), 0, 4, 1, { h: 3, flush: true, clear: [1.5, 2.6] });
+  panels[3][1].piece = panels[14][1].piece = "plain";
   run([[2, 0], [3, 0], [4, 0]], 1, 10, 1);
   run([[7, 0], [8, 0], [9, 0]], 1, 14, 4);
 
@@ -17599,7 +17749,7 @@ fn boxOf(V: Vox) -> Box {
     // The rules' data (the engine never reads it): Game's (plan 2026-11-08), a placeholder until its F3 half
     game: {
       route: [
-        [[17, 1], [17, 8], [14, 8], [14, 11], [17, 11], [17, 17], [7, 17], [7, 7], [9, 7], [9, 6], [4, 6], [4, 22], [13, 22], [18, 26, { j: 4 }], [22, 26]],
+        [[17, 1], [17, 8], [14, 8], [14, 11], [17, 11], [17, 17], [7, 17], [7, 7], [9, 7], [9, 6], [4, 6], [4, 8], [2, 8], { face: "+x", at: 1.0, path: [[8, 3], [19, 3]] }, [2, 19], [4, 19], [4, 22], [13, 22], [18, 26, { j: 4 }], [22, 26]],
         [[17, 1], [17, 8], [14, 8], [9, 4, { j: -4 }], [4, 4], [4, 22], [13, 22], [18, 26, { j: 4 }], [22, 26]],
         [[17, 1], [17, 8], [14, 8], [14, 11], [17, 11], [17, 17], [7, 17], [7, 7], [9, 7], [14, 11, { j: 4 }], [17, 11], [17, 17], [7, 17], [7, 7], [9, 7], [9, 6], [4, 6], [4, 22], [13, 22], [18, 26, { j: 4 }], [22, 26]],
       ],
@@ -19589,7 +19739,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.93.0", name: "Mossheart", commit: "bcc2186e" };
+  G.VERSION = { v: "0.94.0", name: "Mossheart", commit: "7d571640" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -20209,13 +20359,14 @@ function MA_DSP() {
    ground: [W*H] (the ground's height at each cell centre, tiles), roads: [{ path: [[cx, cy], ...] (its tiles
    in walking order), len (tiles), route: [X, Y, Z, X, Y, Z, ...] (the engine road's line at 1/VS spacing,
    flat), joins: [{ s, j }] (where the road jumps by j(1,1,1): the engine road's; only on a road that has
-   any), lane, sides, sideStep (laneFrom's) }, ...] one per entrance, hidden: [W*H] (0/1, G.hiddenOf; only on a
+   any), ups: [[s, ux, uy, uz], ...] (the up's keyframes, the engine road's: only on a road with a face leg),
+   lane, sides, sideStep (laneFrom's) }, ...] one per entrance, hidden: [W*H] (0/1, G.hiddenOf; only on a
    locked level) }. */
 (function () {
   const G = window.MG;
 
   // bump on any change to what a record holds or how it is read (a cached record of another rev is read again)
-  G.RULES_REV = 2;
+  G.RULES_REV = 3;
 
   // the ground's height at (X, Y) on a baked terrain T: the top of its voxel column (0 off the grid or over
   // an empty column)
@@ -20226,7 +20377,7 @@ function MA_DSP() {
     return k < 0 ? 0 : T.O[2] + k / T.VS;
   };
 
-  // A record's road at arc length s: [X, Y, Z, dx, dy], off its flat route at VS points per tile. The formula
+  // A record's road at arc length s: [X, Y, Z, dx, dy, dz], off its flat route at VS points per tile. The formula
   // is copied from MossheartEngine/src/sim.js roadOf()'s at(); keep the two alike (tools/rules-check.js
   // compares them exactly at vs16). joins ([{ s, j }], the engine road's): in the one step that holds a join
   // it runs on the near side to the edge (b moved back by j(1,1,1)) and jumps at the join's s.
@@ -20234,8 +20385,35 @@ function MA_DSP() {
     const n = route.length / 3, jStep = new Map(joins.map((q) => [Math.round(q.s * VS) - 1, q.j]));
     return (s) => {
       const f = Math.max(0, Math.min(n - 1.001, s * VS)), i = Math.floor(f), u = f - i, a = i * 3, b = a + 3, j = joins.length ? jStep.get(i) || 0 : 0;
-      return [route[a] + (route[b] - j - route[a]) * u, route[a + 1] + (route[b + 1] - j - route[a + 1]) * u, route[a + 2] + (route[b + 2] - j - route[a + 2]) * u, route[b] - j - route[a], route[b + 1] - j - route[a + 1]];
+      return [route[a] + (route[b] - j - route[a]) * u, route[a + 1] + (route[b + 1] - j - route[a + 1]) * u, route[a + 2] + (route[b + 2] - j - route[a + 2]) * u, route[b] - j - route[a], route[b + 1] - j - route[a + 1], route[b + 2] - j - route[a + 2]];
     };
+  };
+
+  // A record's road's up at arc length s, [ux, uy, uz], off its ups (+z on a road with none). Copied from
+  // MossheartEngine/src/sim.js roadOf()'s upAt(); keep the two alike.
+  G.upAt = (ups = []) => (s, o = [0, 0, 0]) => {
+    if (!ups.length) { o[0] = 0; o[1] = 0; o[2] = 1; return o; }
+    let lo = 0, hi = ups.length - 1;
+    if (s <= ups[0][0]) hi = 0;
+    else if (s >= ups[hi][0]) lo = hi;
+    else while (hi - lo > 1) { const m = (lo + hi) >> 1; if (ups[m][0] <= s) lo = m; else hi = m; }
+    const a = ups[lo], b = ups[hi];
+    if (!(a[1] !== b[1] || a[2] !== b[2] || a[3] !== b[3])) { o[0] = a[1]; o[1] = a[2]; o[2] = a[3]; return o; }
+    const u = (s - a[0]) / (b[0] - a[0]), x = a[1] + (b[1] - a[1]) * u, y = a[2] + (b[2] - a[2]) * u, z = a[3] + (b[3] - a[3]) * u, l = Math.hypot(x, y, z);
+    o[0] = x / l; o[1] = y / l; o[2] = z / l;
+    return o;
+  };
+
+  // A walker's frame on a face (a 9-array, row-major, into O): model x along the heading (dx, dy, dz) made
+  // square to the up (ux, uy, uz), model z along the up, y = z x x. Copied from MossheartEngine/src/sim.js
+  // frameOf() (the sims run the rules without the engine); keep the two alike.
+  G.frameOf = (dx, dy, dz, ux, uy, uz, O = new Float32Array(9)) => {
+    const d = dx * ux + dy * uy + dz * uz;
+    let fx = dx - d * ux, fy = dy - d * uy, fz = dz - d * uz, l = Math.hypot(fx, fy, fz);
+    if (l < 1e-9) { if (Math.abs(uz) < 0.9) { fx = -uy; fy = ux; fz = 0; } else { fx = uz; fy = 0; fz = -ux; } l = Math.hypot(fx, fy, fz); }
+    fx /= l; fy /= l; fz /= l;
+    O[0] = fx; O[1] = uy * fz - uz * fy; O[2] = ux; O[3] = fy; O[4] = uz * fx - ux * fz; O[5] = uy; O[6] = fz; O[7] = ux * fy - uy * fx; O[8] = uz;
+    return O;
   };
 
   // The record of baked terrain T (the engine's terrain, or ME.terrain16's) and its roads (sim.roads, or
@@ -20250,8 +20428,8 @@ function MA_DSP() {
       roads: roads.map((r) => {
         const route = [];
         for (const p of r.route) route.push(p[0], p[1], p[2]);
-        const joins = r.joins && r.joins.length ? r.joins.map((q) => ({ s: q.s, j: q.j })) : null;
-        return Object.assign({ path: r.cells, len: r.len, route }, joins ? { joins } : {}, G.laneFrom(T, { cells: r.cells, len: r.len, at: G.roadAt(route, T.VS, joins || []) }, gz, laneKinds));
+        const joins = r.joins && r.joins.length ? r.joins.map((q) => ({ s: q.s, j: q.j })) : null, ups = r.ups && r.ups.length ? r.ups.map((u) => u.slice()) : null;
+        return Object.assign({ path: r.cells, len: r.len, route }, joins ? { joins } : {}, ups ? { ups } : {}, G.laneFrom(T, { cells: r.cells, len: r.len, at: G.roadAt(route, T.VS, joins || []) }, gz, laneKinds));
       }),
     };
   };
@@ -20275,7 +20453,7 @@ function MA_DSP() {
   G.rulesLevel = (rec) => {
     const { W, H, ground } = rec;
     const groundZ = (X, Y) => { const x = Math.floor(X), y = Math.floor(Y); return x >= 0 && y >= 0 && x < W && y < H ? ground[y * W + x] : 0; };
-    const roads = rec.roads.map((r) => ({ path: r.path, len: r.len, at: G.roadAt(r.route, rec.VS, r.joins), joins: r.joins || [], lane: r.lane, sides: r.sides, sideStep: r.sideStep }));
+    const roads = rec.roads.map((r) => ({ path: r.path, len: r.len, at: G.roadAt(r.route, rec.VS, r.joins), joins: r.joins || [], ups: r.ups || [], upAt: G.upAt(r.ups), lane: r.lane, sides: r.sides, sideStep: r.sideStep }));
     return Object.assign({ W, H, groundZ, roads }, roads[0], rec.hidden ? { hidden: rec.hidden } : {});
   };
 
@@ -20323,12 +20501,13 @@ function MA_DSP() {
    [cx, cx + 1) x [cy, cy + 1), Z up.
    The level itself comes from outside, already described (view/level.js reads it off the baked map):
      { W, H, blocked: Uint8Array W*H (cells the map itself rules out: water, rock, props),
-       path: [[cx, cy], ...] in walking order, len, at(s) -> [X, Y, Z, dx, dy] (the road at distance s),
+       path: [[cx, cy], ...] in walking order, len, at(s) -> [X, Y, Z, dx, dy, dz] (the road at distance s),
        lane: [[cx, cy], ...] the tiles across the lane (the path's included; the path when left out),
        sides, sideStep: the lane's reach each side of the road, a pair per sideStep (view/level.js; optional),
        water: Uint8Array W*H (the water tiles, for the Dewbank zone; optional), groundZ(X, Y), heart: [X, Y], split: [[road, from wave, every, at], ...] (optional),
-       roads: [{ path, len, at, joins, lane, sides, sideStep }, ...] one per entrance (optional; the fields
-       above are the first one's; joins: [{ s, j }] where the road jumps by j(1,1,1), core/rules.js),
+       roads: [{ path, len, at, joins, ups, upAt, lane, sides, sideStep }, ...] one per entrance (optional; the
+       fields above are the first one's; joins: [{ s, j }] where the road jumps by j(1,1,1); ups, upAt(s, o):
+       the up's keyframes and the up at s, where the road climbs a face, core/rules.js),
        hidden: [W*H] 0/1, the cells a locked view doesn't show (G.hiddenOf; optional), rules: the rules record they were read from (core/rules.js; optional),
        viewGroundZ(X, Y): the ground the view draws, where the rules' ground is read by cell (optional),
        viewRoads: [{ at(s, out) }, ...] the roads the view draws, where the record was read at another
@@ -20363,7 +20542,18 @@ function MA_DSP() {
         };
       };
       const roads = level.roads || [level];
-      this.roads = roads.map((r) => ({ path: r.path, len: r.len, at: r.at, joins: r.joins || [], sideK: sideK(r.sides, r.sideStep) }));
+      this.roads = roads.map((r) => ({ path: r.path, len: r.len, at: r.at, joins: r.joins || [], ups: r.ups || [], upAt: r.upAt || G.upAt(r.ups), sideK: sideK(r.sides, r.sideStep) }));
+      // (whether any road climbs a face: creatures there take a frame, and targeting counts height for them)
+      this.faces = this.roads.some((r) => r.ups.length > 0);
+      // the walls the roads climb, from their ups where the up lies flat: { n: [ux, uy], at, a0, a1 } (the plane
+      // n · p = at, a0..a1 along it); the view's taps tell a wall from the ground with these
+      this.walls = [];
+      for (const r of this.roads) for (const u of r.ups) {
+        if (Math.abs(u[3]) > 0.05) continue;
+        const ux = Math.round(u[1]), uy = Math.round(u[2]), p = r.at(u[0]), at = ux * p[0] + uy * p[1], a = ux ? p[1] : p[0];
+        const w = this.walls.find((v) => v.n[0] === ux && v.n[1] === uy && Math.abs(v.at - at) < 0.01);
+        if (w) { w.a0 = Math.min(w.a0, a); w.a1 = Math.max(w.a1, a); } else this.walls.push({ n: [ux, uy], at, a0: a, a1: a });
+      }
       // (how much further the longest road walks than each: a creature's distance plus its road's is how near
       // the Heart Tree it is, the same on every road; 0 on a level with one road)
       const longest = Math.max(...this.roads.map((r) => r.len));
@@ -20419,8 +20609,10 @@ function MA_DSP() {
     viewRoadZ(s, r, z) { return this.level.viewRoads ? this.level.viewRoads[r].at(s, this.at5)[2] : z; }
     // road r's length (r: a road index, the first road when left out, as below)
     lenOf(r = 0) { return this.roads[r].len; }
-    // the road at distance s: [X, Y, Z, dx, dy]
+    // the road at distance s: [X, Y, Z, dx, dy, dz]
     roadAt(s, r = 0) { return this.roads[r].at(s); }
+    // the road's up at distance s, [ux, uy, uz] (into o if given): +z off a face leg and its arcs
+    upAt(s, r = 0, o) { return this.roads[r].upAt(s, o); }
     // a creature's sideways offset at s from its own (within 0.2 of the road), widened where the lane is
     latAt(s, lat, r = 0) { const k = this.roads[r].sideK(s); return lat * (lat >= 0 ? k[0] : k[1]); }
     // the creatures' spread across the lane at s: its middle (a sideways offset, as latAt's) and how far it
@@ -20468,7 +20660,7 @@ function MA_DSP() {
       this.heal(step * (S.phase === G.Phase.WAVE ? HEAL_WAVE : HEAL_BUILD));
       const D = G.Defs;
       enemies.forEachLive((i) => {
-        if (enemies.dist[i] < 0) return;
+        if (enemies.dist[i] < 0 || enemies.face[i]) return; // (none from a creature on a wall: the field lies on the floor)
         const b = enemies.defOf(i).blight;
         this.stamp(enemies.px[i] - enemies.jd[i], enemies.py[i] - enemies.jd[i], RADIUS * Math.sqrt(b), RATE * b * step);
       });
@@ -20557,6 +20749,9 @@ function MA_DSP() {
       // (the rules' distances try both pieces: d2); jd, how far the view moves it along (1,1,1) into the higher
       // piece (0.5 tile on the lower side; the same pixel under the locked view). px, py and vz carry jd, pz doesn't
       this.jw = new Int8Array(N); this.jd = new Int8Array(N);
+      // on a face leg of its road or its arcs (World.upAt's z under 1): face, and the frame it is drawn in (9 a
+      // creature, row-major: G.frameOf; its third column the up). Its height counts in the rules' distances (d2)
+      this.face = new Uint8Array(N); this.frame = F(N * 9); this.up3 = [0, 0, 1];
       this.count = 0; this.kindCounts = new Int32Array(D.ENEMY_ORDER.length);
       this.lastHit = Hit.PLAIN; this.hitStats = [0, 0, 0];
       this.free = []; for (let i = N - 1; i >= 0; i--) this.free.push(i);
@@ -20611,12 +20806,19 @@ function MA_DSP() {
     // not yet out of the rift, or under the road: nothing targets or reaches it
     hidden(i) { return this.dist[i] < 0 || this.under[i] === 1; }
     // world point of a creature's body centre (where shots aim and bars hang from)
-    centre(i) { const h = this.body.creatureH[this.kind[i]]; return [this.px[i], this.py[i], this.pz[i] + h * 0.45 + this.jd[i]]; }
+    centre(i) {
+      const h = this.body.creatureH[this.kind[i]];
+      if (this.face[i]) { const o = i * 9, F = this.frame; return [this.px[i] + F[o + 2] * h * 0.45, this.py[i] + F[o + 5] * h * 0.45, this.pz[i] + F[o + 8] * h * 0.45]; }
+      return [this.px[i], this.py[i], this.pz[i] + h * 0.45 + this.jd[i]];
+    }
     // the square of creature i's distance in the plane to (x, y), off its rules position (px, py less jd); by a
     // join, the nearer of it and its copies on the other piece (+-jw on x and y). A shot needs no aim of its
-    // own for the copy: p and p + j(1,1,1) are one pixel under the locked view, so the line on screen is the same
-    d2(i, x, y) {
+    // own for the copy: p and p + j(1,1,1) are one pixel under the locked view, so the line on screen is the same.
+    // On a wall (face) the height counts too where the asker gives its z: a plant at the wall's foot reaches
+    // up it by its range, not the whole climb (the floor stays in the plane, so a garden without faces reads the same)
+    d2(i, x, y, z) {
       const dx = this.px[i] - this.jd[i] - x, dy = this.py[i] - this.jd[i] - y, w = this.jw[i], d = dx * dx + dy * dy;
+      if (this.face[i] && z !== undefined) return d + (this.pz[i] - z) ** 2;
       return w ? Math.min(d, (dx + w) ** 2 + (dy + w) ** 2, (dx - w) ** 2 + (dy - w) ** 2) : d;
     }
 
@@ -20702,12 +20904,12 @@ function MA_DSP() {
     }
     // index of the best target in range (and not nearer than minR) or -1; mode "first" (closest to the
     // Heart, whichever road it walks: near) or "strong"
-    pickTarget(x, y, radius, mode = "first", exclude = null, minR = 0) {
+    pickTarget(x, y, radius, mode = "first", exclude = null, minR = 0, z) {
       let best = -1, bestScore = -Infinity;
       const r2 = radius * radius, m2 = minR * minR;
       for (let i = 0; i < CAPACITY; i++) {
         if (!this.alive[i] || this.hidden(i)) continue;
-        const d2 = this.d2(i, x, y);
+        const d2 = this.d2(i, x, y, z);
         if (d2 > r2 || d2 < m2 || (exclude && exclude.includes(i))) continue;
         const score = mode === "first" ? this.near(i) : (this.hp[i] + this.shell[i]) * 1000 + this.near(i);
         if (score > bestScore) { bestScore = score; best = i; }
@@ -20716,11 +20918,11 @@ function MA_DSP() {
     }
     // the best n targets in range, best first: what n pickTarget calls, each excluding the ones before,
     // would give (ties to the lower index), in one pass (Thousand Needles asks for 99)
-    pickTargets(x, y, radius, mode, n, exclude = null, minR = 0) {
+    pickTargets(x, y, radius, mode, n, exclude = null, minR = 0, z) {
       const r2 = radius * radius, m2 = minR * minR, out = [], sc = [];
       for (let i = 0; i < CAPACITY; i++) {
         if (!this.alive[i] || this.hidden(i)) continue;
-        const d2 = this.d2(i, x, y);
+        const d2 = this.d2(i, x, y, z);
         if (d2 > r2 || d2 < m2 || (exclude && exclude.includes(i))) continue;
         out.push(i); sc[i] = mode === "first" ? this.near(i) : (this.hp[i] + this.shell[i]) * 1000 + this.near(i);
       }
@@ -20728,11 +20930,11 @@ function MA_DSP() {
       if (out.length > n) out.length = n;
       return out;
     }
-    inRadius(x, y, radius) {
+    inRadius(x, y, radius, z) {
       const out = [], r2 = radius * radius;
       for (let i = 0; i < CAPACITY; i++) {
         if (!this.alive[i] || this.hidden(i)) continue;
-        if (this.d2(i, x, y) <= r2) out.push(i);
+        if (this.d2(i, x, y, z) <= r2) out.push(i);
       }
       return out;
     }
@@ -20752,7 +20954,22 @@ function MA_DSP() {
     // (The user, 2026-10-24: twitchy movers. Before, the facing looked 0.35 ahead and the offset followed the
     // local step.)
     place(i, time) {
-      const W = this.world, r = this.road[i], s = Math.max(0, this.dist[i]), [X, Y, Z, sx, sy] = W.roadAt(s, r);
+      const W = this.world, r = this.road[i], s = Math.max(0, this.dist[i]), [X, Y, Z, sx, sy, sz] = W.roadAt(s, r);
+      // On a face leg (a garden with faces, the road's up there off +z): the creature stands on the wall, in the frame
+      // of the local step and that up (Engine's walker template, #592); its lane offset across the wall, its hover
+      // along the up. No joins on a face (the Ever Stair's legs are inside one piece)
+      const U = W.faces ? W.upAt(s, r, this.up3) : null;
+      this.face[i] = U && U[2] < 1 ? 1 : 0;
+      if (this.face[i]) {
+        const F = G.frameOf(sx, sy, sz, U[0], U[1], U[2], this.frame.subarray(i * 9, i * 9 + 9));
+        const def = this.defOf(i), lat = W.latAt(s, this.lat[i], r);
+        const fly = def.fly - this.body.hover[this.kind[i]] + (def.fly > 0 ? Math.sin(time * 3 + this.phase[i]) * 0.075 : 0);
+        this.jw[i] = 0; this.jd[i] = 0;
+        this.px[i] = X + F[1] * lat + U[0] * fly; this.py[i] = Y + F[4] * lat + U[1] * fly; this.pz[i] = Z + F[7] * lat + U[2] * fly;
+        this.vz[i] = this.pz[i] + (W.viewRoadZ(s, r, Z) - Z);
+        this.yaw[i] = Math.atan2(sy, sx);
+        return;
+      }
       let [bx, by] = W.roadAt(Math.max(0, s - 0.65), r), [ax, ay] = W.roadAt(s + 1.35, r), jd = 0, jw = 0;
       // (across a join, the points behind and ahead are taken into the piece s is on, by the joins between;
       // jd and jw: see the constructor)
@@ -20919,7 +21136,7 @@ function MA_DSP() {
     get forked() { return this.level >= 3 && this.branch === "b"; }
     // what follows from the level: a Briar Vine's patches, a Ghost Lily's beams
     refresh() {
-      if (this.kind === "briar") this.patches = Tower.patchesFor(this.world, this.X, this.Y, this.def.range, this.level);
+      if (this.kind === "briar") this.patches = Tower.patchesFor(this.world, this.X, this.Y, this.def.range, this.level, this.Z);
       if (this.kind === "lily") while (this.rays.length < (this.level >= 3 ? 2 : 1)) this.rays.push({ t: -1, uid: -1, hold: 0 });
     }
     // where shots leave from: the plant's head
@@ -20929,9 +21146,10 @@ function MA_DSP() {
     // stretch two share), and at level III a second one 1.6 tiles further along its road (or back, near the
     // Heart Tree). None: it can't grow here. On a wide lane a patch sits in the middle of the creatures' spread
     // and grows to cover it (World.laneAcross).
-    static patchesFor(world, X, Y, reach, level) {
+    // (On a garden with faces the nearest is in 3D, off the plant's height Z, and never on a wall: a patch lies on the floor)
+    static patchesFor(world, X, Y, reach, level, Z = world.groundZ(X, Y)) {
       let best = -1, bestD = reach * reach, road = 0;
-      for (let r = 0; r < world.roads.length; r++) for (let s = 0; s <= world.lenOf(r); s += 0.25) { const p = world.roadAt(s, r), d = (p[0] - X) ** 2 + (p[1] - Y) ** 2; if (d < bestD || (d === bestD && r === 0)) { bestD = d; best = s; road = r; } }
+      for (let r = 0; r < world.roads.length; r++) for (let s = 0; s <= world.lenOf(r); s += 0.25) { if (world.faces && world.upAt(s, r)[2] < 1) continue; const p = world.roadAt(s, r), d = (p[0] - X) ** 2 + (p[1] - Y) ** 2 + (world.faces ? (p[2] - Z) ** 2 : 0); if (d < bestD || (d === bestD && r === 0)) { bestD = d; best = s; road = r; } }
       if (best < 0) return [];
       const at = (s) => {
         const p = world.roadAt(s, road), [o, wide] = world.laneAcross(s, road), l = Math.hypot(p[3], p[4]) || 1;
@@ -20950,17 +21168,17 @@ function MA_DSP() {
       const { enemies: E, shots } = game, o = this.origin(), R = this.range(), lv = this.level, el = this.element, B = this.bond, br = this.forked ? 1 : 0;
       let target = null, radius = 0;
       if (this.kind === "thorn") {
-        const first = E.pickTarget(this.X, this.Y, R, "first");
+        const first = E.pickTarget(this.X, this.Y, R, "first", null, 0, this.Z);
         if (first >= 0) {
           target = E.centre(first);
           shots.fire(o, first, this.damage(), this.def.speed, this.def.color, this.kind, B.pierceChain ? 1 : 0, [], lv, B, br);
           // (Thousand Needles: at every creature in reach; firing changes no creature, so all are picked at once)
           const n = S.mod("needles") > 0 ? 99 : Math.round(S.mod("split"));
-          if (n > 0) for (const extra of E.pickTargets(this.X, this.Y, R, "first", n, [first]))
+          if (n > 0) for (const extra of E.pickTargets(this.X, this.Y, R, "first", n, [first], 0, this.Z))
             shots.fire(o, extra, this.damage(), this.def.speed, this.def.color, this.kind, B.pierceChain ? 1 : 0, [], lv, B, br);
         }
       } else if (this.kind === "sun") {
-        const strong = E.pickTarget(this.X, this.Y, R, "strong");
+        const strong = E.pickTarget(this.X, this.Y, R, "strong", null, 0, this.Z);
         if (strong >= 0) {
           target = E.centre(strong);
           // Midsummer Flare: every (7 - flare)-th beam triples and burns everything around its target
@@ -20978,13 +21196,13 @@ function MA_DSP() {
           shots.strike(strong, this.damage() * (flaring ? 3 : 1) * glow(strong) * heat, el, this.kind);
           if (lv >= 3 && !br) E.stun(strong, 0.5);
           if (flaring) {
-            for (const v of E.inRadius(target[0], target[1], fr)) if (v !== strong) shots.strike(v, this.damage(), el, this.kind);
+            for (const v of E.inRadius(target[0], target[1], fr, target[2])) if (v !== strong) shots.strike(v, this.damage(), el, this.kind);
             G.emit("flare", { pos: target, radius: fr });
           }
           // Dewdrop Prism: the beam splits to the next strongest creatures in reach (Rainbow Lens: to all, at 80%)
           const hit = [strong], rainbow = S.mod("rainbow") > 0;
           for (let k = 0, n = rainbow ? 99 : S.mod("prism") + (B.prism || 0); k < n; k++) {
-            const next = E.pickTarget(this.X, this.Y, R, "strong", hit);
+            const next = E.pickTarget(this.X, this.Y, R, "strong", hit, 0, this.Z);
             if (next < 0) break;
             hit.push(next);
             G.emit("prism", { from: target, to: E.centre(next), tower: this.host || this });
@@ -20992,7 +21210,7 @@ function MA_DSP() {
           }
         }
       } else if (this.kind === "puff") {
-        const victims = E.inRadius(this.X, this.Y, R);
+        const victims = E.inRadius(this.X, this.Y, R, this.Z);
         if (victims.length) {
           radius = R;
           // level II: the burst pushes them back down the road; level III: every third one puts them to sleep
@@ -21003,18 +21221,18 @@ function MA_DSP() {
             if (sleep) E.stun(v, 0.7);
           }
           // (Seed Pods: the burst throws thorn seeds at the creatures nearest the Heart Tree)
-          if (B.seeds) for (const v of E.pickTargets(this.X, this.Y, R, "first", B.seeds)) shots.fire(o, v, this.damage(), D.TOWERS.thorn.speed, D.TOWERS.thorn.color, "thorn");
+          if (B.seeds) for (const v of E.pickTargets(this.X, this.Y, R, "first", B.seeds, null, 0, this.Z)) shots.fire(o, v, this.damage(), D.TOWERS.thorn.speed, D.TOWERS.thorn.color, "thorn");
           if (S.mod("sporestorm") > 0) this.cloudT = 3;
           // (Mildew, level III's other branch: the burst leaves a cloud on the creature nearest the Heart Tree,
           // slowing 30% for 3 s; one cloud a plant, moved and renewed by each burst)
           if (br) {
-            const f = E.pickTarget(this.X, this.Y, R, "first"), c = E.centre(f >= 0 ? f : victims[0]);
+            const f = E.pickTarget(this.X, this.Y, R, "first", null, 0, this.Z), c = E.centre(f >= 0 ? f : victims[0]);
             if (!this.cloud || !shots.puddles.includes(this.cloud)) { this.cloud = { x: 0, y: 0, z: 0, t: 0, dps: 0, slow: 0.3, r: 1.0, mildew: true }; shots.puddles.push(this.cloud); }
             Object.assign(this.cloud, { x: c[0], y: c[1], z: c[2], t: 3 });
           }
         }
       } else if (this.kind === "wisp") {
-        const first = E.pickTarget(this.X, this.Y, R, "first");
+        const first = E.pickTarget(this.X, this.Y, R, "first", null, 0, this.Z);
         if (first >= 0) {
           target = E.centre(first);
           shots.fire(o, first, this.damage(), this.def.speed, this.def.color, this.kind, this.def.chain + (lv >= 2 ? 1 : 0) + Math.round(S.mod("chain_bonus")) + (B.chain || 0), [], lv, B, br);
@@ -21022,7 +21240,7 @@ function MA_DSP() {
       } else if (this.kind === "briar") {
         // the patches scratch and slow what is on them; level II snares a creature stepping on (once in 3 s)
         for (const p of this.patches) {
-          const victims = E.inRadius(p.x, p.y, this.patchR(p));
+          const victims = E.inRadius(p.x, p.y, this.patchR(p), p.z);
           if (!victims.length) continue;
           radius = this.patchR(p);
           G.emit("bramble_patch", { pos: [p.x, p.y, p.z], tower: this.host || this });
@@ -21032,13 +21250,13 @@ function MA_DSP() {
           }
         }
       } else if (this.kind === "toad") {
-        const first = E.pickTarget(this.X, this.Y, R, "first", null, this.def.minRange);
+        const first = E.pickTarget(this.X, this.Y, R, "first", null, this.def.minRange, this.Z);
         if (first >= 0) { target = E.centre(first); shots.fire(o, first, this.damage(), this.def.speed, this.def.color, this.kind, 0, [], lv, B); }
       } else if (this.kind === "moon") {
         // marks the toughest (II: the two toughest, III: everything in reach) and stings it a little
         const marked = [];
-        if (lv >= 3) marked.push(...E.inRadius(this.X, this.Y, R));
-        else marked.push(...E.pickTargets(this.X, this.Y, R, "strong", lv));
+        if (lv >= 3) marked.push(...E.inRadius(this.X, this.Y, R, this.Z));
+        else marked.push(...E.pickTargets(this.X, this.Y, R, "strong", lv, null, 0, this.Z));
         if (marked.length) {
           target = E.centre(marked[0]);
           for (const v of marked) { G.emit("mark", { from: o, to: E.centre(v), tower: this.host || this }); E.mark(v, this.def.mark + (B.mark || 0) + S.mod("mark_bonus"), 4); if (S.mod("moonshade") > 0) E.applySlow(v, S.mod("moonshade"), 4); shots.strike(v, this.damage(), el, this.kind); }
@@ -21049,9 +21267,9 @@ function MA_DSP() {
         // (Ghost Lantern: keeps it all, and the beam leaps on)
         const held = this.rays.map((r) => r.t), keep = B.lantern ? 1 : Math.max(lv >= 2 ? 0.6 : 0, S.mod("lily_keep"));
         for (const r of this.rays) {
-          const ok = E.isValid(r.t, r.uid) && !E.hidden(r.t) && E.d2(r.t, this.X, this.Y) <= R * R;
+          const ok = E.isValid(r.t, r.uid) && !E.hidden(r.t) && E.d2(r.t, this.X, this.Y, this.Z) <= R * R;
           if (!ok) {
-            const v = E.pickTarget(this.X, this.Y, R, "first", held);
+            const v = E.pickTarget(this.X, this.Y, R, "first", held, 0, this.Z);
             if (v < 0) { r.t = -1; r.uid = -1; r.hold *= keep; continue; }
             r.t = v; r.uid = E.uid[v]; r.hold *= keep; held.push(v);
             // (Moonlit Lily: a marked creature is taken half hot)
@@ -21060,7 +21278,7 @@ function MA_DSP() {
           }
           const hot = this.damage() * (1 + 2 * Math.min(1, r.hold / 3)), at = E.centre(r.t);
           shots.strike(r.t, hot, el, this.kind);
-          if (B.lantern) { const next = E.pickTarget(at[0], at[1], CHAIN_RANGE, "first", [r.t]); if (next >= 0) { G.emit("haunt", { from: at, to: E.centre(next) }); shots.strike(next, hot * B.lantern, el, this.kind); } }
+          if (B.lantern) { const next = E.pickTarget(at[0], at[1], CHAIN_RANGE, "first", [r.t], 0, at[2]); if (next >= 0) { G.emit("haunt", { from: at, to: E.centre(next) }); shots.strike(next, hot * B.lantern, el, this.kind); } }
           r.hold += (1 + (B.heat || 0) + S.mod("heat")) / this.rate();
           if (!target) radius = radius || 0.01; // holding: keeps its pace without a new "fire"
         }
@@ -21130,7 +21348,7 @@ function MA_DSP() {
       // (Wildfire Hedge: three times hotter; Kodama Choir: a haunting strike that kills haunts on too)
       if (!killed && source === "thorn" && S.mod("burn") > 0) { const wild = S.mod("wildfire") > 0; E.ignite(enemy, (dmg * S.mod("burn") * (wild ? 3 : 1)) / 2, 2, !wild); }
       if (killed && source === "wisp" && (!haunted || S.mod("choir") > 0) && S.mod("haunt") > 0) {
-        const next = E.pickTarget(at[0], at[1], CHAIN_RANGE, "first");
+        const next = E.pickTarget(at[0], at[1], CHAIN_RANGE, "first", null, 0, at[2]);
         if (next >= 0) { G.emit("haunt", { from: at, to: E.centre(next) }); this.strike(next, base * S.mod("haunt"), element, source, false, true); }
       }
       return killed;
@@ -21141,7 +21359,7 @@ function MA_DSP() {
     splash(at, dmg, lv, cluster = false, B = NONE) {
       const E = this.enemies, el = D.elementOf("toad"), r = cluster ? SPLASH_R * 0.65 : SPLASH_R, rot = G.state.mod("rot"), slow = G.state.mod("miasma") > 0 ? 0.25 : 0;
       G.emit("bomb", { pos: at, radius: r, level: lv });
-      for (const v of E.inRadius(at[0], at[1], r)) { this.strike(v, dmg, el, "toad", true); E.poison(v, dmg * 0.25 * (1 + rot), B.rot || rot > 0 ? 5 : 3); if (slow) E.applySlow(v, slow, 3); if (B.pods) E.applySlow(v, B.pods, 1); }
+      for (const v of E.inRadius(at[0], at[1], r, at[2])) { this.strike(v, dmg, el, "toad", true); E.poison(v, dmg * 0.25 * (1 + rot), B.rot || rot > 0 ? 5 : 3); if (slow) E.applySlow(v, slow, 3); if (B.pods) E.applySlow(v, B.pods, 1); }
       if (cluster) return;
       // (a Mire Cap's mire slows too, and lasts longer)
       if (lv >= 2 || B.rot || rot > 0) this.puddles.push({ x: at[0], y: at[1], z: at[2], t: B.mire ? 4 : 3, dps: dmg * 0.3 * (1 + rot), slow: B.mire || 0 });
@@ -21164,7 +21382,7 @@ function MA_DSP() {
         // (and a Mildew cloud slows, no poison)
         if ((this.puddleT -= dt) <= 0) {
           this.puddleT = 0.5;
-          for (const p of this.puddles) for (const v of E.inRadius(p.x, p.y, p.r || PUDDLE_R)) {
+          for (const p of this.puddles) for (const v of E.inRadius(p.x, p.y, p.r || PUDDLE_R, p.z)) {
             if (p.mildew) { E.applySlow(v, p.slow, 1); continue; }
             // (a Bramble Warden's snare patch: slows, and snares once in 3 s)
             if (p.snare) { E.applySlow(v, p.slow, 1); if (E.snareT[v] <= 0) { E.stun(v, 0.4); E.snareT[v] = 3; } continue; }
@@ -21191,13 +21409,13 @@ function MA_DSP() {
         if (p) p.t = 2; else this.puddles.push({ x: at[0], y: at[1], z: at[2], t: 2, dps: 0, slow: 0.3, r: SNARE_R, snare: true });
       }
       // a Bramblecrown's seed shatters as it strikes (Defs.FORKS.thorn.b: 3 shards at 65%), at the creatures nearest the Heart Tree
-      if (br && kind === "thorn" && (BR.onHit || killed)) for (const v of E.pickTargets(at[0], at[1], CHAIN_RANGE, "first", BR.shards, [t])) this.fire(at, v, this.dmg[i] * BR.mult, this.speed[i], this.col[i], kind, 0, [t], 1, B);
+      if (br && kind === "thorn" && (BR.onHit || killed)) for (const v of E.pickTargets(at[0], at[1], CHAIN_RANGE, "first", BR.shards, [t], 0, at[2])) this.fire(at, v, this.dmg[i] * BR.mult, this.speed[i], this.col[i], kind, 0, [t], 1, B);
       // a level II Thornbloom's seed goes on through to the creature behind
-      if (kind === "thorn" && lv >= 2) { const next = E.pickTarget(at[0], at[1], 1.0, "first", [t]); if (next >= 0) this.strike(next, this.dmg[i] * 0.5, D.elementOf(kind), kind, true, false, false, lv); }
+      if (kind === "thorn" && lv >= 2) { const next = E.pickTarget(at[0], at[1], 1.0, "first", [t], 0, at[2]); if (next >= 0) this.strike(next, this.dmg[i] * 0.5, D.elementOf(kind), kind, true, false, false, lv); }
       // a level III Willow Wisp lures the first creature its light strikes
       if (kind === "wisp" && lv >= 3 && !br && this.hitList[i].length === 1) E.lure(t, 0.8);
       if (this.chains[i] > 0) {
-        const next = E.pickTarget(at[0], at[1], CHAIN_RANGE, "first", this.hitList[i]);
+        const next = E.pickTarget(at[0], at[1], CHAIN_RANGE, "first", this.hitList[i], 0, at[2]);
         // (a wisp's light fades as it leaps, unless at level II or with Kodama Choir, and a Lantern Choir's grows;
         // a Will-o'-Thorn seed leaps at its share, never past the hit: deepened, 0.6 × 2 leaps at 1, not 1.2)
         const k = kind === "thorn" ? Math.min(B.pierceChain || 0.85, 1) : br ? 1.15 : G.state.mod("choir") > 0 || lv >= 2 ? 1 : 0.85;
@@ -21684,7 +21902,7 @@ function MA_DSP() {
         this.brambleT += 0.5;
         for (const t of this.plants()) {
           if (t.kind !== "thorn") continue;
-          const near = E.inRadius(t.X, t.Y, 1.6);
+          const near = E.inRadius(t.X, t.Y, 1.6, t.Z);
           if (!near.length) continue;
           G.emit("bramble", { pos: [t.X, t.Y, t.VZ], tower: t.host || t });
           for (const v of near) { sh.strike(v, t.damage() * t.rate() * bramble * 0.5, t.element, "bramble"); if (wildfire) E.ignite(v, t.damage() * 0.5); }
@@ -21694,13 +21912,13 @@ function MA_DSP() {
         this.fireT += 0.5;
         const burning = [];
         E.forEachLive((i) => { if (E.burnT[i] > 0) burning.push(i); });
-        for (const i of burning) for (const v of E.inRadius(E.px[i] - E.jd[i], E.py[i] - E.jd[i], 0.7)) if (E.burnT[v] <= 0) E.ignite(v, E.burnDps[i] * 0.7);
+        for (const i of burning) for (const v of E.inRadius(E.px[i] - E.jd[i], E.py[i] - E.jd[i], 0.7, E.pz[i])) if (E.burnT[v] <= 0) E.ignite(v, E.burnDps[i] * 0.7);
       }
       if ((this.cloudT -= dt) <= 0) {
         this.cloudT += 0.5;
         for (const t of this.plants()) {
           if (t.kind !== "puff" || t.cloudT <= 0) continue;
-          for (const v of E.inRadius(t.X, t.Y, t.range() * 0.75)) { E.applySlow(v, t.def.slow, 1); sh.strike(v, t.damage() * 0.3, t.element, "cloud"); }
+          for (const v of E.inRadius(t.X, t.Y, t.range() * 0.75, t.Z)) { E.applySlow(v, t.def.slow, 1); sh.strike(v, t.damage() * 0.3, t.element, "cloud"); }
         }
       }
       // (Star Swarm: 6 fireflies over the whole valley, every zap critical, but zaps that grow slower with
@@ -21708,7 +21926,7 @@ function MA_DSP() {
       const swarm = S.mod("starswarm") > 0, flies = swarm ? 6 : Math.round(S.mod("fireflies"));
       if (flies > 0 && (this.flyT -= dt) <= 0) {
         this.flyT += 1.2 / flies;
-        const v = E.pickTarget(w.heart[0], w.heart[1], swarm ? 6 : 2.6, "first");
+        const v = E.pickTarget(w.heart[0], w.heart[1], swarm ? 6 : 2.6, "first", null, 0, w.groundZ(w.heart[0], w.heart[1]));
         if (v >= 0) {
           const a = (this.flyK++ / flies) * Math.PI * 2, from = [w.heart[0] + Math.cos(a) * 0.6, w.heart[1] + Math.sin(a) * 0.6, w.heartZ + 1.2];
           G.emit("zap", { from, to: E.centre(v) });
@@ -22992,6 +23210,7 @@ function MA_DSP() {
     const cellsOf = (p) => {
       const out = [];
       for (let i = 0; i + 1 < p.length; i++) {
+        if (!Array.isArray(p[i]) || !Array.isArray(p[i + 1])) continue; // (a face leg: a jump, no ground cells)
         let [x, y] = p[i]; const [x1, y1] = p[i + 1];
         while (x !== x1 || y !== y1) { out.push([x, y]); if (x !== x1) x += Math.sign(x1 - x); else y += Math.sign(y1 - y); }
       }
@@ -24221,11 +24440,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // engine's road has nothing to walk), and the first of them
   G.routesOf = (map) => { const r = (map.game && map.game.route) || []; return r.length && Array.isArray(r[0][0]) ? r.filter((l) => l.length) : [r]; };
   G.routeOf = (map) => G.routesOf(map)[0] || [];
-  // the route's cells in walking order
+  // the route's cells in walking order (a face leg has none: the walk goes on from the corner after it, a jump)
   const routeCells = (pts) => {
     if (!pts.length) return [];
     const cells = [pts[0].slice()];
     for (let k = 0; k + 1 < pts.length; k++) {
+      if (!Array.isArray(pts[k + 1])) continue;
+      if (!Array.isArray(pts[k])) { cells.push(pts[k + 1].slice(0, 2)); continue; }
       let [x, y] = pts[k]; const [x1, y1] = pts[k + 1];
       while (x !== x1 || y !== y1) { if (x !== x1) x += Math.sign(x1 - x); else y += Math.sign(y1 - y); cells.push([x, y]); }
     }
@@ -24300,6 +24521,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     const on = new Set();
     for (let a = 0; a < cells.length - 1; ) {
       const dx = cells[a + 1][0] - cells[a][0], dy = cells[a + 1][1] - cells[a][1];
+      if (Math.abs(dx) + Math.abs(dy) !== 1) { a++; continue; } // (a face leg's jump: no run across it)
       let b = a + 1;
       while (b + 1 < cells.length && cells[b + 1][0] - cells[b][0] === dx && cells[b + 1][1] - cells[b][1] === dy) b++;
       const side = [1, -1].map((s) => {
@@ -25551,8 +25773,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         else ph = Math.max(0, E.dist[k]) * cm.gait + E.phase[k] / (Math.PI * 2);
         if (n === 1) { const s = Math.sin(ph * Math.PI * 2); pitch = s * 0.07; bob = Math.abs(s) * 0.035; }
         const f = cm.frames[Math.floor((((ph % 1) + 1) % 1) * n) % n], fl = E.flash[k], sq = fl * 0.1, s = cm.scale;
-        const yaw = E.yaw[k] - cm.fwd + (n === 1 ? Math.sin(ph * Math.PI * 2) * 0.08 : 0);
-        sim.put(i++, f, E.px[k], E.py[k], E.vz[k] + bob, yaw, false, [s * (1 + sq), s * (1 + sq), s * (1 - sq)], [0, 0], 1, pitch, this.marks(E, k), fl * (G.flashK ?? 1));
+        const wob = n === 1 ? Math.sin(ph * Math.PI * 2) * 0.08 : 0, sc = [s * (1 + sq), s * (1 + sq), s * (1 - sq)];
+        if (E.face[k]) {
+          // on a wall: drawn in its frame (heading, across, up: core/enemies.js place), its bob along the up
+          const Fr = E.frame.subarray(k * 9, k * 9 + 9);
+          sim.put(i++, f, E.px[k] + Fr[2] * bob, E.py[k] + Fr[5] * bob, E.vz[k] + Fr[8] * bob, wob - cm.fwd, false, sc, [0, 0], 1, pitch, this.marks(E, k), fl * (G.flashK ?? 1), Fr);
+        } else sim.put(i++, f, E.px[k], E.py[k], E.vz[k] + bob, E.yaw[k] - cm.fwd + wob, false, sc, [0, 0], 1, pitch, this.marks(E, k), fl * (G.flashK ?? 1));
         sim.avoid(E.px[k], E.py[k]);
       }
       return i;
@@ -25743,7 +25969,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // R.pick, so a tap on a plant's leaves above an empty tile behind it is that plant's tile; the view's own
     // instances only, so a creature or a ghost in the way takes nothing; leaves hanging over a neighbour tile
     // are their plant's, within 1 tile)
+    // On a garden with faces, a wall in front (R.pick's first hit outside this view's instances is upright, on a
+    // wall a road climbs, World.walls: its panels are stamped terrain) is a cell flagged wall: "can't plant" until wall
+    // plots (Escher design 9.4, row 4)
     cellAt(px, py, cam, w, h, opt = {}) {
+      const W = this.game.world, R0 = this.R;
+      if (W.faces && R0 && R0.pick && R0.out) {
+        const hw = R0.pick((px * R0.out[0]) / w, (py * R0.out[1]) / h, cam, { accept: (L) => L !== this });
+        const on = hw && Math.abs(hw.n[2]) < 0.5 && W.walls.some((v) => { const a = v.n[0] ? hw.p[1] : hw.p[0]; return Math.abs(v.n[0] * hw.p[0] + v.n[1] * hw.p[1] - v.at) < 0.3 && a > v.a0 - 1 && a < v.a1 + 1; });
+        if (on) return Object.assign(hw.tile.slice(), { wall: true });
+      }
       const p = this.pick(px, py, cam, w, h), g = p ? [Math.floor(p[0]), Math.floor(p[1])] : null;
       if (g && this.game.towerAt(g[0], g[1])) return g;
       const R = this.R, o = opt.plants && R && R.pick && R.out;
@@ -26266,11 +26501,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const box = $("inspector");
       box.classList.remove("tower", "seedinfo", "foe", "gift");
       box.classList.add(kind); box.classList.toggle("open", this.moreOpen);
+      // (a plant's card stands beside its plant, placeCard; the others keep their dock)
+      box.classList.toggle("anchored", kind === "tower");
+      if (kind !== "tower") box.style.left = box.style.top = box.style.maxHeight = "";
       $("insptitle").innerHTML = head;
       $("inspbody").innerHTML = (chips.length ? `<div class="chips">${chips.map(([l, v]) => `<span class="chip"><small>${l}</small><b>${v}</b></span>`).join("")}</div>` : "") +
         (tips.length ? `<div class="tips">${tips.map((t) => `<div>${t}</div>`).join("")}</div>` : "") +
         (more ? `<div class="more">${more}</div><span class="tomore" role="button">More</span>` : "");
-      queueMicrotask(() => this.fitCard()); // (once the caller has shown it)
+      queueMicrotask(() => { this.fitCard(); this.placeCard(); }); // (once the caller has shown it)
     }
     // the card zoomed to fit at a big UI scale on a narrow screen, rather than scroll (menu.js G.fitUi): its
     // parts as one (head, text, buttons, graft rows; not its own box, whose size is the screen's), while it
@@ -26316,7 +26554,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
       // (a phone's tray has room for one: the plant's card shuts the Rites)
       if (this.riting && NARROW.matches) this.rites(false);
-      if (t !== this.inspected || !this.showing("tower")) { this.openedAt = performance.now(); this.arm(null); }
+      if (t !== this.inspected || !this.showing("tower")) { this.openedAt = performance.now(); this.arm(null); this.cardSide = null; }
       this.seedKey = ""; this.foe = null; this.gift = "";
       const def = D.TOWERS[t.kind];
       // what it does at its level, and what growing it would change
@@ -26482,10 +26720,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.showAlmanac();
     }
 
-    // Each frame (main.js, after the ghost's tag): a creature's card follows its HP and shuts when it is gone;
-    // the creatures' trait tags sit beside their HP bars. (The card no longer floats over the garden, HUD A: a
-    // phone opens it in the tray, a desktop docks it in the right margin: game.css.)
+    // Each frame (main.js, after the ghost's tag): a plant's card follows its plant (placeCard); a creature's
+    // card follows its HP and shuts when it is gone; the creatures' trait tags sit beside their HP bars. (The
+    // other cards dock, HUD A: a phone opens them in the tray, a desktop in the right margin: game.css.)
     frame(cam, canvas) {
+      this.view = { cam, canvas };
+      this.placeCard();
       const E = this.game.enemies, f = this.foe;
       if (f && f.i >= 0) {
         if (!E.isValid(f.i, f.uid)) this.closeCard();
@@ -26493,6 +26733,45 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
       const dpr = canvas.width / Math.max(1, canvas.clientWidth), scr = (p) => { const q = cam.toScreen(p, canvas.width, canvas.height); return [q[0] / dpr, q[1] / dpr]; };
       this.foeTags(E, scr);
+    }
+    // A plant's card beside its plant (the user 2026-11-09: near the plant, not off to a side or corner): on its
+    // right if it fits, else its left, above or below, clear of the plant's box and inside the room between the
+    // top strip and the tray's chip row, so its buttons (first under its head) stay on screen. Screen px in, the
+    // zoomed px out (G.uiScale, as hints.js place); a side that still fits is kept, so it does not hop.
+    placeCard() {
+      const box = $("inspector"), t = this.inspected, v = this.view;
+      if (!t || !v || !box.classList.contains("anchored") || !box.classList.contains("show")) return;
+      const { cam, canvas } = v, dpr = canvas.width / Math.max(1, canvas.clientWidth);
+      const scr = (x, y, z) => { const q = cam.toScreen([x, y, z], canvas.width, canvas.height); return [q[0] / dpr, q[1] / dpr]; };
+      // the plant's box: its foot, its top, and half a cell around them
+      const foot = scr(t.X, t.Y, t.VZ), top = scr(t.X, t.Y, t.VZ + t.body.towerH(t.kind, t.level));
+      const ex = scr(t.X + 0.5, t.Y, t.VZ), ey = scr(t.X, t.Y + 0.5, t.VZ);
+      const r = Math.max(14, Math.hypot(ex[0] - foot[0], ex[1] - foot[1]), Math.hypot(ey[0] - foot[0], ey[1] - foot[1]));
+      const px0 = Math.min(foot[0], top[0]) - r, px1 = Math.max(foot[0], top[0]) + r, py0 = Math.min(foot[1], top[1]) - r * 0.6, py1 = Math.max(foot[1], top[1]) + r * 0.6;
+      // the room: under the top strip, over the tray's chip row and dew tube (the card is out of the tray's flow)
+      const pad = 8, gap = 10, ui = G.uiScale || 1, x0 = pad, x1 = innerWidth - pad;
+      let y0 = pad, y1 = innerHeight - pad;
+      for (const id of ["top", "topright"]) { const e = $(id); if (e && e.offsetWidth) y0 = Math.max(y0, e.getBoundingClientRect().bottom + 6); }
+      for (const id of ["dewgauge", "trayrow"]) { const e = $(id); if (e && e.offsetWidth) y1 = Math.min(y1, e.getBoundingClientRect().top - pad); }
+      // (no taller than the room: its text scrolls, game.css)
+      const room = Math.max(120, y1 - y0), mh = Math.floor(room / ui) + "px";
+      if (box.style.maxHeight !== mh) box.style.maxHeight = mh;
+      const w = box.offsetWidth * ui, h = Math.min(box.offsetHeight * ui, room), cx = (px0 + px1) / 2, cy = (py0 + py1) / 2;
+      const clampX = (x) => Math.min(Math.max(x0, x), x1 - w), clampY = (y) => Math.min(Math.max(y0, y), y1 - h);
+      // [x, y, the room left over on that side (< 0: it does not fit)]
+      const sides = {
+        right: [px1 + gap, cy - h / 2, x1 - px1 - gap - w],
+        left: [px0 - gap - w, cy - h / 2, px0 - gap - w - x0],
+        above: [cx - w / 2, py0 - gap - h, py0 - gap - h - y0],
+        below: [cx - w / 2, py1 + gap, y1 - py1 - gap - h],
+      };
+      let side = sides[this.cardSide] && sides[this.cardSide][2] >= 0 ? this.cardSide : ["right", "left", "above", "below"].find((k) => sides[k][2] >= 0);
+      if (!side) side = Object.keys(sides).reduce((a, k) => (sides[k][2] > sides[a][2] ? k : a)); // (none fits: the roomiest)
+      this.cardSide = side;
+      const l = Math.round(clampX(sides[side][0]) / ui) + "px", tp = Math.round(clampY(sides[side][1]) / ui) + "px";
+      if (box.style.left !== l) box.style.left = l;
+      if (box.style.top !== tp) box.style.top = tp;
+      if (box.dataset.side !== side) box.dataset.side = side;
     }
     // The garden's room (CSS px): the screen less the top strip, the tray, and on a desktop the margins the
     // plant card and the Rites dock in. main.js fits the dome into it, so the HUD never covers the garden.
@@ -26687,7 +26966,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const cls = c ? (c.state === "met" ? "show met" : c.state === "failed" ? "show failed" : "show") : "";
       const html = c ? `<span class="ci">${c.state === "met" ? "✓" : c.icon}</span><span class="ct"><b>${esc(c.name)}</b> <small>${when}</small><span>${esc(c.text)}</span></span><span class="cp">+${fmtDew(c.pay)}<small>dew</small></span>` : "";
       if (el.className !== cls) el.className = cls;
-      if (setHtml(el, html)) { el.title = c ? `Dew challenge: ${c.text}, for ${c.pay} dew when the wave clears${c.state ? "" : " (more with more dew banked when it starts)"}` : ""; }
+      if (setHtml(el, html)) { el.title = c ? `Dew challenge: ${c.text}, +${c.pay} dew` : ""; }
     }
   }
   G.Hud = Hud;
@@ -27779,15 +28058,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
   // (a function: the key labels follow the player's keyboard layout, ME.keys)
   const HOWTO = () => `
-    <p><b>Keep the Heart Tree alive.</b> Creatures of the blight walk the road to it; every one that arrives hurts it.</p>
-    <p>Tap a <b>seed card</b> to read what it does, then tap the moss: a ghost shows the plant and its reach. Tap the same spot again to plant it. Plants cost dew; creatures you stop drop more.</p>
-    <p>Tap a plant to <b>Grow</b> it (up to level 3) or <b>Uproot</b> it for 60% of its dew back.</p>
-    <p><b>Begin Wave</b> sends the next wave. The <b>wave almanac</b> lists what is coming, what each creature is
-      weak to (▲) and what it resists (▼). Seed cards are marked the same way.</p>
-    <p>A steady halo on a creature means it resists the plant hitting it; pulsing veins mean it is weak to it.</p>
-    <p>After each wave the garden offers a gift. Every 5th wave brings a boss: the Blight Spirit, then the Mould Mother, in turn.</p>
-    <p>${G.lockedView() ? "" : "The <b>↺ ↻</b> buttons turn the garden. "}The <b>☁</b> button picks the mood (the light) and the weather;
-      Random rolls new ones every wave. The chips under the readouts are your gifts: tap one to read it.</p>
+    <p><b>Keep the Heart Tree alive.</b> Creatures walk the road to it and hurt it.</p>
+    <p>Pick a <b>seed</b>, tap the moss to see its reach, tap again to plant. Plants cost dew; creatures drop more.</p>
+    <p>Tap a plant to <b>Grow</b> it (to level 3) or <b>Uproot</b> it (60% back).</p>
+    <p><b>Begin Wave</b> sends the next wave. The <b>Almanac</b> shows what comes: ▲ weak to, ▼ resists.</p>
+    <p>On a creature, a steady halo means it resists; pulsing veins mean it is weak.</p>
+    <p>Each wave ends with a gift. Every 5th wave is a boss.</p>
+    <p>${G.lockedView() ? "" : "<b>↺ ↻</b> turn the garden. "}<b>☁</b> picks light and weather. Tap a gift chip to read it.</p>
     <p class="dim">${G.VERSION ? G.VERSION.name + " " + G.VERSION.label : ""}</p>
     <p class="dim">Drag to pan, pinch or wheel to zoom${G.lockedView() ? "." : ","} ${ME.keys.text(`${G.lockedView() ? "" : "{KeyQ}/{KeyE} turn. "}Keys: 1–${G.state.plants.length} seeds, Space wave, {KeyU} grow, {KeyF} speed (1x, 2x, 3x), {KeyM} sound, Esc pause.`)}</p>`;
 
@@ -28106,11 +28383,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
   // what each step says, the control it lights, and when it is done
   const STEPS = [
-    { id: "seed", text: "Tap a seed below to pick a plant.", spot: "seeds", done: (t) => !!t.app.hud.selected || t.app.game.towers.length > 0 },
-    { id: "plant", text: "Now tap the moss beside the path: the ring shows its reach. Tap the same spot again to plant it. It fires on its own at creatures in reach.", spot: null, done: (t) => t.app.game.towers.length > 0 },
-    { id: "almanac", text: "Tap the wave count up top to open the Almanac. It shows what the next wave brings and what each creature is weak to.", spot: "wave", ok: true, done: (t) => t.app.hud.almOpen },
-    { id: "wave", text: "Plant more while you have dew, then tap Begin Wave.", spot: "wavebtn", done: () => S.wave > 0 },
-    { id: "after", text: "Tap a plant to grow it or uproot it. After each wave the garden offers a gift.", spot: null, ok: true, secs: 9, done: () => S.phase === G.Phase.CHOOSE_BOON || S.phase === G.Phase.GAME_OVER },
+    { id: "seed", text: "Pick a seed below.", spot: "seeds", done: (t) => !!t.app.hud.selected || t.app.game.towers.length > 0 },
+    { id: "plant", text: "Tap beside the path to see its reach. Tap again to plant.", spot: null, done: (t) => t.app.game.towers.length > 0 },
+    { id: "almanac", text: "Tap the wave count up top: the Almanac shows the next wave.", spot: "wave", ok: true, done: (t) => t.app.hud.almOpen },
+    { id: "wave", text: "Plant while you have dew, then tap Begin Wave.", spot: "wavebtn", done: () => S.wave > 0 },
+    { id: "after", text: "Tap a plant to grow or uproot it. Each wave ends with a gift.", spot: null, ok: true, secs: 9, done: () => S.phase === G.Phase.CHOOSE_BOON || S.phase === G.Phase.GAME_OVER },
   ];
 
   class Tutorial {
@@ -28187,23 +28464,23 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // id, the element it sits by, when it is due (t: this, g: the game, h: the HUD), and what it says
   const TIPS = [
     { id: "challenge", by: "chal", due: (t, g) => S.phase === P().BUILD && S.wave >= 1 && !!g.nextChallenge(),
-      text: "<b>Dew challenges</b> pay extra dew when the wave clears, if you meet the one it sets. A different one each wave: sometimes holding back pays more than another plant." },
+      text: "<b>Dew challenge</b>: meet it this wave for bonus dew." },
     { id: "matchup", by: "seeds", due: (t, g, h) => S.phase === P().BUILD && S.wave >= 1 && Object.values(h.matchup || {}).some((m) => m),
-      text: "<b>▲ counters</b> and <b>▼ resisted</b> are about the next wave: each creature is weak to some seeds and shrugs off others. The Almanac says which." },
+      text: "<b>▲</b> strong vs the next wave, <b>▼</b> resisted by it." },
     { id: "dewband", by: "dewgauge", due: () => S.dew >= D.DEW_TIERS[0],
-      text: "<b>Banked dew</b> sweetens the gifts. Each colour band on the dew bar lifts the rare and epic odds, and the top bands open Legendary and Exquisite gifts. Saving can beat spending." },
+      text: "<b>Banked dew</b> brings rarer gifts. Saving can pay." },
     { id: "zone", by: "seeds", due: (t, g, h) => !!h.selected && S.wave >= 1 && g.world.zone && g.world.zone.some((z) => z),
-      text: "<b>Glowing plots</b> are placement zones. Heartwood, by the Heart Tree, hits harder; Overlook, above the road, reaches further; Dewbank, beside water, fires faster." },
+      text: "<b>Glowing plots</b>: Heartwood hits harder, Overlook reaches further, Dewbank fires faster." },
     { id: "links", by: "inspector", due: (t, g) => g.towers.some((p) => p.links && p.links.length),
-      text: "<b>Linked plants</b> lift each other. A plant's card lists its partners: plant them side by side and both gain." },
+      text: "<b>Linked plants</b> boost each other. Plant partners side by side." },
     { id: "early", by: "wavebtn", due: (t, g) => S.wave >= 2 && g.canCallEarly(),
-      text: "<b>Calling early</b>: tap the wave button mid-wave to send the next one now, for bonus dew. Two waves at once is the risk." },
+      text: "<b>Call early</b>: tap the wave button mid-wave for bonus dew." },
     // (every run, not a once-only tip: Corn Moon's east gate sleeps until wave 3, core/enemies.js, and nothing
     // else says so; shown with Game tips off too, and past the run's few)
     { id: "entrance", by: "wavebtn", run: true, due: (t, g) => g.world.roads.length > 1 && S.phase === P().BUILD && S.wave === 2,
-      text: "<b>The east gate opens next wave.</b> From wave 3 every third creature comes in by the east road. Cover both, or plant where the roads meet." },
+      text: "<b>The east gate opens next wave.</b> Cover both roads, or where they meet." },
     { id: "fusion", by: "boons", due: (t, g) => S.phase === P().CHOOSE_BOON && !!(g.offer || []).some((b) => b.needs),
-      text: "<b>A fused gift</b>: the gifts it needs, grown far enough, unlock it, and they stay yours. Its card leads every offer until you take it: worth planning your picks around." },
+      text: "<b>Fused gift</b>: grow the gifts it needs to unlock it." },
   ];
 
   class Hints {
@@ -31286,7 +31563,7 @@ function MG_SFX(L) {
       down = { x: e.clientX, y: e.clientY, t: ME.now(), id: e.pointerId }; audio && audio.unlock();
       if (e.pointerType !== "mouse" && S.phase !== G.Phase.GAME_OVER && S.phase !== G.Phase.CHOOSE_BOON) {
         const c = cellAt(e, { plants: byLeaves() });
-        if (c) { pressShown = { hover: scene.hover }; scene.hover = { cell: c }; }
+        if (c && !c.wall) { pressShown = { hover: scene.hover }; scene.hover = { cell: c }; }
       }
     });
     canvas.addEventListener("pointermove", (e) => { if (pressShown && down && down.id === e.pointerId && Math.hypot(e.clientX - down.x, e.clientY - down.y) >= 10) pressBack(); });
@@ -31304,7 +31581,7 @@ function MG_SFX(L) {
     // spot behind or beside it took the press, selected that plant and dropped the seed)
     const byLeaves = () => !hud.selected;
     let hoverEv = null, lastHover = null; // (lastHover: the move the hover shows, picked again when a seed is picked or dropped)
-    const hoverNow = () => { if (!hoverEv) return; const c = cellAt(hoverEv, { plants: byLeaves() }); lastHover = hoverEv; hoverEv = null; scene.hover = c ? { cell: c } : null; mouseHover = !!c; };
+    const hoverNow = () => { if (!hoverEv) return; const c = cellAt(hoverEv, { plants: byLeaves() }); lastHover = hoverEv; hoverEv = null; scene.hover = c && !c.wall ? { cell: c } : null; mouseHover = !!c && !c.wall; };
     canvas.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse" && !e.buttons) { if (!hoverEv) requestAnimationFrame(hoverNow); hoverEv = e; } });
     canvas.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") { hoverEv = lastHover = null; scene.hover = null; mouseHover = false; } }); // (a finger leaves on every lift: its ghost stays)
     // A touch plants in two taps: the first, on a spot the seed can take, shows its ghost and reach there
@@ -31329,6 +31606,7 @@ function MG_SFX(L) {
       if (foe >= 0) { pending = null; hud.inspectFoe(foe); return; }
       const c = cellAt(e, { plants: byLeaves() }); // (a tap on a plant's leaves is that plant, as the mouse hover shows, unless a seed is held)
       if (!c) { pending = null; deselect(); return; }
+      if (c.wall) { pending = null; deselect(); if (hud.selected) hud.toast("Can't plant on a wall"); return; } // (a garden with faces: no wall plots yet)
       if (e.pointerType !== "mouse") { scene.hover = { cell: c }; mouseHover = false; }
       const t = game.towerAt(c[0], c[1]);
       if (t) { pending = null; hud.clearSeed(); scene.seed = ""; select(t); return; }
