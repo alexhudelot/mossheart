@@ -9294,6 +9294,191 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 })();
 
 </script>
+<script>/* ../MossheartEngine/src/stream.js */
+// Mossheart Engine: the terrain stream (P3 of docs/designs/2026-11-07-engine-opt-progressive-density.md, 4.x)
+/* A game whose target density's terrain record misses the bake cache boots its terrain at vs16 (the models bake
+   at the target from the start: only the terrain is coarser) and bakes the target's terrain while the player
+   plays. ME.stream.start(app) bakes it on the terrain workers (bakeTerrain's o.bg: no region ever falls to the
+   main thread; with no worker ready it throws and the game keeps its vs16 terrain), then meshes it and grows its
+   grass in steps of a few ms (ME.tickMs lowered and ME.quiet set for its time, so the bake keeps off the loading
+   bar and greedyMesh yields inside a region too). ME.stream.commit(app) swaps it in where the game chooses
+   (Mossheart: at BUILD): the renderer (R.swapTerrain), the sim (sim.setTerrain), the physics layer
+   (phys.retarget) and the critters take it at once, and its record goes to the bake cache (o.key), so the next
+   launch boots at the target. The boot terrain's splat of the models (T.splat, in coarse cells, which are the
+   same at every density: ME.coarseStep) goes into the new coarse grid as it is.
+   The record is written before the swap (a commit with o.key first queues it and returns false, state "saving",
+   and swaps on a call once it is written), so it is the terrain as baked, whatever is dug after.
+   P5 (4.8): a terrain carved or dug before the commit is swapped all the same. The edits (R's carved and added
+   cells: the change from the boot terrain as baked) are mirrored into the target, each boot cell's edit in all
+   the target cells whose centres it holds (a crater stays blocky, at vs16, until a reset), carved there with
+   R.carve, and the physics layer keeps each one's baked value, so its resetTerrain gives the target as baked.
+   Deviations from the design, for review: one whole swap at commit, not region by region under a dither
+   crossfade; the sim keeps the routes it made on the vs16 ground (the tiles' heights are the same at every
+   density). ?stream=0 turns it off.
+
+   ME.stream.state: "idle" | "baking" | "ready" | "saving" | "done" | "failed". ME.stream.stats once it is over:
+   bakeMs, meshMs, grassMs and ms (start to ready), the page's longest frame gap (gapMax, and by phase: gapBy) and
+   its long tasks (longtasks, longMax, and longMax by phase: bake, mesh, grass, commit), saveMs (the record's
+   write, queued to written; saveErr when it failed: the swap goes on with no record) and, after the swap,
+   commitMs, with mirrored (the target cells the edits changed) and mirrorMs when the terrain was dug. */
+(() => {
+  // the page while the stream runs: its longest gaps between frames and its long tasks, each put down to the
+  // stream's phase at the time (w.phase)
+  const watch = () => {
+    const w = { phase: "bake", longtasks: 0, longMax: 0, by: {}, gapMax: 0, gapBy: {}, frames: 0 };
+    let po = null, raf = 0, last = 0, on = true;
+    try {
+      po = new PerformanceObserver((l) => {
+        for (const e of l.getEntries()) { w.longtasks++; w.longMax = Math.max(w.longMax, e.duration); w.by[w.phase] = Math.max(w.by[w.phase] || 0, Math.round(e.duration)); }
+      });
+      po.observe({ type: "longtask" });
+    } catch (_) { po = null; w.longtasks = null; }
+    const frame = (t) => {
+      if (!on) return;
+      if (last) { const g = t - last; w.gapMax = Math.max(w.gapMax, g); w.gapBy[w.phase] = Math.max(w.gapBy[w.phase] || 0, Math.round(g)); }
+      last = t; w.frames++; raf = requestAnimationFrame(frame);
+    };
+    if (typeof requestAnimationFrame === "function") raf = requestAnimationFrame(frame);
+    w.stop = () => {
+      on = false;
+      if (raf) cancelAnimationFrame(raf);
+      if (po) { for (const e of po.takeRecords()) { w.longtasks++; w.longMax = Math.max(w.longMax, e.duration); } po.disconnect(); }
+      return { gapMax: Math.round(w.gapMax), gapBy: w.gapBy, frames: w.frames, longtasks: w.longtasks, longMax: Math.round(w.longMax), longBy: w.by };
+    };
+    return w;
+  };
+  // the streamed terrain's record for the bake cache (S.key), taken before the splat: a launch that hits it bakes
+  // the models and splats them again
+  const later = (app) => {
+    if (S.key) ME.bakeCache.later(S.key, { palNames: app.pal.names.slice(), T: Object.assign({}, S.T, { groundAt: null, coarse: S.T.coarse.slice(), splat: undefined }), mesh: S.mesh, grass: S.grass });
+  };
+  // P5: the boot terrain's edits into T (its grid, before the swap). R's carved and added cells are the change from
+  // the boot terrain as baked (a cell back to how it was baked leaves them), whoever made it (the physics layer's
+  // digs and settled grains, an app's own R.carve). Each one's target cells (those whose centres it holds) take its
+  // occupancy now: emptied where solid, its material where empty. Returns those cells, grouped by the boot's 16^3
+  // bricks (an R.carve call recomputes the mips and the coarse grid over the box around its cells: one call for
+  // digs at both ends of the map would cover all of it), and each one's baked value (orig, for the physics layer)
+  const mirror = (boot, T, R) => {
+    const g0 = boot.grid, g1 = T.grid, BX = boot.NX, BY = boot.NY, NX = T.NX, PL = NX * T.NY, orig = new Map(), groups = new Map();
+    // along axis a, boot cell b holds the centres of target cells L[b] up to L[b + 1] (the grids share their origin
+    // and their size in tiles: f = T.VS / boot.VS target cells a boot cell, or 2.5 at vs40)
+    const span = (a, nb, nt) => {
+      const L = new Int32Array(nb + 1);
+      for (let b = 0, t = 0; b <= nb; b++) {
+        while (t < nt && Math.floor((T.O[a] + (t + 0.5) / T.VS - boot.O[a]) * boot.VS) < b) t++;
+        L[b] = t;
+      }
+      return L;
+    };
+    const LX = span(0, BX, NX), LY = span(1, BY, T.NY), LZ = span(2, boot.NZ, T.NZ);
+    for (const set of [R.carvedCells, R.addedCells]) for (const i of set) {
+      const m = g0.at(i), x = i % BX, y = Math.floor(i / BX) % BY, z = Math.floor(i / (BX * BY)), key = ((z >> 4) * 4096 + (y >> 4)) * 4096 + (x >> 4);
+      let cells = groups.get(key);
+      if (!cells) groups.set(key, (cells = []));
+      for (let k = LZ[z]; k < LZ[z + 1]; k++) for (let j = LY[y]; j < LY[y + 1]; j++) for (let c = LX[x]; c < LX[x + 1]; c++) {
+        const n = k * PL + j * NX + c, was = g1.at(n);
+        if (!was === !m) continue;
+        g1.set(n, m); orig.set(n, was); cells.push(n);
+      }
+    }
+    return { orig, groups: [...groups.values()].filter((c) => c.length) };
+  };
+
+  const S = (ME.stream = {
+    state: "idle", vs: 0, T: null, mesh: null, grass: null, key: null, err: null, stats: null, saved: null, packed: false,
+    // a stream to vs target is worth starting: not ?stream=0, above the boot's 16, a density that bakes by regions
+    // (a multiple of 4, as ME.regionsOn), with terrain workers to bake on
+    wanted(target = ME.VS) {
+      return ME.qn("stream", 1) !== 0 && target > 16 && target % 4 === 0 && ME.bakeTerrain.workers() > 0;
+    },
+    // bakes app's map (app.st, app.pal; app.T the boot terrain) at o.vs (ME.VS by default). o.key: the target's
+    // terrain record key (ME.bakeCache.terrainKey(st, extra, { vs, rg: true })), written at the commit; none, no
+    // record. o.tickMs: the steps' length (6 ms). Resolves true once ready, false when it failed (S.err, logged)
+    async start(app, o = {}) {
+      if (S.state === "baking") throw new Error("ME.stream: a stream is running");
+      const { st, pal } = app, vs = o.vs || ME.VS, t0 = ME.now(), stats = { vs, from: app.T.VS };
+      Object.assign(S, { state: "baking", vs, T: null, mesh: null, grass: null, key: o.key || null, err: null, stats: null, saved: null, packed: !o.key, names: pal.names.length });
+      const tickMs = ME.tickMs, quiet = ME.quiet, w = watch();
+      ME.tickMs = o.tickMs || 6; ME.quiet = true;
+      try {
+        const T = await ME.bakeTerrain(st, pal, { vs, bg: true });
+        stats.bakeMs = Math.round(ME.now() - t0);
+        if (T.cdims.some((n, a) => n !== app.T.cdims[a])) throw new Error("another coarse grid (" + T.cdims + " for " + app.T.cdims + ")");
+        w.phase = "mesh";
+        let t = ME.now();
+        const mesh = await ME.greedyMesh(T);
+        stats.meshMs = Math.round(ME.now() - t); stats.quads = mesh.quads;
+        w.phase = "grass"; await ME.tick();
+        t = ME.now();
+        const grass = ME.bakeGrass(T, st, pal);
+        stats.grassMs = Math.round(ME.now() - t); stats.blades = grass.count;
+        if (!T.groundAt) T.groundAt = ME.groundAt(T);
+        Object.assign(S, { state: "ready", T, mesh, grass });
+      } catch (e) {
+        Object.assign(S, { state: "failed", err: e });
+        ME.log("WARN terrain stream failed, the terrain stays at vs" + app.T.VS + ":", e && e.message);
+      } finally {
+        ME.tickMs = tickMs; ME.quiet = quiet;
+        S.stats = Object.assign(stats, w.stop(), { ms: Math.round(ME.now() - t0) });
+      }
+      if (S.state === "ready") ME.log("STREAM", Object.assign({ ready: true }, S.stats));
+      return S.state === "ready";
+    },
+    // swaps the streamed terrain into app (R, sim, phys, critters, pal, T; app.T and app.mesh are set): true when
+    // it did. Not ready: false. With a key, the first call queues the record's write and returns false (state
+    // "saving", "ready" again once written: S.saved, S.packed), so the record is the terrain as baked (the write
+    // packs T's grid when it runs, and the swap mirrors the boot terrain's edits into it). The physics layer busy:
+    // false, and a later commit may take it
+    commit(app) {
+      if (S.state !== "ready") return false;
+      if (S.key && !S.saved) {
+        later(app);
+        // (the callbacks write to this stream's stats: a start before they run makes new ones, and S is the new stream's)
+        const t = ME.now(), st = S.stats, done = () => { st.saveMs = Math.round(ME.now() - t); if (S.stats !== st) return; S.packed = true; if (S.state === "saving") S.state = "ready"; };
+        S.saved = ME.bakeCache.flush(S.key);
+        S.saved.then(done, (e) => { st.saveErr = String((e && e.message) || e); done(); });
+        S.state = "saving";
+        return false;
+      }
+      const { R, phys } = app;
+      if (phys && phys.active) {
+        if (!S.stats.busy) ME.log("STREAM", { waiting: "the physics layer is busy" });
+        S.stats.busy = true;
+        return false;
+      }
+      const t0 = ME.now(), T = S.T, boot = app.T, w = watch();
+      w.phase = "commit";
+      if (boot.splat) {
+        const c = T.coarse, s = boot.splat;
+        for (let i = 0; i < s.length; i++) if (s[i]) c[i] = Math.min(255, c[i] + s[i]);
+        T.splat = s;
+      }
+      let ed = null, mt = ME.now();
+      if (R.carved) ed = mirror(boot, T, R);
+      mt = ME.now() - mt;
+      if (app.pal.names.length !== S.names) R.refreshPalette(app.pal); // (the bake's new materials)
+      R.swapTerrain(T, S.mesh, S.grass);
+      if (ed) {
+        const t = ME.now();
+        for (const c of ed.groups) R.carve(c);
+        S.stats.mirrored = ed.orig.size; S.stats.mirrorMs = Math.round(mt + ME.now() - t);
+      }
+      app.sim.setTerrain(T);
+      if (phys && phys.retarget) phys.retarget(T, ed && ed.orig);
+      if (app.critters && app.critters.T) app.critters.T = T;
+      app.T = T; app.mesh = S.mesh;
+      Object.assign(S, { state: "done", T: null, mesh: null, grass: null });
+      const st = S.stats;
+      st.commitMs = Math.round(ME.now() - t0);
+      // (the long tasks of the commit itself land in the next frame's observer callback: the slot reads them there.
+      // They go to this stream's stats: a start in those two frames sets S.stats to null, then to its own)
+      requestAnimationFrame(() => requestAnimationFrame(() => { const c = w.stop(); st.commitLong = c.longMax; st.commitGap = c.gapMax; ME.log("STREAM", Object.assign({ done: true }, st)); }));
+      return true;
+    },
+  });
+})();
+
+</script>
 <script>/* ../MossheartEngine/src/sim.js */
 /* Simulation: the route the app gives (cellsOf ported from styles5.js), walkers that follow it over
    stairs and the bridge using the voxel ground height, props playing their flipbooks and swaying in the
@@ -16957,56 +17142,65 @@ fn boxOf(V: Vox) -> Box {
 
 </script>
 <script>/* ../MossheartEngine/content/everstair.js */
-/* The Ever Stair, Mossheart's fourth garden: a cloister of pale stone drawn like a print, where a stair runs
-   round the court and seems to come back to where it began, the back walls keep gardens with their own
-   gravity, and the paving of the road turns, tile by tile, from a checkerboard into moths and leaves. It is
-   in the lithograph palette (content/lithograph.js, loaded before this file). The user picked layouts A, B
-   and C of the S5 board (2026-11-08). This file holds Art's part of the level; the map is Game's
-   (content/everstair-map.js) and names these kinds and models:
-     ME.content.kinds       es_road (the paved road), es_court (the cloister's flags), es_lawn (moss lawn),
-                            es_wall (the walls' tops), es_water (a still grey pool), and the plain kinds
-                            round the stair's seam: es_tread (the stair) and es_turf (the ground behind it)
-     window.MODELS          stamps es_stair (o.steps, o.rise, o.w, o.rail), es_arch (o.span, o.h),
-                            es_facade (one tile of back wall, o.piece: plain, lawn, tree, stair, arch or
-                            lantern, o.h) and es_inlay (one road tile's paving, o.stage 0-1, o.u, o.v)
-     ME.content.everstairInlays(tiles)   -> the es_inlay props for a road, its tiles in walking order
-     ME.content.mapLight.everstair       its light, { L, light, look }: even and soft, no strong sun
-   The ground's patterns are original motifs (a checker, a checker bent into interlocking waves, moths and
-   leaves): no artist's prints or tilings are copied, and nothing in the game names one. */
+/* The Ever Stair, Mossheart's fourth garden: mossy islands floating in a pale sky (the Architect's §10, the
+   user's go 2026-11-08), where a stair runs round a ring of slabs and seems to come back to where it began,
+   and only the locked view joins the pieces into one garden. Its ground is Mossheart's own: moss tops, sett
+   paving, stone and roots under the islands, andon lamps. Art owns the ground of the map
+   (content/everstair-map.js) and this file; Game owns the map's `game` block. The map names:
+     ME.content.kinds       es_road (the sett road), es_court (flags), es_lawn (moss, the plots), es_crag (the
+                            debris' rock), es_water (a still pool), and the plain kinds on the joins' edges:
+                            es_tread (the ring's slabs and the seam's walk), es_turf (the ground by a seam),
+                            es_deck (the bridge's two decks): no pattern laid in world space, no lighting class
+     window.MODELS          stamps es_gate (the way in, o.span, o.h), es_lamp (an iron post lamp, o.h) and
+                            es_panel (one floating wall, o.piece: plain, lawn, tree, stair or lamp, o.h)
+     ME.content.mapLight.everstair       its light, { L, light, look }: a high sun from +x+y, the void's sky
+   The lithograph stamps of the first layout (es_stair, es_arch, es_facade, es_inlay and
+   ME.content.everstairInlays, in the lithograph palette of content/lithograph.js) stay below for DeckChess's
+   board; the islands use none of them. Every motif is original, and nothing in the game names an artist. */
 (function () {
   const ME = window.ME, P = window.PX, { S, E, C, B, Y } = P.prim, M = window.MODELS, CT = (ME.content = ME.content || {}), TAU = Math.PI * 2;
   const ry = (a) => P.rot("y", a);
   const fr = (x) => x - Math.floor(x);
 
   // ---------------------------------------------------------------- kinds
-  // the road: pale paper-toned paving with a graphite kerb where it meets the lawn; the court: worn bone
-  // flags; the lawn: the garden's one strong colour; the walls' tops: bone over graphite courses
+  // Mossheart's own ground (content/momiji.js): the road is its sett lane, the lawn its moss carpet with
+  // grass and andon lamps along the road, the flags worn stone, the debris bare rock with moss on top. Each
+  // island's sides and keel are the under material: rock, roots showing where moss drapes over the edge.
+  // keel: { d, k, max } is F1's (Engine) taper under a kind's bottom: d tiles deeper per tile in from the
+  // island's edge (up to 4 tiles, at most max), plus up to k tiles of noise. The map's bottoms already sink
+  // inward, so these stay shallow: the lawn's isles hang deepest, the causeway's flags barely
+  const drape = { drape: ["moss", "moss2"], overhang: "moss" };
   Object.assign((CT.kinds = CT.kinds || {}), {
-    es_road: { recipe: "layer", top: "litRoad", mottle: "litBone", mottleK: 0.08, depth: 0.12, under: "litSlate", edge: { mat: "litGraphite", width: 0.1, raise: 0.06, facing: ["es_lawn"] } },
-    es_court: { recipe: "layer", top: "litParchment", mottle: "litBone", mottleK: 0.18, depth: 0.12, under: "litSlate" },
-    es_lawn: { recipe: "carpet", top: "litMoss", mottle: "litMossL", cushions: true, drape: ["litMoss", "litMossL"], overhang: "litMoss", under: "litGraphite" },
-    es_wall: { recipe: "layer", top: "litBone", mottle: "litSlate", mottleK: 0.15, depth: 0.1, under: "litGraphite" },
-    // the plain kinds round the stair's seam (the Architect's tell 3): the loop closes only on screen, so the
-    // end's side shows next to the start's copy 4 tiles higher, and any pattern laid in world space breaks
-    // there. The stair's treads (es_tread, all 32 cells) and the plain ground behind its two ends (es_turf)
-    // have no mottle, no cushions, no edge breakup, and flat materials: litRoad's and litMoss's colours in
-    // the default lighting class, so no rock blotches, moss mottling or gust sheen either (light.js,
-    // gbuffer.js). Only the per-voxel grain stays, which has no pattern to line up. The kerb is laid by tile, not in
-    // world space, so the treads keep it
-    es_tread: { recipe: "layer", top: "litTread", depth: 0.12, under: "litSlate", edge: { mat: "litGraphite", width: 0.1, raise: 0.06, facing: ["es_lawn", "es_turf"] } },
-    es_turf: { recipe: "layer", top: "litTurf", depth: 0.12, under: "litGraphite" },
-    // a still pool the colour of slate: little glint, faint caustics, a grey tint
-    es_water: Object.assign({}, CT.kinds.water || {}, {
-      bed: ["litSlate", "litGraphite"], shore: "litBone", bank: "litMoss", drape: ["litMoss", "litMossL"], overhang: "litMoss", under: "litGraphite",
-      surface: 0, clarity: 0.6, tint: [0.12, 0.16, 0.2], absorb: 1.2, calm: 1, glint: 0.5, caustics: 0.3,
-    }),
+    es_road: Object.assign({
+      recipe: "lane", top: "gravel", edge: "moss", under: "rock",
+      paving: { stones: ["sett", "sett2", "sett3"], joint: "moss", dirt: "earth", hole: "gravel", moss: "moss2", scale: 2.2, gap: 0.1, sunk: 0.3, missing: 0.05, cracked: 0.18, jointK: 0.3, mossK: 0.14 },
+      keel: { d: 0.75, k: 0.3, max: 2.5 },
+    }, drape),
+    es_court: Object.assign({ recipe: "layer", top: "stone", mottle: "pebble", mottleK: 0.15, depth: 0.12, under: "rock", keel: { d: 0.5, k: 0.25, max: 1 } }, drape),
+    es_lawn: Object.assign({ recipe: "carpet", top: "moss", mottle: "moss2", cushions: true, litter: "maple", under: "rock", grass: true, lamps: true, keel: { d: 1, k: 0.4, max: 3.5 } }, drape),
+    es_crag: Object.assign({ recipe: "layer", top: "stone", mottle: "moss2", mottleK: 0.35, depth: 0.2, under: "rock", keel: { d: 1, k: 0.5, max: 2 } }, drape),
+    // the plain kinds on the joins' edges (the Architect's tell 3): a join closes only on screen, so one
+    // piece's side shows next to another's copy 4 tiles off, and any pattern laid in world space breaks
+    // there. These have no mottle, cushions, paving or edge breakup, and classless materials (no rock
+    // blotches, moss mottling or gust sheen: light.js, gbuffer.js), Mossheart's colours under new names.
+    // Only the per-voxel grain stays, which has no pattern to line up. The ring's slabs hang 0.75 thick with
+    // no keel, so their bottoms meet on screen the way their tops do
+    es_tread: { recipe: "layer", top: "isleTread", depth: 0.12, under: "isleSlab" },
+    es_turf: { recipe: "layer", top: "isleTurf", depth: 0.12, under: "isleSlab" },
+    es_deck: { recipe: "layer", top: "isleDeck", depth: 0.12, under: "isleSlab" },
+    // a still pool: Mossheart's water with little glint
+    es_water: Object.assign({}, CT.kinds.water || {}, { bank: "moss", under: "rock", calm: 1, glint: 0.5 }, drape),
   });
-  // the plain kinds' materials: the lithograph's road and moss ramps under names with no class (materialClass)
-  Object.assign(CT.ramps, { litTread: CT.ramps.litRoad, litTurf: CT.ramps.litMoss });
-  CT.mats = Object.assign(CT.mats || {}, { litTurf: { wrap: 0.5 } });
-  // the stone stays crisp: printed lines, not worn edges
-  CT.edgeRound = Object.assign(CT.edgeRound || {}, { kinds: Object.assign((CT.edgeRound && CT.edgeRound.kinds) || {}, { es_road: 0, es_court: 0.03, es_wall: 0, es_tread: 0, es_turf: 0 }) });
-  if (CT.edgeBreak) CT.edgeBreak.kinds = Object.assign(CT.edgeBreak.kinds || {}, { es_road: 0, es_court: 0, es_wall: 0, es_lawn: 0.1, es_tread: 0, es_turf: 0 });
+  // the plain kinds' materials: Mossheart's flags, moss and planks, and a slab grey, under names with no
+  // class (materialClass); the iron and the lamp's glow for es_lamp and the panels
+  Object.assign(CT.ramps, {
+    isleTread: ["#9a9384", 8, 0.18, 0.84, 0.12], isleTurf: ["#6b9a3c", 7, 0.1, 0.78, 0.35], isleSlab: ["#7f8079", 6, 0.1, 0.8],
+    isleDeck: ["#7a6248", 6, 0.16, 0.62, 0.2], isleIron: ["#2f3a36", 5, 0.06, 0.42, 0.15], isleGlow: ["#f0a040", "#f4b858", "#f8cc78", "#fce0a0"],
+  });
+  CT.mats = Object.assign(CT.mats || {}, { isleTurf: { wrap: 0.5 }, isleGlow: { em: 1, flat: 1 } });
+  // the joins' kinds stay crisp: a rounded or broken edge is a world-space pattern too
+  CT.edgeRound = Object.assign(CT.edgeRound || {}, { kinds: Object.assign((CT.edgeRound && CT.edgeRound.kinds) || {}, { es_road: 0, es_court: 0.03, es_wall: 0, es_tread: 0, es_turf: 0, es_deck: 0 }) });
+  if (CT.edgeBreak) CT.edgeBreak.kinds = Object.assign(CT.edgeBreak.kinds || {}, { es_road: 0, es_court: 0, es_wall: 0, es_lawn: 0.1, es_tread: 0, es_turf: 0, es_deck: 0 });
 
   // ---------------------------------------------------------------- models
   // tile units, the anchor at the ground centre, Z up (content/fernglass.js)
@@ -17132,6 +17326,87 @@ fn boxOf(V: Vox) -> Box {
     };
   });
 
+  // ---------------------------------------------------------------- the islands' stamps
+  // Mossheart's stone: courses a quarter tile high in rock joints, a few stones gone to moss
+  const masonry = (u, z, m) => (ashlar(u, z) ? "rock" : P.hash(Math.floor(u * 2 + (Math.floor(z * 4) & 1) * 0.5), Math.floor(z * 4), 0, 23) < 0.12 ? "moss2" : m);
+  // moss cushions along a top edge from y0 to y1 at height z, a little over the face at x
+  const cushions = (p, x, y0, y1, z, n, s = 0.07) => { for (let i = 0; i < n; i++) p.push(E([x + (fr(i * 0.618) - 0.5) * 0.06, y0 + ((i + 0.5) / n) * (y1 - y0), z], [s, s * 1.2, s * 0.7], i & 1 ? "moss2" : "moss")); };
+  // an iron lamp: a post from at along axis d (a unit vector) o.h long, a glowing box under a cap at its end
+  const lamp = (p, at, d, h) => {
+    const tip = at.map((v, i) => v + d[i] * h), cap = at.map((v, i) => v + d[i] * (h + 0.14));
+    p.push(C(at, tip, 0.03, 0.022, "isleIron"), B(tip.map((v, i) => v + d[i] * 0.07), [0.06, 0.06, 0.06], 0.01, "isleGlow"), B(cap, [0.075, 0.075, 0.075].map((v, i) => (d[i] ? 0.015 : v)), 0, "isleIron"));
+  };
+
+  // The gate: the way in at the Overlook's top, a round stone arch on two piers with moss cushions on its
+  // crown and a lamp hanging inside each pier; the way runs through it along x. o.span is the opening's half
+  // width, o.h the springing height. Anchored at the opening's middle on the ground.
+  model("es_gate", (o = {}) => {
+    const sp = o.span ?? 0.42, hs = o.h ?? 0.75, d = 0.18, py = sp + 0.1, top = hs + sp + 0.18, p = [];
+    p.push(B([0, 0, top / 2], [d, py + 0.1, top / 2], 0.02, "stone"));
+    p.push(Y([0, 0, hs], sp, d + 0.05, "stone", { sub: true, R: ry(Math.PI / 2) }), B([0, 0, hs / 2 - 0.05], [d + 0.05, sp, hs / 2 + 0.05], 0, "stone", { sub: true }));
+    for (const s of [-1, 1]) p.push(B([0, s * py, 0.06], [d + 0.05, 0.13, 0.06], 0.02, "rock"));
+    cushions(p, 0, -py - 0.05, py + 0.05, top + 0.02, 9, 0.09);
+    for (const s of [-1, 1]) lamp(p, [0, s * (sp - 0.02), hs + 0.12], [0, 0, -1], 0.12);
+    return { prims: p, r: 0.75, h: top + 0.12, k: 1, detail: (x, y, z, m) => (m === "stone" ? masonry(y + x, z, m) : m) };
+  });
+
+  // A lamp post for the islands' dressing: o.h tall, on a small stone foot
+  model("es_lamp", (o = {}) => {
+    const h = o.h ?? 0.8, p = [Y([0, 0, 0.05], 0.09, 0.05, "stone")];
+    lamp(p, [0, 0, 0.1], [0, 0, 1], h - 0.2);
+    return { prims: p, r: 0.3, h: h + 0.05, k: 1 };
+  });
+
+  // One floating wall: a stone panel o.h high facing +x at the tile's back (x -0.5 to -0.28), a moss
+  // coping, and under it a tapering foot of rock with roots, so it hangs like the islands do. The pieces
+  // carry a garden of their own gravity, growing sideways out of the face (+x is its up):
+  //   plain   the panel alone, moss in its joints
+  //   lawn    a moss lawn on the face with cushions and a small tree
+  //   tree    one larger tree growing out of the face
+  //   stair   a stair climbing the face, its treads facing sideways
+  //   lamp    an iron lamp standing out from the face
+  // Anchored at the tile's middle at the panel's foot (the cell's h); panels in a run meet edge to edge.
+  model("es_panel", (o = {}) => {
+    const H = o.h ?? 2, X0 = -0.5, F = -0.28, xm = (X0 + F) / 2, p = [];
+    p.push(B([xm, 0, H / 2], [(F - X0) / 2, 0.5, H / 2], 0, "stone"));
+    cushions(p, xm + 0.02, -0.46, 0.46, H + 0.03, 8);
+    // the foot: a rock wedge narrowing downward, two roots trailing out of it
+    p.push(C([xm, 0, 0.02], [xm + 0.02, 0.05, -0.75], 0.22, 0.04, "rock"), C([xm, -0.25, 0.02], [xm, -0.3, -0.35], 0.12, 0.03, "rock"), C([xm, 0.25, 0.02], [xm, 0.28, -0.4], 0.12, 0.03, "rock"));
+    p.push(C([xm + 0.05, -0.1, -0.2], [xm + 0.16, -0.2, -0.9], 0.025, 0.008, "bark"), C([xm + 0.04, 0.16, -0.25], [xm + 0.1, 0.24, -0.7], 0.02, 0.006, "bark"));
+    const piece = o.piece || "plain";
+    // a tree growing along +x out of the face: the trunk from at, len out, its crown of leaves at the end
+    const tree = (at, len, crown, lean) => {
+      const [x, y, z] = at, tip = [x + len, y, z + lean];
+      p.push(C(at, tip, 0.05, 0.03, "bark"), C([x + len * 0.55, y, z + lean * 0.5], [x + len * 0.8, y + 0.13, z + lean * 0.5 + 0.1], 0.022, 0.012, "bark"));
+      p.push(E([tip[0] + crown * 0.6, y, tip[2]], [crown * 0.85, crown, crown * 0.9], "leaf"), E([tip[0] + crown * 0.9, y + 0.12, tip[2] + 0.1], [crown * 0.55, crown * 0.6, crown * 0.6], "leaf2"));
+    };
+    if (piece === "lawn") {
+      p.push(B([F + 0.04, 0, H * 0.5], [0.04, 0.44, H * 0.36], 0.02, "moss"));
+      for (let i = 0; i < 9; i++) p.push(E([F + 0.09, -0.38 + 0.095 * i, H * 0.2 + fr(i * 0.618) * H * 0.6], [0.045, 0.05, 0.05], "moss2"));
+      tree([F + 0.08, -0.15, H * 0.62], 0.28, 0.17, 0.04);
+    } else if (piece === "tree") {
+      p.push(E([F, 0, H * 0.55], [0.08, 0.2, 0.15], "moss"));
+      tree([F + 0.02, 0, H * 0.55], 0.42, 0.25, 0.06);
+    } else if (piece === "stair") {
+      // the floor of this stair is the panel's -y edge: each step stands further out toward +y
+      const n = 6, sh = (H * 0.75) / n;
+      for (let i = 0; i < n; i++) p.push(B([F + 0.08, -0.45 + 0.07 * (i + 1), H * 0.12 + sh * (i + 0.5)], [0.08, 0.07 * (i + 1), sh / 2], 0, "stone"));
+      p.push(B([F + 0.08, -0.47, H * 0.5], [0.09, 0.025, H * 0.4], 0, "rock"));
+    } else if (piece === "lamp") {
+      lamp(p, [F, 0, H * 0.45], [1, 0, 0], 0.3);
+    }
+    return {
+      prims: p, r: 0.75, h: H + 0.1, k: 1,
+      detail: (x, y, z, m, nx, ny) => {
+        if (m !== "stone") return m;
+        if (x > F - 0.02 && nx > 0.6) return masonry(y, z, m); // the face
+        if (x < F) return Math.abs(ny) > 0.6 ? masonry(x, z, m) : m; // the ends
+        if (piece === "stair") return "rock"; // this stair's risers face along z
+        return m;
+      },
+    };
+  });
+
   // ---------------------------------------------------------------- the road's paving
   // One road tile's paving, painted into the top voxel of its ground. o.stage (0 at the gate, 1 at the
   // court) picks the motif; o.u, o.v are the tile's map coordinates, so the pattern runs on across tiles
@@ -17187,94 +17462,149 @@ fn boxOf(V: Vox) -> Box {
   CT.everstairInlays = (tiles) => tiles.map(([x, y], i) => ["es_inlay", { stage: tiles.length > 1 ? i / (tiles.length - 1) : 0, u: x, v: y }, x, y, {}]);
 
   // ---------------------------------------------------------------- light
-  // a print's light: a high sun with little direction, deep ambient, soft shadows and no beams or mottle,
-  // so the stair's joins read cleanly; the paper's warmth in the key, a cool ink in the ambient
+  // a high sun from +x+y (§10.4), so the seen faces are lit and a join's two sides take the same light; no
+  // beams, canopy mottle or haze: depth or height fog would tell the pieces' real heights apart. The sky is
+  // the void's (F2, Engine: passes.js ME.VOID_SKY, linear RGB): a soft blue zenith, a pale warm band low on
+  // the screen, a cool mist, the drifting clouds and far islets at their defaults
   CT.mapLight = Object.assign(CT.mapLight || {}, {
     everstair: {
-      L: [-0.32, 0.38, 0.87],
+      L: [0.28, 0.45, 0.85],
       light: null,
-      look: { sunCol: [1.0, 0.97, 0.9], ambCol: [0.84, 0.88, 0.95], amb: 0.3, shade: 0.55, shaftK: 0, mottle: 0, haze: 0.04, vignette: 0.35, windK: 0.4 },
+      look: {
+        sunCol: [1.0, 0.96, 0.88], ambCol: [0.82, 0.88, 0.96], amb: 0.32, shade: 0.55, shaftK: 0, mottle: 0, haze: 0, vignette: 0.3, windK: 0.6,
+        backdrop: "void", skyTop: [0.24, 0.40, 0.66], skyLow: [0.84, 0.80, 0.72], mist: [0.70, 0.72, 0.76], horizon: 0.6, clouds: 1, islets: 1,
+      },
     },
   });
 })();
 
 </script>
 <script>/* ../MossheartEngine/content/everstair-map.js */
-// Mossheart, the Ever Stair (level 4): the map. The Architect's module (docs/designs/2026-11-08-escher-level-engine.md):
-// a 20 x 20 print-garden round a deep well, with the Endless Stair (A), 32 cells that drop one 0.25 step every
-// two cells round the well and close only in the picture, at the locked view; the two back walls (west and
-// north, 7 tiles high) dressed with Art's es_facade pieces (C, the Relativity Court, decor only); and on its near
-// side, from y = 20, the Metamorphosis Field (B): a 2-tile road whose paving changes step by step (Art's
-// es_inlay stages) to the Heart Tree. Creatures come in at the Overlook's gate, walk the stair down once, step off
-// at its foot onto the left walk, cross into the field and walk its road. Nothing walks the stair's last three
-// cells (the seam's far side), and nothing is planted there, in the notch or on the hidden strip.
+// Mossheart, the Ever Stair (level 4): the map, as floating islands in a void (the Architect's §10, the user's go
+// 2026-11-08). There is no floor: every piece hangs in the sky on its own keel, and the level reads as one only
+// from the locked view, where pieces 4 apart in x, y and z share a pixel. Art owns the ground (the islands, their
+// bottoms and keels, the ring, the causeway, the decks, the floating walls, the debris and the dressing); Game owns
+// the `game` block. Heights and bottoms are in steps of 0.25:
+//   the Overlook     14..19 x 1..10, top 5.0; the gate at (17, 1), the spawn
+//   the Low Terrace  1..13 x 1..6 and 1..6 x 7..19, top 1.0; on screen its x = 9 edge meets the Overlook's x = 14
+//                    edge as one floor, and its cells 10..13 lie under the Overlook (unplanted)
+//   the Ever Stair   the 32-cell ring from (14, 11), 5.0 down to 1.0, a slab 0.75 thick; the notch (10..13, 7) is sky
+//   the causeway     3..4 x 20..21 and 3..10 x 22..23, 1.0 down to -0.25, with a moss shoulder at y = 24
+//   the Seen Bridge  the far deck 11..13 x 22..23 at -0.5 and the near deck 18..20 x 26..27 at 3.5, equally thick
+//   Heart Isle       21..25 x 21..27, top 3.5
+//   the turned walls stone panels floating on x = 0 and y = 0, decor only
+// Cells on a join's two edges are plain kinds (es_tread, es_turf, es_deck: no world-space pattern to break there).
 //
-// Needs content/lithograph.js and content/everstair.js (Art's kinds, models, inlay helper and light) first.
+// Needs content/everstair.js (Art's kinds and models) first, and F1+F2 (Engine, #581): `bottom`, the kinds'
+// keel, `floor: "void"` and the void backdrop. The bake box is derived (it makes room for the keels).
 //
-//   ME.content.maps.everstair     the v1 map (plain data), with game: { route, spawn, heart, lane, build }
+//   ME.content.maps.everstair     the v1 map (plain data), with game: { route (three), split, spawn, heart, lane, build }
 (function () {
   const ME = window.ME, CT = (ME.content = ME.content || {});
   CT.maps = CT.maps || {};
-  const W = 20, H = 30;
+  const W = 30, H = 30, FLOOR = -16;
 
-  // the stair's cells, i0 at the Overlook's gate to i31 by the notch; its heights in steps of 0.25 are
-  // 20 - floor((i + 1) / 2), so the seam falls mid-landing (i31 and i0's on-screen copy both at 1.0)
+  // h: tops, b: bottoms (steps), kind: legend chars ("." the sky), isle: which island a cell keels with
+  const h = [], b = [], kind = [], isle = [];
+  for (let y = 0; y < H; y++) { h.push(Array(W).fill(FLOOR)); b.push(Array(W).fill(FLOOR)); kind.push(Array(W).fill(".")); isle.push(Array(W).fill(0)); }
+  const box = (x0, y0, x1, y1, z, k, id) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { h[y][x] = z; kind[y][x] = k; if (id !== undefined) isle[y][x] = id; } };
+  const paint = (x0, y0, x1, y1, k) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) kind[y][x] = k; };
+
+  // the islands: id -> [slab thickness, the keel's cap in tiles from the edge]; the keel deepens 0.5 a tile
+  // inward up to the cap, so each island hangs a blunt cone (F1's keel option adds the per-voxel taper and noise)
+  const ISLES = { 1: [3, 2], 2: [3, 3], 3: [3, 0], 4: [3, 0], 5: [2, 0], 6: [2, 0], 7: [3, 2], 8: [3, 0], 9: [3, 1] };
+  box(14, 1, 19, 10, 20, "l", 1); // the Overlook
+  box(1, 1, 13, 6, 4, "l", 2); box(1, 7, 6, 19, 4, "l", 2); // the Low Terrace
+  // the Ever Stair, i0 at the Overlook's foot to i31 by the notch: 20 - floor((i + 1) / 2), so the seam falls
+  // mid-landing (i31 and i0's on-screen copy both at 1.0)
   const stair = [];
   for (let x = 14; x <= 17; x++) stair.push([x, 11]);
   for (let y = 12; y <= 17; y++) stair.push([17, y]);
   for (let x = 16; x >= 7; x--) stair.push([x, 17]);
   for (let y = 16; y >= 7; y--) stair.push([7, y]);
   stair.push([8, 7], [9, 7]);
-  // B's road, both tiles of each step in walking order: legs as [x0, y0, x1, y1] with y0 (or x0) the leg's
-  // first row (column) of two
-  const legs = [[5, 20, 5, 21], [5, 22, 17, 22], [16, 24, 16, 25], [17, 26, 6, 26]];
-  const road = [];
-  for (const [x0, y0, x1, y1] of legs) {
-    if (y0 === y1) for (let x = x0, d = Math.sign(x1 - x0) || 1; x !== x1 + d; x += d) road.push([x, y0], [x, y0 + 1]);
-    else for (let y = y0; y <= y1; y++) road.push([x0, y], [x0 + 1, y]);
+  stair.forEach(([x, y], i) => box(x, y, x, y, 20 - Math.floor((i + 1) / 2), "t", 3));
+  // the causeway: 0.25 a step down from the terrace's west arm to the far deck; the walked cells are road,
+  // the outer row (x = 3, y = 23) flags; the shoulder at each causeway column's height holds plots
+  box(3, 20, 4, 20, 4, "c", 4); box(3, 21, 4, 21, 3, "c", 4);
+  [[3, 4, 2], [5, 6, 1], [7, 8, 0], [9, 10, -1]].forEach(([x0, x1, z]) => { box(x0, 22, x1, 23, z, "c", 4); if (x0 > 3) box(x0, 24, x1, 24, z, "l", 4); });
+  box(10, 24, 10, 24, FLOOR, ".", 0); // the shoulder ends at x = 9
+  box(11, 22, 13, 23, -2, "b", 5); // the Seen Bridge's far deck
+  box(18, 26, 20, 27, 14, "b", 6); // its near deck
+  box(21, 21, 25, 27, 14, "l", 7); // Heart Isle
+  // the stair to nowhere, east of Heart Isle: four treads climbing off its edge into the sky
+  for (let x = 26; x <= 29; x++) box(x, 24, x, 24, 15 + (x - 26), "t", 8);
+  // debris: small islets around the level and below it (their own keels, ids 9+)
+  [[24, 4, 25, 5, 8], [10, 13, 11, 14, -8], [1, 25, 2, 27, -12], [27, 15, 27, 15, 4], [15, 27, 15, 27, -10]].forEach(([x0, y0, x1, y1, z], n) => box(x0, y0, x1, y1, z, "k", 9 + n));
+  for (let n = 10; n < 14; n++) ISLES[n] = [3 + (n & 1), 1];
+
+  // the walks (Game's routes, plan 2026-11-08): the gate leg down the Overlook, the terrace's two rows and west
+  // arm, the causeway's y = 22 row, and the near deck onto Heart Isle
+  paint(17, 1, 17, 8, "r"); paint(15, 8, 16, 8, "r");
+  paint(4, 4, 8, 4, "r"); paint(4, 6, 8, 6, "r"); paint(4, 7, 4, 19, "r"); paint(4, 20, 4, 21, "r"); paint(4, 22, 10, 22, "r");
+  paint(21, 26, 22, 26, "r");
+  // plain ground on the joins' edges. The Overlook seam: the Overlook's x = 14 edge on screen meets the terrace's
+  // x = 9 column, so both are plain, and the walked cells there are treads; the terrace's 10..13 strip is under
+  // the Overlook on screen, plain and unplanted. The ring's seam: i31 (9, 7) and i0 (14, 11) are both treads,
+  // and the Overlook's cells by i0 are the x = 14 column and the 15..17 x 9..10 block behind it
+  paint(14, 1, 14, 10, "p"); paint(15, 9, 17, 10, "p"); paint(14, 8, 14, 10, "t");
+  paint(9, 1, 9, 6, "p"); paint(9, 4, 9, 4, "t"); paint(9, 6, 9, 6, "t"); paint(8, 5, 8, 5, "p");
+  paint(10, 1, 13, 6, "p");
+
+  // bottoms: each island's slab, deepened toward its middle (a BFS from its edge, capped)
+  const dist = Array.from({ length: H }, () => Array(W).fill(-1)), q = [];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (!isle[y][x]) continue;
+    const edge = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => { const X = x + dx, Y = y + dy; return X < 0 || Y < 0 || X >= W || Y >= H || isle[Y][X] !== isle[y][x]; });
+    if (edge) { dist[y][x] = 0; q.push([x, y]); }
+  }
+  for (let n = 0; n < q.length; n++) {
+    const [x, y] = q[n];
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const X = x + dx, Y = y + dy;
+      if (X >= 0 && Y >= 0 && X < W && Y < H && dist[Y][X] < 0 && isle[Y][X] === isle[y][x]) { dist[Y][X] = dist[y][x] + 1; q.push([X, Y]); }
+    }
+  }
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const id = isle[y][x];
+    if (!id) continue;
+    const [thick, cap] = ISLES[id];
+    b[y][x] = Math.max(FLOOR + 1, h[y][x] - thick - 2 * Math.min(dist[y][x], cap));
   }
 
-  // heights (steps) and kinds by cell: the walls (28), the Overlook (20), the back strip and the left walk
-  // (4), the front court and the field (2), the well and the notch (-20)
-  const h = [], kind = [];
-  const box = (x0, y0, x1, y1, z, k) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { h[y][x] = z; kind[y][x] = k; } };
-  for (let y = 0; y < H; y++) { h.push(Array(W).fill(-20)); kind.push(Array(W).fill("d")); }
-  box(1, 1, 13, 6, 4, "l"); box(1, 7, 6, 19, 4, "l"); // the back strip, the left walk
-  box(14, 1, 19, 10, 20, "l"); // the Overlook
-  box(7, 18, 19, 19, 2, "c"); box(18, 11, 19, 17, 2, "c"); // the front court
-  box(1, 20, 19, H - 1, 2, "l"); // the field
-  box(0, 0, W - 1, 0, 28, "w"); box(0, 0, 0, H - 1, 28, "w"); // the walls
-  stair.forEach(([x, y], i) => { h[y][x] = 20 - Math.floor((i + 1) / 2); kind[y][x] = "t"; });
-  // plain turf round the seam (world-space mottle and grass would not line up across it: tell 3), and unplanted
-  // where the picture hides it: the strip behind the stair's end, the Overlook behind its start, the hidden strip
-  box(6, 5, 9, 6, 4, "p"); box(14, 9, 17, 10, 20, "p"); box(10, 1, 13, 6, 4, "p");
-  // the path off the stair's foot: a 1.25 landing at (6, 8), down the left walk, a 0.75 step into the field
-  for (let y = 8; y <= 19; y++) kind[y][6] = "r";
-  h[8][6] = 5; h[19][5] = h[19][6] = 3; kind[19][5] = "r";
-  for (const [x, y] of road) kind[y][x] = "r";
-
-  // the back walls' faces: one es_facade a tile (its relief on the tile's -x side, facing +x; rot 1 for the
-  // north wall) on the tile inside the wall, as high as the wall stands above it; none on the hidden strip
-  const pieces = ["plain", "lawn", "plain", "tree", "stair", "plain", "arch", "lantern"];
-  const walls = [];
-  for (let y = 1; y < H; y++) walls.push(["es_facade", { piece: pieces[y % pieces.length], h: (28 - h[y][1]) / 4 }, 1, y, {}]);
-  for (let x = 2; x < W; x++) if (x < 10 || x > 13) walls.push(["es_facade", { piece: pieces[(x + 3) % pieces.length], h: (28 - h[1][x]) / 4 }, x, 1, { rot: 1 }]);
+  // the turned walls: stone panels floating in the sky beyond the terrace's back edges, in runs of three with
+  // gaps, each run on its own height (the cell's h is the panel's foot; nothing walks them yet). None behind the
+  // Overlook or the hidden strip, so nothing hangs over a seam
+  const pieces = ["plain", "lawn", "plain", "tree", "stair", "plain", "lamp", "lawn"];
+  const panels = [];
+  const run = (cells, rot, base, n0) => cells.forEach(([x, y], i) => { h[y][x] = base; panels.push(["es_panel", { piece: pieces[(n0 + i) % pieces.length], h: 2 }, x, y, rot ? { rot } : {}]); });
+  run([[0, 2], [0, 3], [0, 4]], 0, 8, 0);
+  run([[0, 8], [0, 9], [0, 10]], 0, 12, 3);
+  run([[0, 14], [0, 15], [0, 16]], 0, 16, 5);
+  run([[2, 0], [3, 0], [4, 0]], 1, 10, 1);
+  run([[7, 0], [8, 0], [9, 0]], 1, 14, 4);
 
   CT.maps.everstair = {
-    v: 1, id: "everstair", W, H, hStep: 0.25, floor: -21,
-    h,
+    v: 1, id: "everstair", W, H, hStep: 0.25,
+    // nothing below the bottoms
+    floor: "void",
+    h, bottom: b.map((r, y) => r.map((z, x) => (isle[y][x] ? z : null))),
     kind: kind.map((r) => r.join("")),
-    // t: the stair's treads, p: plain turf; both classless (no world-space mottle or jitter crosses the seam)
-    legend: { w: "es_wall", d: "es_wall", r: "es_road", t: "es_tread", p: "es_turf", c: "es_court", l: "es_lawn" },
-    props: [...walls, ...CT.everstairInlays(road)],
+    // r: the road (Mossheart's setts), c: flags, l: moss, t: the treads, p: plain turf, b: the decks (the last
+    // three plain: the joins' edges), k: the debris crags
+    legend: { ".": null, r: "es_road", c: "es_court", l: "es_lawn", t: "es_tread", p: "es_turf", b: "es_deck", k: "es_crag" },
+    // the gate over the road's first tile (its way along y), a lamp at the top of the stair to nowhere
+    props: [["es_gate", null, 17, 1, { rot: 1 }], ["es_lamp", null, 29, 24, {}], ...panels],
     frame: { type: "box" },
-    box: { o: [0, 0, -6.5], size: [W, H, 16] },
-    // The rules' data (the engine never reads it): the route, cell by cell, from the Overlook's gate down the
-    // stair (i0 to i28), off its foot onto the landing, down the left walk and along the field's road; the
-    // gate's point and the Heart Tree's centre in tiles, the walk, the build tiles
+    // The rules' data (the engine never reads it): Game's (plan 2026-11-08), a placeholder until its F3 half
     game: {
-      route: [[[14, 10], [14, 11], [17, 11], [17, 17], [7, 17], [7, 8], [6, 8], [6, 22], [16, 22], [16, 26], [7, 26]]],
-      spawn: [14.5, 9.6], heart: [3, 27], lane: ["es_road", "es_tread"], build: ["es_court", "es_lawn"],
+      route: [
+        [[17, 1], [17, 8], [14, 8], [14, 11], [17, 11], [17, 17], [7, 17], [7, 7], [9, 7], [9, 6], [4, 6], [4, 22], [13, 22], [18, 26, { j: 4 }], [22, 26]],
+        [[17, 1], [17, 8], [14, 8], [9, 4, { j: -4 }], [4, 4], [4, 22], [13, 22], [18, 26, { j: 4 }], [22, 26]],
+        [[17, 1], [17, 8], [14, 8], [14, 11], [17, 11], [17, 17], [7, 17], [7, 7], [9, 7], [14, 11, { j: 4 }], [17, 11], [17, 17], [7, 17], [7, 7], [9, 7], [9, 6], [4, 6], [4, 22], [13, 22], [18, 26, { j: 4 }], [22, 26]],
+      ],
+      split: [[1, 3, 3, 2], [2, 5, 5, 0]],
+      spawn: [17.5, 1.5], heart: [23.5, 24.5], lane: ["es_road", "es_tread", "es_deck"], build: ["es_court", "es_lawn"],
     },
   };
 })();
@@ -19259,7 +19589,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.92.0", name: "Mossheart", commit: "caf08da9" };
+  G.VERSION = { v: "0.93.0", name: "Mossheart", commit: "bcc2186e" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -19878,12 +20208,14 @@ function MA_DSP() {
    writes it into the sims' fixtures): { v: G.RULES_REV, VS (the density it was read at), W, H,
    ground: [W*H] (the ground's height at each cell centre, tiles), roads: [{ path: [[cx, cy], ...] (its tiles
    in walking order), len (tiles), route: [X, Y, Z, X, Y, Z, ...] (the engine road's line at 1/VS spacing,
-   flat), lane, sides, sideStep (laneFrom's) }, ...] one per entrance }. */
+   flat), joins: [{ s, j }] (where the road jumps by j(1,1,1): the engine road's; only on a road that has
+   any), lane, sides, sideStep (laneFrom's) }, ...] one per entrance, hidden: [W*H] (0/1, G.hiddenOf; only on a
+   locked level) }. */
 (function () {
   const G = window.MG;
 
   // bump on any change to what a record holds or how it is read (a cached record of another rev is read again)
-  G.RULES_REV = 1;
+  G.RULES_REV = 2;
 
   // the ground's height at (X, Y) on a baked terrain T: the top of its voxel column (0 off the grid or over
   // an empty column)
@@ -19895,30 +20227,47 @@ function MA_DSP() {
   };
 
   // A record's road at arc length s: [X, Y, Z, dx, dy], off its flat route at VS points per tile. The formula
-  // is copied from MossheartEngine/src/sim.js road()'s at(); keep the two alike (tools/rules-check.js compares
-  // them exactly at vs16).
-  G.roadAt = (route, VS) => {
-    const n = route.length / 3;
+  // is copied from MossheartEngine/src/sim.js roadOf()'s at(); keep the two alike (tools/rules-check.js
+  // compares them exactly at vs16). joins ([{ s, j }], the engine road's): in the one step that holds a join
+  // it runs on the near side to the edge (b moved back by j(1,1,1)) and jumps at the join's s.
+  G.roadAt = (route, VS, joins = []) => {
+    const n = route.length / 3, jStep = new Map(joins.map((q) => [Math.round(q.s * VS) - 1, q.j]));
     return (s) => {
-      const f = Math.max(0, Math.min(n - 1.001, s * VS)), i = Math.floor(f), u = f - i, a = i * 3, b = a + 3;
-      return [route[a] + (route[b] - route[a]) * u, route[a + 1] + (route[b + 1] - route[a + 1]) * u, route[a + 2] + (route[b + 2] - route[a + 2]) * u, route[b] - route[a], route[b + 1] - route[a + 1]];
+      const f = Math.max(0, Math.min(n - 1.001, s * VS)), i = Math.floor(f), u = f - i, a = i * 3, b = a + 3, j = joins.length ? jStep.get(i) || 0 : 0;
+      return [route[a] + (route[b] - j - route[a]) * u, route[a + 1] + (route[b + 1] - j - route[a + 1]) * u, route[a + 2] + (route[b + 2] - j - route[a + 2]) * u, route[b] - j - route[a], route[b + 1] - j - route[a + 1]];
     };
   };
 
   // The record of baked terrain T (the engine's terrain, or ME.terrain16's) and its roads (sim.roads, or
   // terrain16's: { cells, len, route: [[X, Y, Z], ...] }), with the kinds the map's lanes take besides the
   // "lane" recipe (game.lane)
-  G.rulesRecord = (T, roads, laneKinds = []) => {
+  G.rulesRecord = (T, roads, laneKinds = [], locked = false) => {
     const W = T.tiles.W, H = T.tiles.H, gz = G.groundOf(T), ground = new Array(W * H);
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) ground[y * W + x] = gz(x + 0.5, y + 0.5);
+    const hidden = locked && T.grid && window.ME && ME.pickGround ? G.hiddenOf(T, ground) : null;
     return {
-      v: G.RULES_REV, VS: T.VS, W, H, ground,
+      v: G.RULES_REV, VS: T.VS, W, H, ground, ...(hidden ? { hidden } : {}),
       roads: roads.map((r) => {
         const route = [];
         for (const p of r.route) route.push(p[0], p[1], p[2]);
-        return Object.assign({ path: r.cells, len: r.len, route }, G.laneFrom(T, { cells: r.cells, len: r.len, at: G.roadAt(route, T.VS) }, gz, laneKinds));
+        const joins = r.joins && r.joins.length ? r.joins.map((q) => ({ s: q.s, j: q.j })) : null;
+        return Object.assign({ path: r.cells, len: r.len, route }, joins ? { joins } : {}, G.laneFrom(T, { cells: r.cells, len: r.len, at: G.roadAt(route, T.VS, joins || []) }, gz, laneKinds));
       }),
     };
+  };
+
+  // The cells a locked view (the Ever Stair) doesn't show (#579 section 10.1, the plot check): a ray along the
+  // locked camera's line, -(1,1,1), through each cell centre's top must first meet the ground there, or the
+  // cell is hidden (under an overhang, behind a nearer island, or over the void) and takes no plant. It reads
+  // only T, not the camera, so the rules give the same mask at every density. The point sits off the voxel
+  // corners (0.53, 0.47), so the walk never ties. [W*H] of 0/1.
+  G.hiddenOf = (T, ground) => {
+    const W = T.tiles.W, H = T.tiles.H, k = 1 / Math.sqrt(3), dir = [-k, -k, -k], L = (T.NX + T.NY + T.NZ) / T.VS, out = new Array(W * H).fill(0);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const p = [x + 0.53, y + 0.47, ground[y * W + x]], hit = ME.pickGround(T, { a: [p[0] + L * k, p[1] + L * k, p[2] + L * k], dir, L: 2 * L });
+      if (!hit || Math.floor(hit.p[0]) !== x || Math.floor(hit.p[1]) !== y || Math.abs(hit.p[2] - p[2]) > 0.25) out[y * W + x] = 1;
+    }
+    return out;
   };
 
   // The rules' part of a level (core/world.js's shape) off a record: the ground by cell (read at cell
@@ -19926,8 +20275,8 @@ function MA_DSP() {
   G.rulesLevel = (rec) => {
     const { W, H, ground } = rec;
     const groundZ = (X, Y) => { const x = Math.floor(X), y = Math.floor(Y); return x >= 0 && y >= 0 && x < W && y < H ? ground[y * W + x] : 0; };
-    const roads = rec.roads.map((r) => ({ path: r.path, len: r.len, at: G.roadAt(r.route, rec.VS), lane: r.lane, sides: r.sides, sideStep: r.sideStep }));
-    return Object.assign({ W, H, groundZ, roads }, roads[0]);
+    const roads = rec.roads.map((r) => ({ path: r.path, len: r.len, at: G.roadAt(r.route, rec.VS, r.joins), joins: r.joins || [], lane: r.lane, sides: r.sides, sideStep: r.sideStep }));
+    return Object.assign({ W, H, groundZ, roads }, roads[0], rec.hidden ? { hidden: rec.hidden } : {});
   };
 
   // How wide the lane is around the route (docs/decisions/2026-10-21-map-format.md, "Wider lanes": a lane
@@ -19977,9 +20326,10 @@ function MA_DSP() {
        path: [[cx, cy], ...] in walking order, len, at(s) -> [X, Y, Z, dx, dy] (the road at distance s),
        lane: [[cx, cy], ...] the tiles across the lane (the path's included; the path when left out),
        sides, sideStep: the lane's reach each side of the road, a pair per sideStep (view/level.js; optional),
-       water: Uint8Array W*H (the water tiles, for the Dewbank zone; optional), groundZ(X, Y), heart: [X, Y],
-       roads: [{ path, len, at, lane, sides, sideStep }, ...] one per entrance (optional; the fields above are
-       the first one's), rules: the rules record they were read from (core/rules.js; optional),
+       water: Uint8Array W*H (the water tiles, for the Dewbank zone; optional), groundZ(X, Y), heart: [X, Y], split: [[road, from wave, every, at], ...] (optional),
+       roads: [{ path, len, at, joins, lane, sides, sideStep }, ...] one per entrance (optional; the fields
+       above are the first one's; joins: [{ s, j }] where the road jumps by j(1,1,1), core/rules.js),
+       hidden: [W*H] 0/1, the cells a locked view doesn't show (G.hiddenOf; optional), rules: the rules record they were read from (core/rules.js; optional),
        viewGroundZ(X, Y): the ground the view draws, where the rules' ground is read by cell (optional),
        viewRoads: [{ at(s, out) }, ...] the roads the view draws, where the record was read at another
        density (optional) }
@@ -20013,7 +20363,7 @@ function MA_DSP() {
         };
       };
       const roads = level.roads || [level];
-      this.roads = roads.map((r) => ({ path: r.path, len: r.len, at: r.at, sideK: sideK(r.sides, r.sideStep) }));
+      this.roads = roads.map((r) => ({ path: r.path, len: r.len, at: r.at, joins: r.joins || [], sideK: sideK(r.sides, r.sideStep) }));
       // (how much further the longest road walks than each: a creature's distance plus its road's is how near
       // the Heart Tree it is, the same on every road; 0 on a level with one road)
       const longest = Math.max(...this.roads.map((r) => r.len));
@@ -20021,11 +20371,16 @@ function MA_DSP() {
       // the tiles across every lane, once each
       const seen = new Set(), laneCells = (this.laneCells = []);
       for (const r of roads) for (const c of r.lane || r.path) if (!seen.has(c[0] + "," + c[1])) { seen.add(c[0] + "," + c[1]); laneCells.push(c); }
+      // which road a creature out of the rift takes (Enemies.spawn): rows [road, from wave, every, at], the first that
+      // fits; game.split, else on a garden with two roads Corn Moon's, every third from wave 3 by road 1
+      this.split = (level.split || (this.roads.length > 1 ? [[1, 3, 3, 2]] : [])).filter((q) => q[0] < this.roads.length);
+      this.splitFrom = Math.min(...this.split.map((q) => q[1]));
       this.heart = level.heart;
       this.heartZ = this.viewZ(this.heart[0], this.heart[1]); // (drawn only: the fireflies, the pulse, the view)
       this.at5 = [0, 0, 0, 0, 0];
-      // no plant on the lane or under the Heart Tree's crown
+      // no plant on the lane, under the Heart Tree's crown or where a locked view doesn't show the cell
       const blocked = Uint8Array.from(level.blocked), at = (x, y) => y * W + x;
+      if (level.hidden) for (let i = 0; i < W * H; i++) if (level.hidden[i]) blocked[i] = 1;
       for (const [x, y] of this.laneCells) blocked[at(x, y)] = 1;
       for (let y = -1; y <= 1; y++) for (let x = -1; x <= 1; x++) { const cx = Math.floor(this.heart[0]) + x, cy = Math.floor(this.heart[1]) + y; if (cx >= 0 && cy >= 0 && cx < W && cy < H) blocked[at(cx, cy)] = 1; }
       this.blocked = blocked;
@@ -20115,7 +20470,7 @@ function MA_DSP() {
       enemies.forEachLive((i) => {
         if (enemies.dist[i] < 0) return;
         const b = enemies.defOf(i).blight;
-        this.stamp(enemies.px[i], enemies.py[i], RADIUS * Math.sqrt(b), RATE * b * step);
+        this.stamp(enemies.px[i] - enemies.jd[i], enemies.py[i] - enemies.jd[i], RADIUS * Math.sqrt(b), RATE * b * step);
       });
       let sum = 0;
       for (const i of this.pathTexels) sum += this.level[i];
@@ -20198,6 +20553,10 @@ function MA_DSP() {
       this.under = new Uint8Array(N); this.half = new Uint8Array(N); this.trait = null;
       // the road each one walks (World.roads: an entrance each; 0 on a garden with one road)
       this.road = new Uint8Array(N);
+      // by a join of its road (World.roads[r].joins: the Ever Stair's): jw, that join's j while within 3 tiles of it
+      // (the rules' distances try both pieces: d2); jd, how far the view moves it along (1,1,1) into the higher
+      // piece (0.5 tile on the lower side; the same pixel under the locked view). px, py and vz carry jd, pz doesn't
+      this.jw = new Int8Array(N); this.jd = new Int8Array(N);
       this.count = 0; this.kindCounts = new Int32Array(D.ENEMY_ORDER.length);
       this.lastHit = Hit.PLAIN; this.hitStats = [0, 0, 0];
       this.free = []; for (let i = N - 1; i >= 0; i--) this.free.push(i);
@@ -20229,11 +20588,16 @@ function MA_DSP() {
       this.stunT[i] = 0; this.backT[i] = 0; this.markT[i] = 0; this.markAmt[i] = 0; this.poisonDps[i] = 0; this.poisonT[i] = 0; this.barbs[i] = 0; this.snareT[i] = 0; this.steadyT[i] = 0;
       this.shell[i] = this.shellMax[i] = def.shell ? this.maxHp[i] * def.shell : 0;
       this.healT[i] = HEAL_EVERY; this.mendT[i] = 0; this.broodT[i] = def.brood ? def.brood[1] : 0; this.under[i] = 0; this.half[i] = 0;
-      const roads = this.world.roads.length;
-      // (Corn Moon's second entrance, no RNG: waves 1 and 2 all come by road 0, then every third creature of a wave
-      // by road 1, never a boss; a split or a brood keeps its parent's road)
+      // (the other entrances, no RNG: World.split's rows count a wave's creatures from the first row's wave on, never
+      // a boss, and the first row that fits sends it by its road, else road 0; Corn Moon's: every third from wave 3
+      // by road 1. A split or a brood keeps its parent's road)
       if (this.sentWave !== G.state.wave) { this.sentWave = G.state.wave; this.sent = 0; }
-      this.road[i] = at ? at.road || 0 : roads > 1 && !def.boss && G.state.wave >= 3 && this.sent++ % 3 === 2 ? 1 : 0;
+      const W = this.world, wave = G.state.wave;
+      this.road[i] = at ? at.road || 0 : 0;
+      if (!at && !def.boss && wave >= W.splitFrom) {
+        const n = this.sent++, q = W.split.find((q) => wave >= q[1] && n % q[2] === q[3]);
+        if (q) this.road[i] = q[0];
+      }
       this.count++;
       this.place(i, 0);
       G.emit("spawn", { kind: kindName, pos: [this.px[i], this.py[i], this.vz[i]] });
@@ -20247,7 +20611,14 @@ function MA_DSP() {
     // not yet out of the rift, or under the road: nothing targets or reaches it
     hidden(i) { return this.dist[i] < 0 || this.under[i] === 1; }
     // world point of a creature's body centre (where shots aim and bars hang from)
-    centre(i) { const h = this.body.creatureH[this.kind[i]]; return [this.px[i], this.py[i], this.pz[i] + h * 0.45]; }
+    centre(i) { const h = this.body.creatureH[this.kind[i]]; return [this.px[i], this.py[i], this.pz[i] + h * 0.45 + this.jd[i]]; }
+    // the square of creature i's distance in the plane to (x, y), off its rules position (px, py less jd); by a
+    // join, the nearer of it and its copies on the other piece (+-jw on x and y). A shot needs no aim of its
+    // own for the copy: p and p + j(1,1,1) are one pixel under the locked view, so the line on screen is the same
+    d2(i, x, y) {
+      const dx = this.px[i] - this.jd[i] - x, dy = this.py[i] - this.jd[i] - y, w = this.jw[i], d = dx * dx + dy * dy;
+      return w ? Math.min(d, (dx + w) ** 2 + (dy + w) ** 2, (dx - w) ** 2 + (dy - w) ** 2) : d;
+    }
 
     // Applies a hit of `element` (index into ELEMENTS, -1 for none) scaled by the creature's affinity and
     // armour; a shell takes it first. Sets lastHit and returns whether it killed. Nothing reaches a creature
@@ -20336,7 +20707,7 @@ function MA_DSP() {
       const r2 = radius * radius, m2 = minR * minR;
       for (let i = 0; i < CAPACITY; i++) {
         if (!this.alive[i] || this.hidden(i)) continue;
-        const dx = this.px[i] - x, dy = this.py[i] - y, d2 = dx * dx + dy * dy;
+        const d2 = this.d2(i, x, y);
         if (d2 > r2 || d2 < m2 || (exclude && exclude.includes(i))) continue;
         const score = mode === "first" ? this.near(i) : (this.hp[i] + this.shell[i]) * 1000 + this.near(i);
         if (score > bestScore) { bestScore = score; best = i; }
@@ -20349,7 +20720,7 @@ function MA_DSP() {
       const r2 = radius * radius, m2 = minR * minR, out = [], sc = [];
       for (let i = 0; i < CAPACITY; i++) {
         if (!this.alive[i] || this.hidden(i)) continue;
-        const dx = this.px[i] - x, dy = this.py[i] - y, d2 = dx * dx + dy * dy;
+        const d2 = this.d2(i, x, y);
         if (d2 > r2 || d2 < m2 || (exclude && exclude.includes(i))) continue;
         out.push(i); sc[i] = mode === "first" ? this.near(i) : (this.hp[i] + this.shell[i]) * 1000 + this.near(i);
       }
@@ -20361,8 +20732,7 @@ function MA_DSP() {
       const out = [], r2 = radius * radius;
       for (let i = 0; i < CAPACITY; i++) {
         if (!this.alive[i] || this.hidden(i)) continue;
-        const dx = this.px[i] - x, dy = this.py[i] - y;
-        if (dx * dx + dy * dy <= r2) out.push(i);
+        if (this.d2(i, x, y) <= r2) out.push(i);
       }
       return out;
     }
@@ -20383,16 +20753,29 @@ function MA_DSP() {
     // local step.)
     place(i, time) {
       const W = this.world, r = this.road[i], s = Math.max(0, this.dist[i]), [X, Y, Z, sx, sy] = W.roadAt(s, r);
-      const [bx, by] = W.roadAt(Math.max(0, s - 0.65), r), [ax, ay] = W.roadAt(s + 1.35, r);
+      let [bx, by] = W.roadAt(Math.max(0, s - 0.65), r), [ax, ay] = W.roadAt(s + 1.35, r), jd = 0, jw = 0;
+      // (across a join, the points behind and ahead are taken into the piece s is on, by the joins between;
+      // jd and jw: see the constructor)
+      const J = W.roads[r].joins;
+      if (J && J.length) {
+        let near = 3;
+        for (const q of J) {
+          if (q.s > s - 0.65 && q.s <= s) { bx += q.j; by += q.j; }
+          if (q.s > s && q.s <= s + 1.35) { ax -= q.j; ay -= q.j; }
+          if (Math.abs(s - q.s) < near) { near = Math.abs(s - q.s); jw = q.j; }
+          if (q.j > 0 ? s >= q.s - 0.5 && s < q.s : s >= q.s && s < q.s + 0.5) jd = Math.abs(q.j);
+        }
+      }
+      this.jw[i] = jw; this.jd[i] = jd;
       let dx = ax - bx, dy = ay - by, l = Math.hypot(dx, dy);
       if (l < 1e-3) { dx = sx; dy = sy; l = Math.hypot(dx, dy) || 1; }
       const def = this.defOf(i);
       const lat = W.latAt(s, this.lat[i], r);
-      this.px[i] = X - (dy / l) * lat; this.py[i] = Y + (dx / l) * lat;
+      this.px[i] = X - (dy / l) * lat + jd; this.py[i] = Y + (dx / l) * lat + jd;
       const fly = def.fly - this.body.hover[this.kind[i]];
       this.pz[i] = Z + fly + (def.fly > 0 ? Math.sin(time * 3 + this.phase[i]) * 0.075 : 0);
       // (pz is the rules' height, off their road; vz the view's, off the road it draws: the same where the two match)
-      this.vz[i] = this.pz[i] + (W.viewRoadZ(s, r, Z) - Z);
+      this.vz[i] = this.pz[i] + (W.viewRoadZ(s, r, Z) - Z) + jd;
       this.yaw[i] = Math.atan2(dy, dx);
     }
 
@@ -20666,7 +21049,7 @@ function MA_DSP() {
         // (Ghost Lantern: keeps it all, and the beam leaps on)
         const held = this.rays.map((r) => r.t), keep = B.lantern ? 1 : Math.max(lv >= 2 ? 0.6 : 0, S.mod("lily_keep"));
         for (const r of this.rays) {
-          const ok = E.isValid(r.t, r.uid) && !E.hidden(r.t) && (E.px[r.t] - this.X) ** 2 + (E.py[r.t] - this.Y) ** 2 <= R * R;
+          const ok = E.isValid(r.t, r.uid) && !E.hidden(r.t) && E.d2(r.t, this.X, this.Y) <= R * R;
           if (!ok) {
             const v = E.pickTarget(this.X, this.Y, R, "first", held);
             if (v < 0) { r.t = -1; r.uid = -1; r.hold *= keep; continue; }
@@ -21311,7 +21694,7 @@ function MA_DSP() {
         this.fireT += 0.5;
         const burning = [];
         E.forEachLive((i) => { if (E.burnT[i] > 0) burning.push(i); });
-        for (const i of burning) for (const v of E.inRadius(E.px[i], E.py[i], 0.7)) if (E.burnT[v] <= 0) E.ignite(v, E.burnDps[i] * 0.7);
+        for (const i of burning) for (const v of E.inRadius(E.px[i] - E.jd[i], E.py[i] - E.jd[i], 0.7)) if (E.burnT[v] <= 0) E.ignite(v, E.burnDps[i] * 0.7);
       }
       if ((this.cloudT -= dt) <= 0) {
         this.cloudT += 0.5;
@@ -23870,7 +24253,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   G.levelFrom = (app, rec) => {
     const { st, T, sim } = app, map = st.map, W = map.W, H = map.H, TL = T.tiles, geo = T.geo;
     // one road per entrance (the engine's sim.roads, the first the sim's own road), each with its lane
-    rec = rec || G.rulesRecord(T, sim.roads || [sim], (map.game && map.game.lane) || []);
+    rec = rec || G.rulesRecord(T, sim.roads || [sim], (map.game && map.game.lane) || [], G.lockedView());
     const blocked = new Uint8Array(W * H), at = (x, y) => y * W + x, build = G.buildKinds(map);
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       // (a build kind under a map's flood, T.tiles.wet, takes no plant either)
@@ -23884,7 +24267,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // the water tiles (the "water" recipe or a flood), for the plots beside them (core/world.js, zones)
     const water = new Uint8Array(W * H);
     for (let i = 0; i < W * H; i++) if (TL.recipe[i] === "water" || (TL.wet && TL.wet[i] === 1)) water[i] = 1;
-    return Object.assign(G.rulesLevel(rec), { blocked, water, heart: (map.game && map.game.heart) || [7.5, 5.5], viewGroundZ: G.groundOf(T), rules: rec }, rec.VS !== T.VS ? { viewRoads: sim.roads || [sim] } : {});
+    return Object.assign(G.rulesLevel(rec), { blocked, water, heart: (map.game && map.game.heart) || [7.5, 5.5], split: (map.game && map.game.split) || null, viewGroundZ: G.groundOf(T), rules: rec }, rec.VS !== T.VS ? { viewRoads: sim.roads || [sim] } : {});
   };
 
   // Wider lanes (the user's ask, 2026-10-22): before the bake, moss beside the route becomes the "lane" kind
@@ -30624,7 +31007,15 @@ function MG_SFX(L) {
     // E3; ?nocache=1 skips it): the terrain (and its mesh and grass) in one record keyed on the map, the models one
     // record per model keyed on its source (bakeModels' opts.cache). Both are written once the renderer is up (flush)
     bakeOpts.cache = true;
-    const tkey = ME.bakeCache.terrainKey(st), hit = await ME.bakeCache.get(tkey);
+    // The terrain stream (P3, the engine's src/stream.js): a load whose terrain misses the cache at ME.VS boots its
+    // terrain at vs16 (its own record, or baked) and bakes ME.VS's on the terrain workers behind the play, swapped in
+    // at a build phase (below), its record written then. That record is a regions bake's (rg), so it is looked up
+    // first. Not in the self-test or the benchmark, which measure one density; ?stream=0 turns it off
+    const tkey = ME.bakeCache.terrainKey(st), skey = ME.bakeCache.terrainKey(st, "", { vs: ME.VS, rg: true });
+    let hit = (skey !== tkey && (await ME.bakeCache.get(skey))) || (await ME.bakeCache.get(tkey));
+    const streaming = !hit && !ME.qn("selftest", 0) && !ME.qn("bench", 0) && ME.stream.wanted();
+    const bkey = streaming ? ME.bakeCache.terrainKey(st, "", { vs: 16 }) : tkey; // (the boot terrain's record)
+    if (streaming) hit = await ME.bakeCache.get(bkey);
     ME.stage("cache read");
     let T, mesh, MB, grass, early;
     if (hit) {
@@ -30635,13 +31026,13 @@ function MG_SFX(L) {
       early = ME.bakeModels.start(st, pal, bakeOpts);
     } else {
       early = ME.bakeModels.start(st, pal, bakeOpts); // the model workers run during the terrain bake (#185)
-      T = await ME.bakeTerrain(st, pal);
+      T = await ME.bakeTerrain(st, pal, streaming ? { vs: 16 } : {});
       ME.log("TERRAIN", T.stats); ME.stage("terrain");
       mesh = await ME.greedyMesh(T); ME.stage("mesh");
       // (the grass before the models, so its materials are numbered before theirs on a hit too)
       grass = ME.bakeGrass(T, st, pal); ME.stage("grass");
       // (the coarse grid copied: the model bake splats into it, and adds its splat again on a hit)
-      ME.bakeCache.later(tkey, { palNames: pal.names.slice(), T: Object.assign({}, T, { groundAt: null, coarse: T.coarse.slice(), splat: undefined }), mesh, grass });
+      ME.bakeCache.later(bkey, { palNames: pal.names.slice(), T: Object.assign({}, T, { groundAt: null, coarse: T.coarse.slice(), splat: undefined }), mesh, grass });
     }
     // (?heromax=128, the vs128 study's H1: the level-3 plants bake at 128, G.heroFine. Where they don't fit the
     // pool, they go back to 64 and the models bake again rather than the load dying; HERO128 says which it was)
@@ -30665,12 +31056,12 @@ function MG_SFX(L) {
     // ?rules16=0 reads the rules off this bake at every density, as before.
     let rules = null;
     if (T.VS !== 16 && ME.qn("rules16", 1) && ME.terrain16 && ME.roadOn && ME.rulesKey && ME.bakeCache.getRules) {
-      const t1 = ME.now(), rkey = ME.rulesKey(st, G.RULES_REV + String(G.rulesRecord) + String(G.laneFrom) + JSON.stringify(G.routesOf(map)));
+      const t1 = ME.now(), rkey = ME.rulesKey(st, G.RULES_REV + String(G.rulesRecord) + String(G.laneFrom) + String(G.hiddenOf) + G.lockedView() + JSON.stringify(G.routesOf(map)));
       rules = await ME.bakeCache.getRules(rkey);
       const hit = !!rules;
       if (!hit) {
         let t16 = await ME.terrain16(st);
-        rules = G.rulesRecord(t16, G.routesOf(map).map((r) => ME.roadOn(t16, r)), (map.game && map.game.lane) || []);
+        rules = G.rulesRecord(t16, G.routesOf(map).map((r) => ME.roadOn(t16, r)), (map.game && map.game.lane) || [], G.lockedView());
         t16 = null;
         ME.bakeCache.putRules(rkey, rules); // (not awaited, as the terrain's flush)
       }
@@ -30710,7 +31101,7 @@ function MG_SFX(L) {
     R.applyPreset(ME.q("preset", "cosy"));
     ME.progress("compiling shaders", 0.9); await ME.tick(); ME.stage("setup");
     await R.init(); ME.stage("init");
-    ME.bakeCache.flush(tkey); // (not awaited: the parts go in one at a time, the status line counts them)
+    ME.bakeCache.flush(bkey); // (not awaited: the parts go in one at a time, the status line counts them)
     const critters = new ME.Critters(T, st, MB, R.lightList, { beamAt: (i, t) => R.beamAt(i, t) }); // (the critters follow the drifting sun pools)
     // loose voxels: creatures burst into theirs, uprooted plants crumble, the fallen Heart Tree falls apart;
     // splashes on the water, digs and collapses in the sand banks
@@ -31000,7 +31391,8 @@ function MG_SFX(L) {
       perf.acc = 0; perf.cpu = 0; perf.n = 0; perf.t = ME.now();
     };
 
-    hud.setDensity(G.vsLabel(T.VS)); // (what this load's terrain really holds, baked or from the cache)
+    // (what this load's terrain really holds, baked or from the cache; while the stream bakes, "vox 16 → N")
+    hud.setDensity(streaming ? { text: `vox ${T.VS} → ${ME.VS}`, down: false } : G.vsLabel(T.VS));
 
     const bot = G.Bot && ME.qn("autoplay", 0) ? new G.Bot(game, {
       maxWaves: ME.qn("waves", 8), early: ME.qn("early", -1) >= 0 ? ME.qn("early", -1) : null, now: () => ME.now(), log: (line) => ME.log("BOT", line),
@@ -31129,6 +31521,21 @@ function MG_SFX(L) {
       drawn();
       document.title = "SELFTEST DONE";
       return;
+    }
+
+    // The terrain stream's swap: at a build phase (a wave's terrain never changes under it). The first commit writes
+    // the record and returns false (state "saving"): it is tried again once written. The physics layer busy (state
+    // still "ready"): again on a later frame. The HUD then says what the terrain holds
+    if (streaming) {
+      const commit = () => {
+        if (S.phase !== G.Phase.BUILD || ME.stream.state !== "ready") return;
+        const g = ME.stream.grass;
+        if (ME.stream.commit(app)) { T = app.T; mesh = app.mesh; grass = g; hud.setDensity(G.vsLabel(T.VS)); }
+        else if (ME.stream.state === "saving") ME.stream.saved.then(commit, commit);
+        else if (ME.stream.state === "ready") requestAnimationFrame(commit);
+      };
+      G.on("phase", commit);
+      ME.stream.start(app, { key: skey }).then((ok) => (ok ? commit() : hud.setDensity(G.vsLabel(T.VS))));
     }
 
     const loop = () => { step(); if (++frames === 10) drawn(); if (bot) bot.afterFrame(canvas); requestAnimationFrame(loop); };
