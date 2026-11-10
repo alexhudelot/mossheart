@@ -545,6 +545,7 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 /* the dew a creature drops (fx.js dewPop): a droplet and "+N" in the dew's blue, --k bigger for more; and the
    droplets that fly to the counter */
 .float.dew { display: flex; align-items: center; gap: 0.12em; color: #a8e2ff; font-size: calc(20px * var(--ts) * var(--k, 1)); }
+.float.num { font-size: calc(14px * var(--ts)); color: #ffe9c2; } /* combat numbers (fx.js numPop): a hit's damage rising off the creature */
 .float.dew i, .fly { display: block; width: 0.6em; height: 0.8em; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 16'%3E%3Cpath fill='%23a8e2ff' stroke='%231a260d' stroke-width='.8' d='M6 .6C4.4 3.4 1 7.2 1 10.6a5 5 0 0 0 10 0C11 7.2 7.6 3.4 6 .6z'/%3E%3C/svg%3E") center / contain no-repeat; }
 .fly { position: absolute; left: 0; top: 0; width: calc(11px * var(--ts)); height: calc(15px * var(--ts)); opacity: 0; filter: drop-shadow(0 0 3px #7fd0ff); will-change: transform, opacity; }
 #flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 50%, rgba(214, 48, 92, 0.6) 100%); }
@@ -6517,7 +6518,10 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const t0 = ME.now(), VS = o.vs || ME.VS, CT = ME.content || {}, G = gridOf(st, CT, RULES || quiet), F = G.frame, jar = F.type === "jar";
     // the jar (Momiji's island): a circle of radius RI round (C, CY), over a strata drum and a wooden plinth
     const C = jar ? F.c[0] : 0, CY = jar ? F.c[1] : 0, RI = jar ? F.r : 0;
-    const RG = RI + 0.35, DRUM = F.foot, PL_R = RG + 0.45, PL_ZB = -2.15, PL_ZT = -1.5, ZF = G.floorZ;
+    // a jar over a void map (VJ, J1): no drum and no clip to the circle; the plinth sits on the bake box's floor,
+    // which a derived box puts a tile under the lowest voxel (bottoms and keels), and the glass stands on it
+    const VJ = jar && G.void, PL_ZB = VJ ? G.box.o[2] : -2.15, PL_ZT = VJ ? PL_ZB + 0.65 : -1.5;
+    const RG = RI + 0.35, DRUM = VJ ? PL_ZT : F.foot, PL_R = RG + 0.45, ZF = G.floorZ;
     const B = G.box, O = B.o.slice(), NX = B.size[0] * VS, NY = B.size[1] * VS, NZ = B.size[2] * VS, PLANE = NX * NY;
     // the grid (T.grid) takes the columns a brick row (16 rows of j) at a time from band, so the bake never holds
     // the dense grid (433 MB at vs40; the band is 16 / NY of it)
@@ -6848,11 +6852,16 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           const X = O[0] + (i + 0.5) / VS, col = j * NX + i, bc = (j & 15) * NX + i;
           if (jar) {
             const r = Math.hypot(X - C, Y - CY);
-            if (r > PL_R) continue;
-            // wooden plinth with a brass trim on its upper outer edge
-            for (let k = kPB; k < kPT; k++) band[k * BPL + bc] = k === kPT - 1 && r > PL_R - 0.09 ? M.brass : M.wood;
-            wLo[bc] = kPB; wHi[bc] = kPT;
-            top[col] = kPT; lobe[col] = M.moss;
+            if (r > PL_R) { if (!VJ) continue; } // (VJ: the columns past the plinth keep their ground, unclipped)
+            else {
+              // wooden plinth with a brass trim on its upper outer edge
+              for (let k = kPB; k < kPT; k++) band[k * BPL + bc] = k === kPT - 1 && r > PL_R - 0.09 ? M.brass : M.wood;
+              wLo[bc] = kPB; wHi[bc] = kPT;
+              top[col] = kPT; lobe[col] = M.moss;
+            }
+          }
+          if (jar && !VJ) {
+            const r = Math.hypot(X - C, Y - CY);
             if (r > RG - 0.06) continue;
             // drum: soil strata seen through the glass, a moss lip under the rim, a moss ring on top
             const U = Math.atan2(Y - CY, X - C) * RG, shell = r > RG - 0.06 - 2.5 / VS, rt = r > RI ? rimTile(X, Y) : -1, kN = rt < 0 ? kD : kOf(G.z[rt]), ZN = rt < 0 ? DRUM : O[2] + kN / VS;
@@ -6917,7 +6926,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
             band[k * BPL + bc] = layer ? (dz < layer + extra ? mTop : kd.under) : dz === 0 || (two && dz === 1) ? mTop : dr && dz <= dd && !bed ? (n1 > 0.7 ? dr[1] : dr[0]) : kd.under;
           }
           if (EB) { const n = roughen(Xw, Yw, cx, cy, kd, kEnd, bc, kB); if (own(i, j)) ebCarved += n; }
-          if (jar) for (let k = kEnd; k < kD; k++) band[k * BPL + bc] = 0; // beds carved below the drum top
+          if (jar && !VJ) for (let k = kEnd; k < kD; k++) band[k * BPL + bc] = 0; // beds carved below the drum top
           // a box's skirt: the outer faces of the map's edge tiles, under their top voxel, in one material
           if (sk) for (let k = kB; k < kEnd - 1; k++) band[k * BPL + bc] = skirt;
           top[col] = kEnd;
@@ -7205,7 +7214,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           add(b[0] + 0.5, b[1] + 0.5, "shore");
         }
         if (lamps.length) add(lamps[0].X, lamps[0].Y, "lamp");
-        if (jar) add(C + RG - 0.06 - 1.25 / VS, CY, "drum");
+        if (jar && !VJ) add(C + RG - 0.06 - 1.25 / VS, CY, "drum");
         const ks = new Set();
         for (const [x, y] of tiles) { const kd = kinds[y * G.W + x]; if (!ks.has(kd)) { ks.add(kd); add(x + 0.5, y + 0.5, "kind " + (kd.recipe || ks.size)); } }
         if (out.length < 2) add(O[0] + NX / VS / 2, O[1] + NY / VS / 2, "centre");
@@ -7536,6 +7545,69 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       box: [R[0] - x0, R[1] - y0, R[2] - x0, R[3] - y0], rect: R.map((v) => Math.round(v * f)),
       bakeMs: Math.round(ME.now() - t0), MB: +((c.table.byteLength + c.pool.byteLength + d1.byteLength + d2.byteLength) / 1048576).toFixed(1),
     };
+  };
+
+  // W3 (docs/designs/2026-11-08-whole-game-128.md, section 2, "Physics, edits and the rules"): the base terrain's
+  // edits into rec, a region at a second density (ME.bakeRegionHi's record). The physics stays at the base: base
+  // (the app's T) and orig (its cells' baked values, ME.VoxelPhysics' orig: a cell back to how it was baked leaves
+  // it) say what changed. Each base cell in cells gives the record's cells whose centres it holds (a 2^3 box at
+  // twice the density; its crop's ring too, which the region's faces and density read) what it gives at the base:
+  // a cell as baked, or whose occupancy now is its record cell's as baked, keeps or takes back the record's baked
+  // value (the region's own detail); the others take the base cell's value (emptied, or its material). So a crater
+  // is blocky at the second density until a reset (resetTerrain's cells, with an empty orig, give the record back
+  // as baked). cells: the base cells a carve changed (R.carve's), or none to replay orig (a region installed after
+  // the edits). The record keeps its cells' baked values in rec.orig, and its mips (d1, d2) follow over the box
+  // the change covers. Returns { n, cells (the record's changed cells, as indices in its crop: what W2's carve
+  // path takes), lo, hi (their box in the crop, inclusive; null when none), ms }
+  ME.mirrorRegion = (rec, base, orig, cells = orig.keys()) => {
+    const t0 = ME.now(), G = rec.grid, [NX, NY, NZ] = rec.dims, PL = NX * NY, bg = base.grid, BX = base.NX, BP = BX * base.NY, f = base.VS / rec.vs;
+    const RO = rec.orig || (rec.orig = new Map()), out = [], lo = [NX, NY, NZ], hi = [-1, -1, -1];
+    // along axis a: the base cells b0..b1 hold the centres of the crop's cells, base cell b those from L[b - b0] up
+    // to L[b - b0 + 1] (the grids share their origin, rec.origin is the crop's corner at rec.vs)
+    const span = (a) => {
+      const n = rec.dims[a], o = rec.origin[a], b0 = Math.floor((o + 0.5) * f), b1 = Math.floor((o + n - 0.5) * f), L = new Int32Array(b1 - b0 + 2);
+      for (let b = b0, t = 0; b <= b1 + 1; b++) { while (t < n && Math.floor((o + t + 0.5) * f) < b) t++; L[b - b0] = t; }
+      return { b0, b1, L };
+    };
+    const SX = span(0), SY = span(1), SZ = span(2);
+    for (const i of cells) {
+      const x = i % BX, y = Math.floor(i / BX) % base.NY, z = Math.floor(i / BP);
+      if (x < SX.b0 || x > SX.b1 || y < SY.b0 || y > SY.b1 || z < SZ.b0 || z > SZ.b1) continue;
+      const bo = orig.get(i), m = bo === undefined ? 0 : bg.at(i), back = bo === undefined;
+      const x0 = SX.L[x - SX.b0], x1 = SX.L[x - SX.b0 + 1], y0 = SY.L[y - SY.b0], y1 = SY.L[y - SY.b0 + 1], z0 = SZ.L[z - SZ.b0], z1 = SZ.L[z - SZ.b0 + 1];
+      for (let k = z0; k < z1; k++) for (let j = y0; j < y1; j++) for (let c = x0; c < x1; c++) {
+        const n = k * PL + j * NX + c, now = G.get(c, j, k), hb = RO.has(n) ? RO.get(n) : now, want = back || !hb === !m ? hb : m;
+        if (want === now) continue;
+        G.put(c, j, k, want);
+        if (want === hb) RO.delete(n); else RO.set(n, hb);
+        out.push(n);
+        if (c < lo[0]) lo[0] = c; if (j < lo[1]) lo[1] = j; if (k < lo[2]) lo[2] = k;
+        if (c > hi[0]) hi[0] = c; if (j > hi[1]) hi[1] = j; if (k > hi[2]) hi[2] = k;
+      }
+    }
+    if (!out.length) return { n: 0, cells: out, lo: null, hi: null, ms: +(ME.now() - t0).toFixed(2) };
+    G.compact(lo, hi); // bricks the change left all one material give their slots back
+    // the mips over the box: mip 0 the 2x2x2 average of the occupancy (255 where solid), mip 1 mip 0's, as the bake's
+    // (the crop's corner is on a brick's, so its 2x2x2 and 4x4x4 blocks are the map's)
+    if (rec.d1) {
+      const D1 = rec.dims.map((v) => v >> 1), D2 = D1.map((v) => v >> 1), d1 = rec.d1, d2 = rec.d2;
+      if (d1.length !== D1[0] * D1[1] * D1[2] || (d2 && d2.length !== D2[0] * D2[1] * D2[2])) throw new Error("ME.mirrorRegion: the record's mips are not its crop's halves");
+      const a1 = lo.map((v) => v >> 1), b1 = hi.map((v, a) => Math.min(D1[a] - 1, v >> 1));
+      for (let z = a1[2]; z <= b1[2]; z++) for (let y = a1[1]; y <= b1[1]; y++) for (let x = a1[0]; x <= b1[0]; x++) {
+        let s = 0;
+        for (let c = 0; c < 8; c++) s += G.get(2 * x + (c & 1), 2 * y + ((c >> 1) & 1), 2 * z + (c >> 2)) ? 255 : 0;
+        d1[(z * D1[1] + y) * D1[0] + x] = s >> 3;
+      }
+      if (d2) {
+        const a2 = lo.map((v) => v >> 2), b2 = hi.map((v, a) => Math.min(D2[a] - 1, v >> 2));
+        for (let z = a2[2]; z <= b2[2]; z++) for (let y = a2[1]; y <= b2[1]; y++) for (let x = a2[0]; x <= b2[0]; x++) {
+          let s = 0;
+          for (let c = 0; c < 8; c++) s += d1[((2 * z + (c >> 2)) * D1[1] + 2 * y + ((c >> 1) & 1)) * D1[0] + 2 * x + (c & 1)];
+          d2[(z * D2[1] + y) * D2[0] + x] = s >> 3;
+        }
+      }
+    }
+    return { n: out.length, cells: out, lo, hi, ms: +(ME.now() - t0).toFixed(2) };
   };
 
   // The coarse occupancy (docs/decisions/2026-10-20-sun-volume-density.md): one cell is f voxels on a side,
@@ -10285,7 +10357,7 @@ struct U {
   wclear: array<vec4f, 4>, // fog clearings: x, y, radius, softness (radius 0 = unused)
   weather4: vec4f, // rain streak layers (R.rainLayers: 3; 2 on compat, 1 on a phone), the act's grass height (1), -, -
   key: vec4f,     // the key light's colour (look.sunCol, linear), w = 1 when the level tints its light
-  key2: vec4f,    // the ambient's colour (look.ambCol, linear; the key colour without), w = the backdrop: 0 forest, 1 night, 2 void
+  key2: vec4f,    // the ambient's colour (look.ambCol, linear; the key colour without), w = the backdrop: 0 forest, 1 night, 2 void, 3 void in the jar (the forest round it)
   sky: vec4f,     // night and void backdrops: zenith colour (linear); w = star density (night), cloud amount (void)
   sky2: vec4f,    // night and void: horizon colour (linear); w = moon disc radius (night, a share of the screen height), horizon height (void, a share of the screen from the top)
   sky3: vec4f,    // void backdrop: mist colour (linear), w = the far islets' amount
@@ -10942,7 +11014,36 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 
   // Deferred lighting. Ramp mode shades like the generator: a scalar s = form + sun pool - canopy shade
   // - AO is looked up in the material's own hue-shifted ramp (shadows lean violet, light leans gold).
-  W.lighting = W.common + ME.FS_VS + ME.canopyTex(10) + /* wgsl */ `
+  // the frame's span along a ray (the shafts, and the lighting's backdrop in a jar over the void)
+  const FRAME_HIT = /* wgsl */ `
+// The span (fractions of a..b) inside the frame: the jar's glass cylinder under its half-ellipsoid dome, or
+// the box's sides (u.geo.z its half x, -u.look2.z its half y). Outside it the sun volume clamps to its edge,
+// so the air off the island would be lit and the canopy's streaks drawn there as bands. Empty when x > y.
+fn hitSphere(o: vec3f, v: vec3f, R: f32) -> vec2f {
+  let A = dot(v, v); let B = dot(o, v); let C = dot(o, o) - R * R;
+  if (A < 1e-8) { if (C <= 0.0) { return vec2f(-1e9, 1e9); } return vec2f(1.0, 0.0); } // a ray along the axis: all inside or none
+  let D = B * B - A * C;
+  if (D < 0.0) { return vec2f(1.0, 0.0); }
+  let s = sqrt(D); return vec2f(-B - s, -B + s) / A;
+}
+fn inSlab(o: f32, v: f32, h: f32) -> vec2f {
+  if (abs(v) < 1e-6) { if (abs(o) <= h) { return vec2f(-1e9, 1e9); } return vec2f(1.0, 0.0); }
+  let p = (-h - o) / v; let q = (h - o) / v; return vec2f(min(p, q), max(p, q));
+}
+fn inFrame(a: vec3f, b: vec3f) -> vec2f {
+  let o = a - vec3f(u.geo.xy, u.geo.w); let v = b - a; let R = u.geo.z; let H = u.look2.z;
+  if (H < 0.0) { let x = inSlab(o.x, v.x, R); let y = inSlab(o.y, v.y, -H); return vec2f(max(x.x, y.x), min(x.y, y.y)); }
+  var c = hitSphere(vec3f(o.xy, 0.0), vec3f(v.xy, 0.0), R);
+  if (H <= 0.0) { return c; }
+  if (abs(v.z) > 1e-6) { let s = -o.z / v.z; if (v.z < 0.0) { c.x = max(c.x, s); } else { c.y = min(c.y, s); } }
+  else if (o.z > 0.0) { c = vec2f(1.0, 0.0); }
+  let k = R / H; let e = hitSphere(vec3f(o.xy, o.z * k), vec3f(v.xy, v.z * k), R);
+  if (c.x > c.y) { return e; }
+  if (e.x > e.y) { return c; }
+  return vec2f(min(c.x, e.x), max(c.y, e.y));
+}
+`;
+  W.lighting = W.common + ME.FS_VS + ME.canopyTex(10) + FRAME_HIT + /* wgsl */ `
 @group(1) @binding(0) var gA: texture_2d<f32>;
 @group(1) @binding(1) var gN: texture_2d<f32>;
 @group(1) @binding(2) var gD: texture_depth_2d;
@@ -11030,6 +11131,12 @@ fn night(fc: vec2f, uv: vec2f) -> vec3f {
 // top of the screen down to a pale horizon band (u.sky2; u.sky2.w its height, a share of the screen from the
 // top), a mist (u.sky3) below it where the ground would be, three slow bands of cloud (u.sky.w: their amount)
 // and faint islets far off in the mist (u.sky3.w: their amount). In screen space, as night() and forest().
+// Does the line through a and b cross the jar's inside: its glass (inFrame) above the plinth's foot (u.misc2.z)?
+fn inJar(a: vec3f, b: vec3f) -> bool {
+  var c = inFrame(a, b); let v = b.z - a.z; let s = (u.misc2.z - a.z) / select(v, 1e-6, abs(v) < 1e-6);
+  if (v < 0.0) { c.y = min(c.y, s); } else { c.x = max(c.x, s); }
+  return c.x < c.y;
+}
 fn voidSky(fc: vec2f, uv: vec2f) -> vec3f {
   let hb = clamp(u.sky2.w, 0.1, 0.9); let y = uv.y;
   let q = fc / u.res.y; // the screen height is 1
@@ -11057,6 +11164,11 @@ fn voidSky(fc: vec2f, uv: vec2f) -> vec3f {
   let uv = fc.xy * u.res.zw;
   let d = textureLoad(gD, px, 0);
   if (d <= 0.0) {
+    if (u.key2.w > 2.5) { // a jar over the void (J1): the void seen through the glass, the room round it
+      let nd = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
+      if (inJar((u.ivp * vec4f(nd, 1.0, 1.0)).xyz, (u.ivp * vec4f(nd, 0.5, 1.0)).xyz)) { return vec4f(voidSky(fc.xy, uv), 1.0); }
+      return vec4f(rampC(u32(u.ids.x), forest(uv)), 1.0);
+    }
     if (u.key2.w > 1.5) { return vec4f(voidSky(fc.xy, uv), 1.0); }
     if (u.key2.w > 0.5) { return vec4f(night(fc.xy, uv), 1.0); }
     return vec4f(rampC(u32(u.ids.x), forest(uv)), 1.0);
@@ -11192,39 +11304,13 @@ fn voidSky(fc: vec2f, uv: vec2f) -> vec3f {
   // sample is lit where its sun ray passes a canopy gap (so shafts take the gaps' ragged shapes and sway
   // with them), broken into rays by a streak pattern fixed along the sun direction, shadowed by the sun
   // volume and weighted by haze that thickens towards the ground. Jittered, then a separable blur.
-  W.shafts = W.common + ME.canopyTex(4) + /* wgsl */ `
+  W.shafts = W.common + ME.canopyTex(4) + FRAME_HIT + /* wgsl */ `
 const NS = 8; // samples per ray (jittered per pixel and frame, then blurred)
 @group(1) @binding(0) var gD: texture_depth_2d;
 @group(1) @binding(1) var sunV: texture_3d<f32>;
 @group(1) @binding(2) var lin: sampler;
 @group(1) @binding(3) var outT: texture_storage_2d<rgba16float, write>;
 fn ign(p: vec2f) -> f32 { return fract(52.9829189 * fract(dot(p, vec2f(0.06711056, 0.00583715)))); }
-// The span (fractions of a..b) inside the frame: the jar's glass cylinder under its half-ellipsoid dome, or
-// the box's sides (u.geo.z its half x, -u.look2.z its half y). Outside it the sun volume clamps to its edge,
-// so the air off the island would be lit and the canopy's streaks drawn there as bands. Empty when x > y.
-fn hitSphere(o: vec3f, v: vec3f, R: f32) -> vec2f {
-  let A = dot(v, v); let B = dot(o, v); let C = dot(o, o) - R * R;
-  if (A < 1e-8) { if (C <= 0.0) { return vec2f(-1e9, 1e9); } return vec2f(1.0, 0.0); } // a ray along the axis: all inside or none
-  let D = B * B - A * C;
-  if (D < 0.0) { return vec2f(1.0, 0.0); }
-  let s = sqrt(D); return vec2f(-B - s, -B + s) / A;
-}
-fn inSlab(o: f32, v: f32, h: f32) -> vec2f {
-  if (abs(v) < 1e-6) { if (abs(o) <= h) { return vec2f(-1e9, 1e9); } return vec2f(1.0, 0.0); }
-  let p = (-h - o) / v; let q = (h - o) / v; return vec2f(min(p, q), max(p, q));
-}
-fn inFrame(a: vec3f, b: vec3f) -> vec2f {
-  let o = a - vec3f(u.geo.xy, u.geo.w); let v = b - a; let R = u.geo.z; let H = u.look2.z;
-  if (H < 0.0) { let x = inSlab(o.x, v.x, R); let y = inSlab(o.y, v.y, -H); return vec2f(max(x.x, y.x), min(x.y, y.y)); }
-  var c = hitSphere(vec3f(o.xy, 0.0), vec3f(v.xy, 0.0), R);
-  if (H <= 0.0) { return c; }
-  if (abs(v.z) > 1e-6) { let s = -o.z / v.z; if (v.z < 0.0) { c.x = max(c.x, s); } else { c.y = min(c.y, s); } }
-  else if (o.z > 0.0) { c = vec2f(1.0, 0.0); }
-  let k = R / H; let e = hitSphere(vec3f(o.xy, o.z * k), vec3f(v.xy, v.z * k), R);
-  if (c.x > c.y) { return e; }
-  if (e.x > e.y) { return c; }
-  return vec2f(min(c.x, e.x), max(c.y, e.y));
-}
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) id: vec3u) {
   let hs = textureDimensions(outT);
@@ -13794,6 +13880,7 @@ fn boxOf(V: Vox) -> Box {
       if (this.rainLayers == null) this.rainLayers = ME.phone && ME.phone() ? 1 : ME.compat ? 2 : 3; // (read once; a probe may set it)
       set4(u, O.weather4, this.rainLayers, this.actGrassH ?? 1, 0, 0);
       u.set(this.key, O.key); u.set(this.key2, O.key2); u.set(this.sky, O.sky); u.set(this.sky2, O.sky2); u.set(this.sky3, O.sky3);
+      if (E.jar && this.key2[3] === 2) u[O.key2 + 3] = 3; // the void backdrop in a jar: inside the glass only (J1)
       u.set(this.user, O.user);
       // E1b: the sim's flier shadows this update (zero-terminated; a Sim from before E1 has none)
       const sb = S.sim && S.sim.blob;
@@ -20556,7 +20643,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.99.0", name: "Mossheart", commit: "4d6a14f2" };
+  G.VERSION = { v: "0.100.0", name: "Mossheart", commit: "1cf52b10" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -20645,6 +20732,51 @@ function MA_DSP() {
   };
   D.TOWER_ORDER = ["thorn", "puff", "sun", "wisp", "briar", "toad", "moon", "lily"];
   D.MAX_LEVEL = 3;
+  // The helper plants (docs/designs/2026-11-10-loadout-and-traits.md, 4.1): a pouch takes one beside its five. They
+  // deal no damage and have no element (D.elementOf gives -1), so the gift filter and the almanac's element marks pass
+  // them by; they grow I-III at the usual upgradeCost, with no fork, link or graft. `util` is the level's figure;
+  // `standIn` the plant whose model one wears until Art's is in (G.standIn). The blight's corruption weakens the figure
+  // by its share, as it does any plant's.
+  //   cistern  stores dew: the dew cap (State.cap) rises by its figure
+  //   sundew   kills within its reach pay its figure more dew (III: and their drops fly to it)
+  //   glowcap  reveals Veiled creatures within its figure (tiles) to every plant (III: revealed ones take 15% more)
+  //   stump    its 8 neighbours fire its figure faster (III: and reach 8% further)
+  D.UTILITY = ["cistern", "sundew", "glowcap", "stump"];
+  Object.assign(D.TOWERS, {
+    cistern: { name: "Dew Cistern", cost: 60, range: 0, rate: 0, damage: 0, color: [0.45, 0.75, 0.95], util: [200, 400, 700], standIn: "lily", desc: "Stores dew: raises the dew cap.",
+      levels: ["Raises the dew cap by 200", "By 400", "By 700"] },
+    sundew: { name: "Sundew", cost: 70, range: 2, rate: 0, damage: 0, color: [0.95, 0.45, 0.4], util: [0.3, 0.5, 0.75], standIn: "toad", desc: "Kills within its reach pay more dew.",
+      levels: ["Kills in reach pay 30% more dew", "50% more", "75% more, and their dew drops fly to it"] },
+    glowcap: { name: "Glowcap", cost: 70, range: 2.2, rate: 0, damage: 0, color: [0.95, 0.95, 0.55], util: [2.2, 2.7, 3.2], standIn: "puff", desc: "Reveals Veiled creatures in its light: every plant can harm them.",
+      levels: ["Reveals Veiled creatures within 2.2 tiles", "Within 2.7 tiles", "Within 3.2 tiles, and revealed creatures take 15% more"] },
+    stump: { name: "Nurse Stump", cost: 80, range: 1.5, rate: 0, damage: 0, color: [0.6, 0.45, 0.3], util: [0.08, 0.12, 0.16], standIn: "briar", desc: "Its 8 neighbours fire faster.",
+      levels: ["Its neighbours fire 8% faster", "12% faster", "16% faster, and reach 8% further"] },
+  });
+  D.isUtil = (kind) => !!(D.TOWERS[kind] && D.TOWERS[kind].util);
+
+  // The counter traits (the design's section 3): from wave 4 a creature may wear one of its garden's, each beaten by
+  // one element (`counter`, an index into ELEMENTS). `kinds`, the creatures that can wear it (and only where their
+  // affinity for the counter is at least 1: planWave). Bosses never do. Winged: flies at CT_FLY, only light harms it
+  // (a Downpour grounds it for CT_GROUND s). Veiled: only spirit harms it, unless a Glowcap's light is on it. Plated:
+  // a plate of CT_PLATE of its health that only pierce wears down; while it holds, anything else does CT_LEAK, and
+  // nothing slows or pushes it. Regrowing: heals CT_REGROW of its health a second; a spore hit or poison stops that
+  // for CT_SPORE_STOP s. A Winged or Veiled one out of reach also shrugs off slows, holds, pushes, poison and burn.
+  D.CTRAITS = [
+    { id: "winged", name: "Winged", counter: 1, kinds: ["moth", "midge", "crow"], desc: "Flies high: only light harms it" },
+    { id: "veiled", name: "Veiled", counter: 3, kinds: ["beetle", "golem", "snail", "lichen"], desc: "Half-seen: only spirit harms it, unless a Glowcap reveals it" },
+    { id: "plated", name: "Plated", counter: 0, kinds: ["grub", "mole", "mender"], desc: "A plate only pierce wears down" },
+    { id: "regrowing", name: "Regrowing", counter: 2, kinds: ["golem", "lichen", "bloat", "snail"], desc: "Heals itself, unless spores or poison stop it" },
+  ];
+  D.LEVEL_TRAITS = { momiji: ["winged", "regrowing"], fernglass: ["veiled", "plated"], everstair: ["winged", "plated"], cornmoon: [] };
+  D.CT_FLY = 1.4; D.CT_PLATE = 0.6; D.CT_LEAK = 0.1; D.CT_REGROW = 0.05; D.CT_SPORE_STOP = 3; D.CT_GROUND = 4; D.CT_COST = 1.3;
+  D.CT_SHARE = (wave) => Math.min(0.4, 0.1 + 0.02 * (wave - 4));
+  // the counter trait index a kind may wear in a garden (one of its LEVEL_TRAITS it can, first listed), or -1
+  D.ctFor = (kind, level, trait) => {
+    if (D.ENEMIES[kind].boss) return -1;
+    const aff = D.affinity(kind, trait);
+    for (const id of D.LEVEL_TRAITS[level] || []) { const c = D.CTRAITS.findIndex((t) => t.id === id); if (D.CTRAITS[c].kinds.includes(kind) && aff[D.CTRAITS[c].counter] >= 1) return c; }
+    return -1;
+  };
   // The fork at level III (docs/designs/2026-11-05-dew-sinks-and-upgrades.md, Fork): a Thornbloom, Puffcap,
   // Sunpetal or Willow Wisp grown from II takes one of two branches, at the same price. A is its
   // `levels[2]`, as it always was; B is new. Changing branch means uprooting. The other plants grow one way.
@@ -20811,6 +20943,8 @@ function MA_DSP() {
   // rare x1.8 and epic x2.5 at the last (the user asked for more rares and epics from a bigger bank, 2026-10-26);
   // legendary ones grow too in the last band
   D.DEW_TIERS = [200, 400, 700];
+  // the dew cap with no Dew Cistern (State.cap): over every threshold below it (DEW_TIERS, Hoard's 700)
+  D.DEW_CAP = 800;
   D.DEW_LUCK = { rare: [1, 1.25, 1.5, 1.8], epic: [1, 1.4, 1.9, 2.5], legendary: [1, 1, 1, 1.4] };
   // whether a rarity can be drawn with `dew` banked at `wave` (the plain rarities: always; epics from EPIC_FROM)
   D.rarityOpen = (r, dew, wave) => { const ra = D.RARITY[r]; return r === "epic" ? wave >= D.EPIC_FROM : !ra.band || (D.dewTier(dew) >= ra.band && wave >= ra.from); };
@@ -20914,6 +21048,23 @@ function MA_DSP() {
   // garden still stands and grows where a save has it. tools/sim.html ?plants= tries another set (all: every plant).
   D.LEVEL_PLANTS = { momiji: ["thorn", "puff", "sun", "wisp", "briar"], fernglass: ["thorn", "puff", "moon", "toad", "lily"], cornmoon: ["sun", "wisp", "briar", "toad", "lily"], everstair: ["thorn", "moon", "toad", "wisp", "sun"] };
   D.plantsOf = (level) => D.LEVEL_PLANTS[level] || D.TOWER_ORDER;
+  // The living map (docs/designs/2026-11-10-living-map.md): a garden's acts, one per ten waves, the first as
+  // the garden loads (null). An act turns at the build phase after the boss that closes the act before it
+  // (Game.actTurn) and can open ground (open: cells; freeze: boxes whose water freezes into ground), wake a
+  // second road's split (wake: a World split row, only where the garden has that road), widen the
+  // Heartwood (heartwood: its reach), put the Dewbank to sleep (dewbank: false) and grow the Heart Tree
+  // (heart: n, n * 2 more vitality, healed). Only where G.LEVELS marks the garden living and ?acts=1 asks
+  // (G.actsOf); tools/sim.html ?acts=1 the same. Momiji's cells wait on Art's A-L2 map.
+  D.LEVEL_ACTS = {
+    momiji: [
+      null,
+      { name: "Green Canopy", open: [[11, 3], [12, 3], [12, 4], [13, 4], [13, 5], [14, 5]], heart: 1 },
+      { name: "Ember Leaves", wake: [1, 21, 3, 2], heart: 1, heartwood: 4 },
+      { name: "Lantern Night", freeze: [[6, 17, 13, 23]], heart: 1, dewbank: false },
+    ],
+  };
+  // the floor the lane's blight never heals below, per act past the first (Blight.floor)
+  D.ACT_SCAR = 0.05;
   // whether a boon belongs where only `plants` grow: one tied to a plant (its `el`) only where that plant does
   D.boonFits = (b, plants) => !D.TOWERS[b.el] || plants.includes(b.el);
 
@@ -20971,7 +21122,9 @@ function MA_DSP() {
   // Everything known about a wave before it starts: its spawn list (pairs of [enemy, delay after the
   // previous]), the creatures it brings and its trait. Plans depend only on the run seed and the wave
   // number, so the almanac can show the next wave while the player is still planning for this one.
-  D.planWave = (wave, runSeed) => {
+  D.planWave = (wave, runSeed, level = null) => {
+    // (the counter traits: their own generator, so a wave's base draws stay as they were where none can come)
+    const trng = G.rng(mix(runSeed ^ 0x7a65, wave)), share = wave >= 4 && wave % 5 !== 0 && level ? D.CT_SHARE(wave) : 0, cts = {};
     const rng = G.rng(mix(runSeed, wave));
     let budget = 6 + wave * 3.5 + Math.max(0, wave - 8) * 1.0;
     const interval = Math.max(0.28, 0.75 - wave * 0.025), boss = wave % 5 === 0;
@@ -21000,9 +21153,12 @@ function MA_DSP() {
       cluster++;
       const group = groupOf(kind);
       for (let i = 0; i < group; i++) {
-        spawns.push([kind, interval * (kind === "moth" ? 0.6 : kind === "midge" ? 0.3 : 1)]);
+        // (a creature that can wear one of the garden's counter traits does at the wave's share, and costs CT_COST)
+        const can = share > 0 ? D.ctFor(kind, level, trait) : -1, ct = can >= 0 && trng.f() < share ? can : -1;
+        spawns.push(ct >= 0 ? [kind, interval * (kind === "moth" ? 0.6 : kind === "midge" ? 0.3 : 1), ct] : [kind, interval * (kind === "moth" ? 0.6 : kind === "midge" ? 0.3 : 1)]);
         counts[kind] = (counts[kind] || 0) + 1;
-        budget -= cost(kind);
+        if (ct >= 0) cts[D.CTRAITS[ct].id] = (cts[D.CTRAITS[ct].id] || 0) + 1;
+        budget -= cost(kind) * (ct >= 0 ? D.CT_COST : 1);
       }
       spawns.push(["", interval * 2.5]);
     }
@@ -21012,7 +21168,7 @@ function MA_DSP() {
     const groups = Object.keys(counts).map((k) => ({ kind: k, count: counts[k] }));
     groups.sort((a, b) => (a.kind === bossKind ? -1 : b.kind === bossKind ? 1 : b.count - a.count));
     const total = Object.values(counts).reduce((a, b) => a + b, 0);
-    return { wave, spawns, groups, trait, boss, bossKind, total };
+    return { wave, spawns, groups, trait, boss, bossKind, total, cts };
   };
 })();
 
@@ -21052,9 +21208,24 @@ function MA_DSP() {
   S.levelKey = (key, level = S.level) => (level === "momiji" ? key : key + "." + level);
   // the best wave reached in any garden (the terrarium screen shows each), without switching to it
   S.bestOf = (level) => { try { return parseInt(localStorage.getItem(S.levelKey(SAVE_KEY, level)) || "0", 10) || 0; } catch (e) { return 0; /* storage blocked */ } };
+  // The seed pouch (docs/designs/2026-11-10-loadout-and-traits.md, 2): the fighting plants and the helper plant
+  // (Defs.UTILITY) a run grows, S.plants with the helper last (S.util). It is remembered per garden under
+  // mossheart.pouch.<level> ({ plants, util }); the first time, it is the garden's suggested one (LEVEL_PLANTS
+  // and a Dew Cistern). A remembered pouch that names a plant the game no longer has is set aside.
+  S.suggestedPouch = (level) => ({ plants: D.plantsOf(level).slice(), util: "cistern" });
+  S.pouchOf = (level) => {
+    try {
+      const p = JSON.parse(localStorage.getItem("mossheart.pouch." + level) || "null");
+      if (p && Array.isArray(p.plants) && p.plants.length && p.plants.every((k) => D.TOWERS[k] && !D.isUtil(k)) && (!p.util || D.isUtil(p.util))) return { plants: p.plants, util: p.util || "" };
+    } catch (e) { /* storage blocked or a bad record: the suggested pouch */ }
+    return S.suggestedPouch(level);
+  };
+  S.rememberPouch = (level, p) => { try { localStorage.setItem("mossheart.pouch." + level, JSON.stringify({ plants: p.plants, util: p.util || "" })); } catch (e) { /* storage blocked */ } };
+  S.setPouch = (p) => { S.util = p.util || ""; S.plants = S.util ? [...p.plants, S.util] : p.plants.slice(); };
+  S.pouch = () => ({ plants: S.plants.filter((k) => !D.isUtil(k)), util: S.util || "" });
   // (and the plants it grows, Defs.LEVEL_PLANTS: S.fits says whether a boon belongs there)
   S.setLevel = (id) => {
-    S.level = id; S.plants = D.plantsOf(id);
+    S.level = id; S.setPouch(S.pouchOf(id));
     try { S.best = parseInt(localStorage.getItem(S.levelKey(SAVE_KEY)) || "0", 10) || 0; } catch (e) { S.best = 0; /* storage blocked */ }
   };
   S.setLevel("momiji");
@@ -21063,7 +21234,7 @@ function MA_DSP() {
     S.seed = seed >>> 0;
     S.rng = G.rng(S.seed ^ 0x5eed);
     S.dew = S.START_DEW; S.heartMax = S.START_HEART; S.heartHp = S.heartMax; S.wave = 0; S.intensity = 0; S.offBoard = false;
-    S.time = 0; S.dewRate = 0; S.dewT = 0; S.riteRate = 1;
+    S.time = 0; S.dewRate = 0; S.dewT = 0; S.riteRate = 1; S.spilt = 0; S.capExtra = 0;
     S.field = {}; S.corruption = 0; S.combat = 0; S.danger = 0; S.boons = []; S.mods = {};
     G.emit("dew"); G.emit("heart"); G.emit("wave"); G.emit("mods");
     S.setPhase(G.Phase.BUILD);
@@ -21135,9 +21306,19 @@ function MA_DSP() {
   S.canAfford = (cost) => S.dew >= cost;
   S.spend = (cost) => { if (S.dew < cost) return false; S.dew -= cost; G.emit("dew"); return true; };
   // (src: "kill", "wave", "early" or "refund", for the dew_gain event; pos: where, for a kill or a refund)
-  S.earn = (amount, src = "kill", pos = null) => { const n = Math.round(amount * S.mod("dew_gain")); S.dew += n; S.gained(n, src, pos); G.emit("dew"); };
+  // The dew cap (docs/designs/2026-11-10-loadout-and-traits.md, 4.2): D.DEW_CAP plus what the Dew Cisterns store
+  // (capExtra, Game.relink). Every gain past it is spilt: lost, counted (spilt) and told ("spill" { amount, src,
+  // pos }); a bank already over it (a Cistern uprooted) is never taken away, it only lets nothing more in.
+  S.cap = () => D.DEW_CAP + (S.capExtra || 0);
+  S.take = (n, src, pos) => {
+    const room = Math.max(0, S.cap() - S.dew), got = Math.min(n, room), lost = n - got;
+    S.dew += got;
+    if (lost > 0) { S.spilt = (S.spilt || 0) + lost; G.emit("spill", { amount: lost, src, pos }); }
+    return got;
+  };
+  S.earn = (amount, src = "kill", pos = null) => { const n = S.take(Math.round(amount * S.mod("dew_gain")), src, pos); S.gained(n, src, pos); G.emit("dew"); };
   // income that boons don't scale (wave bonuses, refunds)
-  S.earnRaw = (amount, src = "wave", pos = null) => { S.dew += amount; S.gained(amount, src, pos); G.emit("dew"); };
+  S.earnRaw = (amount, src = "wave", pos = null) => { const n = S.take(amount, src, pos); S.gained(n, src, pos); G.emit("dew"); };
   // Dew earned: the rate (dew per second of game time, each gain decaying over D.DEW_TAU s) goes up, and
   // dew_gain { amount, rate, pos, src } goes out before "dew", for the counter, the popups and the sounds.
   S.gained = (n, src, pos) => {
@@ -21398,20 +21579,63 @@ function MA_DSP() {
       const dist = (this.pathDist = new Float32Array(W * H).fill(99));
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) for (const [px, py] of this.laneCells) dist[at(x, y)] = Math.min(dist[at(x, y)], Math.max(Math.abs(px - x), Math.abs(py - y)));
       this.buildCount = blocked.reduce((a, b) => a + (b ? 0 : 1), 0);
-      // the placement zones (D.ZONES), one per build cell at most, in this order: Heartwood within 3 tiles of
-      // the Heart Tree; Overlook a step or more above the lane within 3 tiles; Dewbank beside water
-      const zone = (this.zone = new Uint8Array(W * H)), water = level.water, hx = Math.floor(this.heart[0]), hy = Math.floor(this.heart[1]);
+      // the living map's acts (docs/designs/2026-11-10-living-map.md; level.acts, Defs.LEVEL_ACTS behind ?acts=1):
+      // the act the rules stand in (actAt, toAct), the Heartwood's reach and whether the Dewbank zone is awake, and
+      // the cells an act opens (cell index -> its act: open's cells and freeze's water, never a lane, the Heart
+      // Tree's crown or a hidden cell). Acts only ever add ground, so a cell once open stays open.
+      this.acts = level.acts || null; this.act = 1; this.heartwood = 3; this.dewbank = true; this.opens = new Map();
+      if (this.acts) {
+        const lane = new Set(this.laneCells.map(([x, y]) => at(x, y))), hx = Math.floor(this.heart[0]), hy = Math.floor(this.heart[1]);
+        const ok = (x, y) => this.inside(x, y) && blocked[at(x, y)] && !lane.has(at(x, y)) && !(level.hidden && level.hidden[at(x, y)]) && Math.max(Math.abs(x - hx), Math.abs(y - hy)) > 1;
+        this.acts.forEach((a, n) => {
+          if (!a) return;
+          const cells = (a.open || []).slice();
+          for (const [x0, y0, x1, y1] of a.freeze || []) for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (level.water && this.inside(x, y) && level.water[at(x, y)]) cells.push([x, y]);
+          for (const [x, y] of cells) if (ok(x, y) && !this.opens.has(at(x, y))) this.opens.set(at(x, y), n + 1);
+        });
+      }
+      this.zones();
+    }
+    // the placement zones (D.ZONES), one per build cell at most, in this order: Heartwood within this.heartwood
+    // tiles of the Heart Tree; Overlook a step or more above the lane within 3 tiles; Dewbank beside water (while
+    // it is awake). Again at an act's turn (toAct), with the cells it opened.
+    zones() {
+      const W = this.W, H = this.H, at = (x, y) => y * W + x, blocked = this.blocked, dist = this.pathDist, level = this.level;
+      const zone = (this.zone = new Uint8Array(W * H)), water = this.dewbank && level.water, hx = Math.floor(this.heart[0]), hy = Math.floor(this.heart[1]);
       const zAt = (x, y) => this.groundZ(x + 0.5, y + 0.5);
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const i = at(x, y);
         if (blocked[i]) continue;
-        if (Math.max(Math.abs(x - hx), Math.abs(y - hy)) <= 3) { zone[i] = 1; continue; }
+        if (Math.max(Math.abs(x - hx), Math.abs(y - hy)) <= this.heartwood) { zone[i] = 1; continue; }
         if (dist[i] <= 3) {
           const z = zAt(x, y);
           if (this.laneCells.some(([px, py]) => Math.max(Math.abs(px - x), Math.abs(py - y)) <= 3 && z - zAt(px, py) >= G.Defs.OVERLOOK_STEP)) { zone[i] = 2; continue; }
         }
         if (water) for (let v = -1; v <= 1 && !zone[i]; v++) for (let u = -1; u <= 1; u++) { const xx = x + u, yy = y + v; if (xx >= 0 && yy >= 0 && xx < W && yy < H && water[at(xx, yy)]) { zone[i] = 3; break; } }
       }
+    }
+    // the act of a wave: Act I to wave 10, Act II to 20, Act III to 30, then the last act (1 on a garden with none)
+    actAt(wave) { return this.acts ? Math.min(this.acts.length, 1 + Math.floor(Math.max(0, wave - 1) / 10)) : 1; }
+    // whether cell index k takes a plant in act n (the rules' blocked, or opened by then: Save.fits)
+    openIn(k, n) { return !this.blocked[k] || this.opens.get(k) <= n; }
+    // the rules move on to act n (a build phase only: Game.actTurn, Save.restore): its cells open, a woken road
+    // joins the split, the Heartwood and the Dewbank change, the zones are drawn again. Returns the acts turned
+    // (their data, null for none), so the caller adds what the state keeps (the Heart Tree's vitality).
+    toAct(n) {
+      const turned = [];
+      while (this.act < n && this.acts) {
+        const a = this.acts[this.act++];
+        turned.push(a || null);
+        if (!a) continue;
+        if (a.wake && a.wake[0] < this.roads.length) { this.split.push(a.wake); this.splitFrom = Math.min(...this.split.map((q) => q[1])); }
+        if (a.heartwood) this.heartwood = a.heartwood;
+        if (a.dewbank === false) this.dewbank = false;
+      }
+      if (!turned.length) return turned;
+      for (const [k, m] of this.opens) if (m <= this.act) this.blocked[k] = 0;
+      this.buildCount = this.blocked.reduce((a, b) => a + (b ? 0 : 1), 0);
+      this.zones();
+      return turned;
     }
     // the zone of a cell (a D.ZONES entry), or null
     zoneAt(cx, cy) { return this.inside(cx, cy) ? G.Defs.ZONES[this.zone[this.idx(cx, cy)] - 1] || null : null; }
@@ -21470,6 +21694,15 @@ function MA_DSP() {
     cleanse(amount) {
       for (let i = 0; i < this.level.length; i++) { this.scar[i] *= 1 - amount; this.level[i] *= 1 - amount; this.bytes[i] = (this.level[i] * 255) | 0; if (this.level[i] > 0) this.active.add(i); }
       this.dirty = true;
+    }
+    // the living map's pressure (Game.actTurn, Save.restore): the lane's texels never heal below f, scars
+    // included (a floor only raises, so applied again it changes nothing)
+    floor(f) {
+      if (!(f > 0)) return;
+      for (const i of this.pathTexels) {
+        if (this.scar[i] < f) this.scar[i] = f;
+        if (this.level[i] < f) { this.level[i] = f; this.bytes[i] = (f * 255) | 0; this.dirty = true; }
+      }
     }
     update(dt, enemies) {
       this.accum += dt;
@@ -21545,6 +21778,8 @@ function MA_DSP() {
   const HEALER = Uint8Array.from(D.ENEMY_ORDER, (k) => (D.ENEMIES[k].heal ? 1 : 0));
   // (and each kind's entry by index, so the hot loops need no name lookup)
   const DEFS = D.ENEMY_ORDER.map((k) => D.ENEMIES[k]);
+  // the counter traits by index (Defs.CTRAITS)
+  const CT = { WINGED: 0, VEILED: 1, PLATED: 2, REGROWING: 3 };
 
   class Enemies {
     constructor(world, body) {
@@ -21566,6 +21801,10 @@ function MA_DSP() {
       // whether a boss has grown its half-vitality shell, and how long until a creature can be healed again
       this.shell = F(); this.shellMax = F(); this.hpK = F(); this.armour = F(N * 4); this.healT = F(); this.broodT = F(); this.mendT = F();
       this.under = new Uint8Array(N); this.half = new Uint8Array(N); this.trait = null;
+      // the counter traits (Defs.CTRAITS; docs/designs/2026-11-10-loadout-and-traits.md, 3): its trait (-1 none), how
+      // long a Glowcap still shows it (seenT) and how much more it takes meanwhile (seenAmt), how long a Downpour keeps
+      // it down (groundT), how long a spore touch still stops its regrowth (sporeT)
+      this.ct = new Int8Array(N); this.seenT = F(); this.seenAmt = F(); this.groundT = F(); this.sporeT = F();
       // the road each one walks (World.roads: an entrance each; 0 on a garden with one road)
       this.road = new Uint8Array(N);
       // by a join of its road (World.roads[r].joins: the Ever Stair's): jw, that join's j while within 3 tiles of it
@@ -21588,7 +21827,7 @@ function MA_DSP() {
 
     // A creature of `kindName` out of a rift (where two roads start, one picked by the run's seed: a garden with
     // one road draws nothing more from it), or (at: { dist, lat, road }) where another spilled it
-    spawn(kindName, hpMult, trait, at = null) {
+    spawn(kindName, hpMult, trait, at = null, ct = -1) {
       if (!this.free.length) return -1;
       const def = D.ENEMIES[kindName], i = this.free.pop(), rng = G.state.rng;
       this.trait = trait;
@@ -21605,6 +21844,9 @@ function MA_DSP() {
       this.hitEl[i] = -1; this.hitRes[i] = Hit.PLAIN; this.burnDps[i] = 0; this.burnT[i] = 0;
       this.stunT[i] = 0; this.backT[i] = 0; this.markT[i] = 0; this.markAmt[i] = 0; this.poisonDps[i] = 0; this.poisonT[i] = 0; this.barbs[i] = 0; this.snareT[i] = 0; this.steadyT[i] = 0;
       this.shell[i] = this.shellMax[i] = def.shell ? this.maxHp[i] * def.shell : 0;
+      // (Plated: a plate of CT_PLATE of its vitality on the shell's code path, that only pierce wears down: damage())
+      this.ct[i] = def.boss ? -1 : ct; this.seenT[i] = 0; this.seenAmt[i] = 0; this.groundT[i] = 0; this.sporeT[i] = 0;
+      if (this.ct[i] === CT.PLATED) this.shell[i] = this.shellMax[i] = this.maxHp[i] * D.CT_PLATE;
       this.healT[i] = HEAL_EVERY; this.mendT[i] = 0; this.broodT[i] = def.brood ? def.brood[1] : 0; this.under[i] = 0; this.half[i] = 0;
       // (the other entrances, no RNG: World.split's rows count a wave's creatures from the first row's wave on, never
       // a boss, and the first row that fits sends it by its road, else road 0; Corn Moon's: every third from wave 3
@@ -21648,9 +21890,32 @@ function MA_DSP() {
     // Applies a hit of `element` (index into ELEMENTS, -1 for none) scaled by the creature's affinity and
     // armour; a shell takes it first. Sets lastHit and returns whether it killed. Nothing reaches a creature
     // under the road.
+    // Whether a hit of `element` (-1: none, a burn or a poison) can harm creature i, by its counter trait: a Winged
+    // one only light, unless a Downpour has it down; a Veiled one only spirit, unless a Glowcap shows it. Plants aim
+    // only at what they can harm (pickTarget's el).
+    harms(i, element) {
+      const c = this.ct[i];
+      if (c === CT.WINGED) return element === 1 || this.groundT[i] > 0;
+      if (c === CT.VEILED) return element === 3 || this.seenT[i] > 0;
+      return true;
+    }
+    // (the hits, slows, holds and pushes a Winged or Veiled creature shrugs off: any without its counter's element)
+    aloof(i) { const c = this.ct[i]; return (c === CT.WINGED && this.groundT[i] <= 0) || (c === CT.VEILED && this.seenT[i] <= 0); }
+    // a Winged one flies at CT_FLY, out of the ground plants' line, unless a downpour has grounded it
+    flyOf(i, def) { return this.ct[i] === CT.WINGED && this.groundT[i] <= 0 ? Math.max(def.fly, D.CT_FLY) : def.fly; }
     damage(i, amount, element = -1) {
       if (!this.alive[i] || this.under[i] === 1) return false;
-      this.lastHit = Hit.PLAIN;
+      let leak = false;
+      if (this.ct[i] >= 0) {
+        if (!this.harms(i, element)) return false;
+        if (this.seenT[i] > 0) amount *= 1 + this.seenAmt[i];
+        // (a spore hit stops a Regrowing one's regrowth)
+        if (element === 2) this.sporeT[i] = D.CT_SPORE_STOP;
+        // (while the plate holds, anything but pierce leaks CT_LEAK of itself under it, past the plate)
+        leak = this.ct[i] === CT.PLATED && this.shell[i] > 0 && element !== 0;
+      }
+      this.lastHit = leak ? Hit.RESISTED : Hit.PLAIN;
+      if (leak) amount *= D.CT_LEAK;
       if (this.slowT[i] > 0) amount *= 1 + G.state.mod("sticky");
       if (this.markT[i] > 0) amount *= 1 + this.markAmt[i];
       // (Miasma: poisoned creatures take 25% more)
@@ -21659,13 +21924,13 @@ function MA_DSP() {
         const mult = this.affinity[i * 4 + element], a = i * 4 + element, adapt = this.defOf(i).adapt;
         amount *= mult * (1 - this.armour[a]);
         if (adapt) this.armour[a] = Math.min(MAX_ARMOUR, this.armour[a] + adapt);
-        if (mult * (1 - this.armour[a]) > D.WEAK_ABOVE) this.lastHit = Hit.WEAK;
-        else if (mult * (1 - this.armour[a]) < D.RESIST_BELOW) this.lastHit = Hit.RESISTED;
+        if (!leak && mult * (1 - this.armour[a]) > D.WEAK_ABOVE) this.lastHit = Hit.WEAK;
+        else if (!leak && mult * (1 - this.armour[a]) < D.RESIST_BELOW) this.lastHit = Hit.RESISTED;
         this.hitEl[i] = element; this.hitRes[i] = this.lastHit;
       }
       this.hitStats[this.lastHit]++;
       this.flash[i] = 1;
-      if (this.shell[i] > 0) {
+      if (this.shell[i] > 0 && !leak) {
         const took = Math.min(this.shell[i], amount);
         this.shell[i] -= took; amount -= took;
         if (this.shell[i] <= 0) G.emit("shell_broken", { kind: this.kindOf(i), pos: this.centre(i) });
@@ -21681,6 +21946,9 @@ function MA_DSP() {
       if (this.slowT[i] > 0 && G.state.mod("puffball") > 0) this.pops.push([p[0], p[1], this.maxHp[i]]);
       this.release(i);
       G.state.earn(reward, "kill", p);
+      // a Sundew pays a share of the kill dew for a creature that dies in its reach (the best one only)
+      let sd = 0; for (const [x, y, r, fig] of G.state.sundews || []) if ((p[0] - x) ** 2 + (p[1] - y) ** 2 <= r * r) sd = Math.max(sd, fig);
+      if (sd > 0) G.state.earn(Math.round(reward * sd), "sundew", p);
       G.emit("kill", { kind, pos: p, reward, element, boss: !!def.boss });
       if (def.split) { for (let k = 0; k < def.split; k++) this.spawn(def.into, hpK, this.trait, { dist: Math.max(0, dist - 0.12 * k), lat, road }); G.emit("split", { kind, pos: p, count: def.split }); }
     }
@@ -21688,6 +21956,7 @@ function MA_DSP() {
     // (stack: the burn still to come carries into the new one, as Ember Seeds' smoulder adds up; else the
     // hotter of the two burns on)
     ignite(i, dps, secs = 2, stack = false) {
+      if (this.alive[i] && this.aloof(i)) return;
       if (!this.alive[i]) return;
       if (this.burnT[i] <= 0) G.emit("burn", { pos: this.centre(i) });
       const left = this.burnT[i] > 0 ? this.burnDps[i] : 0;
@@ -21698,14 +21967,14 @@ function MA_DSP() {
     // a creature is steady for a while (steadyT: 2 s after a stun or lure, 0.6 s after a push) and
     // nothing holds or moves it, so plants can't pin a wave in place between them. A shell holds nothing.
     hold(i, secs) { const s = this.defOf(i).size; return BOSS[this.kind[i]] ? secs / 3 : secs / Math.max(s, 1); }
-    held(i) { return !this.alive[i] || this.steadyT[i] > 0 || this.shell[i] > 0; }
+    held(i) { return !this.alive[i] || this.steadyT[i] > 0 || this.shell[i] > 0 || this.aloof(i); }
     stun(i, secs) { if (this.held(i)) return; const h = this.hold(i, secs); this.stunT[i] = h; this.steadyT[i] = h + 2; }
     lure(i, secs) { if (this.held(i)) return; const h = this.hold(i, secs); this.backT[i] = h; this.steadyT[i] = h + 2; }
     push(i, d) { if (this.held(i) || this.dist[i] <= 0) return; this.dist[i] = Math.max(0, this.dist[i] - this.hold(i, d)); this.steadyT[i] = 0.6; }
     // a rite's Downpour (Game.rite): back `d` down the road as a push, but past a steady creature too (a shell stays)
     wash(i, d) { if (!this.alive[i] || this.shell[i] > 0 || this.dist[i] <= 0) return; this.dist[i] = Math.max(0, this.dist[i] - this.hold(i, d)); this.steadyT[i] = Math.max(this.steadyT[i], 0.6); }
     // Stinkhorn's poison (no element; the hotter one is kept), a Moonpetal's mark
-    poison(i, dps, secs) { if (!this.alive[i]) return; this.poisonDps[i] = Math.max(dps, this.poisonT[i] > 0 ? this.poisonDps[i] : 0); this.poisonT[i] = Math.max(this.poisonT[i], secs); }
+    poison(i, dps, secs) { if (!this.alive[i] || this.aloof(i)) return; this.poisonDps[i] = Math.max(dps, this.poisonT[i] > 0 ? this.poisonDps[i] : 0); this.poisonT[i] = Math.max(this.poisonT[i], secs); }
     mark(i, amt, secs) { if (!this.alive[i]) return; this.markAmt[i] = Math.max(amt, this.markT[i] > 0 ? this.markAmt[i] : 0); this.markT[i] = Math.max(this.markT[i], secs); }
     // creatures within w of the segment a-b (a sunbeam's line)
     onLine(ax, ay, bx, by, w) {
@@ -21720,20 +21989,20 @@ function MA_DSP() {
     // Slows a creature by `amount` (at most half its speed). Big creatures shrug part of it off: a golem
     // feels about 70% of it, a boss half. A shell feels none of it.
     applySlow(i, amount, duration) {
-      if (!this.alive[i] || this.shell[i] > 0) return;
+      if (!this.alive[i] || this.shell[i] > 0 || this.aloof(i)) return;
       const size = this.defOf(i).size;
       this.slowAmt[i] = Math.max(this.slowAmt[i], Math.min(MAX_SLOW, Math.max(0, amount / Math.max(size, 1))));
       this.slowT[i] = Math.max(this.slowT[i], duration);
     }
     // index of the best target in range (and not nearer than minR) or -1; mode "first" (closest to the
     // Heart, whichever road it walks: near) or "strong"
-    pickTarget(x, y, radius, mode = "first", exclude = null, minR = 0, z) {
+    pickTarget(x, y, radius, mode = "first", exclude = null, minR = 0, z, el) {
       let best = -1, bestScore = -Infinity;
       const r2 = radius * radius, m2 = minR * minR;
       for (let i = 0; i < CAPACITY; i++) {
         if (!this.alive[i] || this.hidden(i)) continue;
         const d2 = this.d2(i, x, y, z);
-        if (d2 > r2 || d2 < m2 || (exclude && exclude.includes(i))) continue;
+        if (d2 > r2 || d2 < m2 || (exclude && exclude.includes(i)) || (el !== undefined && this.ct[i] >= 0 && !this.harms(i, el))) continue;
         const score = mode === "first" ? this.near(i) : (this.hp[i] + this.shell[i]) * 1000 + this.near(i);
         if (score > bestScore) { bestScore = score; best = i; }
       }
@@ -21741,12 +22010,12 @@ function MA_DSP() {
     }
     // the best n targets in range, best first: what n pickTarget calls, each excluding the ones before,
     // would give (ties to the lower index), in one pass (Thousand Needles asks for 99)
-    pickTargets(x, y, radius, mode, n, exclude = null, minR = 0, z) {
+    pickTargets(x, y, radius, mode, n, exclude = null, minR = 0, z, el) {
       const r2 = radius * radius, m2 = minR * minR, out = [], sc = [];
       for (let i = 0; i < CAPACITY; i++) {
         if (!this.alive[i] || this.hidden(i)) continue;
         const d2 = this.d2(i, x, y, z);
-        if (d2 > r2 || d2 < m2 || (exclude && exclude.includes(i))) continue;
+        if (d2 > r2 || d2 < m2 || (exclude && exclude.includes(i)) || (el !== undefined && this.ct[i] >= 0 && !this.harms(i, el))) continue;
         out.push(i); sc[i] = mode === "first" ? this.near(i) : (this.hp[i] + this.shell[i]) * 1000 + this.near(i);
       }
       out.sort((a, b) => sc[b] - sc[a] || a - b);
@@ -21786,7 +22055,7 @@ function MA_DSP() {
       if (this.face[i]) {
         const F = G.frameOf(sx, sy, sz, U[0], U[1], U[2], this.frame.subarray(i * 9, i * 9 + 9));
         const def = this.defOf(i), lat = W.latAt(s, this.lat[i], r);
-        const fly = def.fly - this.body.hover[this.kind[i]] + (def.fly > 0 ? Math.sin(time * 3 + this.phase[i]) * 0.075 : 0);
+        const fly = this.flyOf(i, def) - this.body.hover[this.kind[i]] + (this.flyOf(i, def) > 0 ? Math.sin(time * 3 + this.phase[i]) * 0.075 : 0);
         this.jw[i] = 0; this.jd[i] = 0;
         this.px[i] = X + F[1] * lat + U[0] * fly; this.py[i] = Y + F[4] * lat + U[1] * fly; this.pz[i] = Z + F[7] * lat + U[2] * fly;
         this.vz[i] = this.pz[i] + (W.viewRoadZ(s, r, Z) - Z);
@@ -21812,8 +22081,8 @@ function MA_DSP() {
       const def = this.defOf(i);
       const lat = W.latAt(s, this.lat[i], r);
       this.px[i] = X - (dy / l) * lat + jd; this.py[i] = Y + (dx / l) * lat + jd;
-      const fly = def.fly - this.body.hover[this.kind[i]];
-      this.pz[i] = Z + fly + (def.fly > 0 ? Math.sin(time * 3 + this.phase[i]) * 0.075 : 0);
+      const fly = this.flyOf(i, def) - this.body.hover[this.kind[i]];
+      this.pz[i] = Z + fly + (this.flyOf(i, def) > 0 ? Math.sin(time * 3 + this.phase[i]) * 0.075 : 0);
       // (pz is the rules' height, off their road; vz the view's, off the road it draws: the same where the two match)
       this.vz[i] = this.pz[i] + (W.viewRoadZ(s, r, Z) - Z) + jd;
       this.yaw[i] = Math.atan2(dy, dx);
@@ -21853,15 +22122,25 @@ function MA_DSP() {
       const S = G.state, counts = new Int32Array(D.ENEMY_ORDER.length);
       for (let i = 0; i < CAPACITY; i++) {
         if (!this.alive[i]) continue;
-        const kind = this.kindOf(i), def = this.defOf(i);
+        const kind = this.kindOf(i), def = this.defOf(i), c = this.ct[i];
+        // (the counter traits: a burn or a poison does nothing to a Winged or Veiled one out of reach, and seeps
+        // CT_LEAK of itself under a holding plate; poison stops a Regrowing one's regrowth, as a spore hit does)
+        const seep = c < 0 ? 1 : this.aloof(i) ? 0 : c === CT.PLATED && this.shell[i] > 0 ? D.CT_LEAK : 1;
+        if (c >= 0) {
+          if (this.seenT[i] > 0) this.seenT[i] -= dt;
+          if (this.groundT[i] > 0) this.groundT[i] -= dt;
+          if (this.poisonT[i] > 0) this.sporeT[i] = Math.max(this.sporeT[i], 0.001);
+          if (this.sporeT[i] > 0) this.sporeT[i] -= dt;
+          else if (c === CT.REGROWING && this.dist[i] >= 0) this.hp[i] = Math.min(this.maxHp[i], this.hp[i] + this.maxHp[i] * D.CT_REGROW * dt);
+        }
         if (this.burnT[i] > 0) {
           this.burnT[i] -= dt;
-          this.hp[i] -= this.burnDps[i] * dt;
+          this.hp[i] -= this.burnDps[i] * dt * seep;
           if (this.hp[i] <= 0) { this.kill(i, -1); continue; }
         }
         if (this.poisonT[i] > 0) {
           this.poisonT[i] -= dt;
-          this.hp[i] -= this.poisonDps[i] * dt;
+          this.hp[i] -= this.poisonDps[i] * dt * seep;
           if (this.hp[i] <= 0) { this.kill(i, -1); continue; }
         }
         if (this.slowT[i] > 0) { this.slowT[i] -= dt; if (this.slowT[i] <= 0) this.slowAmt[i] = 0; }
@@ -21983,6 +22262,7 @@ function MA_DSP() {
     }
 
     update(dt, game) {
+      if (this.def.util) return; // (a helper plant does its job in Game: relink, reveal; Enemies.kill)
       if (this.twin) this.twin.update(dt, game);
       this.cooldown -= dt;
       if (this.cloudT > 0) this.cloudT -= dt;
@@ -21991,17 +22271,17 @@ function MA_DSP() {
       const { enemies: E, shots } = game, o = this.origin(), R = this.range(), lv = this.level, el = this.element, B = this.bond, br = this.forked ? 1 : 0;
       let target = null, radius = 0;
       if (this.kind === "thorn") {
-        const first = E.pickTarget(this.X, this.Y, R, "first", null, 0, this.Z);
+        const first = E.pickTarget(this.X, this.Y, R, "first", null, 0, this.Z, el);
         if (first >= 0) {
           target = E.centre(first);
           shots.fire(o, first, this.damage(), this.def.speed, this.def.color, this.kind, B.pierceChain ? 1 : 0, [], lv, B, br);
           // (Thousand Needles: at every creature in reach; firing changes no creature, so all are picked at once)
           const n = S.mod("needles") > 0 ? 99 : Math.round(S.mod("split"));
-          if (n > 0) for (const extra of E.pickTargets(this.X, this.Y, R, "first", n, [first], 0, this.Z))
+          if (n > 0) for (const extra of E.pickTargets(this.X, this.Y, R, "first", n, [first], 0, this.Z, el))
             shots.fire(o, extra, this.damage(), this.def.speed, this.def.color, this.kind, B.pierceChain ? 1 : 0, [], lv, B, br);
         }
       } else if (this.kind === "sun") {
-        const strong = E.pickTarget(this.X, this.Y, R, "strong", null, 0, this.Z);
+        const strong = E.pickTarget(this.X, this.Y, R, "strong", null, 0, this.Z, el);
         if (strong >= 0) {
           target = E.centre(strong);
           // Midsummer Flare: every (7 - flare)-th beam triples and burns everything around its target
@@ -22025,7 +22305,7 @@ function MA_DSP() {
           // Dewdrop Prism: the beam splits to the next strongest creatures in reach (Rainbow Lens: to all, at 80%)
           const hit = [strong], rainbow = S.mod("rainbow") > 0;
           for (let k = 0, n = rainbow ? 99 : S.mod("prism") + (B.prism || 0); k < n; k++) {
-            const next = E.pickTarget(this.X, this.Y, R, "strong", hit, 0, this.Z);
+            const next = E.pickTarget(this.X, this.Y, R, "strong", hit, 0, this.Z, el);
             if (next < 0) break;
             hit.push(next);
             G.emit("prism", { from: target, to: E.centre(next), tower: this.host || this });
@@ -22033,7 +22313,7 @@ function MA_DSP() {
           }
         }
       } else if (this.kind === "puff") {
-        const victims = E.inRadius(this.X, this.Y, R, this.Z);
+        const victims = E.inRadius(this.X, this.Y, R, this.Z, el);
         if (victims.length) {
           radius = R;
           // level II: the burst pushes them back down the road; level III: every third one puts them to sleep
@@ -22044,18 +22324,18 @@ function MA_DSP() {
             if (sleep) E.stun(v, 0.7);
           }
           // (Seed Pods: the burst throws thorn seeds at the creatures nearest the Heart Tree)
-          if (B.seeds) for (const v of E.pickTargets(this.X, this.Y, R, "first", B.seeds, null, 0, this.Z)) shots.fire(o, v, this.damage(), D.TOWERS.thorn.speed, D.TOWERS.thorn.color, "thorn");
+          if (B.seeds) for (const v of E.pickTargets(this.X, this.Y, R, "first", B.seeds, null, 0, this.Z, 0)) shots.fire(o, v, this.damage(), D.TOWERS.thorn.speed, D.TOWERS.thorn.color, "thorn");
           if (S.mod("sporestorm") > 0) this.cloudT = 3;
           // (Mildew, level III's other branch: the burst leaves a cloud on the creature nearest the Heart Tree,
           // slowing 30% for 3 s; one cloud a plant, moved and renewed by each burst)
           if (br) {
-            const f = E.pickTarget(this.X, this.Y, R, "first", null, 0, this.Z), c = E.centre(f >= 0 ? f : victims[0]);
+            const f = E.pickTarget(this.X, this.Y, R, "first", null, 0, this.Z, el), c = E.centre(f >= 0 ? f : victims[0]);
             if (!this.cloud || !shots.puddles.includes(this.cloud)) { this.cloud = { x: 0, y: 0, z: 0, t: 0, dps: 0, slow: 0.3, r: 1.0, mildew: true }; shots.puddles.push(this.cloud); }
             Object.assign(this.cloud, { x: c[0], y: c[1], z: c[2], t: 3 });
           }
         }
       } else if (this.kind === "wisp") {
-        const first = E.pickTarget(this.X, this.Y, R, "first", null, 0, this.Z);
+        const first = E.pickTarget(this.X, this.Y, R, "first", null, 0, this.Z, el);
         if (first >= 0) {
           target = E.centre(first);
           shots.fire(o, first, this.damage(), this.def.speed, this.def.color, this.kind, this.def.chain + (lv >= 2 ? 1 : 0) + Math.round(S.mod("chain_bonus")) + (B.chain || 0), [], lv, B, br);
@@ -22073,13 +22353,13 @@ function MA_DSP() {
           }
         }
       } else if (this.kind === "toad") {
-        const first = E.pickTarget(this.X, this.Y, R, "first", null, this.def.minRange, this.Z);
+        const first = E.pickTarget(this.X, this.Y, R, "first", null, this.def.minRange, this.Z, el);
         if (first >= 0) { target = E.centre(first); shots.fire(o, first, this.damage(), this.def.speed, this.def.color, this.kind, 0, [], lv, B); }
       } else if (this.kind === "moon") {
         // marks the toughest (II: the two toughest, III: everything in reach) and stings it a little
         const marked = [];
-        if (lv >= 3) marked.push(...E.inRadius(this.X, this.Y, R, this.Z));
-        else marked.push(...E.pickTargets(this.X, this.Y, R, "strong", lv, null, 0, this.Z));
+        if (lv >= 3) marked.push(...E.inRadius(this.X, this.Y, R, this.Z, el));
+        else marked.push(...E.pickTargets(this.X, this.Y, R, "strong", lv, null, 0, this.Z, el));
         if (marked.length) {
           target = E.centre(marked[0]);
           for (const v of marked) { G.emit("mark", { from: o, to: E.centre(v), tower: this.host || this }); E.mark(v, this.def.mark + (B.mark || 0) + S.mod("mark_bonus"), 4); if (S.mod("moonshade") > 0) E.applySlow(v, S.mod("moonshade"), 4); shots.strike(v, this.damage(), el, this.kind); }
@@ -22090,9 +22370,9 @@ function MA_DSP() {
         // (Ghost Lantern: keeps it all, and the beam leaps on)
         const held = this.rays.map((r) => r.t), keep = B.lantern ? 1 : Math.max(lv >= 2 ? 0.6 : 0, S.mod("lily_keep"));
         for (const r of this.rays) {
-          const ok = E.isValid(r.t, r.uid) && !E.hidden(r.t) && E.d2(r.t, this.X, this.Y, this.Z) <= R * R;
+          const ok = E.isValid(r.t, r.uid) && !E.hidden(r.t) && E.d2(r.t, this.X, this.Y, this.Z, el) <= R * R;
           if (!ok) {
-            const v = E.pickTarget(this.X, this.Y, R, "first", held, 0, this.Z);
+            const v = E.pickTarget(this.X, this.Y, R, "first", held, 0, this.Z, el);
             if (v < 0) { r.t = -1; r.uid = -1; r.hold *= keep; continue; }
             r.t = v; r.uid = E.uid[v]; r.hold *= keep; held.push(v);
             // (Moonlit Lily: a marked creature is taken half hot)
@@ -22101,7 +22381,7 @@ function MA_DSP() {
           }
           const hot = this.damage() * (1 + 2 * Math.min(1, r.hold / 3)), at = E.centre(r.t);
           shots.strike(r.t, hot, el, this.kind);
-          if (B.lantern) { const next = E.pickTarget(at[0], at[1], CHAIN_RANGE, "first", [r.t], 0, at[2]); if (next >= 0) { G.emit("haunt", { from: at, to: E.centre(next) }); shots.strike(next, hot * B.lantern, el, this.kind); } }
+          if (B.lantern) { const next = E.pickTarget(at[0], at[1], CHAIN_RANGE, "first", [r.t], 0, at[2], el); if (next >= 0) { G.emit("haunt", { from: at, to: E.centre(next) }); shots.strike(next, hot * B.lantern, el, this.kind); } }
           r.hold += (1 + (B.heat || 0) + S.mod("heat")) / this.rate();
           if (!target) radius = radius || 0.01; // holding: keeps its pace without a new "fire"
         }
@@ -22171,7 +22451,7 @@ function MA_DSP() {
       // (Wildfire Hedge: three times hotter; Kodama Choir: a haunting strike that kills haunts on too)
       if (!killed && source === "thorn" && S.mod("burn") > 0) { const wild = S.mod("wildfire") > 0; E.ignite(enemy, (dmg * S.mod("burn") * (wild ? 3 : 1)) / 2, 2, !wild); }
       if (killed && source === "wisp" && (!haunted || S.mod("choir") > 0) && S.mod("haunt") > 0) {
-        const next = E.pickTarget(at[0], at[1], CHAIN_RANGE, "first", null, 0, at[2]);
+        const next = E.pickTarget(at[0], at[1], CHAIN_RANGE, "first", null, 0, at[2], element);
         if (next >= 0) { G.emit("haunt", { from: at, to: E.centre(next) }); this.strike(next, base * S.mod("haunt"), element, source, false, true); }
       }
       return killed;
@@ -22232,13 +22512,13 @@ function MA_DSP() {
         if (p) p.t = 2; else this.puddles.push({ x: at[0], y: at[1], z: at[2], t: 2, dps: 0, slow: 0.3, r: SNARE_R, snare: true });
       }
       // a Bramblecrown's seed shatters as it strikes (Defs.FORKS.thorn.b: 3 shards at 65%), at the creatures nearest the Heart Tree
-      if (br && kind === "thorn" && (BR.onHit || killed)) for (const v of E.pickTargets(at[0], at[1], CHAIN_RANGE, "first", BR.shards, [t], 0, at[2])) this.fire(at, v, this.dmg[i] * BR.mult, this.speed[i], this.col[i], kind, 0, [t], 1, B);
+      if (br && kind === "thorn" && (BR.onHit || killed)) for (const v of E.pickTargets(at[0], at[1], CHAIN_RANGE, "first", BR.shards, [t], 0, at[2], 0)) this.fire(at, v, this.dmg[i] * BR.mult, this.speed[i], this.col[i], kind, 0, [t], 1, B);
       // a level II Thornbloom's seed goes on through to the creature behind
-      if (kind === "thorn" && lv >= 2) { const next = E.pickTarget(at[0], at[1], 1.0, "first", [t], 0, at[2]); if (next >= 0) this.strike(next, this.dmg[i] * 0.5, D.elementOf(kind), kind, true, false, false, lv); }
+      if (kind === "thorn" && lv >= 2) { const next = E.pickTarget(at[0], at[1], 1.0, "first", [t], 0, at[2], 0); if (next >= 0) this.strike(next, this.dmg[i] * 0.5, D.elementOf(kind), kind, true, false, false, lv); }
       // a level III Willow Wisp lures the first creature its light strikes
       if (kind === "wisp" && lv >= 3 && !br && this.hitList[i].length === 1) E.lure(t, 0.8);
       if (this.chains[i] > 0) {
-        const next = E.pickTarget(at[0], at[1], CHAIN_RANGE, "first", this.hitList[i], 0, at[2]);
+        const next = E.pickTarget(at[0], at[1], CHAIN_RANGE, "first", this.hitList[i], 0, at[2], D.elementOf(kind));
         // (a wisp's light fades as it leaps, unless at level II or with Kodama Choir, and a Lantern Choir's grows;
         // a Will-o'-Thorn seed leaps at its share, never past the hit: deepened, 0.6 × 2 leaps at 1, not 1.2)
         const k = kind === "thorn" ? Math.min(B.pierceChain || 0.85, 1) : br ? 1.15 : G.state.mod("choir") > 0 || lv >= 2 ? 1 : 0.85;
@@ -22310,6 +22590,8 @@ function MA_DSP() {
       this.unsub = [
         G.on("leaked", (e) => { this.chalFail("untouched"); this.heartShock = Math.min(0.5, this.heartShock + 0.25); st.leaked++; add(st.leakedBy, e.kind); st.lastLeak = e.kind; }),
         G.on("kill", (e) => { st.kills[e.kind] = (st.kills[e.kind] || 0) + 1; if (e.element >= 0) st.byElement[e.element]++; st.dew += Math.round(e.reward * S.mod("dew_gain")); }),
+        G.on("spill", (e) => { st.spilt = (st.spilt || 0) + e.amount; }),
+        G.on("dew_gain", (e) => { if (e.src === "sundew") st.sundew = (st.sundew || 0) + e.amount; }),
         G.on("tower_placed", () => { if (S.phase === G.Phase.WAVE) this.chalFail("handsoff"); }),
         G.on("tower_upgraded", (e) => { add(st.grownBy, e.kind); if (S.phase === G.Phase.WAVE && !e.free) this.chalFail("handsoff"); }),
         G.on("tower_sold", (e) => add(st.soldBy, e.tower.kind)),
@@ -22349,6 +22631,7 @@ function MA_DSP() {
       const cost = t.upgradeCost();
       if (t.level >= D.MAX_LEVEL || !S.spend(cost)) return false;
       t.invested += cost; t.upgrade(branch); this.stats.grown++; this.stats.spent += cost;
+      if (t.def.util) this.relink(); // (a helper's figure goes with its level)
       if (t.forked) this.stats.forked++;
       G.emit("tower_upgraded", { kind: t.kind, level: t.level, pos: [t.X, t.Y, t.VZ], tower: t, branch: t.branch });
       return true;
@@ -22425,11 +22708,37 @@ function MA_DSP() {
         p.zone = this.world.zoneAt(p.cx, p.cy);
         if (p.zone) for (const k in p.zone.gives) p.bond[k] = (p.bond[k] || 0) + p.zone.gives[k];
       }
+      // the helper plants (Defs.UTILITY): a Nurse Stump's 8 neighbours fire faster (III: reach further), the
+      // Cisterns raise the dew cap (State.cap), and the Sundews' reaches go to the creatures (Enemies.kill)
+      S.capExtra = 0; S.sundews = [];
+      for (const u of this.towers) {
+        const fig = u.def.util && u.def.util[u.level - 1];
+        if (u.kind === "cistern") S.capExtra += fig;
+        else if (u.kind === "sundew") S.sundews.push([u.X, u.Y, u.def.range, fig]);
+        else if (u.kind === "stump") for (const t of this.towers) for (const p of t.twin ? [t, t.twin] : [t]) {
+          if (t === u || p.def.util || Math.abs(t.cx - u.cx) > 1 || Math.abs(t.cy - u.cy) > 1) continue;
+          p.bond.rate = (p.bond.rate || 0) + fig;
+          if (u.level >= D.MAX_LEVEL) p.bond.range = (p.bond.range || 0) + 0.08;
+        }
+      }
       G.emit("links", { count: this.towers.reduce((n, t) => n + t.links.length, 0) / 2 });
     }
 
+    // a Glowcap's light: the Veiled creatures within its figure are seen (every plant can harm them) for a
+    // moment after they leave it; at III they take 15% more while seen
+    reveal() {
+      const E = this.enemies;
+      for (const u of this.towers) if (u.kind === "glowcap") {
+        const r2 = u.def.util[u.level - 1] ** 2, amt = u.level >= D.MAX_LEVEL ? 0.15 : 0;
+        E.forEachLive((i) => {
+          if (E.ct[i] !== 1 || (E.px[i] - u.X) ** 2 + (E.py[i] - u.Y) ** 2 > r2) return;
+          E.seenAmt[i] = Math.max(amt, E.seenT[i] > 0 ? E.seenAmt[i] : 0);
+          E.seenT[i] = 0.25;
+        });
+      }
+    }
     // --- waves
-    plan(wave) { if (!this.plans.has(wave)) this.plans.set(wave, D.planWave(wave, S.seed)); return this.plans.get(wave); }
+    plan(wave) { if (!this.plans.has(wave)) this.plans.set(wave, D.planWave(wave, S.seed, S.level)); return this.plans.get(wave); }
     // creatures of the running wave still to come or on the field, per kind
     remaining() {
       const out = {};
@@ -22524,6 +22833,18 @@ function MA_DSP() {
     // every plant that plays, a graft's twin with it (Tower.twin)
     plants() { return this.towers.flatMap((t) => (t.twin ? [t, t.twin] : [t])); }
     restPlants() { for (const t of this.plants()) { t.beams = 0; t.cloudT = 0; t.bursts = 0; t.cloud = null; t.glass = { uid: -1, wave: -1, hold: 0 }; for (const r of t.rays) { r.t = -1; r.uid = -1; r.hold = 0; } } }
+    // The living map's act turn (D.LEVEL_ACTS): when the coming wave lies in a later act, the ground, roads and
+    // zones change (World.toAct), each turned act's heart grows and heals the Heart Tree, and the lane's
+    // blight floor rises (Blight.floor). In the build phase only (chooseBoon, skipWave), before the autosave.
+    actTurn() {
+      const w = this.world;
+      if (!w.acts) return;
+      const turned = w.toAct(w.actAt(S.wave + 1));
+      if (!turned.length) return;
+      for (const a of turned) if (a && a.heart) { S.heartMax += 2 * a.heart; S.healHeart(2 * a.heart); }
+      this.blight.floor(D.ACT_SCAR * (w.act - 1));
+      G.emit("act", { act: w.act, data: w.acts[w.act - 1] });
+    }
     chooseBoon(b) {
       const rest = this.offer ? this.offer.filter((o) => o !== b) : [];
       const lv = S.applyBoon(b); this.offer = null;
@@ -22538,6 +22859,7 @@ function MA_DSP() {
       this.extra = 0;
       // (a wave called early is owed its own draft: the next one follows at once)
       if (this.owed > 0) { this.owed--; this.offerBoons(); return; }
+      this.actTurn();
       S.setPhase(G.Phase.BUILD);
       G.emit("waves");
     }
@@ -22692,7 +23014,7 @@ function MA_DSP() {
       if (this.riteBlocked(id)) return false;
       const r = D.RITES.find((x) => x.id === id), cost = this.riteCost(id), E = this.enemies;
       if (id === "frost") E.forEachLive((i) => E.applySlow(i, r.slow, r.secs));
-      else if (id === "downpour") E.forEachLive((i) => E.wash(i, r.cells));
+      else if (id === "downpour") E.forEachLive((i) => { E.wash(i, r.cells); if (E.ct[i] === 0) E.groundT[i] = D.CT_GROUND; });
       else if (id === "bloom") { this.bloomT = r.secs; S.riteRate = r.rate; }
       this.stats.rites[id] = (this.stats.rites[id] || 0) + 1;
       G.emit("rite", { id, cost });
@@ -22713,6 +23035,7 @@ function MA_DSP() {
       if (this.skipBlocked()) return false;
       const cost = this.skipCost();
       S.nextWave(); this.stats.skipped++; S.offBoard = true;
+      this.actTurn();
       G.emit("wave_skipped", { wave: S.wave, cost });
       this.sink("skip", cost); // last: its "sunk" saves the game (Save.watch)
       G.emit("waves");
@@ -22732,14 +23055,15 @@ function MA_DSP() {
         for (const st of this.streams) {
           st.timer -= dt;
           while (st.timer <= 0 && st.queue.length) {
-            const [kind, delay] = st.queue.shift();
-            if (kind) this.enemies.spawn(kind, st.hpMult, st.trait);
+            const [kind, delay, ct = -1] = st.queue.shift();
+            if (kind) this.enemies.spawn(kind, st.hpMult, st.trait, null, ct);
             st.timer += delay;
           }
         }
         if (this.streams.some((st) => !st.queue.length)) this.streams = this.streams.filter((st) => st.queue.length);
       }
       this.enemies.update(dt, this.time);
+      this.reveal();
       for (const t of this.towers) t.update(dt, this);
       this.shots.update(dt);
       if (S.phase === G.Phase.WAVE) this.boonsAct(dt);
@@ -22871,8 +23195,9 @@ function MA_DSP() {
   // has two entrances); a v2 save was taken on a one-road garden and goes on as it is. 4: a plant names its
   // branch at level III (Defs.FORKS), a 6th field; a v3 save's plants all grew the one way ("a"). 5: a graft
   // names its other parent's kind and branch, a 7th and 8th field (Game.graft), and the exact block its
-  // cooldown; a v4 save has no grafts.
-  const KEY = "mossheart.run", VERSION = 5;
+  // cooldown; a v4 save has no grafts. 6: the run's seed pouch, loadout { plants, util } (State.setPouch); a v5
+  // save grew its garden's LEVEL_PLANTS and no helper (loadout null).
+  const KEY = "mossheart.run", VERSION = 6;
   // the autosave's pending timer and its save (Save.watch, Save.flush)
   const SAVE_DELAY_MS = 500;
   let pending = 0, flushFn = null;
@@ -22882,7 +23207,8 @@ function MA_DSP() {
     d = migrate1(d);
     if (d && d.v === 2 && Array.isArray(d.level)) d = Object.assign({}, d, { v: 3, level: [...d.level.slice(0, 3), 1] });
     if (d && d.v === 3 && Array.isArray(d.towers)) d = Object.assign({}, d, { v: 4, towers: d.towers.map((t) => [...t.slice(0, 5), "a"]) });
-    return d && d.v === 4 ? Object.assign({}, d, { v: 5 }) : d;
+    if (d && d.v === 4) d = Object.assign({}, d, { v: 5 });
+    return d && d.v === 5 ? Object.assign({}, d, { v: 6, loadout: null }) : d;
   };
   const migrate1 = (d) => {
     if (!d || d.v !== 1) return d;
@@ -22899,6 +23225,11 @@ function MA_DSP() {
   const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
   const quantise = (f32) => { const u = new Uint8Array(f32.length); for (let i = 0; i < u.length; i++) u[i] = Math.round(Math.min(1, f32[i]) * 255); return u; };
 
+  // the living map's act a save stands in (Game.actTurn turns it as the build phase opens: the coming wave's act
+  // in a build phase, the wave just won's while its gifts are on offer); 1 on a garden without acts
+  const actOf = (w, d) => w.actAt(d.wave + (d.phase === P.CHOOSE_BOON ? 0 : 1));
+  // the run's pouch (a v5 save's: the garden's plants and no helper)
+  const loadoutOf = (d) => d.loadout || { plants: D.plantsOf(S.level).slice(), util: "" };
   // whether a save belongs on this level and this version of the rules (Save.fits; may throw on a malformed one)
   const fitsOrThrow = (game, d) => {
     if (!d || d.v !== VERSION) return false;
@@ -22908,11 +23239,15 @@ function MA_DSP() {
     if (unb64(d.blight.level).length !== n || unb64(d.blight.scar).length !== n) return false;
     const x = d.exact;
     if (x && (unb64(x.blight.level).length !== n * 4 || unb64(x.blight.scar).length !== n * 4 || unb64(x.blight.active).length % 4 || x.cooldown.length !== d.towers.length || x.live.length !== 5)) return false;
-    const seen = new Set();
+    // (every plant, and a graft's other parent, from the pouch)
+    const lo = loadoutOf(d), grown = new Set([...lo.plants, lo.util]);
+    if (!lo.plants.every((k) => D.TOWERS[k] && !D.isUtil(k)) || (lo.util && !D.isUtil(lo.util))) return false;
+    const seen = new Set(), act = actOf(w, d);
     if (x && x.twin && x.twin.length !== d.towers.length) return false;
     for (const [kind, cx, cy, level, , branch = "a", twin = null, twinBranch = "a"] of d.towers) {
       const k = w.idx(cx, cy);
-      if (!D.TOWERS[kind] || !w.inside(cx, cy) || w.blocked[k] || seen.has(k) || !(level >= 1 && level <= D.MAX_LEVEL)) return false;
+      if (!grown.has(kind) || (twin !== null && !grown.has(twin))) return false;
+      if (!D.TOWERS[kind] || !w.inside(cx, cy) || !w.openIn(k, act) || seen.has(k) || !(level >= 1 && level <= D.MAX_LEVEL)) return false;
       if (branch !== "a" && !(branch === "b" && D.FORKS[kind] && level === 3)) return false;
       if (twin !== null && !(level === 3 && D.graftOf(kind, twin) && (twinBranch === "a" || (twinBranch === "b" && D.FORKS[twin])))) return false;
       seen.add(k);
@@ -22933,7 +23268,7 @@ function MA_DSP() {
       return {
         v: VERSION, level: [w.W, w.H, +w.len.toFixed(3), w.roads.length], saved: Date.now(),
         seed: S.seed, rng: S.rng.state(), wave: S.wave, dew: S.dew, heart: [S.heartHp, S.heartMax],
-        boons: S.boons.slice(), best: S.best,
+        boons: S.boons.slice(), best: S.best, loadout: S.pouch(),
         phase: S.phase, offer: S.phase === P.CHOOSE_BOON && game.offer ? game.offer.map((o) => o.id) : null,
         // (the drafts still owed after this one, for waves called early: Game.owed)
         owed: S.phase === P.CHOOSE_BOON ? game.owed : 0,
@@ -22984,7 +23319,11 @@ function MA_DSP() {
         S.rng.state(d.rng);
         S.wave = d.wave; S.dew = d.dew; S.heartHp = d.heart[0]; S.heartMax = d.heart[1];
         S.boons = d.boons.slice(); S.rebuildMods(); S.best = Math.max(S.best, d.best || 0);
+        S.setPouch(loadoutOf(d));
         const w = game.world;
+        // the acts turned by then: their cells open, roads wake, zones change (the Heart Tree's added vitality
+        // is in the saved heart, the scar floor in the saved blight)
+        w.toAct(actOf(w, d));
         for (const [kind, cx, cy, level, invested, branch = "a", twin = null, twinBranch = "a"] of d.towers) {
           const t = new G.Tower(kind, cx, cy, w, game.body);
           t.level = level; t.invested = invested; t.branch = branch; t.refresh();
@@ -25380,7 +25719,7 @@ ${K} .coachrow .btn { box-shadow: 0 2px 0 #2b2c22; }
   // is its glow 0..1 (dim by day, full at dusk)
   G.MARK = { WEAK_SHIFT: 4, HIT_SHIFT: 8, HIT_WEAK: 1 << 10, HIT_RESISTED: 1 << 11, SLOWED: 1 << 13, GHOST_OK: 1 << 14, GHOST_BAD: 1 << 15, SELECTED: 1 << 16, STANDIN: 1 << 17, PLANT_SHIFT: 18, CREATURE: 1 << 21, HEART: 1 << 22, HEART_SHIFT: 23, WISP: 1 << 25 };
   ME.content = ME.content || {}; ME.content.wispMark = G.MARK.WISP;
-  G.plantMark = (kind) => (G.standIn && G.standIn(kind) !== kind ? G.MARK.STANDIN | (G.Defs.TOWER_ORDER.indexOf(kind) << G.MARK.PLANT_SHIFT) : 0);
+  G.plantMark = (kind) => (G.standIn && G.standIn(kind) !== kind && !G.Defs.TOWERS[kind].util ? G.MARK.STANDIN | (G.Defs.TOWER_ORDER.indexOf(kind) << G.MARK.PLANT_SHIFT) : 0);
   // the creatures that can stand in another's model (the first 8 with a Defs `standIn`), and the mark of a
   // creature kind (an index into Defs.ENEMY_ORDER): 0 once Art's model is in
   const STANDIN_CREATURES = G.Defs.ENEMY_ORDER.filter((k) => G.Defs.ENEMIES[k].standIn).slice(0, 8);
@@ -25550,7 +25889,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // (ME.Sky's setup hook, view/atmos.js; Settings' "Levels set the sky" turns it off): the mood, the Light and
   // the front Dynamic starts on (Art, 2026-11-10)
   G.LEVELS = {
-    momiji: { name: "Momiji Valley", sky: { mood: "morning", look: "cosy", weather: "clear" } },
+    momiji: { name: "Momiji Valley", living: true, sky: { mood: "morning", look: "cosy", weather: "clear" } },
     fernglass: { name: "Fernglass", sky: { mood: "golden", look: "cosy", weather: "mistmorn" } },
     cornmoon: { name: "Corn Moon", sky: { mood: "night", look: "cosy", weather: "moonlit" } },
     everstair: { name: "Ever Stair", locked: true, sky: { mood: "clear", look: "clear", weather: "clear" } },
@@ -25629,7 +25968,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // the water tiles (the "water" recipe or a flood), for the plots beside them (core/world.js, zones)
     const water = new Uint8Array(W * H);
     for (let i = 0; i < W * H; i++) if (TL.recipe[i] === "water" || (TL.wet && TL.wet[i] === 1)) water[i] = 1;
-    return Object.assign(G.rulesLevel(rec), { blocked, water, heart: (map.game && map.game.heart) || [7.5, 5.5], split: (map.game && map.game.split) || null, viewGroundZ: G.groundOf(T), rules: rec }, rec.VS !== T.VS ? { viewRoads: sim.roads || [sim] } : {});
+    // the living map's acts (Defs.LEVEL_ACTS) on a living garden, behind ?acts=1 for now
+    const acts = ME.qn("acts", 0) && (G.LEVELS[G.state.level] || {}).living ? G.Defs.LEVEL_ACTS[G.state.level] || null : null;
+    G.living = !!acts;
+    return Object.assign(G.rulesLevel(rec), { blocked, water, heart: (map.game && map.game.heart) || [7.5, 5.5], split: (map.game && map.game.split) || null, acts, viewGroundZ: G.groundOf(T), rules: rec }, rec.VS !== T.VS ? { viewRoads: sim.roads || [sim] } : {});
   };
 
   // Wider lanes (the user's ask, 2026-10-22): before the bake, moss beside the route becomes the "lane" kind
@@ -25715,6 +26057,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const MAXP = 2600;
   // dew labels: a kill within DEW_MERGE.t of a label's life and DEW_MERGE.d tiles of it adds to it; droplets in flight at most
   const DEW_MERGE = { t: 0.3, d: 1.6 }, DROPS = 8;
+  // combat numbers: labels at most at once, and a creature's label adds its next hits while younger than NUM_MERGE
+  // of its life (0.9 s), so a burn's ticks or a volley read as one number
+  const NUMS = 16, NUM_MERGE = 0.4;
   // CSS colour of an [r, g, b] 0..1 triple
   G.css = (c, a = 1) => `rgba(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)}, ${a})`;
 
@@ -25754,6 +26099,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.dews = Array.from({ length: 12 }, () => { const el = document.createElement("div"); el.className = "float dew"; el.innerHTML = "<i></i><span></span>"; this.layer.appendChild(el); return { el, t: 1, p: [0, 0, 0], n: 0, src: "" }; });
       this.di = 0; this.lastDew = null; this.flights = []; this.flyAt = 0;
       this.drops = Array.from({ length: DROPS }, () => { const el = document.createElement("i"); el.className = "fly"; this.layer.appendChild(el); return { el, busy: false }; });
+      // combat numbers (G.numbers, Settings > Game): the damage each creature takes, from the HP it loses
+      // between frames (hpDiff: every source, shots, burns, poison, pops), rising off it; the oldest given up first
+      this.nums = Array.from({ length: NUMS }, () => { const el = document.createElement("div"); el.className = "float num"; this.layer.appendChild(el); return { el, t: 1, p: [0, 0, 0], n: 0, k: -1, uid: -1 }; });
+      this.kills = [];
       const on = (ev, fn) => G.on(ev, (e) => { if (this.world) fn(e); });
       on("fire", (e) => {
         if (e.kind === "sun" && e.target) { this.beam(e.pos, e.target); this.burst("hit_sun", e.target); }
@@ -25768,6 +26117,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       });
       on("kill", (e) => {
         const p = [e.pos[0], e.pos[1], e.pos[2] + 0.25];
+        if (G.numbers) this.kills.push(e.pos);
         this.burst(e.boss ? "boss_kill" : "kill", p);
       });
       on("leaked", () => { const w = this.world; this.burst("heart", [w.heart[0], w.heart[1], w.heartZ + 1.1]); });
@@ -25783,7 +26133,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
     // a new run: forget the old one's effects
     reset(world) {
-      this.world = world; this.n = 0; this.beams = []; this.rings = [];
+      this.world = world; this.n = 0; this.beams = []; this.rings = []; this.hpWas = null; this.kills = []; for (const L of this.nums) L.t = 1;
       for (const L of this.labels) L.t = 1;
       for (const L of this.dews) L.t = 1;
       this.lastDew = null; this.flights = [];
@@ -25838,7 +26188,35 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       // a droplet flies to the counter, a few a second at most (sent from place(), which has the camera)
       if (e.src === "kill" && !document.body.classList.contains("calm") && this.flyAt <= 0) { this.flights.push(at); this.flyAt = 1 / 6; }
     }
-    update(dt) {
+    // Each creature's HP (with its shell) against the last frame's: a drop pops a number over it; a creature
+    // gone since, where a "kill" fired, shows the HP it still had (a leak shows none). Numbers off: it only keeps
+    // the record current.
+    hpDiff(E) {
+      const N = G.ENEMY_CAPACITY, kills = this.kills, on = !!G.numbers;
+      this.kills = [];
+      if (!this.hpWas) { this.hpWas = new Float32Array(N); this.uidWas = new Int32Array(N).fill(-1); this.posWas = new Float32Array(N * 3); }
+      for (let k = 0; k < N; k++) {
+        const was = this.uidWas[k], o = k * 3;
+        if (E.alive[k]) {
+          const hp = E.hp[k] + E.shell[k], uid = E.uid[k];
+          this.posWas[o] = E.px[k]; this.posWas[o + 1] = E.py[k]; this.posWas[o + 2] = E.vz[k] + E.body.creatureH[E.kind[k]] + 0.3;
+          if (on && was === uid && this.hpWas[k] - hp > 0.05 && !E.hidden(k)) this.numPop(k, uid, this.hpWas[k] - hp, this.posWas.slice(o, o + 3));
+          this.uidWas[k] = uid; this.hpWas[k] = hp;
+        } else if (was >= 0) {
+          if (on && this.hpWas[k] > 0.05) for (const p of kills) if (Math.hypot(p[0] - this.posWas[o], p[1] - this.posWas[o + 1]) < 0.6) { this.numPop(k, was, this.hpWas[k], this.posWas.slice(o, o + 3)); break; }
+          this.uidWas[k] = -1;
+        }
+      }
+    }
+    numPop(k, uid, d, at) {
+      let L = this.nums.find((x) => x.k === k && x.uid === uid && x.t < NUM_MERGE);
+      if (!L) { L = this.nums.reduce((a, b) => (b.t > a.t ? b : a)); L.n = 0; L.k = k; L.uid = uid; L.t = 0; }
+      L.n += d; L.p = at;
+      L.el.textContent = String(Math.max(1, Math.round(L.n)));
+    }
+    update(dt, E) {
+      if (E && this.world) this.hpDiff(E);
+      for (const L of this.nums) if (L.t < 1) L.t += dt / 0.9;
       this.flyAt -= dt;
       // particles: drift, damping, gravity; swap-remove the dead
       for (let i = 0; i < this.n; i++) {
@@ -25886,6 +26264,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         const e = 1 - Math.pow(1 - L.t, 3), [x, y] = cam.toScreen([L.p[0], L.p[1], L.p[2] + 0.5 * e], canvas.width, canvas.height);
         L.el.style.transform = `translate(${(x / dpr).toFixed(1)}px, ${(y / dpr).toFixed(1)}px) translate(-50%, -50%)`;
         L.el.style.opacity = String(L.t < 0.33 ? 1 : Math.max(0, 1 - (L.t - 0.33) / 0.67));
+      }
+      // the combat numbers rise half a tile as they fade; with reduced motion they fade where they are
+      const rise = document.body.classList.contains("calm") ? 0 : 0.5;
+      for (const L of this.nums) {
+        if (L.t >= 1) { if (L.el.style.opacity !== "0") L.el.style.opacity = "0"; continue; }
+        const e = 1 - Math.pow(1 - L.t, 3), [x, y] = cam.toScreen([L.p[0], L.p[1], L.p[2] + rise * e], canvas.width, canvas.height);
+        L.el.style.transform = `translate(${(x / dpr).toFixed(1)}px, ${(y / dpr).toFixed(1)}px) translate(-50%, -50%)`;
+        L.el.style.opacity = String(L.t < 0.4 ? 1 : Math.max(0, 1 - (L.t - 0.4) / 0.6));
       }
     }
     // the waiting droplets leave their creature on the screen and arc to the counter's droplet
@@ -26522,6 +26908,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     briar: [[1.0, 0.32, 0.26], 0.8, 0.3], toad: [[1.0, 0.6, 0.3], 1.1, 0.6], moon: [[0.48, 0.64, 1.0], 1.6, 1.0], lily: [[0.8, 1.0, 0.9], 1.7, 1.2],
     // a graft (Defs.GRAFTS), by the model it grows into (modelKind), lights as its host for now (Art's placeholder pick, 2026-11-06)
     warden: [[1.0, 0.45, 0.85], 0.9, 0.35], eclipse: [[1.0, 0.85, 0.45], 1.4, 0.9], mire: [[1.0, 0.6, 0.3], 1.1, 0.6], lantern: [[0.8, 1.0, 0.9], 1.7, 1.2],
+    // a helper (Defs.UTILITY): only the Glowcap glows (its light is its reveal reach); the others cast none
+    glowcap: [[0.95, 0.95, 0.55], 2.2, 0.9],
   };
   // the model a plant is drawn and lit as: a graft's own (G.GRAFT_ART), else its kind's
   const modelKind = (t) => (t.graft && G.GRAFT_ART && G.GRAFT_ART[t.graft.id] && G.GRAFT_ART[t.graft.id].model) || t.kind;
@@ -26633,6 +27021,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const list = [];
       for (const t of this.game.towers) {
         const L = LIGHT[modelKind(t)], o = t.origin();
+        if (!L) continue;
         list.push({ p: o, r: L[1] * (1 + 0.15 * (t.level - 1)), col: L[0], k: L[2] * (0.8 + 0.2 * t.level) });
       }
       this.R.setLights(list);
@@ -26670,7 +27059,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         a.lean[0] += (a.leanTo[0] - a.lean[0]) * k; a.lean[1] += (a.leanTo[1] - a.lean[1]) * k;
         a.leanTo[0] *= Math.exp(-dt * 1.5); a.leanTo[1] *= Math.exp(-dt * 1.5);
       }
-      this.fx.update(dt); this.boonFx.update(dt); this.plantFx.update(dt); this.creatureFx.update(dt);
+      this.fx.update(dt, this.game && this.game.enemies); this.boonFx.update(dt); this.plantFx.update(dt); this.creatureFx.update(dt);
       this.updateSand(dt); this.breakPots(dt);
       this.heartKick = Math.max(0, this.heartKick - dt * 1.6);
       // dusk falls while a wave runs, deeper as the run goes on and deepest for the boss; day to build in
@@ -27299,7 +27688,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       for (const kind of S.plants) {
         const def = D.TOWERS[kind], b = document.createElement("button");
         b.className = "seed"; b.style.setProperty("--acc", hex(def.color.map((v) => v * 0.75)));
-        b.innerHTML = `${icon("PLANT_ICONS", kind) ? `<span class="picon" style="color:${ink(def.color)}">${icon("PLANT_ICONS", kind)}</span>` : `<span class="dot" style="background:${hex(def.color)}"></span>`}<b>${def.name}</b><span class="el">${D.ELEMENT_NAMES[D.elementOf(kind)]}</span><span class="cost"></span><span class="tag"></span>`;
+        b.innerHTML = `${icon("PLANT_ICONS", kind) ? `<span class="picon" style="color:${ink(def.color)}">${icon("PLANT_ICONS", kind)}</span>` : `<span class="dot" style="background:${hex(def.color)}"></span>`}<b>${def.name}</b><span class="el">${D.isUtil(kind) ? "helper" : D.ELEMENT_NAMES[D.elementOf(kind)]}</span><span class="cost"></span><span class="tag"></span>`;
         b.title = def.desc;
         b.addEventListener("click", () => { this.selected = this.selected === kind ? "" : kind; this.act.seed(this.selected); this.refresh(); });
         seeds.appendChild(b); this.cards[kind] = b;
@@ -27952,15 +28341,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         this.glyphs = D.ENEMY_ORDER.map((k) => traitsOf(k).map((t) => t[1]).join(""));
         for (let n = 0; n < TAGS; n++) { const d = document.createElement("div"); d.className = "foetag"; d.style.display = "none"; $("floats").appendChild(d); this.tags.push({ el: d, txt: "" }); }
       }
-      const fi = this.foe && this.foe.i >= 0 ? this.foe.i : -1, list = [];
+      // (Combat numbers on, G.numbers: the HP left leads the tag, so every hurt creature gets one)
+      const fi = this.foe && this.foe.i >= 0 ? this.foe.i : -1, list = [], num = !!G.numbers;
       if (S.phase === G.Phase.WAVE) for (let k = 0; k < G.ENEMY_CAPACITY; k++) {
-        if (!E.alive[k] || E.hidden(k) || !this.glyphs[E.kind[k]] || (E.hp[k] >= E.maxHp[k] && k !== fi)) continue;
+        if (!E.alive[k] || E.hidden(k) || (!num && !this.glyphs[E.kind[k]]) || (E.hp[k] >= E.maxHp[k] && k !== fi)) continue;
         list.push(k);
       }
       list.sort((a, b) => E.near(b) - E.near(a));
       const n = Math.min(TAGS, list.length);
       for (let m = 0; m < n; m++) {
-        const k = list[m], tag = this.tags[m], g = this.glyphs[E.kind[k]], sz = Math.min(1.6, Math.max(1, E.defOf(k).size));
+        const k = list[m], tag = this.tags[m], gl = this.glyphs[E.kind[k]], g = num ? Math.max(0, Math.ceil(E.hp[k] + E.shell[k])) + (gl ? " " + gl : "") : gl, sz = Math.min(1.6, Math.max(1, E.defOf(k).size));
         if (tag.txt !== g) { tag.txt = g; tag.el.textContent = g; }
         const [x, y] = scr([E.px[k], E.py[k], E.vz[k] + E.body.creatureH[E.kind[k]] + 0.12]);
         tag.el.style.transform = `translate(${(x + 7.5 * sz + 3).toFixed(1)}px, ${y.toFixed(1)}px) translateY(-50%)`;
@@ -28053,6 +28443,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
     // which creatures a plant's element hurts most, and which shrug it off
     matchupsOf(kind) {
+      if (D.isUtil(kind)) return D.TOWERS[kind].desc;
       const el = D.elementOf(kind), strong = [], weak = [];
       for (const e of D.ENEMY_ORDER) { const a = D.affinity(e, null)[el]; if (a > D.WEAK_ABOVE) strong.push(D.ENEMIES[e].name); else if (a < D.RESIST_BELOW) weak.push(D.ENEMIES[e].name); }
       return `${D.ELEMENT_NAMES[el]}. Strong vs ${strong.length ? strong.join(", ") : "none"}.` + (weak.length ? ` Resisted by ${weak.join(", ")}.` : "");
@@ -28405,7 +28796,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
   // ------------------------------------------------------------------ the run log (the proxy only)
   const MOBILE = !!(window.ME && ME.phone && ME.phone()); // (the engine's phone test; no engine in the leaderboard check)
-  const version = () => (G.VERSION ? `${G.VERSION.v} ${G.VERSION.commit}`.slice(0, 32) : null);
+  // (a living-map run, G.living: its acts on, ?acts=1, tags its build " acts" so the one board tells them apart)
+  const version = () => (G.VERSION ? `${G.VERSION.v} ${G.VERSION.commit}`.slice(0, G.living ? 27 : 32) + (G.living ? " acts" : "") : null);
   const logOff = () => {
     const q = new URLSearchParams(location.search).get("runlog");
     return q === "0" || ((!!navigator.webdriver || /Headless/.test(navigator.userAgent || "")) && q !== "1");
@@ -28477,6 +28869,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const recap = (r, all) => {
     const b = byCount(r.boons), t = byCount(r.towers);
     let h = all && r.garden ? `<em class="lbg g-${r.garden}">${esc(gardenName(r.garden))}</em>` : "";
+    if (/ acts$/.test(r.version || "")) h += `<span class="lbset" title="Living map: the garden changes with its acts">🍂</span>`;
     if (r.maxDew != null) h += `<span class="lbdew" title="Most dew held">💧${fmt(r.maxDew)}</span>`;
     if (b.length) h += `<span class="lbset" title="Boons">${b.slice(0, 3).map((id) => gift(id, r.boons[id]).ic).join("")}${b.length > 3 ? `<small>+${b.length - 3}</small>` : ""}</span>`;
     if (t.length) h += `<span class="lbset" title="Plants">${t.slice(0, 3).map((k) => plant(k).ic + `<small>${r.towers[k]}</small>`).join("")}</span>`;
@@ -29109,6 +29502,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   };
   const calmOS = !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
   const DEFAULTS = {
+    numbers: true, // (combat numbers: HP beside the bars, damage rising off a hit; fx.js, hud.js foeTags)
     master: 0.7, music: 0.5, sfx: 0.7, ambience: 0.45, musicStyle: "mix",
     quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, vs: 64, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, hints: true, hintsSeen: [], weather: "normal", wxPicked: false, levelSky: true, glass: "auto", res: mobile ? PHONE_RES : "full", resPicked: false, ui: mobile ? PHONE_UI : 1, uiPicked: false,
   };
@@ -29420,6 +29814,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       document.documentElement.style.setProperty("--ts", s.text);
       this.applyUi();
       if (G.Skin) G.Skin.use((ME.params.get("skin") || s.theme) === "paper" ? null : "overgrown"); // (?skin=paper|overgrown pins it, as a check or a screenshot wants)
+      G.numbers = ME.params.has("numbers") ? ME.qn("numbers", 1) !== 0 : !!s.numbers; // (?numbers=0|1 pins it for a check)
       if (a && a.mixer) {
         const bus = a.mixer.bus, set = (n, v) => { if (bus[n] && bus[n].gain) bus[n].gain.value = v * s.master; };
         set("Music", s.music); set("Sfx", s.sfx); set("Ambience", s.ambience);
@@ -29481,6 +29876,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         choice("fps", "Show fps", [[true, "On"], [false, "Off"]]) +
         choice("tips", "First-run tips", [[true, "On"], [false, "Off"]]) + `<div class="note dim">A few tips on a fresh run: planting, the almanac, the first wave. They turn off when done.</div>` +
         choice("hints", "Game tips", [[true, "On"], [false, "Off"]]) + `<div class="note dim">A note by the HUD the first time a mechanic matters: why it works, what it pairs with. A tap hides it. <button class="btn tiny" data-a="resettips">Reset tips</button></div>` +
+        choice("numbers", "Combat numbers", [[true, "On"], [false, "Off"]]) + `<div class="note dim">A hurt creature's health as a number beside its bar, and each hit's damage rising off it (fading in place with reduced motion).</div>` +
         `<h3>Comfort</h3>` + choice("motion", "Motion", [["full", "Full"], ["reduced", "Reduced"]]) +
         `<div class="note dim">Reduced: no screen shake or lightning, softer flashes, lighter rain and snow.</div>` +
         choice("text", "Text size", [[1, "Normal"], [1.15, "Large"], [1.3, "Larger"]]) +
@@ -32692,10 +33088,15 @@ function MG_SFX(L) {
       for (const t of game.towers) if (t.level < D.MAX_LEVEL && S.dew > t.upgradeCost() + 80 && this.rng.f() < 0.5) game.upgrade(t, this.hooks.branch && this.hooks.branch(t.kind) ? "b" : "a");
       // lead with the plant (of those the garden grows, State.plants) the coming wave is most weak to, then mostly that with some variety
       const coming = game.plan(S.wave + 1);
+      // the pouch's helper plant (Defs.UTILITY), by the design's policies: a Dew Cistern when the dew is within
+      // 15% of the cap; a Sundew on the cell that covers the most road (one, and one more every 10 waves); a
+      // Glowcap by the road when the coming wave brings Veiled creatures (two at most); a Nurse Stump on the free
+      // cell with the most plants around it (one per 6 plants)
+      this.helper(coming);
       // (and toward the plants its gifts favour, as a player who took Kindred Wisps sows wisps: as likely
       // again per level of a gift for that plant)
       const pull = (k) => 1 + S.boons.filter((id) => D.boon(id).el === k).length;
-      const kinds = S.plants.slice().sort((a, b) => counterScore(coming, b) * pull(b) - counterScore(coming, a) * pull(a));
+      const kinds = S.plants.filter((k) => !D.isUtil(k)).sort((a, b) => counterScore(coming, b) * pull(b) - counterScore(coming, a) * pull(a));
       const cost = (k) => S.towerCost(D.TOWERS[k].cost, k);
       for (let tries = 0, placed = 0; tries < 200; tries++) {
         let kind = placed === 0 || this.rng.f() < 0.6 ? kinds[0] : kinds[this.rng.i(kinds.length)];
@@ -32708,6 +33109,31 @@ function MG_SFX(L) {
         if (!c || !game.place(kind, c[0], c[1])) break;
         placed++;
       }
+    }
+    helper(coming) {
+      const g = this.game, kind = S.plants.find((k) => D.isUtil(k));
+      if (!kind) return;
+      const cost = S.towerCost(D.TOWERS[kind].cost, kind), have = g.towers.filter((t) => t.kind === kind).length;
+      if (!S.canAfford(cost)) return;
+      let want = false;
+      if (kind === "cistern") want = S.dew >= 0.85 * S.cap();
+      else if (kind === "sundew") want = have < 1 + Math.floor(S.wave / 10) && S.dew >= cost + 60;
+      else if (kind === "glowcap") want = have < 2 && coming.cts && coming.cts.veiled > 0;
+      else if (kind === "stump") want = have < Math.floor(g.towers.length / 6);
+      if (!want) return;
+      const c = kind === "stump" ? this.crowdedCell(kind) : this.bestCell(kind);
+      if (c && g.place(kind, c[0], c[1])) this.hooks.log(`  helper ${kind} for ${cost} dew`);
+    }
+    // the free cell with the most plants among its 8 neighbours (a Nurse Stump's)
+    crowdedCell(kind) {
+      const g = this.game, w = g.world;
+      let best = null, top = 0;
+      for (let y = 0; y < w.H; y++) for (let x = 0; x < w.W; x++) {
+        if (!g.canPlace(kind, x, y)) continue;
+        let n = 0; for (const t of g.towers) if (!t.def.util && Math.abs(t.cx - x) <= 1 && Math.abs(t.cy - y) <= 1) n++;
+        if (n > top) { top = n; best = [x, y]; }
+      }
+      return best;
     }
     // a free cell where a plant of `kind` reaches the most path and links best, picked among the best few so runs differ
     bestCell(kind) {
@@ -32966,7 +33392,7 @@ function MG_SFX(L) {
     // in its own colour (G.plantMark); the rules get that model's height.
     {
       const frames = G.models.towerFrames, height = G.body.towerH;
-      G.standIn = (kind) => (frames(kind, 1) ? kind : D.ELEMENT_TOWER[D.elementOf(kind)]);
+      G.standIn = (kind) => (frames(kind, 1) ? kind : D.TOWERS[kind].standIn || D.ELEMENT_TOWER[D.elementOf(kind)]);
       G.models.towerFrames = (kind, lv) => frames(G.standIn(kind), lv);
       G.body.towerH = (kind, lv) => height(G.standIn(kind), lv);
     }
@@ -33346,9 +33772,9 @@ function MG_SFX(L) {
       // N frames with a scripted mini battle (a few plants, wave 1 running) for timings and GPU errors
       const N = ME.qn("frames", 240), cpus = [], ints = [];
       for (const [kind, cx, cy] of [["thorn", 20, 6], ["puff", 18, 10], ["sun", 17, 14], ["wisp", 6, 13]]) if (game.world.isBuildable(cx, cy)) game.place(kind, cx, cy);
-      // and one of each newer plant (dew given), on the free cells nearest the road
-      S.dew += 800;
-      for (const kind of D.TOWER_ORDER.slice(4)) {
+      // and one of each newer plant and helper (dew given), on the free cells nearest the road
+      S.dew += 1200;
+      for (const kind of [...D.TOWER_ORDER.slice(4), ...D.UTILITY]) {
         const w = game.world;
         let best = null;
         for (let y = 0; y < w.H; y++) for (let x = 0; x < w.W; x++) if (game.canPlace(kind, x, y) && (!best || w.pathDist[w.idx(x, y)] < w.pathDist[w.idx(best[0], best[1])])) best = [x, y];
