@@ -8756,6 +8756,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           // to the first worker done, not behind the full bakes already posted (ME.bakeJobDepth of them)
           run.depth = 1;
           run.add(h.full);
+          const progFail = ME.q("progfail", null);
           while (order.length) {
             const g = order.shift();
             if (cancelled) { ok = false; break; }
@@ -8803,6 +8804,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
               recs.push({ name: variants[i].name, base: px.base, dims: r.dims, box: r.box, lo: fv.lo, hi: fv.hi, k: md.k, fine: vf, h: (md.h * md.k) / vf, r: (md.r * md.k) / vf, lod: MB.models[i].lod });
               lrecs.push(lv ? { base: lp.base, dims: f.lod.dims, lo: lv.lo, hi: lv.hi } : null);
               got += need;
+              // ?progfail=<key> (a debug knob; * for every flipbook): the flipbook fails once its first frame is in,
+              // so one launch runs the rollback below with frames put, slots taken and interior bricks counted
+              if (progFail && (progFail === "*" || progFail === g.key)) { fail = "?progfail"; break; }
             }
             if (cancelled) { ok = false; break; } // (the app is done with R: nothing more to upload)
             if (fail) {
@@ -9721,6 +9725,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 (function () {
   const ME = window.ME;
   const INST_FLOATS = 28; // 6 x vec4 matrices + vec4u info
+  // put()'s flags: bits 0..7 mark a unit (any of them: lit as a unit, light.js), INST_FLY a flier with a blob shadow
+  // (E1b), bits 8..15 the veil (E1a): 0 opaque, else 255 - alpha * 255, dithered away in the volume pass
+  const INST_FLY = 2, BLOB_MAX = (ME.BLOB_MAX = ME.BLOB_MAX || 16);
   const content = () => ME.content || {}, NONE = {};
   // 3x3 products into a scratch matrix (row-major, the same sums in the same order as before E9)
   const mul3 = (A, B, O) => { for (let r = 0; r < 3; r++) for (let k = 0; k < 3; k++) O[r * 3 + k] = A[r * 3] * B[k] + A[r * 3 + 1] * B[3 + k] + A[r * 3 + 2] * B[6 + k]; return O; };
@@ -9966,6 +9973,17 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       this.stillAt = new Int32Array(NS).fill(-1); this.stillMi = new Int32Array(NS); this.stillP = new Float64Array(NS * 5); this.stillN = 0;
       this.mx = { R: new Float64Array(9), P: new Float64Array(9), F: new Float64Array(9), S: new Float64Array(9), H: new Float64Array(9), A: new Float64Array(9), B: new Float64Array(9), C: new Float64Array(9), L: new Float64Array(9), G: new Float64Array(9), W: new Float64Array(9) };
       this.sh2 = [0, 0]; this.sc3 = [0, 0, 0]; this.at5 = [0, 0, 0, 0, 0, 0]; this.up3 = [0, 0, 1]; this.dirty = [0, 0];
+      // E1b: this update's flier shadows (x, y, z of the anchor, radius; a zero radius ends the list: the uniform's u.blob)
+      this.blob = new Float32Array(BLOB_MAX * 4); this.blobN = 0;
+      // demo hooks (?veil=, ?winged=): extra flags on the route walkers (INST_FLY only on the flying ones), and
+      // the flying walkers' height in place of their kind's fly (null: theirs)
+      this.walkerFlags = 0; this.wingedH = null;
+      // C1 (E14): with a ME.GpuInstances layer on (sim.gpu, src/instances.js), put writes a short record for every
+      // instance from recFrom on (the walkers and the layers; Infinity: none) and the GPU builds its row; tick counts the updates
+      this.gpu = null; this.recFrom = Infinity; this.tick = 0;
+      // C2: sim.rigs = { walker type: ME.Rig } draws the walkers of that type as their rig's parts (src/rig.js), one
+      // instance a part; wAt is then each walker's first instance (who), wEnd the instance after the last walker's
+      this.rigs = null; this.wAt = null; this.wEnd = 0;
     }
     // A road from a route on this sim's terrain (roadOf)
     road(route) { return roadOf(this.T, route); }
@@ -10000,7 +10018,17 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // pitch: R = frame * R(yaw) * P(pitch), a walker on a wall face. No frame: the floor's arithmetic, the same bytes.
     // (E9: scalar math on scratch matrices, no allocation; the same arithmetic as before, so the same bytes)
     put(i, mi, X, Y, Z, yaw, flip, sc, sh, flags, pitch = 0, mark = 0, markV = 0, frame = null) {
-      const m = this.MB.models[mi], vs = this.VS / (m.kf || 1), c = Math.cos(yaw), s = Math.sin(yaw), M = this.mx;
+      const m = this.MB.models[mi], vs = this.VS / (m.kf || 1);
+      // E1b: a flier (flags & ME.INST_FLY) casts a blob shadow on what lies below its anchor, this update's list
+      // (before the GPU path: a C1 GPU-built flier keeps its shadow; the flags themselves go into its record)
+      if (flags & INST_FLY && this.blobN < ME.BLOB_MAX) {
+        const B = this.blob, k = this.blobN++ * 4;
+        // the radius: half the model's wider side in tiles (its voxels over vs), scaled; 0.12..0.8 keeps it a soft blob
+        const r = m.dims ? (0.5 * Math.max(m.dims[0], m.dims[1])) / vs : 0.3;
+        B[k] = X; B[k + 1] = Y; B[k + 2] = Z; B[k + 3] = Math.min(0.8, Math.max(0.12, r * Math.max(sc[0], sc[1])));
+      }
+      if (i >= this.recFrom) { this.gpu.write(i, mi, X, Y, Z, yaw, flip, sc, sh, flags, pitch, mark, markV, frame); return; } // built on the GPU (C1)
+      const c = Math.cos(yaw), s = Math.sin(yaw), M = this.mx;
       // L = R * F * S * H / vs ; t = L * box + [X,Y,Z] (vs: a coarse model of a progressive bake, m.kf, has voxels kf times bigger)
       set9(M.H, 1, 0, sh[0], 0, 1, sh[1], 0, 0, 1);
       set9(M.S, sc[0], 0, 0, 0, sc[1], 0, 0, 0, sc[2]);
@@ -10037,7 +10065,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       const MB = this.MB, wk = wind ? wind[0] : opts.wind ? opts.windK ?? 1 : 0, gs = wind ? wind[1] : ME.gustOf(opts), [wx, wy] = ME.WIND_DIR, SWAY = content().sway || NONE;
       let i = 0, si = -1, lo = Infinity, hi = -1;
       const we = this.windE || (this.windE = [0, 0.5]); we[0] = wk; we[1] = gs; // (sim.windE: the layers' wind this frame)
-      this.stillN = 0;
+      this.stillN = 0; this.blobN = 0; this.tick++; this.recFrom = Infinity; // (the statics: always CPU rows)
       const sh = this.sh2, sc = this.sc3;
       for (const s of MB.statics) {
         si++;
@@ -10086,33 +10114,38 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         lo = Math.min(lo, i); hi = Math.max(hi, i); i++;
       }
       this.staticCount = i;
+      if (this.gpu && this.gpu.on && this.gpu.ready) this.recFrom = i;
       this.dirty[0] = hi < 0 ? 0 : lo; this.dirty[1] = hi + 1;
       const A5 = this.at5, U3 = this.up3, faces = this.roads[0].ups.length > 0;
+      const RG = this.rigs, WA = RG ? this.wAt || (this.wAt = new Int32Array(501)) : null;
       for (let w = 0; w < this.walkers.length; w++) {
         const u = this.walkers[w], s = (u.s0 + u.speed * time) % this.len, A = this.at(s, A5), X = A[0], Y = A[1], Z = A[2], dx = A[3], dy = A[4];
         const fr = MB.walkerFrames[u.type], g = u.w.gait, ph = s * u.w.rate + u.ph, k = Math.floor((ph % 1) * fr.length);
         let hop = 0, sq = 0;
         if (g === "hop") { const a = Math.abs(Math.sin(ph * Math.PI * 2)); hop = a * 0.06; sq = (0.5 - a) * 0.12; }
-        else if (g === "fly") hop = u.w.fly + Math.sin(time * 2.1 + u.ph * 6.3) * 0.05; // hover with a slow bob
+        else if (g === "fly") hop = (this.wingedH ?? u.w.fly) + Math.sin(time * 2.1 + u.ph * 6.3) * 0.05; // hover with a slow bob
         else sq = Math.sin(ph * Math.PI * 4) * 0.03;
         sc[0] = 1 + sq * 0.5; sc[1] = 1 + sq * 0.5; sc[2] = 1 - sq; sh[0] = 0; sh[1] = 0;
+        const fl = 1 | (g === "fly" ? this.walkerFlags : this.walkerFlags & ~INST_FLY);
         let px, py, pz;
         if (faces && this.upAt(s, U3)[2] < 1) {
           // on a face leg or its arcs: the walker's frame from the heading and the up; lateral is its y, the hop is along the up
           const F = frameOf(dx, dy, A[5], U3[0], U3[1], U3[2], this.mx.W);
           px = X + F[1] * u.lat + U3[0] * hop; py = Y + F[4] * u.lat + U3[1] * hop; pz = Z + F[7] * u.lat + U3[2] * hop;
-          this.put(i++, fr[k], px, py, pz, 0, false, sc, sh, 1, 0, 0, 0, F);
+          if (WA) WA[w] = i;
+          if (RG && RG[u.type]) i = RG[u.type].put(this, i, ph, px, py, pz, 0, sc, fl, 0, 0, F); else this.put(i++, fr[k], px, py, pz, 0, false, sc, sh, fl, 0, 0, 0, F);
         } else {
           const yaw = Math.atan2(dy, dx), nx = -Math.sin(yaw), ny = Math.cos(yaw);
           px = X + nx * u.lat; py = Y + ny * u.lat; pz = Z + hop;
-          this.put(i++, fr[k], px, py, pz, yaw, false, sc, sh, 1);
+          if (WA) WA[w] = i;
+          if (RG && RG[u.type]) i = RG[u.type].put(this, i, ph, px, py, pz, yaw, sc, fl); else this.put(i++, fr[k], px, py, pz, yaw, false, sc, sh, fl);
         }
         this.wpos[w * 2] = px; this.wpos[w * 2 + 1] = py;
       }
-      this.wn = this.walkers.length;
+      this.wn = this.walkers.length; this.wEnd = i; if (WA) WA[this.wn] = i;
       let ns = 0;
       for (const L of this.layers) { this.spanL[ns] = L; this.spanA[ns] = i; i = L.writeInstances(time, this, i, opts); this.spanB[ns++] = i; }
-      this.spanN = ns;
+      this.spanN = ns; this.blob.fill(0, this.blobN * 4); // the list ends at the first zero radius
       this.count = i;
       return i;
     }
@@ -10123,6 +10156,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // (index: from the first instance it wrote this frame). accept(layer, index), if given, skips an
     // instance it says false to (a cursor that wants units, not the lamp in front of them).
     pick(ray, tMax = ray.L, accept = null) {
+      if (this.recFrom <= this.count) this.gpu.rows(); // the rows the GPU built, on the CPU too (C1)
       const f = this.inst, U = this.instU, { a, dir } = ray;
       let bt = tMax, bi = -1, bn = null;
       for (let i = 0; i < this.count; i++) {
@@ -10151,7 +10185,12 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // which layer instance i belongs to and its index there: ["static", i in MB.statics], ["walker", i], [L, i]
     who(i) {
       if (i < this.staticCount) return ["static", this.sIdx[i]];
-      if (i < this.staticCount + this.wn) return ["walker", i - this.staticCount];
+      if (i < this.wEnd) {
+        if (!this.rigs) return ["walker", i - this.staticCount];
+        const WA = this.wAt; let lo = 0, hi = this.wn - 1; // the last walker whose first instance is at or before i
+        while (lo < hi) { const m = (lo + hi + 1) >> 1; if (WA[m] <= i) lo = m; else hi = m - 1; }
+        return ["walker", lo];
+      }
       for (let k = 0; k < this.spanN; k++) if (i >= this.spanA[k] && i < this.spanB[k]) return [this.spanL[k], i - this.spanA[k]];
       return [null, -1];
     }
@@ -10167,6 +10206,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   ME.frameOf = frameOf;
   ME.FACE_FRAMES = { "+x": [0, 0, 1, 1, 0, 0, 0, 1, 0], "+y": [0, 1, 0, 0, 0, 1, 1, 0, 0] };
   ME.INST_FLOATS = INST_FLOATS;
+  ME.INST_UNIT = 1; ME.INST_FLY = INST_FLY;
+  // the flag bits that draw an instance at alpha a (0..1) on a 4x4 ordered dither (Veiled): ME.INST_UNIT | ME.veilBits(0.5)
+  ME.veilBits = (a) => (255 - Math.round(Math.min(1, Math.max(0, a)) * 255)) << 8;
 })();
 
 </script>
@@ -10179,8 +10221,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   const ME = window.ME;
   ME.wgsl = ME.wgsl || {};
 
-  // float offsets into the uniform buffer (vec4 aligned)
-  ME.UOFF = { vp: 0, ivp: 16, vdir: 32, sun: 36, res: 40, grid: 44, dims: 48, cgrid: 52, cdims: 56, look: 60, look2: 64, look3: 68, fog: 72, beamCol: 76, canopy: 80, canopy2: 84, shadow: 88, shadow2: 92, beams: 96, beamK: 128, ids: 136, misc: 140, outres: 144, part: 148, psrc: 152, geo: 156, misc2: 160, look4: 164, wind: 168, canopy3: 172, water2: 176, lgrid: 180, field: 184, weather: 188, weather2: 192, weather3: 196, wclear: 200, weather4: 216, key: 220, key2: 224, sky: 228, sky2: 232, sky3: 236, user: 240 };
+  // float offsets into the uniform buffer (vec4 aligned); blob: the flier shadows (E1b), ME.BLOB_MAX vec4s (sim.js sets it)
+  ME.BLOB_MAX = ME.BLOB_MAX || 16;
+  ME.UOFF = { vp: 0, ivp: 16, vdir: 32, sun: 36, res: 40, grid: 44, dims: 48, cgrid: 52, cdims: 56, look: 60, look2: 64, look3: 68, fog: 72, beamCol: 76, canopy: 80, canopy2: 84, shadow: 88, shadow2: 92, beams: 96, beamK: 128, ids: 136, misc: 140, outres: 144, part: 148, psrc: 152, geo: 156, misc2: 160, look4: 164, wind: 168, canopy3: 172, water2: 176, lgrid: 180, field: 184, weather: 188, weather2: 192, weather3: 196, wclear: 200, weather4: 216, key: 220, key2: 224, sky: 228, sky2: 232, sky3: 236, blob: 240, user: 240 + 4 * ME.BLOB_MAX };
   // vec4 slots of app data at the end of the block (u.user[k], Renderer.user) for the shader hooks
   ME.USER_SLOTS = 6;
   ME.USIZE = ME.UOFF.user + 4 * ME.USER_SLOTS;
@@ -10246,6 +10289,7 @@ struct U {
   sky: vec4f,     // night and void backdrops: zenith colour (linear); w = star density (night), cloud amount (void)
   sky2: vec4f,    // night and void: horizon colour (linear); w = moon disc radius (night, a share of the screen height), horizon height (void, a share of the screen from the top)
   sky3: vec4f,    // void backdrop: mist colour (linear), w = the far islets' amount
+  blob: array<vec4f, ${ME.BLOB_MAX}>, // flier shadows (E1b, Sim.blob): anchor x y z, radius in tiles; a zero radius ends the list
   user: array<vec4f, ${ME.USER_SLOTS}>, // app data for the shader hooks (Renderer.user)
 };
 @group(0) @binding(0) var<uniform> u: U;
@@ -10606,6 +10650,14 @@ fn loOf(M: Model) -> vec3f { return vec3f(f32(M.base.w & 1023u), f32((M.base.w >
 
 @fragment fn fs(i: VO) -> GO {
   let I = insts[i.ii]; var M = models[i.mk.x]; let kf = f32(i.mk.y); // (kf: one voxel in the instance's model voxels)
+  // a Veiled instance (E1a, ME.veilBits: info.y bits 8..15 = 255 - alpha * 255) keeps alpha of its pixels on a 4x4
+  // ordered dither, offset per instance so two veils overlap without one pattern; at 0.5 a checkerboard
+  let veil = (I.info.y >> 8u) & 255u;
+  if (veil != 0u) {
+    let q = vec2u(i.pos.xy) + vec2u(i.ii, i.ii >> 2u); let a = q.x ^ q.y; let b = q.y;
+    let d = ((a & 1u) << 3u) | ((b & 1u) << 2u) | (((a >> 1u) & 1u) << 1u) | ((b >> 1u) & 1u);
+    if ((f32(d) + 0.5) / 16.0 >= 1.0 - f32(veil) / 255.0) { discard; }
+  }
   // a swap's dissolve (R.swapModel): the pixels past the fade on a fixed dither still march the old entry,
   // in its own voxels (ro), mapped back (om) for the hit's position
   var ro = i.l; var om = vec4f(0.0, 0.0, 0.0, 1.0); var old = false;
@@ -10696,7 +10748,7 @@ fn loOf(M: Model) -> vec3f { return vec3f(f32(M.base.w & 1023u), f32((M.base.w >
   }
   var o: GO;
   o.a = vec4f(m0.rgb * (1.0 + jit), v.b);
-  o.n = vec4f(octEnc(nn), f32(mat), 1.0 + f32(steps) + f32(I.info.y) * 1000.0);
+  o.n = vec4f(octEnc(nn), f32(mat), 1.0 + f32(steps) + select(0.0, 1000.0, (I.info.y & 255u) != 0u)); // a unit: any low flag bit
   o.e = vec4f(0.0);
   let mb = I.info.z; let mv = bitcast<f32>(I.info.w);
   if (mb != 0u || mv > 0.0) {
@@ -10840,8 +10892,8 @@ const QUAD = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0
 
 </script>
 <script>/* ../MossheartEngine/src/shaders/light.js */
-/* Lighting: the sun visibility volume (replaces shadow maps for the static world), unit shadow disks,
-   the deferred lighting pass and the half-resolution light shafts. */
+/* Lighting: the sun visibility volume (replaces shadow maps for the static world), the fliers' blob shadows
+   (E1b, u.blob), the deferred lighting pass and the half-resolution light shafts. */
 (function () {
   const ME = window.ME, W = ME.wgsl;
 
@@ -10906,6 +10958,19 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 @group(1) @binding(13) var cellT: texture_2d<f32>;               // the app's rgba per map tile (Renderer.setCells)
 fn fieldAt(xy: vec2f) -> f32 { return textureSampleLevel(fieldT, lin, xy / u.field.xy, 0.0).r; }
 fn cellAt(c: vec2i) -> vec4f { if (any(c < vec2i(0)) || any(c >= vec2i(u.field.xy))) { return vec4f(0.0); } return textureLoad(cellT, c, 0); }
+// E1b: how much the fliers' blob shadows darken p (0..0.42): a soft disc straight below each anchor (u.blob, the
+// sim's list, zero radius ends it), fading as the flier rises past 1.5 tiles above p, on up-facing ground only
+fn blobAt(p: vec3f, n: vec3f) -> f32 {
+  var k = 0.0;
+  for (var b = 0u; b < ${ME.BLOB_MAX}u; b++) {
+    let B = u.blob[b];
+    if (B.w <= 0.0) { break; }
+    let h = B.z - p.z;
+    if (h < 0.05) { continue; }
+    k = max(k, sstep(1.0, 0.55, length(p.xy - B.xy) / B.w) * (1.0 - sstep(1.5, 3.5, h)));
+  }
+  return k * 0.42 * sstep(-0.1, 0.6, n.z);
+}
 fn growthAt(xy: vec2f) -> f32 { return textureSampleLevel(fieldT, lin, xy / u.field.xy, 0.0).g; } // how far the act's look has spread (Renderer.setGrowth)
 //#hooks shade overlay
 // sunlight focused by the moving surface: bright threads where two drifting noise layers cross
@@ -11060,6 +11125,8 @@ fn voidSky(fc: vec2f, uv: vec2f) -> vec3f {
   col *= 1.0 + max(0.0, s - 0.9) * 1.8;
   // a level's key light (look.sunCol, look.ambCol): the key's colour where it reaches, the ambient's in its shade
   col *= keyTint(vis * (0.6 + 0.4 * cook) * sstep(0.0, 0.5, lam));
+  // a flier's blob shadow on the world below it (not on the units: a flier would shade itself)
+  if (aux < 1000.0 && u.blob[0].w > 0.0) { col *= 1.0 - blobAt(p, n); }
   // rain (Weather 2) on the terrain and the models, not the sim's instances: wet darkens where the sky reaches
   // (sv.g), moss less, with a faint sheen on wet walls; the up-facing open ground splashes, a hashed point per
   // 0.25 cell crowning for 0.15 s once a cycle (1.4 s in a drizzle to 0.5 s in a downpour) at its own phase
@@ -12905,7 +12972,7 @@ fn boxOf(V: Vox) -> Box {
       this.mdl = new Uint32Array((nm + nl + (MB.prog ? MB.prog.maxGroup : 0)) * 16); this.mdlF = new Float32Array(this.mdl.buffer);
       this.putModels();
       this.modelBuf = ME.buffer(d, this.mdl, BU.STORAGE, "models");
-      this.instBuf = d.createBuffer({ label: "instances", size: S.sim.inst.byteLength, usage: BU.STORAGE | BU.COPY_DST });
+      this.instBuf = d.createBuffer({ label: "instances", size: S.sim.inst.byteLength, usage: BU.STORAGE | BU.COPY_DST | BU.COPY_SRC }); // (COPY_SRC: ME.GpuInstances.read, a check)
       this.tVB = ME.buffer(d, S.mesh.verts, BU.VERTEX, "terrain vb");
       this.tIB = ME.buffer(d, S.mesh.index, BU.INDEX, "terrain ib");
       // the frame's extent: the jar's centre, glass radius, glass top, dome height and plinth foot, or the
@@ -13728,6 +13795,9 @@ fn boxOf(V: Vox) -> Box {
       set4(u, O.weather4, this.rainLayers, this.actGrassH ?? 1, 0, 0);
       u.set(this.key, O.key); u.set(this.key2, O.key2); u.set(this.sky, O.sky); u.set(this.sky2, O.sky2); u.set(this.sky3, O.sky3);
       u.set(this.user, O.user);
+      // E1b: the sim's flier shadows this update (zero-terminated; a Sim from before E1 has none)
+      const sb = S.sim && S.sim.blob;
+      if (sb) u.set(sb, O.blob); else u.fill(0, O.blob, O.blob + 4 * ME.BLOB_MAX);
       this.dev.queue.writeBuffer(this.ubuf, 0, u);
     }
 
@@ -13854,7 +13924,7 @@ fn boxOf(V: Vox) -> Box {
       // the statics update() rewrote, then the walkers and layers (all of them on this renderer's first frame)
       const IF = ME.INST_FLOATS, D = sim.dirty, a = this.instUp ? D[0] : 0, b = this.instUp ? Math.min(D[1], sim.staticCount) : sim.staticCount;
       if (b > a) d.queue.writeBuffer(this.instBuf, a * IF * 4, sim.inst, a * IF, (b - a) * IF);
-      if (nInst > sim.staticCount) d.queue.writeBuffer(this.instBuf, sim.staticCount * IF * 4, sim.inst, sim.staticCount * IF, (nInst - sim.staticCount) * IF);
+      if (nInst > sim.staticCount && !(sim.recFrom <= nInst)) d.queue.writeBuffer(this.instBuf, sim.staticCount * IF * 4, sim.inst, sim.staticCount * IF, (nInst - sim.staticCount) * IF); // (sim.recFrom: those rows are built on the GPU, ME.GpuInstances)
       this.instUp = true;
       const sp = this.sprites, nBk = this.backdrop ? this.drawBackdrop(cam, time, dt) : 0, nAdd = sp.nAdd + nBk, nSp = nAdd + sp.nAlpha;
       if (Math.max(sp.max, nSp) * 48 > this.spriteBuf.size) this.growSprites(Math.max(sp.max, nSp));
@@ -14011,7 +14081,11 @@ fn boxOf(V: Vox) -> Box {
      dig(p, r, o)              the resting voxels and the terrain sand within r of p are thrown out; the
                                sand around slides into the hole (a grain flow)
      collapse(p, r, o)         the terrain sand within r of p comes loose where it is and slumps into a heap
-     setSand(mats)             which terrain materials are sand (default: the content pack's, ME.content.sand)
+     free(cells, o)            those terrain cells, whatever their material, come loose where they stand or
+                               are only removed (ME.Fracture: a blast and the islands it leaves)
+     dissolve(MB, mi, row, o)  a model's voxels under an instance's affine become loose voxels: a shatter at
+                               any place, turn and scale (ME.Bodies.dissolve: a body bursts where it lies)
+     setSand(mats)            which terrain materials are sand (default: the content pack's, ME.content.sand)
      resetTerrain()            the terrain as it was baked (every dig, collapse and settled grain undone)
                                and every loose voxel gone: for a new run
      clear()                   every loose voxel goes but dug sand (it settles into the terrain as ever)
@@ -14396,6 +14470,54 @@ fn boxOf(V: Vox) -> Box {
         hp.length = 0; cur = Infinity;
       }
       flush();
+    }
+    // Terrain cells (voxel indices) come loose where they stand, whatever their material: each is carved out of
+    // T.grid (the renderer hides it, the solid bitset gives it back) and becomes a loose voxel of its material,
+    // at rest (it drops) or thrown: o.vel(i, j, k, out) fills out = [vx, vy, vz]. o.keep (true): it stays until
+    // it has settled back into the terrain, while the pool has room for kept grains (half of it); past that,
+    // and with keep false, it lives about o.life s (14). o.share (1): the share of the cells that become
+    // voxels; the others are only removed. Cells already empty are skipped. Returns the voxels made.
+    // (ME.Fracture uses it: a blast's debris and the islands it leaves. dig and collapse loosen sand only.)
+    free(cells, o = {}) {
+      if (!this.R) return 0;
+      const T = this.T, VS = T.VS, NX = T.NX, NY = T.NY, PL = NX * NY, vg = T.grid, half = Math.floor(this.capacity / 2);
+      const keep = o.keep ?? true, life = o.life ?? 14, share = o.share ?? 1, v = [0, 0, 0], out = [];
+      let n = 0;
+      for (const idx of cells) {
+        const m = vg.at(idx);
+        if (!m) continue;
+        vg.set(idx, 0); out.push(idx); this.changed(idx, m);
+        if (share < 1 && this.rng() >= share) continue;
+        const i = idx % NX, j = Math.floor(idx / NX) % NY, k = Math.floor(idx / PL), kept = keep && this.keepLive + this.keepQueued < half;
+        v[0] = 0; v[1] = 0; v[2] = 0;
+        if (o.vel) o.vel(i, j, k, v);
+        this.emit(T.O[0] + (i + 0.5) / VS, T.O[1] + (j + 0.5) / VS, T.O[2] + (k + 0.5) / VS, v[0], v[1], v[2], m, kept ? KEEP : life * (0.8 + 0.4 * this.rng()), true, 0.25);
+        if (kept) { this.keepQueued++; this.keeps = true; }
+        n++;
+      }
+      if (out.length) { for (const c of out) this.carveQ.push(c); this.R.carve(out); }
+      return n;
+    }
+    // Model mi's voxels under an instance's affine become loose voxels: a shatter at any place, turn and scale
+    // (shatter itself reads a static's place). row: 12 floats, the first 12 of the instance's Sim row
+    // (ME.affineOf builds one). Up to o.max (4096) of its solid voxels, a uniform sample past that. o.v: a
+    // velocity they all share (a body's); o.w and o.about: a spin about a world point (rad/s); o.speed
+    // (0.8): how fast they are thrown out from the model's middle; o.life (14). Returns the voxels made.
+    dissolve(MB, mi, row, o = {}) {
+      const m = MB.models[mi], kf = m.kf || 1, [ox, oy, oz] = m.box, d = m.dims, rnd = () => this.rng();
+      const vox = ME.sampleVoxels(MB, mi, o.max ?? 4096, 1, rnd), v0 = o.v || null, w = o.w || null, c = o.about || null, sp0 = o.speed ?? 0.8, life = o.life ?? 14;
+      const mx = d[0] / 2, my = d[1] / 2, mz = d[2] / 2; // the model's middle, in the world below
+      const gx = row[0] * mx + row[1] * my + row[2] * mz + row[3], gy = row[4] * mx + row[5] * my + row[6] * mz + row[7], gz = row[8] * mx + row[9] * my + row[10] * mz + row[11];
+      for (const p of vox) {
+        const x = p[0] / kf - ox, y = p[1] / kf - oy, z = p[2] / kf - oz; // (the voxel's centre in the model's voxel coordinates)
+        const X = row[0] * x + row[1] * y + row[2] * z + row[3], Y = row[4] * x + row[5] * y + row[6] * z + row[7], Z = row[8] * x + row[9] * y + row[10] * z + row[11];
+        const dx = X - gx, dy = Y - gy, dz = Z - gz, dl = Math.hypot(dx, dy, dz) || 1, sp = sp0 * (0.3 + 0.7 * rnd());
+        let vx = (dx / dl) * sp, vy = (dy / dl) * sp, vz = (dz / dl) * sp * 0.5 + sp * 0.5;
+        if (v0) { vx += v0[0]; vy += v0[1]; vz += v0[2]; }
+        if (w && c) { const rx = X - c[0], ry = Y - c[1], rz = Z - c[2]; vx += w[1] * rz - w[2] * ry; vy += w[2] * rx - w[0] * rz; vz += w[0] * ry - w[1] * rx; }
+        this.emitMat(X, Y, Z, vx, vy, vz, p[3], life * (0.7 + 0.6 * rnd()));
+      }
+      return vox.length;
     }
     // a terrain cell changed from `was`: its baked value is kept until it is back to it (resetTerrain)
     changed(idx, was) {
@@ -14853,7 +14975,7 @@ fn boxOf(V: Vox) -> Box {
    (the line starts with ctx.app, "engine" by default):
      BENCH v1 engine vs=16 core 1566x756 cold=3.86 terrain=1.00 mesh=0.49 models=2.16 grass=0.01 boot=0.20
        | gpu=7.21 prep=0.46 gb=3.58 terr=1.25 vol=2.13 grass=0.20 part=0.02 light=1.15 shafts=0.79 fwd=0.60
-         bloom=0.29 comp=0.31 | cpu=1.0 sim=0.7 u300:gb=10.5,sim=1.6 | phys32k fly=0.14 rest=0.09 draw=+0.19
+         bloom=0.29 comp=0.31 | cpu=1.0 sim=0.7 u300:gb=10.5,sim=1.60,cpu=1.90 | phys32k fly=0.14 rest=0.09 draw=+0.19
          full=0.31/0.12 | mem gpu=89.1 static=45.5 screen=43.6 phys=11.9 pool=2.5 heap=65 cache=41.7
        | bricks=1235 variants=116
    (one line). Times in s for the bake, ms for the rest, medians; MB for memory.
@@ -14864,7 +14986,8 @@ fn boxOf(V: Vox) -> Box {
      of 30 frames, the median difference: the G-buffer split (vol= and grass= are what turning each off
      saves, terr= the rest of it: terrain, leaves, loose voxels; part= is what turning particles off saves
      of the whole frame, as they span three passes). Small fields can read slightly negative: noise.
-     u300 is 90 frames at 300 walkers, on a bake with walker types (ctx.walkers !== false); else u300=n/a.
+     u300 is 90 frames at 300 walkers (its G-buffer, sim.update and the whole R.frame on the CPU), on a bake
+     with walker types (ctx.walkers !== false); else u300=n/a.
    - Physics: 6 bursts of 1,200 voxels, 30 frames flying (fly=, the layers pass), 300 frames to settle and 60 at
      rest (rest=; draw= is the G-buffer cost over the idle pool); then the pool filled (full=fly/rest).
    - Memory: every buffer and texture reachable from R and the physics layer (static, screen-sized targets,
@@ -14995,7 +15118,7 @@ fn boxOf(V: Vox) -> Box {
       // particles run in prep (sim), the G-buffer (leaves) and forward (sparks): their cost is the total's drop
       const vol = o.dVolumes.gb, gr = o.dGrass.gb, part = o.dParticles.total;
       parts.push(`gpu=${f2(g.total)} prep=${f2(g.prep)} gb=${f2(gb)} terr=${f2(gb != null && vol != null && gr != null ? gb - vol - gr : null)} vol=${f2(vol)} grass=${f2(gr)} part=${f2(part)} light=${f2(g.lighting)} shafts=${f2(g.shafts)} fwd=${f2(g.forward)} bloom=${f2(g.bloom)} comp=${f2(g.composite)}`);
-      parts.push(`cpu=${f1(o.base.cpu)} sim=${f1(o.base.sim)}` + (o.u300 ? ` u300:gb=${f1(o.u300.gpu.gbuffer)},sim=${f1(o.u300.sim)}` : " u300=n/a"));
+      parts.push(`cpu=${f1(o.base.cpu)} sim=${f1(o.base.sim)}` + (o.u300 ? ` u300:gb=${f1(o.u300.gpu.gbuffer)},sim=${f2(o.u300.sim)},cpu=${f2(o.u300.cpu)}` : " u300=n/a"));
       const P = o.phys;
       if (P) {
         const dg = P.rest.gpu.gbuffer != null && P.idle.gpu.gbuffer != null ? P.rest.gpu.gbuffer - P.idle.gpu.gbuffer : null;
@@ -15465,6 +15588,15 @@ fn boxOf(V: Vox) -> Box {
                   (R.setAct: a factor on its own, where the growth field has spread, R.setGrowth); grassH, the
                   grass height (1); freeze, the water's ice (0 to 1). A new act blends over ACT_BLEND s (a new
                   run or level snaps); ?act=N pins one (screenshots)
+     setup(level, act)  the level's best sky, set again at each new run or level: { mood, look, weather,
+                  strength, dynamic } (each optional; null or {} for none). It goes over the player's saved
+                  panel picks and the settings' Light and Weather, never over the address's pins (?mood=,
+                  ?weather=, ?wxi=, ?preset=, ?wxfront=), and the bot and the self-test skip it. mood a MOODS
+                  key; look an ME.PRESETS one; weather a front, the one Dynamic starts the run on (dynamic:
+                  false holds it instead); strength an INTENSITY key, never above the settings' Weather (Low's
+                  Subtle stays Subtle). The panel and the settings still change any of it for the rest of the
+                  run (a Light or Weather the settings change, not the same one sent again); the next run or
+                  level sets it again. act: run().act, for the living map's acts
      uiScale()    the UI's zoom, for placing the panel (1)
    The page may have #wx (the overlay canvas), #sky holding #moodseg and #wxseg (the panel) and #skybtn.
 
@@ -15566,7 +15698,7 @@ fn boxOf(V: Vox) -> Box {
     return {};
   };
   const NO_RUN = { id: null, level: "", build: false, over: false, life: 1 }, none = () => {};
-  const HOST = { key: "me.sky", seed: () => 1, run: () => NO_RUN, on: none, mood: none, acts: (level) => (ME.WX.looks().acts || NO_KEYS)[level] || null, uiScale: () => 1 };
+  const HOST = { key: "me.sky", seed: () => 1, run: () => NO_RUN, on: none, mood: none, setup: none, acts: (level) => (ME.WX.looks().acts || NO_KEYS)[level] || null, uiScale: () => 1 };
   // the acts (host.acts): the blend's length (s), and a material's factor cap (a dark material lit at a pale colour)
   const ACT_BLEND = 4, ACT_MAX = 6;
   const ss = (x) => x * x * (3 - 2 * x);
@@ -15591,11 +15723,19 @@ fn boxOf(V: Vox) -> Box {
         : PANEL.includes(saved.weather) || saved.weather === "random" || saved.weather === "dynamic" ? saved.weather
           : fixed ? "clear" : "dynamic";
       this.steady = ME.params.has("wxsteady") ? ME.qn("wxsteady", 0) === 1 : !!saved.steady;
-      this.setIntensity("normal", true); // (the game's menu sets the player's)
+      // the player's picks (what the panel saves, and what a run without a level setup shows), and the pins
+      this.fixed = !!fixed; this.pick = { mood: this.mood, weather: this.weather };
+      this.pinned = { mood: !!first(MOODS, ME.q("mood", "")), weather: !!(F[pin] || pin === "random" || pin === "dynamic") };
+      // the level setup in force (levelSetup): its look, its strength and the front Dynamic starts on, each ""
+      // when it has none or once the player changed it for this run; userI is the settings' Weather
+      this.sky = null; this.lookSky = ""; this.strength = ""; this.front0 = ""; this.userI = null;
+      this.setupAt = { id: undefined, level: undefined };
+      this.intensityNow(true); // (the game's menu sets the player's)
       this.moodNow = "auto";
       // the model, and the run it follows under Dynamic (a new one starts its level's calm front at once)
       this.model = new ME.Weather(this.host.seed() || 1);
       this.run = { id: undefined, level: undefined };
+      if (!fixed) this.levelSetup(this.host.run(), true);
       this.roll();
       // the blended state: the lit factors, the wind, the gusts and each particle kind's strength
       this.cur = Object.assign({ rain: 0, snow: 0, petals: 0, leaves: 0, rings: 0 }, ONE);
@@ -15621,9 +15761,27 @@ fn boxOf(V: Vox) -> Box {
       if (this.weather !== "dynamic") return;
       if (run.id !== this.run.id || run.level !== this.run.level) {
         this.run.id = run.id; this.run.level = run.level;
-        this.model.newRun(this.host.seed() || 1, run.level); this.renderPanel();
+        this.model.newRun(this.host.seed() || 1, run.level);
+        if (this.front0 && !ME.WX.fronts()[ME.q("wxfront", "")]) this.model.enter(this.front0); // (the level setup's)
+        this.renderPanel();
       }
       if (run.build) this.model.buildPhase(run.level);
+    }
+    // the level's setup (host.setup): at each new run or level, over the player's picks; a run without one shows
+    // the player's again (and while neither run has one, nothing changes and nothing rolls: as before the hook)
+    levelSetup(run, quiet) {
+      this.setupAt.id = run.id; this.setupAt.level = run.level;
+      const got = this.host.setup(run.level, run.act), was = this.sky;
+      this.sky = got && typeof got === "object" ? got : null;
+      if (!this.sky && !was) return;
+      const s = this.sky || {}, F = ME.WX.fronts(), front = F[s.weather] ? s.weather : "";
+      this.mood = !this.pinned.mood && (MOODS[s.mood] || s.mood === "random") ? s.mood : this.pick.mood;
+      this.weather = !this.pinned.weather && front ? (s.dynamic === false ? front : "dynamic") : this.pick.weather;
+      this.front0 = !this.pinned.weather && front && s.dynamic !== false ? front : "";
+      this.lookSky = ME.PRESETS[s.look] && !ME.params.has("preset") ? s.look : "";
+      this.strength = s.strength in INTENSITY ? s.strength : "";
+      this.intensityNow(true);
+      if (!quiet) this.roll();
     }
     // Random: a panel front other than the one showing
     randomFront() {
@@ -15642,23 +15800,39 @@ fn boxOf(V: Vox) -> Box {
     // the front showing (for the panel), Clear with the settings' Weather off
     shownFront() { return this.level > 0 ? this.model.front : "clear"; }
     // the settings' Weather (a game's menu); ?wxi=off|subtle|normal|heavy pins it (screenshots)
+    // (the game's menu sends its Light and Weather again at every settings change: only a different one is the
+    // player's, and it ends the level setup's look or strength for the rest of the run)
     setIntensity(name, quiet) {
-      const has = (v) => ME.safeKey(v) && v in INTENSITY, pin = ME.q("wxi", ""), k = has(pin) ? pin : has(name) ? name : "normal";
+      const k = ME.safeKey(name) && name in INTENSITY ? name : "normal";
+      if (this.userI !== null && k !== this.userI) this.strength = "";
+      this.userI = k; this.intensityNow(quiet);
+    }
+    // the settings' Weather, or the level setup's strength when lower (never above it); the ?wxi pin first
+    intensityNow(quiet) {
+      const pin = ME.q("wxi", ""), u = this.userI || "normal", st = this.strength;
+      const k = ME.safeKey(pin) && pin in INTENSITY ? pin : st && INTENSITY[st] < INTENSITY[u] ? st : u;
       this.level = INTENSITY[k]; this.levelName = k;
       if (!quiet) this.renderPanel();
     }
+    // a panel pick: the player's, saved, and showing over the level setup for the rest of the run
     choose(kind, v) {
       if (kind === "steady") this.steady = !this.steady;
-      else if (kind === "mood") this.mood = v; else this.weather = v;
-      if (!ME.qn("selftest", 0) && !ME.qn("autoplay", 0)) try { localStorage.setItem(this.host.key, JSON.stringify({ v: VERSION, mood: this.mood, weather: this.weather, steady: this.steady })); } catch (e) { /* storage blocked */ }
+      else if (kind === "mood") this.mood = this.pick.mood = v; else { this.weather = this.pick.weather = v; this.front0 = ""; }
+      if (!this.fixed) try { localStorage.setItem(this.host.key, JSON.stringify({ v: VERSION, mood: this.pick.mood, weather: this.pick.weather, steady: this.steady })); } catch (e) { /* storage blocked */ }
       if (kind === "steady") this.renderPanel(); else this.roll();
     }
-    setLook(name) { this.look = ME.safeKey(name) && ME.PRESETS[name] ? name : "cosy"; }
+    setLook(name) {
+      const n = ME.safeKey(name) && ME.PRESETS[name] ? name : "cosy";
+      if (this.lookSent && n !== this.look) this.lookSky = "";
+      this.look = n; this.lookSent = true;
+    }
+    // the level setup again, now (a game's switch for it changed): host.setup is asked afresh
+    resetup() { if (!this.fixed) { this.setupAt.id = undefined; this.levelSetup(this.host.run()); } }
     // the settings the view's mood() blends from: the style's defaults, the mood's look preset, the level's
     // own look values over it (R.lookSet: a preset doesn't undo a night level's base), the mood's overrides
     base(mk = this.moodNow) {
       const m = MOODS[mk] || MOODS.auto;
-      return Object.assign({}, this.R.set0, ME.PRESETS[m.look || this.look] || {}, this.R.lookSet || {}, m.set || {});
+      return Object.assign({}, this.R.set0, ME.PRESETS[m.look || this.lookSky || this.look] || {}, this.R.lookSet || {}, m.set || {});
     }
 
     // ------------------------------------------------------------------ the acts (host.acts)
@@ -15668,7 +15842,7 @@ fn boxOf(V: Vox) -> Box {
     // and the ice while they change (never without an act). Returns { mk, base }
     actShown(run, dt) {
       const n = this.actPin || run.act | 0, list = n > 0 ? this.host.acts(run.level) : null, a = (list && list[n - 1]) || null;
-      const own = this.mood === "auto" || this.mood === this.host.mood(run.level);
+      const own = this.mood === "auto" || this.mood === this.host.mood(run.level) || (!!this.sky && this.mood === this.sky.mood); // (the level setup's mood is the level's own)
       const mk = a && MOODS[a.mood] && own && !this.moodPin ? a.mood : this.moodNow;
       const to = { base: a && a.set ? Object.assign(this.base(mk), a.set) : this.base(mk), mats: a ? this.actMats(a) : null, grassH: (a && a.grassH) ?? 1, freeze: (a && a.freeze) || 0 };
       const key = a ? n : 0, B = this.actAt, sh = this.actNow;
@@ -15721,7 +15895,9 @@ fn boxOf(V: Vox) -> Box {
     // vector (with the run's pulls under Dynamic); blend toward what it asks; move the overlay and drop rain
     // rings on the water
     update(dt) {
-      const run = this.host.run(), dyn = this.weather === "dynamic", over = !!run.over;
+      const run = this.host.run();
+      if (!this.fixed && (run.id !== this.setupAt.id || run.level !== this.setupAt.level)) this.levelSetup(run);
+      const dyn = this.weather === "dynamic", over = !!run.over;
       this.follow(run); this.at = run.level;
       // (the mood showing: the player's, or the run's act's; the scene eases toward its dusk itself)
       const shown = this.actShown(run, dt);
@@ -15938,7 +16114,7 @@ fn boxOf(V: Vox) -> Box {
     state() {
       const v = {};
       for (const l of ME.WX.LAYERS) v[l] = +this.v[l].toFixed(3);
-      return { mood: this.mood, moodNow: this.moodNow, weather: this.weather, weatherNow: this.shownFront(), front: this.model.front, steady: this.steady, intensity: this.levelName, particles: this.parts.length, v, sun: this.sun, hurt: this.model.hurt, rainbow: +this.model.rainbow.toFixed(1), left: this.model.left,
+      return { mood: this.mood, moodNow: this.moodNow, weather: this.weather, weatherNow: this.shownFront(), front: this.model.front, steady: this.steady, intensity: this.levelName, look: this.lookSky || this.look, setup: this.sky ? { look: this.lookSky, strength: this.strength, front: this.front0 } : null, particles: this.parts.length, v, sun: this.sun, hurt: this.model.hurt, rainbow: +this.model.rainbow.toFixed(1), left: this.model.left,
         act: this.actAt ? this.actAt.key : 0, actBlend: this.actAt ? +Math.min(1, this.actAt.t / ACT_BLEND).toFixed(2) : 1 };
     }
   }
@@ -20380,7 +20556,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.98.0", name: "Mossheart", commit: "d3595494" };
+  G.VERSION = { v: "0.99.0", name: "Mossheart", commit: "4d6a14f2" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -25370,7 +25546,15 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // ---- the gardens: Momiji Valley (the generator's mf-valley, through ME.content.mapFromGarden) and the
   // content pack's v1 maps (ME.content.maps), by id. ?level= picks one, else the one picked on the terrarium screen
   // (settings "level", menu.js); the bot and the self-test take only ?level= (Momiji when left out)
-  G.LEVELS = { momiji: { name: "Momiji Valley" }, fernglass: { name: "Fernglass" }, cornmoon: { name: "Corn Moon" }, everstair: { name: "Ever Stair", locked: true } };
+  // sky: the level's best sky, set at each new run over the player's sky panel and Settings' Light and Weather
+  // (ME.Sky's setup hook, view/atmos.js; Settings' "Levels set the sky" turns it off): the mood, the Light and
+  // the front Dynamic starts on (Art, 2026-11-10)
+  G.LEVELS = {
+    momiji: { name: "Momiji Valley", sky: { mood: "morning", look: "cosy", weather: "clear" } },
+    fernglass: { name: "Fernglass", sky: { mood: "golden", look: "cosy", weather: "mistmorn" } },
+    cornmoon: { name: "Corn Moon", sky: { mood: "night", look: "cosy", weather: "moonlit" } },
+    everstair: { name: "Ever Stair", locked: true, sky: { mood: "clear", look: "clear", weather: "clear" } },
+  };
   // a locked level keeps one view (the Ever Stair's loop closes only in it): no turn buttons, keys or help lines
   G.lockedView = () => !!(G.LEVELS[G.levelId] || {}).locked;
   // and the gardens still in the works: the terrarium screen shows them dimmed (their picture, if any, a
@@ -26977,13 +27161,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
    camera's turn buttons). It moved to the engine (ME.Sky: MossheartEngine/src/sky.js, the sky hook's part 2);
    this is Mossheart's host for it: the run it follows is the game's (its seed, the garden, the build phase,
    game over and the Heart Tree's life, all only while a game is on), its waves start and clear the fronts,
-   Momiji opens on the Morning mood and Corn Moon on Night (the user, 2026-11-09), and the choice is kept under "mossheart.atmos". G.Atmos is new Atmos(app)
+   each level sets its best sky at each new run (G.LEVELS[id].sky, view/level.js: the mood, the Light and the
+   starting front, over the player's picks and Settings' Light and Weather until the player changes them that
+   run; the user, 2026-11-10; Settings' "Levels set the sky" turns it off), and the choice is kept under "mossheart.atmos". G.Atmos is new Atmos(app)
    as before; G.MOODS is the engine's. Since Weather 1 (#450) the sky drives R.weather by mix(), so
    R.weather.state.kind always reads "mix": the front on show is app.atmos.state().weatherNow (front is the
    model's, even with Weather off; weather is the panel's choice). */
 (function () {
   const G = window.MG, ME = window.ME;
-  const LEVEL_MOOD = { momiji: "morning", cornmoon: "night" };
   // the run, one object rewritten each frame (the sky reads it every frame)
   const host = (app) => {
     const run = { id: null, level: "", build: false, over: false, life: 1 };
@@ -27002,7 +27187,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (ev === "start") G.on("wave_start", (e) => f({ n: e.wave, boss: e.boss }));
         else if (ev === "clear") G.on("wave_clear", () => f());
       },
-      mood: (level) => LEVEL_MOOD[level],
+      // (menu.js's G.levelSky: Settings' switch, on by default)
+      setup: (level) => (!G.levelSky || G.levelSky()) && G.LEVELS[level] ? G.LEVELS[level].sky : null,
       uiScale: () => G.uiScale || 1,
     };
   };
@@ -28894,7 +29080,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   G.SETTINGS_KEY = KEY; // (for the flows)
   const $ = (id) => document.getElementById(id);
 
-  // camera: the view eases to the rift when a boss comes (main.js); motion: "reduced" drops the screen shake, the camera moves and the lightning, softens the flashes and thins the weather
+  // motion: "reduced" drops the screen shake and the lightning, softens the flashes and thins the weather
   // (it starts as the system's reduced-motion choice); text: the HUD's and the menus' text size, a factor; weather: how strong the sky panel's weather is (atmos.js)
   // glass: the terrarium glass, "auto" as the quality has it (none on Low), or true/false over it (the Settings row)
   // res: the resolution, the canvas's pixels per CSS pixel: "full" (the screen's own, however fine) or "2", "1.5", "1", "0.75" (main.js fitCanvas; ?dpr= pins it),
@@ -28924,7 +29110,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const calmOS = !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
   const DEFAULTS = {
     master: 0.7, music: 0.5, sfx: 0.7, ambience: 0.45, musicStyle: "mix",
-    quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, camera: true, vs: 64, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, hints: true, hintsSeen: [], weather: "normal", wxPicked: false, glass: "auto", res: mobile ? PHONE_RES : "full", resPicked: false, ui: mobile ? PHONE_UI : 1, uiPicked: false,
+    quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, vs: 64, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, hints: true, hintsSeen: [], weather: "normal", wxPicked: false, levelSky: true, glass: "auto", res: mobile ? PHONE_RES : "full", resPicked: false, ui: mobile ? PHONE_UI : 1, uiPicked: false,
   };
   const MUSIC_STYLES = [["ambient", "Ambient"], ["drift", "Drift"], ["liquid", "Liquid"], ["mix", "Mix"]];
   // vs: the voxel density, Maximum (64) unless the player picked one (vsPicked; the device's cap still applies).
@@ -28974,6 +29160,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   G.vsChoices = () => ME.VS_LEVELS.filter((v) => v <= VS_MAX);
   // before the bake: the saved density, unless ?vs= pins one
   const boot = load();
+  // Settings' "Levels set the sky" before the menu is up (view/atmos.js asks at the first frame); Menu replaces it
+  G.levelSky = () => boot.levelSky !== false;
   // The crash guard. main.js marks a load (G.BAKE_KEY: its density, and whether ?vs= pinned it) before the
   // bake starts and clears the mark once the garden is up. A mark still here means the last load died on the
   // way, most likely out of memory on a phone at a fine density: this one retries a level coarser (not below
@@ -29057,6 +29245,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // or null; continueRun() replaces the run with it)
     constructor(app, act) {
       this.app = app; this.act = act; this.s = load(); this.open = "";
+      G.levelSky = () => this.s.levelSky !== false; // (view/atmos.js's setup hook reads it)
       const vt = G.vsToast; // (the crash guard's notice: it fades a few seconds after the garden is up)
       if (vt) { vt.classList.add("fade"); setTimeout(() => vt.remove(), 9000); G.vsToast = null; }
       // (and once, for a player whose settings the new key reset: load())
@@ -29207,6 +29396,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (k === "ui") this.s.uiPicked = true;
       if (k === "weather") this.s.wxPicked = true;
       save(this.s); this.apply();
+      if (k === "levelSky" && this.app.atmos && this.app.atmos.resetup) this.app.atmos.resetup();
     }
     apply() {
       const s = this.s, R = this.app.R, a = this.app.audio;
@@ -29223,7 +29413,6 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("fps").style.visibility = s.fps ? "" : "hidden";
       const calm = s.motion === "reduced";
       G.shake = s.shake && !calm ? 1 : 0;
-      G.camMoves = s.camera && !calm ? 1 : 0;
       G.flashK = calm ? 0.35 : 1; // (main.js: the heart's red flash; scene.js: the creatures' hit flashes)
       if (this.app.atmos) this.app.atmos.reduced = calm;
       document.body.classList.toggle("calm", calm);
@@ -29285,13 +29474,15 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         `<div class="note dim">How strong the weather is (the cloud button by the turn buttons picks which). Off keeps the sky clear.</div>` +
         choice("look", "Light", [["cosy", "Cosy"], ["morning", "Morning"], ["clear", "Clear"]]) +
         `<div class="note dim">The light of the Auto mood. The cloud button by the turn buttons picks the mood and the weather.</div>` +
+        choice("levelSky", "Levels set the sky", [[true, "On"], [false, "Off"]]) +
+        `<div class="note dim">Each garden opens in its best light and weather, over your picks (the Weather above stays the most). Change any of it during a run and it stays for that run.</div>` +
         choice("theme", "Theme", [["overgrown", "Overgrown"], ["paper", "Paper"]]) +
-        `<h3>Game</h3>` + choice("shake", "Screen shake", [[true, "On"], [false, "Off"]]) + choice("camera", "Camera moves", [[true, "On"], [false, "Off"]]) +
-        `<div class="note dim">The view eases to the rift when a boss comes, and back.</div>` + choice("fps", "Show fps", [[true, "On"], [false, "Off"]]) +
+        `<h3>Game</h3>` + choice("shake", "Screen shake", [[true, "On"], [false, "Off"]]) +
+        choice("fps", "Show fps", [[true, "On"], [false, "Off"]]) +
         choice("tips", "First-run tips", [[true, "On"], [false, "Off"]]) + `<div class="note dim">A few tips on a fresh run: planting, the almanac, the first wave. They turn off when done.</div>` +
         choice("hints", "Game tips", [[true, "On"], [false, "Off"]]) + `<div class="note dim">A note by the HUD the first time a mechanic matters: why it works, what it pairs with. A tap hides it. <button class="btn tiny" data-a="resettips">Reset tips</button></div>` +
         `<h3>Comfort</h3>` + choice("motion", "Motion", [["full", "Full"], ["reduced", "Reduced"]]) +
-        `<div class="note dim">Reduced: no screen shake, camera moves or lightning, softer flashes, lighter rain and snow.</div>` +
+        `<div class="note dim">Reduced: no screen shake or lightning, softer flashes, lighter rain and snow.</div>` +
         choice("text", "Text size", [[1, "Normal"], [1.15, "Large"], [1.3, "Larger"]]) +
         choice("ui", "UI scale", UI_SCALES.map((v) => [v, Math.round(v * 100) + "%"])) +
         `<div class="note dim">The size of the buttons, cards and menus, not of the garden. ${mobile ? "A phone starts at " + Math.round(PHONE_UI * 100) + "%." : "100% is the default."}${ME.params.has("ui") ? " Pinned to " + Math.round(uiScale(s) * 100) + "% by the page address (?ui=)." : ""}</div>`;
@@ -33066,16 +33257,6 @@ function MG_SFX(L) {
     let trauma = 0, flash = 0;
     G.on("heart_hit", () => { trauma = Math.min(1, trauma + 0.7); flash = 1; });
     G.on("boss", (e) => { trauma = Math.min(1, trauma + 0.5); });
-    // a boss comes: the view eases to its rift (the Camera moves setting, off with reduced motion), and back
-    // to where it looked a moment later, unless the player has moved it since
-    let camBack = null;
-    G.on("boss", (e) => {
-      if (!(G.camMoves ?? 1)) return;
-      const w = canvas.width, h = canvas.height, here = ME.pickGround(app.T, cam.ray(w / 2, h / 2, w, h)), c = game.world.roads[(e && e.road) || 0].path[0];
-      const X = c[0] + 0.5, Y = c[1] + 0.5, rift = [X, Y, app.T.groundAt(X, Y, app.T.O[2] + app.T.NZ / app.T.VS)];
-      cam.focus(rift, { s: 0.9 });
-      camBack = here ? { p: here.p, rift, zoom: cam.zoom, at: ME.now() + 900 + 2200 } : null;
-    });
     G.on("kill", (e) => { if (e.boss) { trauma = 1; flash = 0.6; } });
     const flashEl = document.getElementById("flash");
 
@@ -33129,13 +33310,6 @@ function MG_SFX(L) {
       if (!blind) dyn.update(now, now - last);
       last = now;
       cam.update(now);
-      // (the way back: while the view still rests on the rift at the zoom it had, ease back when it's time; a
-      // drag, the wheel or a turn that moved it away drops it)
-      if (camBack && !cam.foc) {
-        const r = cam.panOf(camBack.rift);
-        if (Math.hypot(cam.pan[0] - r[0], cam.pan[1] - r[1]) > 0.01 || cam.zoom !== camBack.zoom) camBack = null;
-        else if (now >= camBack.at) { cam.focus(camBack.p, { s: 0.9 }); camBack = null; }
-      }
       if (tips) tips.update();
       if (hints) hints.update();
       // simulate in steps of at most 1/30 s (2x and the bot's fast-forward take several per frame)
