@@ -3676,6 +3676,11 @@ window.addEventListener("error", (e) => {
   ME.params = new URLSearchParams(location.search);
   ME.q = (k, d) => (ME.params.has(k) ? ME.params.get(k) : d);
   ME.qn = (k, d) => (ME.params.has(k) ? parseFloat(ME.params.get(k)) : d);
+  // a key from outside (the page address, a save, an imported asset) that is safe to look up in or write into a
+  // plain table: not one every object inherits (constructor, toString, __proto__...), which table[k] would find
+  // on any table or, written, would set its prototype. The one rule for all of them (audit SEC-6); MossAsset
+  // takes it as AF.safeKey.
+  ME.safeKey = (k) => !(k in Object.prototype);
 
   // ------------------------------------------------------------------ keys by physical position
   // A key binding is a position on the keyboard (KeyboardEvent.code: KeyQ, KeyW, Digit1...), so it stays
@@ -5360,6 +5365,22 @@ window.addEventListener("error", (e) => {
       this.BX = I1 - I0; this.BY = J1 - J0; this.BXY = this.BX * this.BY; this.o = J0 * this.BX + I0;
       this.table = new Uint32Array(this.BXY * this.BZ);
       this.pool = new Uint8Array(0); this.used = 0; this.free = [];
+      if (win && ME.gridCheck) BrickGrid.guard(this);
+    }
+    // ME.gridCheck (a debug switch: region-check sets it, and the terrain workers take it from the main thread;
+    // #598's review, note 1): a window's ix, get, put and row throw on a brick outside the window, which would
+    // otherwise alias another brick of the window or read undefined without an error. Off, nothing is added
+    static guard(g) {
+      const P = BrickGrid.prototype, out = (I, J, K, w) => {
+        if (I < g.I0 || I >= g.I1 || J < g.J0 || J >= g.J1 || K < 0 || K >= g.BZ) throw new Error(`BrickGrid.${w}: brick ${I},${J},${K} outside the window ${g.win} (BZ ${g.BZ})`);
+      };
+      g.ix = (I, J, K) => (out(I, J, K, "ix"), P.ix.call(g, I, J, K));
+      g.get = (i, j, k) => (out(i >> 4, j >> 4, k >> 4, "get"), P.get.call(g, i, j, k));
+      g.put = (i, j, k, m) => (out(i >> 4, j >> 4, k >> 4, "put"), P.put.call(g, i, j, k, m));
+      g.row = (j, k, i0, i1, dst, off = 0) => {
+        if (i1 > i0) { out(i0 >> 4, j >> 4, k >> 4, "row"); out((i1 - 1) >> 4, j >> 4, k >> 4, "row"); }
+        return P.row.call(g, j, k, i0, i1, dst, off);
+      };
     }
     ix(I, J, K) { return (K * this.BY + J) * this.BX + I - this.o; }
     // brick row J from band (the bake): 16 rows of j, NX x 16 x NZ cells, x fastest, then j - 16 J, then k.
@@ -5612,7 +5633,8 @@ window.addEventListener("error", (e) => {
     ].join("\n");
   };
   // the worker's side (runs there, from its source): { probe } -> { probe }; { init } -> { ready, digest, check }
-  // (check: its probe bake of init.check's boxes; or { err }); { job: r } -> { r, res } with res's buffers transferred, { r, full } or { r, err }, in order
+  // (check: its probe bake of init.check's boxes; or { err }); { job: r } -> { r, res } with res's buffers transferred, { r, full } or { r, err }, in order.
+  // W1's baker adds ring (the region's ring, 16) and keep (the map's state put back after: region's keep)
   const terrainServe = () => {
     let region = null, chain = Promise.resolve();
     self.onmessage = (e) => {
@@ -5620,7 +5642,7 @@ window.addEventListener("error", (e) => {
       if (m.probe) { postMessage({ probe: ME.bakeTerrain.pxProbe(window.PX) }); return; }
       if (m.init) {
         const I = m.init;
-        ME.VS = I.VS; ME.content = I.CT; ME.qn = (k, d) => (k in I.QN ? I.QN[k] : d); ME.VOLUME_DECO = new Set(I.vdeco); ME.sdf.cull = I.cull; window.MODELS = I.models;
+        ME.VS = I.VS; ME.content = I.CT; ME.qn = (k, d) => (k in I.QN ? I.QN[k] : d); ME.VOLUME_DECO = new Set(I.vdeco); ME.sdf.cull = I.cull; window.MODELS = I.models; ME.gridCheck = !!I.gc;
         if (I.water) I.st.map.waterD = ME.waterDist(I.water);
         const pal = new ME.Palette(I.st);
         pal.names = I.plan.names; pal.ids = I.plan.ids;
@@ -5631,7 +5653,7 @@ window.addEventListener("error", (e) => {
       const r = m.job;
       chain = chain.then(async () => {
         try {
-          const res = await region(r, true), gr = res.grid;
+          const res = await region(r, true, m.ring || 1, null, !!m.keep), gr = res.grid;
           postMessage({ r, res }, [gr.table.buffer, gr.pool.buffer, gr.free.buffer, res.d1.buffer, res.d2.buffer, res.top.buffer]);
         } catch (er) { postMessage(er && er.full ? { r, full: true } : { r, err: String((er && er.stack) || er) }); }
       });
@@ -5644,12 +5666,13 @@ window.addEventListener("error", (e) => {
   // drops region r's answer when it comes (the main thread baked r). Each worker holds 2 regions at most, and a
   // region is posted or grabbed only while it is fewer than `ahead` past the one taken, so the records waiting
   // here stay few. The watchdog (ME.bakeJobMs, 30 s; restarted on each answer) loses a worker that holds regions
-  // and sends nothing; its regions, and the queue once no worker is left, answer null
+  // and sends nothing; its regions, and the queue once no worker is left, answer null. job(r, x) (W1's baker) queues
+  // one region in any order, its message carrying x's fields too; a pool given such jobs posts them with no window
   const terrainPool = (n) => {
     let url = null;
     try { url = URL.createObjectURL(new Blob([terrainWorkerSrc()], { type: "text/javascript" })); } catch (e) { return null; }
-    const limit = ME.bakeJobMs || 30000, ahead = n * 3, ws = [], got = new Map(), dropped = new Set(), queue = [], ch = new MessageChannel();
-    let taken = 0, stopped = false;
+    const limit = ME.bakeJobMs || 30000, ahead = n * 3, ws = [], got = new Map(), dropped = new Set(), queue = [], extra = new Map(), ch = new MessageChannel();
+    let taken = 0, stopped = false, loose = false;
     const whys = []; // why each worker was lost (pool.why; T.stats.regions.workers.lost)
     // waiters: the stream's bake waiting on an answer (pool.wait); an answer, a lost worker or stop wakes them
     const waiters = [], wake = () => { for (const f of waiters.splice(0)) f(); };
@@ -5690,14 +5713,20 @@ window.addEventListener("error", (e) => {
       send, lose, why: whys,
       live: () => ws.filter((w) => w.ready && !w.lost).length,
       jobs: (N) => { for (let r = 0; r < N; r++) queue.push(r); pool.feed(); },
+      job: (r, x) => {
+        loose = true;
+        if (!ws.some((v) => !v.lost)) { settle(r, null); return; }
+        if (x) extra.set(r, x);
+        queue.push(r); pool.feed();
+      },
       // round by round (one region each), so the regions spread over the workers
       feed: () => {
         if (stopped) return;
         for (let k = 1; k <= 2; k++) for (const w of ws) {
-          if (w.lost || !w.ready || w.held.size >= k || !queue.length || queue[0] >= taken + ahead) continue;
+          if (w.lost || !w.ready || w.held.size >= k || !queue.length || (!loose && queue[0] >= taken + ahead)) continue;
           const r = queue.shift(), was = w.held.size;
-          if (!send(w, { job: r })) { queue.unshift(r); if (!ws.some((v) => !v.lost)) while (queue.length) settle(queue.shift(), null); continue; }
-          w.held.add(r);
+          if (!send(w, Object.assign({ job: r }, extra.get(r)))) { queue.unshift(r); if (!ws.some((v) => !v.lost)) while (queue.length) settle(queue.shift(), null); continue; }
+          w.held.add(r); extra.delete(r);
           if (!was) arm(w);
         }
       },
@@ -5720,7 +5749,7 @@ window.addEventListener("error", (e) => {
       stop: () => {
         stopped = true; wake();
         for (const w of ws) { w.held.clear(); lose(w, null); }
-        got.clear(); dropped.clear(); queue.length = 0;
+        got.clear(); dropped.clear(); extra.clear(); queue.length = 0;
         ch.port1.close();
         if (url) { URL.revokeObjectURL(url); url = null; }
       },
@@ -5735,10 +5764,12 @@ window.addEventListener("error", (e) => {
   // o.serve(region, digest, check), called where the regions would bake, in place of the rest of the bake. o.bg: the
   // terrain stream's bake (P3, src/stream.js), while the game plays: quiet, by regions on the terrain workers
   // (with or without ?regions), none of them on the main thread, the coarse grid a tile row at a time; it throws
-  // an error with .noWorkers where it would bake a region here
+  // an error with .noWorkers where it would bake a region here. o.hold (W1, ME.hiBaker): quiet, the map up to its
+  // regions (the lamps' heights, the workers started and checked as for the regions bake, with or without
+  // ?regions), then no region: it returns a baker that bakes a region at a time when asked (baker below)
   ME.bakeTerrain = async function (st, pal, o = {}) {
-    const RULES = !!o.rules, progress = RULES || o.serve || o.bg ? () => {} : ME.progress;
-    const t0 = ME.now(), VS = o.vs || ME.VS, CT = ME.content || {}, G = gridOf(st, CT, RULES || !!o.serve), F = G.frame, jar = F.type === "jar";
+    const RULES = !!o.rules, quiet = !!(o.serve || o.hold), progress = RULES || quiet || o.bg ? () => {} : ME.progress;
+    const t0 = ME.now(), VS = o.vs || ME.VS, CT = ME.content || {}, G = gridOf(st, CT, RULES || quiet), F = G.frame, jar = F.type === "jar";
     // the jar (Momiji's island): a circle of radius RI round (C, CY), over a strata drum and a wooden plinth
     const C = jar ? F.c[0] : 0, CY = jar ? F.c[1] : 0, RI = jar ? F.r : 0;
     const RG = RI + 0.35, DRUM = F.foot, PL_R = RG + 0.45, PL_ZB = -2.15, PL_ZT = -1.5, ZF = G.floorZ;
@@ -6212,8 +6243,8 @@ window.addEventListener("error", (e) => {
     // bricks' cells (cut(I0, I1, J0, J1) gives their boxes), and no fold first (a brick of one material in the
     // pool gives what the uniform brick gives)
     let solid = 0, kMax = 0;
-    const MX = NX >> 1, MY = NY >> 1, MZ = NZ >> 1, d1 = RULES || o.serve ? null : new Uint8Array(MX * MY * MZ);
-    const LX = MX >> 1, LY = MY >> 1, LZ = MZ >> 1, d2 = RULES || o.serve ? null : new Uint8Array(LX * LY * LZ);
+    const MX = NX >> 1, MY = NY >> 1, MZ = NZ >> 1, d1 = RULES || quiet ? null : new Uint8Array(MX * MY * MZ);
+    const LX = MX >> 1, LY = MY >> 1, LZ = MZ >> 1, d2 = RULES || quiet ? null : new Uint8Array(LX * LY * LZ);
     const s7 = (j, i0) => i0 + (7 - (j * NX + i0) % 7) % 7; // row j's first 7th cell from i0
     // a region's blocks: [x0, y0, w, h] of mip0's, then of mip1's (each block every z)
     const cut = (I0, I1, J0, J1) => [I0 << 3, J0 << 3, Math.min(MX, I1 << 3) - (I0 << 3), Math.min(MY, J1 << 3) - (J0 << 3),
@@ -6264,14 +6295,14 @@ window.addEventListener("error", (e) => {
     // regions: the count, the lamp pre-pass and each region's time (ms: its bake and its take; mipMs: its mips),
     // kept in T.stats.regions
     let regions = null;
-    if (RULES || !(o.serve || o.bg || ME.regionsOn(VS))) await fill(g, null, lamps.length);
+    if (RULES || !(quiet || o.bg || ME.regionsOn(VS))) await fill(g, null, lamps.length);
     else {
       const RT = 4 * VS, NRX = Math.ceil(NX / RT), NRY = Math.ceil(NY / RT), N = NRX * NRY, tl = ME.now();
       const grow = (b, d) => [Math.max(0, b[0] - d), Math.max(0, b[1] - d), Math.min(NX, b[2] + d), Math.min(NY, b[3] + d)];
       // #548 note C: a region's grid (and a lamp's) is a window of the bricks its columns C reach, not the map's
       const bwin = (c) => [c[0] >> 4, (c[2] + 15) >> 4, c[1] >> 4, (c[3] + 15) >> 4];
       // P1c: the workers start (and boot) during the lamp pre-pass; a worker takes the lamps' heights from the plan
-      const nw = o.serve ? 0 : terrainWorkerN(VS, !!o.bg), pool = nw > 0 ? terrainPool(nw) : null;
+      const nw = o.serve ? 0 : terrainWorkerN(VS, !!(o.bg || o.hold)), pool = nw > 0 ? terrainPool(nw) : null;
       if (o.bg && !pool) throw noWorkers("no terrain workers");
       // o.only (W1, a single region's bake): only the lamps within 3 tiles of region o.only get their heights (a
       // lamp's stamp reaches less than 1.5 tiles); the others' stamps are clipped out of it
@@ -6308,10 +6339,14 @@ window.addEventListener("error", (e) => {
       // ring (W1): the columns round the region that come out as the map's (1 by default); at 16 or more the mips
       // (and res.M, the bricks they cover) take ring >> 4 bricks round the region too
       // Rb (the probe bake, check): the columns [i0, j0, i1, j1] to bake in place of region r's
-      const region = async (r, def, ring = 1, Rb = null) => {
+      // keep (the probe bake, W1's baker): the map's top and lobe over the columns it bakes are put back after it,
+      // so the next one bakes from the map's state as it was, in whatever order they come
+      const region = async (r, def, ring = 1, Rb = null, keep = false) => {
         const i0 = (r % NRX) * RT, j0 = Math.floor(r / NRX) * RT, R = Rb || [i0, j0, Math.min(NX, i0 + RT), Math.min(NY, j0 + RT)], tr = ME.now();
         const I0 = R[0] >> 4, I1 = (R[2] + 15) >> 4, J0 = R[1] >> 4, J1 = (R[3] + 15) >> 4, rb = ring >> 4;
         const Mb = [Math.max(0, I0 - rb), Math.min((NX + 15) >> 4, I1 + rb), Math.max(0, J0 - rb), Math.min((NY + 15) >> 4, J1 + rb)];
+        const C = grow(R, ring + 1), cw = C[2] - C[0], sTop = keep ? new Int16Array(cw * (C[3] - C[1])) : null, sLobe = keep ? new Uint8Array(sTop.length) : null;
+        if (keep) for (let j = C[1]; j < C[3]; j++) { sTop.set(top.subarray(j * NX + C[0], j * NX + C[2]), (j - C[1]) * cw); sLobe.set(lobe.subarray(j * NX + C[0], j * NX + C[2]), (j - C[1]) * cw); }
         const sv = [wetCols, ebCols, ebCarved, lwCols, lobes, stamped, solid, kMax], base = PAL.names.length, entries = [], mats = [], mi = new Map();
         wetCols = ebCols = ebCarved = lwCols = lobes = stamped = solid = kMax = 0;
         pal = forkPal(PAL, def);
@@ -6322,8 +6357,8 @@ window.addEventListener("error", (e) => {
         };
         try {
           // the window: C's bricks, and the mips' (Mb, within them as R's edge is a brick's)
-          const C = grow(R, ring + 1), cw = bwin(C);
-          const rg = new BrickGrid(NX, NY, NZ, [Math.min(cw[0], Mb[0]), Math.max(cw[1], Mb[1]), Math.min(cw[2], Mb[2]), Math.max(cw[3], Mb[3])]);
+          const bw = bwin(C);
+          const rg = new BrickGrid(NX, NY, NZ, [Math.min(bw[0], Mb[0]), Math.max(bw[1], Mb[1]), Math.min(bw[2], Mb[2]), Math.max(bw[3], Mb[3])]);
           await fill(rg, { C, W: grow(R, ring), R }, lamps.length);
           const tm = ME.now(), cb = cut(...Mb), D1 = new Uint8Array(cb[2] * cb[3] * MZ), D2 = new Uint8Array(cb[6] * cb[7] * LZ);
           mips(rg, ...Mb, D1, D2, cb);
@@ -6334,18 +6369,21 @@ window.addEventListener("error", (e) => {
         } finally {
           [wetCols, ebCols, ebCarved, lwCols, lobes, stamped, solid, kMax] = sv;
           pal = PAL; deferTo = null;
+          if (keep) for (let j = C[1]; j < C[3]; j++) { top.set(sTop.subarray((j - C[1]) * cw, (j - C[1] + 1) * cw), j * NX + C[0]); lobe.set(sLobe.subarray((j - C[1]) * cw, (j - C[1] + 1) * cw), j * NX + C[0]); }
         }
       };
-      const take = (res) => {
-        const tk = ME.now(), rg = BrickGrid.from(res.grid), [I0, I1, J0, J1] = res.I, R = res.R, E = res.entries, nE = E.length / 12;
+      // lay(res, [I0, I1, J0, J1]): res's grid in the map's palette (PAL: a region baking here meanwhile has pal
+      // forked), its deferred details made, compacted over those bricks
+      const lay = (res, [I0, I1, J0, J1]) => {
+        const rg = BrickGrid.from(res.grid), E = res.entries, nE = E.length / 12;
         // the entries whose cell is still 255, before the renumbering (a fork's own ids stay under 255)
         const live = new Uint8Array(nE), ids = new Uint8Array(nE), LUT = new Uint8Array(256).map((_, i) => i);
         for (let e = 0; e < nE; e++) live[e] = rg.get(E[e * 12 + 1], E[e * 12 + 2], E[e * 12 + 3]) === 255 ? 1 : 0;
         let same = true;
-        res.names.forEach((n, i) => { LUT[res.base + i] = pal.id(n); if (LUT[res.base + i] !== res.base + i) same = false; });
+        res.names.forEach((n, i) => { LUT[res.base + i] = PAL.id(n); if (LUT[res.base + i] !== res.base + i) same = false; });
         for (let e = 0, o = 0; e < nE; e++, o += 12) {
           const m0 = res.mats[E[o + 7]], m = mdT[E[o]].detail(E[o + 4], E[o + 5], E[o + 6], m0, E[o + 8], E[o + 9], E[o + 10], E[o + 11]) || m0;
-          ids[e] = pal.id(m || (ME.content || {}).defaultMaterial);
+          ids[e] = PAL.id(m || (ME.content || {}).defaultMaterial);
         }
         if (!same) {
           const T = rg.table, P = rg.pool;
@@ -6354,6 +6392,10 @@ window.addEventListener("error", (e) => {
         }
         for (let e = 0; e < nE; e++) if (live[e]) rg.put(E[e * 12 + 1], E[e * 12 + 2], E[e * 12 + 3], ids[e]);
         rg.compact([I0 << 4, J0 << 4, 0], [Math.min(NX, I1 << 4) - 1, Math.min(NY, J1 << 4) - 1, NZ - 1]);
+        return rg;
+      };
+      const take = (res) => {
+        const tk = ME.now(), rg = lay(res, res.I), [I0, I1, J0, J1] = res.I, R = res.R;
         const [ax, ay, aw, ah, bx, by, bw, bh] = res.cb, w = R[2] - R[0];
         for (let z = 0; z < MZ; z++) for (let y = 0; y < ah; y++) d1.set(res.d1.subarray((z * ah + y) * aw, (z * ah + y + 1) * aw), (z * MY + ay + y) * MX + ax);
         for (let z = 0; z < LZ; z++) for (let y = 0; y < bh; y++) d2.set(res.d2.subarray((z * bh + y) * bw, (z * bh + y + 1) * bw), (z * LY + by + y) * LX + bx);
@@ -6379,11 +6421,8 @@ window.addEventListener("error", (e) => {
         const out = [];
         for (const { R: Rb } of boxes) {
           await ME.tick(); // (the stream's bake: a box at a time between the game's frames)
-          const C = grow(Rb, 2), w = C[2] - C[0], sTop = new Int16Array(w * (C[3] - C[1])), sLobe = new Uint8Array(sTop.length);
-          for (let j = C[1]; j < C[3]; j++) { sTop.set(top.subarray(j * NX + C[0], j * NX + C[2]), (j - C[1]) * w); sLobe.set(lobe.subarray(j * NX + C[0], j * NX + C[2]), (j - C[1]) * w); }
           let res = null;
-          try { res = await region(-1, true, 1, Rb); } catch (e) { if (!e.full) throw e; }
-          finally { for (let j = C[1]; j < C[3]; j++) { top.set(sTop.subarray((j - C[1]) * w, (j - C[1] + 1) * w), j * NX + C[0]); lobe.set(sLobe.subarray((j - C[1]) * w, (j - C[1] + 1) * w), j * NX + C[0]); } }
+          try { res = await region(-1, true, 1, Rb, true); } catch (e) { if (!e.full) throw e; }
           if (!res) { out.push("full"); continue; }
           const gr = BrickGrid.from(res.grid), T = gr.table, Pq = gr.pool, [I0, I1, J0, J1] = res.I, BZ = gr.BZ;
           let h = 2166136261;
@@ -6427,7 +6466,52 @@ window.addEventListener("error", (e) => {
         if (out.length < 2) add(O[0] + NX / VS / 2, O[1] + NY / VS / 2, "centre");
         return out;
       };
-      let ready = 0, took = 0, late = 0, fell = 0, boxes = [], checkMs = 0;
+      // W1's baker (o.hold, ME.hiBaker): the regions at this density, one at a time as they are asked for, in any
+      // order. bake(r, ring) gives region r's record laid in the map's palette (its details made, names [] as
+      // nothing is left to number), baked from the map's state as it was after the prelude (keep). A live worker
+      // takes it; none, a worker's error or a record that does not fit and it bakes here (one at a time: a bake
+      // here forks the palette). The same r asked twice while it bakes gives the same promise. stop() ends the
+      // workers; stats: { workers (the pool's start, as regions.workers), took, here, lost }
+      const baker = (pl, wk, fits) => {
+        const busy = new Map();
+        let here = Promise.resolve(), stopped = false, took = 0, inHere = 0;
+        const local = (r, ring) => {
+          const p = here.then(() => region(r, DEF(), ring, null, true).catch((e) => { if (!e.full) throw e; return region(r, false, ring, null, true); }));
+          here = p.catch(() => {});
+          return p;
+        };
+        const one = async (r, ring) => {
+          let res = null;
+          if (pl && pl.live()) {
+            pl.job(r, { ring, keep: true });
+            let m;
+            while ((m = pl.answer(r)) === undefined) { if (stopped) throw new Error("W1: the baker was stopped"); await pl.wait(1000); }
+            if (m && m.res && fits(m.res)) { res = m.res; took++; }
+            else if (m && m.err) ME.log("WARN TERRAIN worker: region " + r + ": " + m.err.split("\n")[0] + "; baked on the main thread");
+          }
+          if (stopped) throw new Error("W1: the baker was stopped");
+          if (!res) { res = await local(r, ring); inHere++; }
+          const rg = lay(res, res.M);
+          return Object.assign({}, res, { grid: rg.record(), base: PAL.names.length, names: [], entries: [], mats: [] });
+        };
+        return {
+          vs: VS, n: N, size: [NRX, NRY], workers: pl ? pl.ws.filter((w) => !w.lost).length : 0,
+          bake: (r, ring = 16) => {
+            if (!(r >= 0 && r < N) || r !== Math.floor(r)) return Promise.reject(new Error("W1: no region " + r + " (0.." + (N - 1) + ")"));
+            if (stopped) return Promise.reject(new Error("W1: the baker was stopped"));
+            // (the pool keys its answers by r: another ring for the same r waits for the one baking)
+            const b = busy.get(r);
+            if (b && b.ring === ring) return b.p;
+            const p = (b ? b.p.catch(() => {}) : Promise.resolve()).then(() => one(r, ring));
+            busy.set(r, { ring, p });
+            p.catch(() => {}).then(() => { if (busy.get(r) && busy.get(r).p === p) busy.delete(r); });
+            return p;
+          },
+          stop: () => { stopped = true; if (pl) pl.stop(); },
+          get stats() { return { workers: wk, live: pl ? pl.ws.filter((w) => !w.lost).length : 0, took, here: inHere, lost: pl ? pl.why.slice() : [] }; },
+        };
+      };
+      let ready = 0, took = 0, late = 0, fell = 0, boxes = [], checkMs = 0, held = false;
       try {
         // a worker's region always defers (def), so none bakes once the palette is full here
         if (pool && DEF()) {
@@ -6468,7 +6552,7 @@ window.addEventListener("error", (e) => {
           }
           if (fnW && !water) for (const w of pool.ws) pool.lose(w, "the map's waterD is a closure with no matching water shapes (ME.content.gardenWater." + st.id + ")");
           boxes = checkBoxes();
-          const init = { VS, cull: ME.sdf.cull, vdeco: [...ME.VOLUME_DECO], QN, models: keys(window.MODELS), CT: noFn(ct), st: noFn(sw), water, plan, check: boxes };
+          const init = { VS, cull: ME.sdf.cull, vdeco: [...ME.VOLUME_DECO], QN, models: keys(window.MODELS), CT: noFn(ct), st: noFn(sw), water, plan, check: boxes, gc: !!ME.gridCheck };
           // (tools/region-check.js breaks an input here, to see the check lose the workers)
           if (ME.terrainWorkerInit) ME.terrainWorkerInit(init);
           // the probe bake here, while the workers bake theirs (nothing else touches the bake's state meanwhile)
@@ -6484,16 +6568,24 @@ window.addEventListener("error", (e) => {
             else pool.lose(w, !m ? "no answer to its plan in " + limit + " ms" : m.err ? m.err.split("\n")[0] : m.digest !== digest ? "its bake differs (digest " + m.digest + ", here " + digest + ")"
               : !Array.isArray(h) ? "the probe bake fails here (" + h.err + ")" : off >= 0 ? "its probe bake differs at the " + boxes[off].at + " (check " + m.check[off] + ", here " + h[off] + ")" : "no probe bake in its answer");
           }));
+          // the probe bake here ends before a region bakes here (every worker may have been lost before awaiting it)
+          await want;
           ready = pool.live();
         }
         if (o.bg && !ready) throw noWorkers(pool && DEF() ? "no terrain worker is ready" : "the palette is full");
+        // a record that would take the palette here past 255 (the full a region baked here would throw) bakes again
+        // here
+        const fits = (res) => PAL.names.length + res.names.filter((n) => PAL.ids[n] === undefined).length <= 255;
         if (pool && !ready) pool.stop();
-        else if (pool) pool.jobs(N);
+        if (o.hold) {
+          const wk = pool ? { n: pool.ws.length, ready, checks: boxes.length, checkMs, lost: pool.why } : null;
+          held = !!ready;
+          return baker(ready ? pool : null, wk, fits);
+        }
+        if (pool && ready) pool.jobs(N);
         // the main thread never waits on a worker: while region r is out, it bakes the next region no worker holds
         // (mine, taken in its turn) and looks again; with none left in the window, it bakes r too and drops the
-        // worker's answer (late). A record that would take the palette here past 255 (the full a region baked here
-        // would throw; a record from mine was forked before the regions taken since) bakes again here
-        const fits = (res) => PAL.names.length + res.names.filter((n) => PAL.ids[n] === undefined).length <= 255;
+        // worker's answer (late). fits: a record from mine too was forked before the regions taken since
         const mine = new Map();
         for (let r = 0; r < N; r++) {
           progress("terrain region " + (r + 1) + "/" + N, 0.05 + 0.27 * (r / N)); await ME.tick();
@@ -6520,7 +6612,7 @@ window.addEventListener("error", (e) => {
           else if (ready && !own) fell++;
         }
         if (pool) regions.workers = { n: pool.ws.length, ready, took, here: N - took, late, fell, checks: boxes.length, checkMs, lost: pool.why.slice() };
-      } finally { if (pool) pool.stop(); }
+      } finally { if (pool && !held) pool.stop(); }
     }
 
     // The lamps' lights, then the map's point lights (tiles)
@@ -6650,17 +6742,27 @@ window.addEventListener("error", (e) => {
   // rules' bake is whole (no regions), so the terrain workers (P1c) never take it.
   ME.terrain16 = (st) => ME.bakeTerrain(st, new ME.Palette(st), { vs: 16, rules: true });
 
-  // W1 (docs/designs/2026-11-08-whole-game-128.md): region r of the regions bake (4 x 4 tiles) at a second density
+  // W1 (docs/designs/2026-11-08-whole-game-128.md): the regions of map st at density vs on the terrain workers.
+  // The prelude (the map's tops, the props, the lamps' heights) bakes once here and once in each worker, which
+  // is checked as the regions bake's are (digest and probe bake); then baker.bake(r) bakes region r in any
+  // order, on a worker when one is live, else here. Resolves to { vs, n, size, workers, bake(r, ring = 16),
+  // stop(), stats }; pass it to ME.bakeRegionHi. The baker keeps its workers (and the prelude's arrays) until
+  // stop(). pal: the app's, as ME.bakeRegionHi's
+  ME.hiBaker = (st, pal, vs = 128) => ME.bakeTerrain(st, pal, { vs, hold: true });
+
+  // W1: region r of the regions bake (4 x 4 tiles) at a second density
   // vs, apart from the map's terrain, on the main thread. Its grid is cropped to its bricks with one brick round
   // (the ring the mesh's faces and the density's samples read, baked as the map's) and, in z, from a brick under
   // the lowest one with a surface to two over the highest that isn't air; its mips cover the same bricks. pal is
   // the app's: the grid's ids are its ids (a material it hasn't yet is added, with a WARN: the draw's material
   // table doesn't know it). Returns { r, vs, grid, dims (the crop's voxels), origin (its corner, in vs voxels),
   // box (the region in the crop, for greedyMesh's opt.boxes), rect (the region in the map's grid at VS), d1, d2,
-  // bakeMs, MB }
-  ME.bakeRegionHi = async (st, pal, r, vs = 128, VS = ME.VS) => {
+  // bakeMs, MB }. baker (ME.hiBaker's, made with the same st and pal): the region comes from it (its workers, or
+  // its main thread), with no prelude of its own, and vs is the baker's
+  ME.bakeRegionHi = async (st, pal, r, vs = 128, VS = ME.VS, baker = null) => {
     const t0 = ME.now(), n0 = pal.names.length;
-    const res = await ME.bakeTerrain(st, pal, { vs, only: r, serve: (region) => region(r, false, 16) });
+    if (baker) vs = baker.vs;
+    const res = baker ? await baker.bake(r, 16) : await ME.bakeTerrain(st, pal, { vs, only: r, serve: (region) => region(r, false, 16) });
     const g = BrickGrid.from(res.grid), [I0, I1, J0, J1] = res.M, S = g.table;
     // the names the region's fork added, in the app's palette
     const LUT = new Uint8Array(256).map((_, i) => i);
@@ -7762,7 +7864,8 @@ window.addEventListener("error", (e) => {
     // each occupied brick into its pool slot, 8 x 8 rows of 8 voxels. Its 4^3 octants that hold a voxel go into
     // the brick map's top byte (bit x + 2y + 4z), and each volume gets the bounds of its voxels, lo and hi (the
     // volume shader skips the empty octants and draws its proxy box over lo..hi, not the whole dims). putVol(v,
-    // take): volume v's, take(bk) the pool slot of brick-map entry bk (by default the one the count above gave it);
+    // take): volume v's, take(bk) the pool slot of brick-map entry bk (by default the one the count above gave it;
+    // an upgrade's take, below, ignores bk: it hands out the lowest free slot);
     // a generator that yields every 64 bricks, run through at once here (drive) and over frames by an upgrade (E4)
     const putVol = function* (v, take = (bk) => bricks[bk] - 1) {
       const [px, py, pz] = v.pdims.map((n) => n / 8), [bx, by, bz] = v.base.map((n) => n / 8), lo = [1e9, 1e9, 1e9], hi = [0, 0, 0];
@@ -7774,6 +7877,8 @@ window.addEventListener("error", (e) => {
         // an interior brick: never extremal (solid neighbours on every side), so lo and hi don't need it. Its map
         // entry has no octant (the shader's empty) and 1 + its index in MB.inner below
         if (v.inner && v.inner.is[bi]) {
+          // (1 + its index must stay in the entry's 24 bits: past them it would read as octants, a pool slot)
+          if (!v.copy && ni + 1 >= 1 << 24) throw new Error(`MB.inner is full: ${ni} interior bricks, past the brick map's 24 bits`);
           if (!v.copy) { bricks[bk] = ni + 1; for (let j = 0; j < 512; j++) inner.mats[ni * 512 + j] = b[j * 4 + 3]; ni++; }
           continue;
         }
@@ -7800,6 +7905,7 @@ window.addEventListener("error", (e) => {
     // the slots written since the last upload (P4, #492's PERF-E11: R.uploadSlots writes only theirs)
     const slots = (PZ / 8) * PB * PB, used = prog ? new Uint8Array(slots).fill(1, 0, nb) : null, touched = new Set();
     let lw = nb, inUse = nb;
+    // take: the lowest free slot (putVol passes it a brick-map entry, which it doesn't need)
     const take = () => { let k = lw; while (used[k]) k++; if (k >= slots) throw new Error("the progressive pool is full"); used[k] = 1; lw = k + 1; inUse++; touched.add(k); return k; };
     // the bricks of a volume's place in the layout (base, dims) out of the map, their slots freed: the box in bricks
     const clear = (base, dims) => {
@@ -7909,7 +8015,8 @@ window.addEventListener("error", (e) => {
             const g = order.shift();
             if (cancelled) { ok = false; break; }
             const tg = ME.now(), cur = lists.slice(), recs = [], lrecs = [], put = [], boxes = [];
-            let fail = null, wait = 0, got = 0;
+            // ni0: MB.inner's count before this flipbook's frames (a fail gives their interior bricks back)
+            let fail = null, wait = 0, got = 0, ni0 = ni;
             for (const i of g.vs) {
               const { md, vf } = mds[i], px = vols[i].px, lp = lods.length ? lods[i].px : null;
               let t = ME.now();
@@ -7954,10 +8061,15 @@ window.addEventListener("error", (e) => {
             }
             if (cancelled) { ok = false; break; } // (the app is done with R: nothing more to upload)
             if (fail) {
-              // the frames put so far out again; the flipbook stays coarse
+              // the frames put so far out again; the flipbook stays coarse. Their interior bricks are given back
+              // (only their map entries, cleared here, point at MB.inner past ni0; the trim at the end cuts them),
+              // and the materials their full bakes added to pal go up to R as a swap's would, so R's tables
+              // always hold all of pal
               for (const [b, d] of put) boxes.push(clear(b, d));
               for (const b of boxes) R.uploadBricks(b);
               touched.clear();
+              ni = ni0;
+              if (pal.names.length > palN) { R.refreshPalette(pal); palN = pal.names.length; }
               ok = false; sp.failed.push({ key: g.key, why: fail });
               if (!cancelled) ME.log(`WARN BAKE progressive ${g.key}: ${fail}; it stays coarse`);
               continue;
@@ -9184,12 +9296,12 @@ struct U {
   canopy3: vec4f, // canopy plane height, shaft haze height, haze base z, moon (0 day .. 1 night)
   water2: vec4f,  // ripple count, caustics strength, water-level grid size, -
   lgrid: vec4f,   // light grid origin xy, size wh
-  field: vec4f,   // app ground maps: map size wh (tiles), field texels per tile, -
+  field: vec4f,   // app ground maps: map size wh (tiles), field texels per tile, the act's freeze (water ice 0..1)
   weather: vec4f, // R.weather: rain, snow, fog, flash (0 without weather)
   weather2: vec4f, // wet, cover, cloud, fog height
   weather3: vec4f, // fog base z, low fog, petals, wind channel
   wclear: array<vec4f, 4>, // fog clearings: x, y, radius, softness (radius 0 = unused)
-  weather4: vec4f, // rain streak layers (R.rainLayers: 3; 2 on compat, 1 on a phone), -, -, -
+  weather4: vec4f, // rain streak layers (R.rainLayers: 3; 2 on compat, 1 on a phone), the act's grass height (1), -, -
   key: vec4f,     // the key light's colour (look.sunCol, linear), w = 1 when the level tints its light
   key2: vec4f,    // the ambient's colour (look.ambCol, linear; the key colour without), w = the backdrop: 0 forest, 1 night, 2 void
   sky: vec4f,     // night and void backdrops: zenith colour (linear); w = star density (night), cloud amount (void)
@@ -9667,6 +9779,7 @@ fn loOf(M: Model) -> vec3f { return vec3f(f32(M.base.w & 1023u), f32((M.base.w >
 @group(1) @binding(2) var fieldT: texture_2d<f32>;
 @group(1) @binding(3) var lin: sampler;
 fn fieldAt(xy: vec2f) -> f32 { return textureSampleLevel(fieldT, lin, xy / u.field.xy, 0.0).r; }
+fn growthAt(xy: vec2f) -> f32 { return textureSampleLevel(fieldT, lin, xy / u.field.xy, 0.0).g; }
 //#hooks wilt
 struct VO { @builtin(position) pos: vec4f, @location(0) n: vec3f, @location(1) zf: f32, @location(2) @interpolate(flat) ms: vec2u };
 struct GO { @location(0) a: vec4f, @location(1) n: vec4f };
@@ -9695,7 +9808,8 @@ const FN = array<vec3f, 5>(vec3f(1,0,0), vec3f(-1,0,0), vec3f(0,1,0), vec3f(0,-1
   // the hook ignores it
   _ = fieldT; _ = lin;
   let bl = clamp(hookWilt(B.xy), 0.0, 1.0);
-  let vsz = 1.0 / u.grid.w; let Hh = hv * vsz * (1.0 - 0.45 * bl); let t = u.vdir.w;
+  // the act's grass height (weather4.y, 1 without an act) where its growth has spread
+  let vsz = 1.0 / u.grid.w; let Hh = hv * vsz * (1.0 - 0.45 * bl) * mix(1.0, u.weather4.y, growthAt(B.xy)); let t = u.vdir.w;
   let zf = (f32(seg) + c.z) / 3.0;
   let wd = u.wind.xy; let wp = vec2f(-wd.y, wd.x);
   let g = gust(B.xy, t);
@@ -9853,6 +9967,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 @group(1) @binding(13) var cellT: texture_2d<f32>;               // the app's rgba per map tile (Renderer.setCells)
 fn fieldAt(xy: vec2f) -> f32 { return textureSampleLevel(fieldT, lin, xy / u.field.xy, 0.0).r; }
 fn cellAt(c: vec2i) -> vec4f { if (any(c < vec2i(0)) || any(c >= vec2i(u.field.xy))) { return vec4f(0.0); } return textureLoad(cellT, c, 0); }
+fn growthAt(xy: vec2f) -> f32 { return textureSampleLevel(fieldT, lin, xy / u.field.xy, 0.0).g; } // how far the act's look has spread (Renderer.setGrowth)
 //#hooks shade overlay
 // sunlight focused by the moving surface: bright threads where two drifting noise layers cross
 fn caustic(q0: vec2f, t: f32) -> f32 {
@@ -9996,6 +10111,12 @@ fn voidSky(fc: vec2f, uv: vec2f) -> vec3f {
     col = rampC(mat, s) * (A.rgb / max(m0.rgb, vec3f(0.003)));
   } else {
     col = A.rgb * (vec3f(1.0, 0.85, 0.6) * 2.4 * (lam * vis * (0.15 + 0.85 * cook) + trans) + vec3f(0.18, 0.3, 0.2) * ao * 0.8);
+  }
+  // the act's palette (Renderer.setAct): terrain, grass, leaves and models, not units or emitters, as far as
+  // its growth has spread (zeros in the table: no act, the frame unchanged)
+  if (aux < 1000.0 && cls != 3u) {
+    let at = mats[512u + mat];
+    if (at.w > 0.0) { col *= mix(vec3f(1.0), at.rgb, at.w * growthAt(p.xy)); }
   }
   col *= 1.0 + max(0.0, s - 0.9) * 1.8;
   // a level's key light (look.sunCol, look.ambCol): the key's colour where it reaches, the ambient's in its shade
@@ -10219,6 +10340,18 @@ fn waves(p: vec2f, fl: vec2f, st: f32, t: f32, rough: f32) -> Wv {
   let rr = rainRings(p, t); w.h += rr.x; w.foam += rr.y;
   return w;
 }
+// the act's freeze (u.field.w, Renderer.setAct): ice creeping in from the shallows, the whole surface at 1; flat,
+// pale (the foam ramp, a touch blue), faint cracks, nearly opaque. 0 returns the water as it was.
+fn ice(c: vec4f, w: vec3f, thick: f32, sv: f32, cook: f32) -> vec4f {
+  let fz = u.field.w;
+  if (fz <= 0.0) { return c; }
+  let edge = thick + (vnoise(w.xy * 3.0) - 0.5) * 0.08;
+  let cov = select(sstep(fz * 0.9 + 0.03, fz * 0.9 - 0.05, edge) * sstep(0.0, 0.15, fz), 1.0, fz >= 0.999);
+  let crack = sstep(0.035, 0.0, abs(vnoise(w.xy * 2.6 + 7.0) - 0.5)) * 0.22 + sstep(0.02, 0.0, abs(vnoise(w.xy * 6.1 + 2.0) - 0.5)) * 0.12;
+  let k = sv * (0.6 + 0.4 * cook);
+  let ic = rampC(u32(u.ids.z), 0.7 + 0.22 * cook * sv) * vec3f(0.9, 0.97, 1.06) * keyTint(k) * (1.0 - crack);
+  return vec4f(mix(c.rgb, ic, cov), mix(c.a, 0.93, cov));
+}
 @fragment fn fs(i: VO) -> @location(0) vec4f {
   let ds = textureLoad(gD, vec2i(i.pos.xy), 0);
   let thick = max(0.0, i.pos.z - ds) * u.psrc.w / 1.732;
@@ -10247,7 +10380,7 @@ fn waves(p: vec2f, fl: vec2f, st: f32, t: f32, rough: f32) -> Wv {
   let foam = clamp(shore + lines + W0.foam, 0.0, 1.0);
   col = mix(col, rampC(u32(u.ids.z), 0.86 + 0.14 * cook * sv) * (1.0 + cook * sv * 0.4) * keyTint(sv * (0.6 + 0.4 * cook)), foam);
   let alpha = clamp(0.3 + 0.55 * (1.0 - exp(-thick * 2.2)) + fres * 0.3, 0.0, 0.9);
-  return vec4f(col, max(alpha, foam));
+  return ice(vec4f(col, max(alpha, foam)), i.w, thick, sv, cook);
 }
 `;
 
@@ -10315,7 +10448,7 @@ fn lake(i: VO, li: u32) -> vec4f {
   let a = clamp(body * (1.0 - fres) + fres * 0.9, 0.0, 0.98);
   var col = (deep * body * (1.0 - fres) + sky * fres * 0.9 + spec) / max(a, 1e-3);
   col = mix(col, rampC(u32(u.ids.z), 0.86 + 0.14 * cook * sv) * (1.0 + cook * sv * 0.4) * keyTint(sv * (0.6 + 0.4 * cook)), foam);
-  return vec4f(col, max(a, foam));
+  return ice(vec4f(col, max(a, foam)), i.w, thick, sv, cook);
 }
 @fragment fn fs(i: VO) -> @location(0) vec4f {
   let li = u32(i.f.w + 0.5);
@@ -11313,6 +11446,7 @@ fn boxOf(V: Vox) -> Box {
      opts.hooks      WGSL for the shader hooks (ME.SHADER_HOOKS: marked volumes, re-shading, overlays, wilt)
      user            Float32Array of ME.USER_SLOTS vec4s the hooks read as u.user[k], uploaded every frame
      setField(r8)    a scalar field over the map at opts.fieldRes texels per tile (hooks: fieldAt)
+     setGrowth(r8)   a second field, how far the act's look has spread (growthAt); setAct(o) the act's look (ME.Sky acts)
      setCells(rgba8) one rgba texel per map tile (hooks: cellAt)
      setLights(list) point lights on top of the scene's own
      sprites         an ME.SpriteBatch drawn in the forward pass (orbs, beams, rings, gauge bars)
@@ -11808,7 +11942,9 @@ fn boxOf(V: Vox) -> Box {
       const d = this.dev, S = this.S, T = S.T, MB = S.MB;
       // ---------------- static resources
       this.ubuf = d.createBuffer({ label: "uniforms", size: ME.USIZE * 4, usage: BU.UNIFORM | BU.COPY_DST });
-      this.matBuf = ME.buffer(d, S.tables.mats, BU.STORAGE, "mats");
+      // the 256 materials (2 vec4 each), then 256 act tints (setAct: rgb multiplier, w on; zeros = none)
+      const mt = new Float32Array(256 * 12); mt.set(S.tables.mats.subarray(0, 256 * 8));
+      this.matBuf = ME.buffer(d, mt, BU.STORAGE, "mats");
       this.rampTex = d.createTexture({ label: "ramps", size: [16, 256], format: "rgba8unorm-srgb", usage: GU.TEXTURE_BINDING | GU.COPY_DST });
       d.queue.writeTexture({ texture: this.rampTex }, S.tables.ramps, { bytesPerRow: 64 }, [16, 256]);
       this.densTex = ME.tex3d(d, "density", "r8unorm", [T.NX >> 1, T.NY >> 1, T.NZ >> 1], T.mips, 1); // half-res base: terrain shading never needed full res
@@ -11843,7 +11979,11 @@ fn boxOf(V: Vox) -> Box {
       this.grassBuf = ME.buffer(d, S.grass.blades, BU.STORAGE, "grass blades");
       const map = S.st.map;
       this.fieldDims = [map.W * this.fieldRes, map.H * this.fieldRes];
-      this.fieldTex = d.createTexture({ label: "app field", size: this.fieldDims, format: "r8unorm", usage: GU.TEXTURE_BINDING | GU.COPY_DST });
+      // r: the app's field (setField), g: the growth (setGrowth, full until the app writes one)
+      this.fieldTex = d.createTexture({ label: "app field", size: this.fieldDims, format: "rg8unorm", usage: GU.TEXTURE_BINDING | GU.COPY_DST });
+      this.fieldBytes = new Uint8Array(this.fieldDims[0] * this.fieldDims[1] * 2);
+      for (let i = 1; i < this.fieldBytes.length; i += 2) this.fieldBytes[i] = 255;
+      d.queue.writeTexture({ texture: this.fieldTex }, this.fieldBytes, { bytesPerRow: this.fieldDims[0] * 2 }, this.fieldDims);
       this.cellTex = d.createTexture({ label: "app cells", size: [map.W, map.H], format: "rgba8unorm", usage: GU.TEXTURE_BINDING | GU.COPY_DST });
       this.spriteBuf = d.createBuffer({ label: "sprites", size: this.sprites.max * 48, usage: BU.STORAGE | BU.COPY_DST });
       this.bubbleBuf = d.createBuffer({ label: "bubbles", size: BUBBLE_MAX * 48, usage: BU.STORAGE | BU.COPY_DST });
@@ -12453,9 +12593,22 @@ fn boxOf(V: Vox) -> Box {
       } else this.sunQ.push(box);
     }
 
-    // The app's ground maps for the shader hooks: a scalar field (fieldRes texels per tile, r8) and one
-    // rgba8 texel per tile.
-    setField(bytes) { this.dev.queue.writeTexture({ texture: this.fieldTex }, bytes, { bytesPerRow: this.fieldDims[0] }, this.fieldDims); }
+    // The app's ground maps for the shader hooks: a scalar field (fieldRes texels per tile, one byte each)
+    // and one rgba8 texel per tile. setGrowth fills the field texture's second channel (same layout): how
+    // far the act's palette (setAct) has reached each spot, 255 everywhere until the app writes one.
+    setField(bytes) { this.fieldChannel(bytes, 0); }
+    setGrowth(bytes) { this.fieldChannel(bytes, 1); }
+    fieldChannel(bytes, c) {
+      const F = this.fieldBytes, n = Math.min(bytes.length, F.length >> 1);
+      for (let i = 0; i < n; i++) F[2 * i + c] = bytes[i];
+      this.dev.queue.writeTexture({ texture: this.fieldTex }, F, { bytesPerRow: this.fieldDims[0] * 2 }, this.fieldDims);
+    }
+    // The act's look (a living map's season, ME.Sky's acts): o.mats a Float32Array(256 * 4) of rgb multipliers per
+    // material id with w 1 where one applies (null: none), o.freeze 0..1 (the water's ice), o.grassH (blade height).
+    setAct(o) {
+      this.dev.queue.writeBuffer(this.matBuf, 256 * 8 * 4, o.mats || (this.actZero || (this.actZero = new Float32Array(256 * 4))));
+      this.actFreeze = o.freeze || 0; this.actGrassH = o.grassH ?? 1;
+    }
     setCells(bytes) { const m = this.S.st.map; this.dev.queue.writeTexture({ texture: this.cellTex }, bytes, { bytesPerRow: m.W * 4 }, [m.W, m.H]); }
 
     // the bell jar's glass (none in a box frame)
@@ -12625,7 +12778,7 @@ fn boxOf(V: Vox) -> Box {
       set4(u, O.geo, E.c[0], E.c[1], E.jar ? E.R : E.half[0], E.top); // (a box: its half x here, minus its half y in look2.z)
       set4(u, O.misc2, fno % 64, 18, E.base, BLOOM_THRESHOLD);
       set4(u, O.look4, st.light.spriteK ?? 1, s.mottle, this.pcount.spray, this.sprayAt);
-      set4(u, O.field, st.map.W, st.map.H, this.fieldRes, 0);
+      set4(u, O.field, st.map.W, st.map.H, this.fieldRes, this.actFreeze || 0);
       // the weather (zeros without one): the channels, wet and cover, the fog's floor and the clearings
       const wv = Wx.cur, on = Wx.active;
       set4(u, O.weather, on ? wv.rain : 0, on ? wv.snow : 0, on ? wv.fog : 0, Wx.flashV);
@@ -12633,7 +12786,7 @@ fn boxOf(V: Vox) -> Box {
       set4(u, O.weather3, on ? Wx.base() : 0, on ? wv.fogLow : 0, on ? wv.petals : 0, on ? wv.wind : 0);
       u.set(Wx.clear, O.wclear);
       if (this.rainLayers == null) this.rainLayers = ME.phone && ME.phone() ? 1 : ME.compat ? 2 : 3; // (read once; a probe may set it)
-      set4(u, O.weather4, this.rainLayers, 0, 0, 0);
+      set4(u, O.weather4, this.rainLayers, this.actGrassH ?? 1, 0, 0);
       u.set(this.key, O.key); u.set(this.key2, O.key2); u.set(this.sky, O.sky); u.set(this.sky2, O.sky2); u.set(this.sky3, O.sky3);
       u.set(this.user, O.user);
       this.dev.queue.writeBuffer(this.ubuf, 0, u);
@@ -15036,12 +15189,13 @@ fn boxOf(V: Vox) -> Box {
   });
 
   // Tall grass, ripe and gold: o.w 2 a 2×2-tile sweep of nine tufts (the anchor on the shared corner), o.w
-  // 1 four tufts in one tile; five thin blades a tuft, 0.66-0.95 tall (0.82 of the first cut, "wheat stalks a bit smaller"), all leaning downwind (ME.WIND_DIR, so
+  // 1 four tufts in one tile; six thin blades a tuft, 0.66-0.95 tall (0.82 of the first cut, "wheat stalks a bit smaller"), all leaning downwind (ME.WIND_DIR, so
   // set it unturned), pale at the tips and many with a seed head. It sways (CT.sway), harder than the corn,
-  // and one tile at a time, so the gusts ripple across it. The blade count is the phone's frame cost: each
+  // and one tile at a time, so the gusts ripple across it. Three short leafy blades 0.3-0.46 tall splay at each
+  // tuft's foot (the fields pass: "more bushy, grassy"). The blade count is the phone's frame cost: each
   // tuft is ray-marched over its box, so fewer blades in tufts set close and leaning less (the Corn Moon perf pass)
   model("cm_tallgrass", (o = {}) => {
-    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), w = o.w || 1, p = [], n = w > 1 ? 9 : 4, nb = 5, nx = -WIND[1], ny = WIND[0];
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), w = o.w || 1, p = [], n = w > 1 ? 9 : 4, nb = 6, nx = -WIND[1], ny = WIND[0];
     const one = [[-0.15, -0.14], [0.16, -0.15], [-0.14, 0.16], [0.16, 0.14]];
     for (let t = 0; t < n; t++) {
       const cx = w > 1 ? ((t % 3) - 1) * 0.45 + (h(t, 1) - 0.5) * 0.14 : one[t][0] + (h(t, 1) - 0.5) * 0.1, cy = w > 1 ? (Math.floor(t / 3) - 1) * 0.45 + (h(t, 2) - 0.5) * 0.14 : one[t][1] + (h(t, 2) - 0.5) * 0.1;
@@ -15055,17 +15209,25 @@ fn boxOf(V: Vox) -> Box {
         }
         if (h(i, 8) < 0.5) p.push(E([q[0] + WIND[0] * 0.03, q[1] + WIND[1] * 0.03, q[2] + 0.04], [0.03, 0.03, 0.07], "cmSeed"));
       }
+      // three short leafy blades splayed at the tuft's foot (the fields pass: "more bushy, grassy")
+      for (let b = 0; b < 3; b++) {
+        const i = t * 10 + 7 + b, a = TAU * (b / 3 + 0.3 * h(i, 3)), r0 = 0.07 + 0.05 * h(i, 4), Hb = 0.3 + 0.16 * h(i, 5), out = 0.14 + 0.08 * h(i, 6), m = b === 1 ? "cmGrassTan" : "cmGrass";
+        const q = [cx + Math.cos(a) * r0, cy + Math.sin(a) * r0, 0];
+        const mid = [cx + Math.cos(a) * (r0 + out * 0.5) + WIND[0] * 0.03, cy + Math.sin(a) * (r0 + out * 0.5) + WIND[1] * 0.03, Hb * 0.6];
+        const e = [cx + Math.cos(a) * (r0 + out) + WIND[0] * 0.08, cy + Math.sin(a) * (r0 + out) + WIND[1] * 0.08, Hb];
+        p.push(C(q, mid, 0.04, 0.034, m), C(mid, e, 0.034, 0.022, m));
+      }
     }
     return { prims: p, r: w > 1 ? 1.25 : 0.65, h: 1.1, k: 1 };
   });
 
-  // Thin grass, one tile: o.tall a clump of eight fine blades 0.6-1.0 tall with pale tips, or else a low tuft
-  // of ten 0.2-0.38 tall; gold, tan and rust mixed, all leaning downwind like the tall grass (so set it
+  // Thin grass, one tile: o.tall a clump of twelve fine blades 0.6-1.0 tall with pale tips, or else a low tuft
+  // of fourteen 0.2-0.38 tall (eight and ten until the fields pass); gold, tan and rust mixed, all leaning downwind like the tall grass (so set it
   // unturned). It sways (CT.sway).
   model("cm_thingrass", (o = {}) => {
-    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), tall = !!o.tall, n = tall ? 8 : 10, p = [], nx = -WIND[1], ny = WIND[0], mix = ["cmGrass", "cmGrassTan", "cmGrassRust"];
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), tall = !!o.tall, n = tall ? 12 : 14, p = [], nx = -WIND[1], ny = WIND[0], mix = ["cmGrass", "cmGrassTan", "cmGrassRust"];
     for (let b = 0; b < n; b++) {
-      const a = TAU * h(b, 1), r0 = 0.34 * Math.sqrt(h(b, 2)), cx = Math.cos(a) * r0, cy = Math.sin(a) * r0, m = mix[Math.floor(h(b, 6) * 3)];
+      const a = TAU * h(b, 1), r0 = 0.38 * Math.sqrt(h(b, 2)), cx = Math.cos(a) * r0, cy = Math.sin(a) * r0, m = mix[Math.floor(h(b, 6) * 3)];
       const Hb = tall ? 0.6 + 0.4 * h(b, 3) : 0.2 + 0.18 * h(b, 3), lean = (tall ? 0.14 : 0.06) + 0.12 * h(b, 4), side = (h(b, 5) - 0.5) * 0.12;
       let q = [cx, cy, 0];
       for (let k = 1; k <= 3; k++) {
@@ -15077,17 +15239,23 @@ fn boxOf(V: Vox) -> Box {
   });
 
   // A shrub in its autumn leaves, one tile: a lumpy low bush 0.45-0.6 tall of o.leaf (cmAppleLeaf rust, cmAmber,
-  // cmScarlet) flecked with a second autumn colour, on a few bare twigs. It sways a little (CT.sway). Anchored
-  // on the ground.
+  // cmScarlet) flecked with a second autumn colour, on a few bare twigs; o.big (the fields pass) a quarter
+  // bigger, 0.75 tall, with four low lumps round it, about a tile and a third across. It sways a little
+  // (CT.sway). Anchored on the ground.
   model("cm_shrub", (o = {}) => {
-    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), leaf = o.leaf || "cmAppleLeaf", leaf2 = leaf === "cmAmber" ? "cmAppleLeaf" : "cmAmber", p = [];
-    for (let k = 0; k < 3; k++) { const a = TAU * (k / 3 + 0.1 * h(k, 1)); p.push(C([0, 0, 0], [Math.cos(a) * 0.16, Math.sin(a) * 0.16, 0.22], 0.03, 0.02, "bark")); }
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), leaf = o.leaf || "cmAppleLeaf", leaf2 = leaf === "cmAmber" ? "cmAppleLeaf" : "cmAmber", p = [], S = o.big ? 1.25 : 1;
+    for (let k = 0; k < 3; k++) { const a = TAU * (k / 3 + 0.1 * h(k, 1)); p.push(C([0, 0, 0], [Math.cos(a) * 0.16 * S, Math.sin(a) * 0.16 * S, 0.22 * S], 0.03, 0.02, "bark")); }
     for (let k = 0; k < 6; k++) {
-      const a = TAU * (k / 6 + 0.12 * h(k, 2)), r = k === 0 ? 0 : 0.17 + 0.08 * h(k, 3), z = (k === 0 ? 0.34 : 0.24) + 0.1 * h(k, 4) + 0.08 * h(9, 5);
-      p.push(E([Math.cos(a) * r, Math.sin(a) * r, z], [0.2 + 0.05 * h(k, 6), 0.2 + 0.05 * h(k, 7), 0.17], leaf));
+      const a = TAU * (k / 6 + 0.12 * h(k, 2)), r = k === 0 ? 0 : (0.17 + 0.08 * h(k, 3)) * S, z = ((k === 0 ? 0.34 : 0.24) + 0.1 * h(k, 4) + 0.08 * h(9, 5)) * S;
+      p.push(E([Math.cos(a) * r, Math.sin(a) * r, z], [(0.2 + 0.05 * h(k, 6)) * S, (0.2 + 0.05 * h(k, 7)) * S, 0.17 * S], leaf));
+    }
+    // o.big (the fields pass): a broad bush, four low lumps round the crown
+    if (o.big) for (let k = 0; k < 4; k++) {
+      const a = TAU * (k / 4 + 0.125 + 0.1 * h(k, 9)), r = 0.44 + 0.06 * h(k, 10);
+      p.push(E([Math.cos(a) * r, Math.sin(a) * r, 0.14 + 0.06 * h(k, 11)], [0.17, 0.16, 0.14], leaf));
     }
     return {
-      prims: p, r: 0.5, h: 0.62, k: 1,
+      prims: p, r: o.big ? 0.68 : 0.5, h: 0.62 * S, k: 1,
       detail: (x, y, z, m) => (m === leaf && P.hash(Math.floor(x * 14), Math.floor(y * 14), Math.floor(z * 14), 8) < 0.3 ? leaf2 : m),
     };
   });
@@ -15267,24 +15435,35 @@ fn boxOf(V: Vox) -> Box {
     return { prims: p, r: 0.6, h: 0.08, k: 1 };
   });
 
-  // A mound of autumn leaves raked or blown together, one tile: a low dome of litter 0.17-0.2 high under
-  // o.n (30) flat leaves in rust, amber, scarlet, orange and brown heaped over it; o.w 2 two heaps run
-  // together. A stamp like cm_leaves (no volume, no frame cost), scattered at the trees' feet, on the tall
+  // A mound of autumn leaves raked or blown together, one tile: a dome of litter 0.27-0.32 high under
+  // o.n (34) flat leaves in rust, amber, scarlet, orange and brown heaped over it; o.w 2 two heaps run
+  // together (46 leaves), o.w 3 three, 0.38 high and about 1.6 tiles across (70). A stamp like cm_leaves (no volume, no frame cost), scattered at the trees' feet, on the tall
   // grass, the pen, the patch, the garden and the wall tops by the field, never on the path or a build tile
   // (below the map). Anchored on the ground.
   model("cm_leafpile", (o = {}) => {
-    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), p = [], n = o.n || 30, L = ["cmAppleLeaf", "cmAmber", "cmScarlet", "cmPumpkin", "cmLitter", "cmAppleLeaf", "cmAmber"];
-    const heaps = (o.w || 1) > 1 ? [[-0.16, 0.06, 0.28, 0.17], [0.2, -0.1, 0.22, 0.14]] : [[0, 0, 0.32, 0.2]];
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), p = [], w = Math.min(3, o.w || 1), n = o.n || [34, 46, 70][w - 1], L = ["cmAppleLeaf", "cmAmber", "cmScarlet", "cmPumpkin", "cmLitter", "cmAppleLeaf", "cmAmber"];
+    // the fields pass ("big piles of leaves"): a third wider and taller, and o.w 3 three heaps nearly a tile and a half across
+    const heaps = [[[0, 0, 0.4, 0.32]], [[-0.18, 0.07, 0.38, 0.32], [0.24, -0.12, 0.3, 0.25]], [[-0.22, 0.1, 0.48, 0.38], [0.3, -0.06, 0.38, 0.3], [0.02, -0.36, 0.32, 0.24]]][w - 1];
     heaps.forEach(([hx, hy, R, H], j) => {
       p.push(E([hx, hy, 0], [R, R * (0.8 + 0.2 * h(j, 1)), H * (0.85 + 0.15 * h(j, 2))], "cmLitter"));
       for (let i = 0; i < n / heaps.length; i++) {
         const k = j * 100 + i, a = TAU * h(k, 3), d = R * Math.sqrt(h(k, 4)), x = hx + Math.cos(a) * d, y = hy + Math.sin(a) * d * 0.9;
-        const z = H * 0.9 * Math.sqrt(Math.max(0, 1 - (d / R) * (d / R))), l = 0.06 + 0.04 * h(k, 5);
+        const z = H * 0.9 * Math.sqrt(Math.max(0, 1 - (d / R) * (d / R))), l = 0.065 + 0.045 * h(k, 5);
         p.push(E([x, y, z], [l, l * (0.55 + 0.3 * h(k, 6)), 0.04], L[Math.floor(h(k, 7) * L.length)]));
       }
     });
-    return { prims: p, r: 0.6, h: 0.3, k: 1 };
+    return { prims: p, r: [0.45, 0.62, 0.82][w - 1], h: 0.45, k: 1 };
   });
+
+  // The soft rise on the west shelf (the user: "maybe a soft hill"): a grassy knoll 0.7 high at its crown and
+  // about 2.6 by 3.4 tiles, two sunk ellipsoids (a crown on a broad skirt) of the meadow's ground, mottled and
+  // flecked with litter. A stamp, so no frame cost; placed after every other prop, which it lifts onto its slope.
+  // KNOLL: [dx, dy, z, rx, ry, rz] of each ellipsoid
+  const KNOLL = [[0, 0, -0.3, 1.1, 1.45, 1.0], [0, 0, -0.2, 1.3, 1.7, 0.5]];
+  model("cm_knoll", () => ({
+    prims: KNOLL.map(([a, b, c, rx, ry, rz]) => E([a, b, c], [rx, ry, rz], "cmMeadow2")), r: 1.4, h: 0.75, k: 1,
+    detail: (x, y, z, m) => { const q = P.hash(Math.floor(x * 9), Math.floor(y * 9), Math.floor(z * 9), 5); return q < 0.3 ? "cmMeadow" : q < 0.38 ? "cmLitter" : m; },
+  }));
 
   CT.volumeDeco = (CT.volumeDeco || []).concat(["cm_corn", "cm_tallgrass", "cm_thingrass", "cm_shrub", "cm_scarecrow", "cm_lantern", "cm_pumpkin", "cm_apple", "cm_sheep", "cm_trough", "cm_coop", "cm_hen", "cm_cabbage", "cm_sunflower"]);
   // a windy night: the sway 1.4 times the calm farm's
@@ -15346,7 +15525,7 @@ fn boxOf(V: Vox) -> Box {
       ["cm_corn", { seed: 1, w: 2 }, 10, 9, { dx: 0.5, dy: 0.5, rot: 2 }], ["cm_corn", { seed: 2, w: 2 }, 12, 9, { dx: 0.5, dy: 0.5 }], ["cm_corn", { seed: 1, w: 2 }, 20, 9, { dx: 0.5, dy: 0.5, rot: 2 }],
       ["cm_corn", { seed: 2, w: 1 }, 22, 9, { rot: 2 }],
       // the tall gold grass, unturned so it all leans downwind (more along the wall's foot, below)
-      ["cm_tallgrass", { seed: 1, w: 2 }, 2, 7, { dx: 0.5, dy: 0.5 }], ["cm_tallgrass", { seed: 2, w: 1 }, 1, 8],
+      ["cm_tallgrass", { seed: 1, w: 1 }, 2, 7], ["cm_tallgrass", { seed: 3, w: 1 }, 3, 7], ["cm_tallgrass", { seed: 4, w: 1 }, 3, 8], ["cm_tallgrass", { seed: 2, w: 1 }, 1, 8],
       ["cm_tallgrass", { seed: 3, w: 1 }, 3, 9], ["cm_tallgrass", { seed: 3, w: 1 }, 3, 10], ["cm_tallgrass", { seed: 4, w: 2 }, 20, 13, { dx: 0.5, dy: 0.5 }],
       ["cm_tallgrass", { seed: 3, w: 2 }, 20, 15, { dx: 0.5, dy: 0.5 }], ["cm_tallgrass", { seed: 4, w: 1 }, 22, 15],
       ["cm_tallgrass", { seed: 1, w: 1 }, 1, 9], ["cm_tallgrass", { seed: 2, w: 1 }, 2, 9], ["cm_tallgrass", { seed: 4, w: 1 }, 1, 10], ["cm_tallgrass", { seed: 1, w: 1 }, 2, 10],
@@ -15467,7 +15646,7 @@ fn boxOf(V: Vox) -> Box {
   // the undergrowth (the user: "thin high and low grass ... more trees and bushes/shrubs"): seven more autumn
   // trees on the corner banks and the west grass (the option sets of the ones above, so no new bricks), shrubs
   // in rust, amber and scarlet on the corner wall tops, in the tall grass and at the trees' feet, and thin
-  // grass, a tall clump on each tall-grass tile that has no tall grass yet (the tall grass's own ground and the
+  // grass, a tall clump or, on two in five (the fields pass), a big shrub on each tall-grass tile that has no tall grass yet (the tall grass's own ground and the
   // wall tops have the map's blades, CT.mapGrass), a low tuft at each tree's foot and on some of the
   // path's verges that have no tall tuft: one grass prop a tile at most, as each is ray-marched on its own (the
   // Corn Moon perf pass). Only on tiles that already take no plant (not a build kind, or a prop's tile), so the
@@ -15491,7 +15670,8 @@ fn boxOf(V: Vox) -> Box {
       const k = at(x, y), hs = P.hash(x, y, 14, 3), s = 1 + (P.hash(x, y, 15, 3) < 0.5 ? 0 : 1), off = (i) => ({ dx: (P.hash(x, y, 16, i) - 0.5) * 0.6, dy: (P.hash(x, y, 17, i) - 0.5) * 0.6 });
       if (Math.hypot(x + 0.5 - 12, y + 0.5 - 12) > 11.2 || gate(x, y) || used.has(x + "," + y)) continue;
       if (k === "g") {
-        put(["cm_thingrass", { seed: s, tall: true }, x, y, off(1)]);
+        if (P.hash(x, y, 18, 3) < 0.4) put(["cm_shrub", Object.assign({ big: true }, SH[(x * 2 + y) % 3]), x, y, off(1)]);
+        else put(["cm_thingrass", { seed: s, tall: true }, x, y, off(1)]);
       } else if (k === ":" && hs < 0.3) {
         const side = N4.find(([dx, dy]) => V.includes(at(x + dx, y + dy)) && Hh[y + dy][x + dx] === Hh[y][x]);
         if (side) put(["cm_thingrass", { seed: s }, x, y, { dx: side[0] * 0.44 - side[1] * 0.2, dy: side[1] * 0.44 + side[0] * 0.2 }]);
@@ -15513,23 +15693,53 @@ fn boxOf(V: Vox) -> Box {
     }
   })();
 
-  // mounds of autumn leaves (the user: "mounds of autumn leaves as part of decor"): one at the foot of each
-  // tree, downwind of the trunk, and on about a quarter of the tall grass, the pen, the patch and the garden and
-  // about a sixth of the wall tops by the field; never on the path, a build tile or the ditch, nor on a tile
+  // mounds of autumn leaves (the user: "mounds of autumn leaves as part of decor", then "big piles of leaves"):
+  // one at the foot of each tree, downwind of the trunk, and on two in five of the tall grass, the pen, the patch
+  // and the garden tiles (a quarter until the fields pass; three in four where a big pile has room) and about a sixth of the wall tops by the field; never on the path, a build tile or the ditch, nor on a tile
   // that holds a volume prop (a tree's own tile aside), and clear of the gates, the stairs and the jar's glass
   (function () {
     const m = CT.maps.cornmoon, K = m.kind, at = (x, y) => (K[y] && K[y][x]) || "_", stairs = ["6,6", "7,6", "17,11", "18,11"], vol = CT.volumeDeco;
     const B = chars(m.game.build), cell = (d) => Math.floor(d[2] + 0.5 + ((d[4] && d[4].dx) || 0)) + "," + Math.floor(d[3] + 0.5 + ((d[4] && d[4].dy) || 0));
     const low = ["cm_thingrass", "cm_tallgrass", "cm_apple"], used = new Set(m.props.filter((d) => vol.includes(d[0]) && !low.includes(d[0])).map(cell)), piled = new Set();
     const ok = (x, y) => { const k = at(x, y); return k !== ":" && k !== "~" && k !== "_" && !B.includes(k) && Math.hypot(x + 0.5 - 12, y + 0.5 - 12) <= 11 && !stairs.includes(x + "," + y) && !((y <= 2 && Math.abs(x - 11.5) <= 2.5) || (x >= 21 && Math.abs(y - 11.5) <= 2.5)); };
-    const pile = (x, y, dx, dy, i) => { if (piled.has(x + "," + y)) return; piled.add(x + "," + y); m.props.push(["cm_leafpile", { seed: 1 + Math.floor(P.hash(x, y, 20, i) * 6), w: P.hash(x, y, 21, i) < 0.35 ? 2 : 1 }, x, y, { dx, dy }]); };
-    m.props.filter((d) => d[0] === "cm_apple").forEach((d) => { const [x, y] = cell(d).split(",").map(Number); if (ok(x, y)) pile(x, y, ((d[4] && d[4].dx) || 0) + WIND[0] * 0.42, ((d[4] && d[4].dy) || 0) + WIND[1] * 0.42, 1); });
+    // a big pile (o.w 3) only on a field tile whose four neighbours are field or path at its height (no build tile,
+    // wall, ditch or stairs), so its edge may brush the path but never a build tile or a step; pulled halfway to
+    // the tile's middle (the fields pass)
+    const hAt = (x, y) => (m.h[y] || "")[x];
+    const roomy = (x, y) => at(x, y) !== "#" && [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([a, b]) => { const k = at(x + a, y + b); return (ok(x + a, y + b) || k === ":") && k !== "#" && !stairs.includes(x + a + "," + (y + b)) && hAt(x + a, y + b) === hAt(x, y); });
+    const pile = (x, y, dx, dy, i) => {
+      if (piled.has(x + "," + y)) return; piled.add(x + "," + y);
+      const r = P.hash(x, y, 21, i), w = roomy(x, y) && r < 0.6 ? 3 : r < 0.7 ? 2 : 1;
+      m.props.push(["cm_leafpile", { seed: 1 + Math.floor(P.hash(x, y, 20, i) * 6), w }, x, y, w === 3 ? { dx: dx * 0.5, dy: dy * 0.5 } : { dx, dy }]);
+    };
+    // a pile downwind of its apple, but on the apple's own tile: the wind push (~0.36) on top of the apple's own
+    // offset used to carry it past the half tile, onto the plot beside it at (7,2), (3,6) and (4,18) (Game, #630)
+    const cl = (v) => Math.max(-0.45, Math.min(0.45, v));
+    m.props.filter((d) => d[0] === "cm_apple").forEach((d) => { const [x, y] = cell(d).split(",").map(Number), e = d[4] || {}; if (ok(x, y)) pile(x, y, cl(d[2] + (e.dx || 0) - x + WIND[0] * 0.42), cl(d[3] + (e.dy || 0) - y + WIND[1] * 0.42), 1); });
     for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
       const k = at(x, y), hs = P.hash(x, y, 22, 3);
       if (!ok(x, y) || used.has(x + "," + y)) continue;
       const wallByField = k === "#" && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !"#_".includes(at(x + dx, y + dy)));
-      if (("gnpk".includes(k) && hs < 0.25) || (wallByField && hs < 0.16)) pile(x, y, (P.hash(x, y, 23, 3) - 0.5) * 0.3, (P.hash(x, y, 24, 3) - 0.5) * 0.3, 2);
+      if (("gnpk".includes(k) && (hs < 0.4 || (hs < 0.75 && roomy(x, y)))) || (wallByField && hs < 0.16)) pile(x, y, (P.hash(x, y, 23, 3) - 0.5) * 0.3, (P.hash(x, y, 24, 3) - 0.5) * 0.3, 2);
     }
+  })();
+
+  // the soft rise on the west shelf (cm_knoll; the user: "maybe a soft hill"), centred on the shelf's tall grass
+  // at (2.5, 9.15), its skirt a quarter tile clear of the s plots at x=4 and the a row at y=11 and of the drop
+  // round the shelf: looks only, the height map,
+  // the routes and the placement zones are as they were. Whatever stands on it is lifted onto its
+  // slope, to the lowest of its middle and four points a fifth of a tile out (a tree to its middle), sunk 0.03;
+  // a tall tuft on its crown becomes a low clump, so the rise shows between the trees
+  (function () {
+    const m = CT.maps.cornmoon, X0 = 2.5, Y0 = 9.15;
+    const kz = (X, Y) => KNOLL.reduce((z, [a, b, c, rx, ry, rz]) => { const u = 1 - ((X - X0 - a) / rx) ** 2 - ((Y - Y0 - b) / ry) ** 2; return u > 0 ? Math.max(z, c + rz * Math.sqrt(u)) : z; }, 0);
+    m.props.forEach((d) => {
+      const ex = d[4] || {}, X = d[2] + 0.5 + (ex.dx || 0), Y = d[3] + 0.5 + (ex.dy || 0), r = d[0] === "cm_apple" ? 0 : 0.2;
+      if (d[0] === "cm_tallgrass" && kz(X, Y) > 0.5) { d[0] = "cm_thingrass"; d[1] = { seed: 1 + ((d[1].seed || 1) % 2) }; }
+      const z = Math.min(...[[0, 0], [r, r], [r, -r], [-r, r], [-r, -r]].map(([u, v]) => kz(X + u, Y + v)));
+      if (z > 0.01) d[4] = Object.assign({}, ex, { dz: (ex.dz || 0) + z - 0.03 });
+    });
+    m.props.push(["cm_knoll", {}, 2, 9, { dx: X0 - 2.5, dy: Y0 - 9.5 }]);
   })();
 
   // The light: a low harvest moon in the south-east (shadows long across the rows), a few broad moon shafts
@@ -19127,7 +19337,7 @@ function MG_SFX(L) {
       // the rain (setRain; eased) and its cues: steady rain, a shower on, when its first drops last fell, the
       // drop struck in this bar (its 16th, -1 none) and the first drops waiting for the grid
       this.rain = 0; this.rainTo = 0; this.rainy = false; this.showering = false; this.onsetAt = -1e9; this.dropAt = -1; this.firstDrops = false;
-      for (const ev of ["spawn", "hit", "kill", "tower_placed", "tower_upgraded", "tower_sold", "wave_start", "wave_clear", "boss", "heart_hit", "boon", "game_over"]) G.on(ev, (d) => this.onEvent(ev, d));
+      for (const ev of ["spawn", "hit", "kill", "tower_placed", "tower_upgraded", "tower_sold", "tower_moved", "wave_start", "wave_clear", "boss", "heart_hit", "boon", "game_over"]) G.on(ev, (d) => this.onEvent(ev, d));
       G.on("phase", (d) => this.onPhase(d.phase));
     }
     // instruments: the instrument bank's items (name -> [base note, ...])
@@ -19396,7 +19606,7 @@ function MG_SFX(L) {
       if (!this.ready || this.gameOver) return;
       const q = this.seq, clock = q.clock, g = clock + q.toGrid(), arp = () => this.arp(), now = this.mixer.ctx.currentTime;
       // (plants sown, grown or uprooted in one burst, the bot's warm-up or a quick hand, ring once)
-      if (name === "tower_placed" || name === "tower_upgraded" || name === "tower_sold") {
+      if (name === "tower_placed" || name === "tower_upgraded" || name === "tower_sold" || name === "tower_moved") {
         if (clock - this.lastStrum < 0.4) return;
         this.lastStrum = clock;
       }
@@ -19409,7 +19619,7 @@ function MG_SFX(L) {
           if (data.kind === "spirit") this.triumph();
           else if (clock - this.lastSparkle > 1.6) { this.lastSparkle = clock; this.play("kalimba", pick(arp()), -22, "MusicLead", g); }
           break;
-        case "tower_placed": this.play("kalimba", arp()[0], -18, "MusicLead", g); break;
+        case "tower_placed": case "tower_moved": this.play("kalimba", arp()[0], -18, "MusicLead", g); break;
         case "tower_upgraded": this.play("glass", arp()[1] + 12, -20, "MusicLead", g); break;
         case "tower_sold": { const a = arp(); this.play("kalimba", a[a.length - 1] - 12, -19, "MusicLead", g); break; }
         case "wave_start":
@@ -20225,8 +20435,8 @@ function MG_SFX(L) {
    Looks only: the model never reads a game's rng. Its own stream is seeded from the run's seed with a salt
    (?wxseed= pins it, ?wxfront= pins a front), so a replay gets the same sky.
    The game's looks: ME.WX.use(looks, fallback), looks() returning { fronts (merged over FRONTS), climates
-   (replacing CLIMATES), ... } or null, fallback the climate a level without one of its own takes (then
-   CLIMATES.default). A page loads this file after the engine. */
+   (replacing CLIMATES), acts (a living level's acts by level id: ME.Sky's host.acts), ... } or null,
+   fallback the climate a level without one of its own takes (then CLIMATES.default). A page loads this file after the engine. */
 (function () {
   const ME = window.ME;
   const LAYERS = ["cloud", "rain", "snow", "fog", "fogLow", "wind", "gust", "petals", "leaves", "flash"];
@@ -20347,7 +20557,7 @@ function MG_SFX(L) {
     // double, the heavy share by the wave, a rare one now and then
     next(wave, levelId) {
       const pin = ME.q("wxfront", ""), F = fronts();
-      if (F[pin]) return pin;
+      if (ME.safeKey(pin) && F[pin]) return pin; // (ME.safeKey: ?wxfront=constructor is no front)
       const c = climate(levelId);
       const rare = c.rare || {};
       for (const k in F) if (F[k].rare && !this.rareSeen.has(k) && k !== this.front && this.rng() < F[k].rare * (rare[k] ?? 1)) return k;
@@ -20364,7 +20574,7 @@ function MG_SFX(L) {
     newRun(seed, levelId) {
       this.reseed(seed); this.seen.clear(); this.rareSeen.clear(); this.left = 0; this.sun = 0; this.hurt = false; this.rainbow = 0;
       const c = climate(levelId), pin = ME.q("wxfront", "");
-      this.enter(fronts()[pin] ? pin : c.calm[(this.rng() * c.calm.length) | 0]);
+      this.enter(ME.safeKey(pin) && fronts()[pin] ? pin : c.calm[(this.rng() * c.calm.length) | 0]);
     }
     // a wave starts: a boss's front, or the next one when this one has run its waves
     waveStart(wave, levelId, boss) {
@@ -20471,12 +20681,21 @@ function MG_SFX(L) {
    calls apply(s) at its end). host is the game's, every member optional:
      key          the device storage key ("me.sky")
      seed()       the run's seed (1)
-     run()        this frame's { id, level, build, over, life }: id the run's identity (a new one starts the
+     run()        this frame's { id, level, build, over, life, act }: id the run's identity (a new one starts the
                   model on seed() and the level's calm front), level the climate's id (ME.WX.climate), build
-                  true between waves, over at game over, life 0 to 1 (below a third, the hurt rain). Called
-                  every frame: return one object rewritten in place
+                  true between waves, over at game over, life 0 to 1 (below a third, the hurt rain), act the
+                  living level's act (1 = its first; 0 or none: the level's own look). Called every frame:
+                  return one object rewritten in place
      on(ev, f)    the run's events: f({ n, boss }) on "start" (a wave's), f() on "clear" (its end)
      mood(level)  a level's own mood until the player picks one (else Auto)
+     acts(level)  a living level's acts, [act 1, act 2, ...] (null: none; by default the weather looks' table,
+                  ME.WX.looks().acts[level]), each one's look, every member optional: { mood, set, pal, grassH,
+                  freeze }. mood is a MOODS key, shown while the player's pick is Auto or the level's own mood
+                  (any other pick, or a ?mood= pin, keeps its own); set, light settings over the base; pal,
+                  { <palette material>: "#rrggbb" or [r, g, b] (0-255) }, the colour each one is lit at
+                  (R.setAct: a factor on its own, where the growth field has spread, R.setGrowth); grassH, the
+                  grass height (1); freeze, the water's ice (0 to 1). A new act blends over ACT_BLEND s (a new
+                  run or level snaps); ?act=N pins one (screenshots)
      uiScale()    the UI's zoom, for placing the panel (1)
    The page may have #wx (the overlay canvas), #sky holding #moodseg and #wxseg (the panel) and #skybtn.
 
@@ -20578,20 +20797,28 @@ function MG_SFX(L) {
     return {};
   };
   const NO_RUN = { id: null, level: "", build: false, over: false, life: 1 }, none = () => {};
-  const HOST = { key: "me.sky", seed: () => 1, run: () => NO_RUN, on: none, mood: none, uiScale: () => 1 };
+  const HOST = { key: "me.sky", seed: () => 1, run: () => NO_RUN, on: none, mood: none, acts: (level) => (ME.WX.looks().acts || NO_KEYS)[level] || null, uiScale: () => 1 };
+  // the acts (host.acts): the blend's length (s), and a material's factor cap (a dark material lit at a pale colour)
+  const ACT_BLEND = 4, ACT_MAX = 6;
+  const ss = (x) => x * x * (3 - 2 * x);
+  const rgb255 = (c) => (Array.isArray(c) ? c : String(rgbOf(c)).split(",").map(Number));
 
   class Sky {
     constructor(app, host) {
       this.app = app; this.R = app.R; this.scene = app.scene;
       this.host = Object.assign({}, HOST, host);
-      this.look = ME.q("preset", "cosy"); // the settings' Light (the game's menu calls setLook)
+      const look = ME.q("preset", "cosy");
+      this.look = ME.safeKey(look) ? look : "cosy"; // the settings' Light (the game's menu calls setLook)
       const fixed = ME.qn("selftest", 0) || ME.qn("autoplay", 0), saved = fixed ? {} : load(this.host.key), F = ME.WX.fronts();
       // the page address first (any front), then the saved choice (a panel one), then the level's mood or Auto
       // and Dynamic (a new player: weather on at the settings' Normal; the bot and the self-test run Clear)
-      const first = (table, ...vs) => vs.find((v) => table[v] || v === "random");
+      // (ME.safeKey: ?mood=constructor or ?weather=toString is no mood or front)
+      const first = (table, ...vs) => vs.find((v) => (ME.safeKey(v) && table[v]) || v === "random");
       this.mood = first(MOODS, ME.q("mood", ""), saved.mood, fixed ? "" : this.host.mood(this.host.run().level)) || "auto";
+      // the acts' state (actShown): a ?mood= pin keeps its mood over theirs; ?act=N pins one
+      this.moodPin = !!first(MOODS, ME.q("mood", "")); this.actPin = ME.qn("act", 0); this.actAt = null;
       const pin = ME.q("weather", "");
-      this.weather = F[pin] || pin === "random" || pin === "dynamic" ? pin
+      this.weather = (ME.safeKey(pin) && F[pin]) || pin === "random" || pin === "dynamic" ? pin
         : PANEL.includes(saved.weather) || saved.weather === "random" || saved.weather === "dynamic" ? saved.weather
           : fixed ? "clear" : "dynamic";
       this.steady = ME.params.has("wxsteady") ? ME.qn("wxsteady", 0) === 1 : !!saved.steady;
@@ -20647,7 +20874,7 @@ function MG_SFX(L) {
     shownFront() { return this.level > 0 ? this.model.front : "clear"; }
     // the settings' Weather (a game's menu); ?wxi=off|subtle|normal|heavy pins it (screenshots)
     setIntensity(name, quiet) {
-      const pin = ME.q("wxi", ""), k = pin in INTENSITY ? pin : name in INTENSITY ? name : "normal";
+      const has = (v) => ME.safeKey(v) && v in INTENSITY, pin = ME.q("wxi", ""), k = has(pin) ? pin : has(name) ? name : "normal";
       this.level = INTENSITY[k]; this.levelName = k;
       if (!quiet) this.renderPanel();
     }
@@ -20657,12 +20884,67 @@ function MG_SFX(L) {
       if (!ME.qn("selftest", 0) && !ME.qn("autoplay", 0)) try { localStorage.setItem(this.host.key, JSON.stringify({ v: VERSION, mood: this.mood, weather: this.weather, steady: this.steady })); } catch (e) { /* storage blocked */ }
       if (kind === "steady") this.renderPanel(); else this.roll();
     }
-    setLook(name) { this.look = ME.PRESETS[name] ? name : "cosy"; }
+    setLook(name) { this.look = ME.safeKey(name) && ME.PRESETS[name] ? name : "cosy"; }
     // the settings the view's mood() blends from: the style's defaults, the mood's look preset, the level's
     // own look values over it (R.lookSet: a preset doesn't undo a night level's base), the mood's overrides
-    base() {
-      const m = MOODS[this.moodNow] || MOODS.auto;
+    base(mk = this.moodNow) {
+      const m = MOODS[mk] || MOODS.auto;
       return Object.assign({}, this.R.set0, ME.PRESETS[m.look || this.look] || {}, this.R.lookSet || {}, m.set || {});
+    }
+
+    // ------------------------------------------------------------------ the acts (host.acts)
+    // this frame's mood and base with the run's act: the act's mood (if the player's pick lets it) and its set
+    // over that mood's base, blended from what showed when the act changed (ACT_BLEND s, smoothstep; numbers
+    // blend, the rest switch at once; a new run or level snaps); the renderer gets the tints, the grass height
+    // and the ice while they change (never without an act). Returns { mk, base }
+    actShown(run, dt) {
+      const n = this.actPin || run.act | 0, list = n > 0 ? this.host.acts(run.level) : null, a = (list && list[n - 1]) || null;
+      const own = this.mood === "auto" || this.mood === this.host.mood(run.level);
+      const mk = a && MOODS[a.mood] && own && !this.moodPin ? a.mood : this.moodNow;
+      const to = { base: a && a.set ? Object.assign(this.base(mk), a.set) : this.base(mk), mats: a ? this.actMats(a) : null, grassH: (a && a.grassH) ?? 1, freeze: (a && a.freeze) || 0 };
+      const key = a ? n : 0, B = this.actAt, sh = this.actNow;
+      if (!B || B.id !== run.id || B.level !== run.level) this.actAt = { id: run.id, level: run.level, key, t: ACT_BLEND };
+      else if (B.key !== key) this.actAt = { id: run.id, level: run.level, key, t: 0, from: { base: sh.base, mats: sh.mats && sh.mats.slice(), grassH: sh.grassH, freeze: sh.freeze } };
+      const A = this.actAt; A.t += dt;
+      let now = to;
+      if (A.t < ACT_BLEND && A.from) {
+        const k = ss(A.t / ACT_BLEND), f = A.from, lerp = (x, y) => x + (y - x) * k, base = {};
+        for (const p in to.base) { const x = f.base[p], y = to.base[p]; base[p] = typeof x === "number" && typeof y === "number" ? lerp(x, y) : y; }
+        let mats = null;
+        if (f.mats || to.mats) {
+          mats = this.actBuf || (this.actBuf = new Float32Array(256 * 4));
+          for (let i = 0; i < 1024; i += 4) {
+            const fw = f.mats && f.mats[i + 3] > 0, tw = to.mats && to.mats[i + 3] > 0;
+            if (!fw && !tw) { mats[i] = mats[i + 1] = mats[i + 2] = mats[i + 3] = 0; continue; }
+            for (let c = 0; c < 3; c++) mats[i + c] = lerp(fw ? f.mats[i + c] : 1, tw ? to.mats[i + c] : 1);
+            mats[i + 3] = 1;
+          }
+        }
+        now = { base, mats, grassH: lerp(f.grassH, to.grassH), freeze: lerp(f.freeze, to.freeze), blending: true };
+      }
+      this.actNow = now;
+      // (the renderer: every frame of a blend, then once as it settles or when the target's tints change)
+      const R = this.R, S = this.actSent || (this.actSent = { mats: null, grassH: 1, freeze: 0 });
+      if (R.setAct && (now.blending || now.mats !== S.mats || now.grassH !== S.grassH || now.freeze !== S.freeze)) {
+        R.setAct(now); S.mats = now.mats; S.grassH = now.grassH; S.freeze = now.freeze;
+      }
+      return { mk, base: now.base };
+    }
+    // an act's tints for R.setAct: each pal material's factor, the act's colour over the material's own (its
+    // table colour, linear), capped at ACT_MAX; kept until the act or the palette's table changes
+    actMats(a) {
+      const S = this.R.S, T = S && S.tables, P = S && S.pal;
+      if (!a.pal || !T || !P) return null;
+      if (this.matsOf === a && this.matsT === T) return this.matsV;
+      const o = new Float32Array(256 * 4);
+      for (const name in a.pal) {
+        const id = P.ids[name], c = rgb255(a.pal[name]);
+        if (id === undefined || id > 255 || !c || c.length < 3) continue;
+        for (let k = 0; k < 3; k++) o[id * 4 + k] = Math.min(ACT_MAX, ME.lin(c[k]) / Math.max(1e-4, T.mats[id * 8 + k]));
+        o[id * 4 + 3] = 1;
+      }
+      this.matsOf = a; this.matsT = T; this.matsV = o;
+      return o;
     }
 
     // ------------------------------------------------------------------ every frame
@@ -20672,8 +20954,10 @@ function MG_SFX(L) {
     update(dt) {
       const run = this.host.run(), dyn = this.weather === "dynamic", over = !!run.over;
       this.follow(run); this.at = run.level;
-      const md = this.model, m = MOODS[this.moodNow] || MOODS.auto, scene = this.scene;
-      scene.base = this.base();
+      // (the mood showing: the player's, or the run's act's; the scene eases toward its dusk itself)
+      const shown = this.actShown(run, dt);
+      const md = this.model, m = MOODS[shown.mk] || MOODS.auto, scene = this.scene;
+      scene.base = shown.base;
       scene.moodDusk = m.dusk;
       md.walk(dt, this.steady);
       if (!dyn) { md.sun = 0; md.hurt = false; }
@@ -20885,7 +21169,8 @@ function MG_SFX(L) {
     state() {
       const v = {};
       for (const l of ME.WX.LAYERS) v[l] = +this.v[l].toFixed(3);
-      return { mood: this.mood, moodNow: this.moodNow, weather: this.weather, weatherNow: this.shownFront(), front: this.model.front, steady: this.steady, intensity: this.levelName, particles: this.parts.length, v, sun: this.sun, hurt: this.model.hurt, rainbow: +this.model.rainbow.toFixed(1), left: this.model.left };
+      return { mood: this.mood, moodNow: this.moodNow, weather: this.weather, weatherNow: this.shownFront(), front: this.model.front, steady: this.steady, intensity: this.levelName, particles: this.parts.length, v, sun: this.sun, hurt: this.model.hurt, rainbow: +this.model.rainbow.toFixed(1), left: this.model.left,
+        act: this.actAt ? this.actAt.key : 0, actBlend: this.actAt ? +Math.min(1, this.actAt.t / ACT_BLEND).toFixed(2) : 1 };
     }
   }
   Sky.MOODS = MOODS;
@@ -22504,6 +22789,8 @@ function MG_SFX(L) {
   ];
   // how high each crest stands over the top (a finial goes on it)
   const CREST_H = { orb: 0.06, spike: 0.12, spire: 0.07, mane: 0 };
+  // the Phoenix's scale on a themed set's five (its back): smaller wings, so their tips stay inside its halo
+  const WING5 = 0.75;
   // the models: per side (in its material) and shared; the radii they're authored at (a slot's radius over
   // this is its scale across)
   const SIDED = ["collar", "inlay", "orb", "mane", "spike", "spire"], SHARED = ["gems", ...CUES.map((q) => q[0])];
@@ -22741,7 +23028,8 @@ function MG_SFX(L) {
     dcStride: cue("#f39a1e"), dcPike: cue("#a8b3c1"), dcSquire: cue("#f2cc4d"), dcLeap: cue("#3cc3db"),
     dcPhoenix: cue("#ee3f86"), dcPhoenixFire: ["#ff5c9a", "#ff7fb0", "#ffa6c8", "#ffd0e2"], dcPole: ["#6b4a32", 4, 0.15, 0.6],
   };
-  const MATS = { dcCrystal: { bias: 0.25 }, dcWard: EM, dcEmber: EM, dcSanct: EM, dcPhoenixFire: EM };
+  // the Ward's foot ring glows at 0.6, as its square's ice ring does (view/shaders.js): at full, they drew the eye from the pieces
+  const MATS = { dcCrystal: { bias: 0.25 }, dcWard: { em: 0.6, flat: 1 }, dcEmber: EM, dcSanct: EM, dcPhoenixFire: EM };
 
   C.pieces = {
     SET, HEIGHT, FRAMES, CUES: CUE, SLOT, RAMPS, MATS, tierOf, gemOf,
@@ -22764,8 +23052,9 @@ function MG_SFX(L) {
     // A tier 5 knight, bishop or rook also gets sil: { f, fine }, the silhouette drawn in place of its base (at
     // the base's fit), and its list leaves out the collar, crest and inlay the silhouette carries. s5 picks it:
     // left out, the Staunton silhouette; a themed set's figurine (DC.sets) passes its own tier-5 figurine
-    // { f, fine, top?, head? } (top and head: where the finials stack and the head cues sit on it), or null to
-    // keep its base and the collar, crest and inlay instead.
+    // { f, fine, top?, head?, back? } (top, head and back: where the finials stack, the head cues sit and the
+    // Phoenix roots on it, the Phoenix then at WING5), or null to keep its base and the collar, crest and inlay
+    // instead.
     bindParts(MB, traits) {
       for (const t of traits) { if (CUE[t.id]) CUE[t.id].rarity = t.rarity; }
       const id = {};
@@ -22779,7 +23068,7 @@ function MG_SFX(L) {
       for (const n of SHARED) id[pkey(n)] = get(pkey(n));
       const sil = [[], []];
       for (let c = 0; c < 2; c++) for (let t = 1; t <= 6; t++) if (SIL[t]) sil[c][t] = get(skey(c, t));
-      const part =(list, k, x, z, sx, hue = 0, y = 0) => { const q = id[k]; list.push({ f: q.f, off: [x, y, z], sc: [sx / q.fine, sx / q.fine, 1 / q.fine], hue }); };
+      const part =(list, k, x, z, sx, hue = 0, y = 0, sz = 1) => { const q = id[k]; list.push({ f: q.f, off: [x, y, z], sc: [sx / q.fine, sx / q.fine, sz / q.fine], hue }); };
       return {
         count: Object.keys(id).length,
         sils: SIL.filter(Boolean).length * 2,
@@ -22809,7 +23098,7 @@ function MG_SFX(L) {
           if (has("anointed")) part(L, pkey("anointed"), sl.head[0], sl.head[1] + 0.03, 1);
           if (has("pike")) part(L, pkey("pike"), sl.head[0] + 0.07, sl.head[1], 1);
           if (has("leap")) part(L, pkey("leap"), sl.head[0], sl.head[1], 1);
-          if (has("phoenix")) part(L, pkey("phoenix"), sl.back[0], sl.back[1], 1);
+          if (has("phoenix")) { const b = five && S5.back, k = b ? WING5 : 1; part(L, pkey("phoenix"), (b || sl.back)[0], (b || sl.back)[1], k, 0, 0, k); }
           // the finials stack on the top: the squire's star, then the rally's banner
           if (has("squire")) { part(L, pkey("squire"), sl.top[0], topZ, 1); topZ += 0.07; }
           if (has("rally")) part(L, pkey("rally"), sl.top[0], topZ, 1);
@@ -22843,7 +23132,7 @@ function MG_SFX(L) {
      DC.sets.use(st, ids)          adds the chosen sets' materials to the board's style (before its Palette)
      DC.sets.bakeList(fine, ids)   -> { key: [model, o, 1] } for ME.bakeModels(..., { models }), the tier-5 figurines too
      DC.sets.bind(MB, ids)         -> { id: models[color][type] }, as DC.pieces.bind, each model's set its id; a knight,
-                                      bishop or rook's five is its tier-5 figurine { f, fine, top, head } for DC.pieces.layout
+                                      bishop or rook's five is its tier-5 figurine { f, fine, top, head, back } for DC.pieces.layout
    A set's tier-5 knight, bishop and rook (dcs5_*) are its figurines with regalia added: a studded ring at the part
    kit's collar, a band round the body and a lit crown of the set's own, so a five reads apart from tiers 1-4.
    Each figurine is authored at its type's height (DC.pieces.HEIGHT), facing +X, its base's top at z 0.1. */
@@ -23286,7 +23575,8 @@ function MG_SFX(L) {
     // its fit (DC.pieces' layout leaves out the collar, crest and inlay parts at tier 5, as for the Staunton
     // silhouettes). The regalia: a ring at the part kit's collar (SLOT; the tier 4 gems sit on its rim, its studs
     // between them), a studded band round the body, and a crown of the set's own, lit, as wide as the tile allows
-    // (it's the play camera's view from above that has to tell a five apart). top: where the finials stack.
+    // (it's the play camera's view from above that has to tell a five apart). top: where the finials stack;
+    // wing: the Phoenix's root on its back, low enough that its wings (at DC.pieces' WING5 scale) stay inside the halo.
     const ring5 = ([x, z, r], mat, stud) => [Y([x, 0, z], r, 0.022, mat, { round: 0.01 }), ...around(6, (c, s) => S([x + c * r, s * r, z], 0.017, stud))];
     const band5 = (x, z, r, mat, dot) => [Y([x, 0, z], r, 0.018, mat, { round: 0.006 }),
       ...around(8, (c, s) => B([x + c * (r + 0.004), s * (r + 0.004), z], [0.011, 0.011, 0.008], 0, dot, { R: orient([c, s, 0], [-s, c, 1]) }))];
@@ -23295,10 +23585,11 @@ function MG_SFX(L) {
     // a box on such an arc, its local z pointing out from the arc's centre
     const onArc = (p, a, h, mat, o) => B(p, h, 0.003, mat, Object.assign({ R: orient([0, Math.cos(a), Math.sin(a)], [1, 0, 0]) }, o));
     // a halo, flat round [x, 0, z] at radius r: n links of mat, and bead(p, c, s, i) at each joint, the set's own.
-    // From the play camera it rings the figure wider than its body, which no lower tier's parts do.
+    // From the play camera it rings the figure wider than its body, which no lower tier's parts do; its links and
+    // beads are thick enough to read at play distance, not only in a close-up.
     const halo = (n, [x, z], r, mat, bead) => around(n, (c, s, a, i) => {
       const b = a + TAU / n, p = [x + c * r, s * r, z];
-      return [Cap(p, [x + Math.cos(b) * r, Math.sin(b) * r, z], 0.013, 0.013, mat), ...[].concat(bead(p, c, s, i))];
+      return [Cap(p, [x + Math.cos(b) * r, Math.sin(b) * r, z], 0.02, 0.02, mat), ...[].concat(bead(p, c, s, i))];
     });
     const COL = C.pieces.SLOT, deg = Math.PI / 180;
     const X = {};
@@ -23306,20 +23597,20 @@ function MG_SFX(L) {
     X.tess = (m) => {
       const stair = (n, ctr, r, a0, a1, w) => arc(n, ctr, r, a0, a1, (p, a, i) => { const k = Math.min(i, n - 1 - i); return onArc(p, a, [w, 0.022, 0.014 + k * 0.006], i % 2 ? m.Stone : m.Line); });
       // the halo: twelve tiles in four flights of three steps, a lamp at each flight's foot
-      const tiles = (ctr, r) => halo(12, ctr, r, m.Line, (p, c, s, i) => [B([p[0], p[1], p[2] + (i % 3) * 0.014], [0.026, 0.026, 0.01], 0.003, i % 2 ? m.Stone : m.Body),
-        ...(i % 3 ? [] : [S([p[0], p[1], p[2] - 0.018], 0.02, m.Glow)])]);
+      const tiles = (ctr, r) => halo(12, ctr, r, m.Line, (p, c, s, i) => [B([p[0], p[1], p[2] + (i % 3) * 0.016], [0.034, 0.034, 0.013], 0.003, i % 2 ? m.Stone : m.Body),
+        ...(i % 3 ? [] : [S([p[0], p[1], p[2] - 0.022], 0.026, m.Glow)])]);
       return {
-        knight: () => ({ top: [-0.07, 0.69], prims: [...ring5(COL[2].collar, m.Stone, m.Line), ...band5(-0.016, 0.218, 0.118, m.Stone, m.Glow),
+        knight: () => ({ top: [-0.07, 0.69], wing: [-0.13, 0.32], prims: [...ring5(COL[2].collar, m.Stone, m.Line), ...band5(-0.016, 0.218, 0.118, m.Stone, m.Glow),
           ...stair(7, [-0.07, 0.47], 0.17, 15 * deg, 165 * deg, 0.02),
           S([-0.07, 0, 0.665], 0.026, m.Glow), ...pair((sd) => S([-0.07, sd * 0.175, 0.5], 0.02, m.Glow)),
-          ...tiles([-0.04, 0.4], 0.21),
+          ...tiles([-0.04, 0.4], 0.24),
         ] }),
-        bishop: () => ({ top: [0, 0.85], prims: [...ring5(COL[3].collar, m.Stone, m.Line), ...band5(0, 0.3, 0.132, m.Stone, m.Glow),
+        bishop: () => ({ top: [0, 0.85], wing: [-0.073, 0.33], prims: [...ring5(COL[3].collar, m.Stone, m.Line), ...band5(0, 0.3, 0.132, m.Stone, m.Glow),
           ...stair(9, [0, 0.62], 0.22, 0, 180 * deg, 0.022),
           S([0, 0, 0.865], 0.028, m.Glow), ...pair((sd) => S([0, sd * 0.235, 0.6], 0.022, m.Glow)),
-          ...tiles([0, 0.45], 0.2),
+          ...tiles([0, 0.45], 0.23),
         ] }),
-        rook: () => ({ top: [0, 0.74], prims: [...ring5(COL[4].collar, m.Stone, m.Line), ...tiles([0, 0.47], 0.24),
+        rook: () => ({ top: [0, 0.74], wing: [-0.135, 0.365], prims: [...ring5(COL[4].collar, m.Stone, m.Line), ...tiles([0, 0.47], 0.27),
           Y([0, 0, 0.6], 0.075, 0.06, m.Stone, { round: 0.008 }), Y([0, 0, 0.664], 0.085, 0.008, m.Line),
           S([0, 0, 0.7], 0.034, m.Glow),
           ...pair((sd) => [Cap([-0.02, sd * 0.15, 0.5], [-0.02, sd * 0.15, 0.72], 0.012, 0.01, m.Line),
@@ -23331,20 +23622,20 @@ function MG_SFX(L) {
     X.grove = (m) => {
       const bloom = (p, r) => [...around(5, (c, s) => S([p[0] + c * r * 0.6, p[1] + s * r * 0.6, p[2]], r * 0.6, m.Petal)), S([p[0], p[1], p[2] + r * 0.3], r * 0.45, m.Glow)];
       // the halo: a wreath of leaves on a vine, a blossom at every third joint
-      const wreath = (ctr, r) => halo(12, ctr, r, m.Bark, (p, c, s, i) => (i % 3 ? E(p, [0.034, 0.034, 0.012], m.Leaf) : bloom(p, 0.034)));
+      const wreath = (ctr, r) => halo(12, ctr, r, m.Bark, (p, c, s, i) => (i % 3 ? E(p, [0.044, 0.044, 0.016], m.Leaf) : bloom(p, 0.044)));
       return {
-        knight: () => ({ top: [-0.05, 0.8], prims: [...ring5(COL[2].collar, m.Wood, m.Petal), ...band5(-0.008, 0.3, 0.11, m.Leaf, m.Petal), ...wreath([-0.04, 0.42], 0.2),
+        knight: () => ({ top: [-0.05, 0.8], wing: [-0.13, 0.32], prims: [...ring5(COL[2].collar, m.Wood, m.Petal), ...band5(-0.008, 0.3, 0.11, m.Leaf, m.Petal), ...wreath([-0.04, 0.42], 0.23),
           ...pair((sd) => [
             Cap([-0.02, sd * 0.12, 0.59], [-0.05, sd * 0.24, 0.7], 0.015, 0.01, m.Bark), ...bloom([-0.05, sd * 0.25, 0.71], 0.04),
             Cap([-0.06, sd * 0.17, 0.66], [-0.1, sd * 0.2, 0.78], 0.012, 0.008, m.Bark), S([-0.1, sd * 0.2, 0.79], 0.02, m.Glow),
           ]),
           E([-0.04, 0, 0.6], [0.035, 0.09, 0.016], m.Leaf), S([-0.04, 0, 0.635], 0.024, m.Glow),
         ] }),
-        bishop: () => ({ top: [0, 0.83], prims: [...ring5(COL[3].collar, m.Wood, m.Petal), ...band5(0, 0.3, 0.128, m.Leaf, m.Petal), ...wreath([0, 0.45], 0.2),
+        bishop: () => ({ top: [0, 0.83], wing: [-0.073, 0.33], prims: [...ring5(COL[3].collar, m.Wood, m.Petal), ...band5(0, 0.3, 0.128, m.Leaf, m.Petal), ...wreath([0, 0.45], 0.23),
           ...around(6, (c, s, a, i) => S([c * 0.19, s * 0.19, 0.6 + (i % 2) * 0.07], 0.024, m.Glow), TAU / 12),
           E([0, 0, 0.765], [0.07, 0.07, 0.018], m.Leaf), ...bloom([0, 0, 0.79], 0.05),
         ] }),
-        rook: () => ({ top: [0, 0.76], prims: [...ring5(COL[4].collar, m.Wood, m.Petal), ...band5(0, 0.468, 0.212, m.Leaf, m.Petal), ...wreath([0, 0.38], 0.25),
+        rook: () => ({ top: [0, 0.76], wing: [-0.18, 0.305], prims: [...ring5(COL[4].collar, m.Wood, m.Petal), ...band5(0, 0.468, 0.212, m.Leaf, m.Petal), ...wreath([0, 0.38], 0.3),
           Cap([0, 0, 0.52], [0, 0, 0.66], 0.035, 0.022, m.Wood),
           E([0, 0, 0.68], [0.1, 0.16, 0.04], m.Leaf, { disp: 0.015, df: 40 }),
           ...pair((sd) => bloom([0, sd * 0.15, 0.71], 0.04)), ...bloom([0.06, 0, 0.72], 0.032),
@@ -23359,17 +23650,17 @@ function MG_SFX(L) {
         ...arc(n + 1, [p[0], p[2]], r + 0.012, 0, TAU, (q, a, i) => (i < n ? onArc([q[0], q[1] + p[1], q[2]], a, [th, 0.012, 0.014], m.Trim) : [])),
         Y([p[0] + 0.004, p[1], p[2]], r * 0.55, th + 0.004, m.Enamel, { R: AX, round: 0.003 }), S([p[0] + 0.012, p[1], p[2]], r * 0.3, m.Glow)];
       // the halo: a flat toothed rim, a lamp at every fourth tooth
-      const rim = (ctr, r) => halo(16, ctr, r, m.Trim, (p, c, s, i) => [Cap(p, [p[0] + c * 0.034, p[1] + s * 0.034, p[2]], 0.014, 0.01, m.Trim),
-        ...(i % 4 ? [] : [S(p, 0.022, m.Glow)])]);
+      const rim = (ctr, r) => halo(16, ctr, r, m.Trim, (p, c, s, i) => [Cap(p, [p[0] + c * 0.042, p[1] + s * 0.042, p[2]], 0.019, 0.014, m.Trim),
+        ...(i % 4 ? [] : [S(p, 0.03, m.Glow)])]);
       return {
-        knight: () => ({ top: [-0.16, 0.7], prims: [...ring5(COL[2].collar, m.Trim, m.Enamel), ...band5(-0.01, 0.32, 0.11, m.Enamel, m.Glow),
-          ...gear([-0.17, 0, 0.53], 0.15, 12), ...rim([-0.03, 0.42], 0.2),
+        knight: () => ({ top: [-0.16, 0.7], wing: [-0.098, 0.32], prims: [...ring5(COL[2].collar, m.Trim, m.Enamel), ...band5(-0.01, 0.32, 0.11, m.Enamel, m.Glow),
+          ...gear([-0.17, 0, 0.53], 0.15, 12), ...rim([-0.03, 0.42], 0.23),
         ] }),
-        bishop: () => ({ top: [0, 0.85], prims: [...ring5(COL[3].collar, m.Trim, m.Enamel), ...band5(0, 0.31, 0.15, m.Enamel, m.Glow), ...rim([0, 0.47], 0.19),
+        bishop: () => ({ top: [0, 0.85], wing: [-0.092, 0.39], prims: [...ring5(COL[3].collar, m.Trim, m.Enamel), ...band5(0, 0.31, 0.15, m.Enamel, m.Glow), ...rim([0, 0.47], 0.22),
           ...pair((sd) => gear([0, sd * 0.17, 0.62], 0.07, 8, 0.01)),
           Cap([0, 0, 0.72], [0, 0, 0.8], 0.016, 0.008, m.Metal), S([0, 0, 0.83], 0.03, m.Glow),
         ] }),
-        rook: () => ({ top: [0, 0.68], prims: [...ring5(COL[4].collar, m.Trim, m.Enamel), ...band5(0, 0.3, 0.214, m.Enamel, m.Glow), ...rim([0, 0.5], 0.24),
+        rook: () => ({ top: [0, 0.68], wing: [-0.18, 0.425], prims: [...ring5(COL[4].collar, m.Trim, m.Enamel), ...band5(0, 0.3, 0.214, m.Enamel, m.Glow), ...rim([0, 0.5], 0.3),
           ...pair((sd) => [Cap([-0.04, sd * 0.15, 0.45], [-0.04, sd * 0.15, 0.72], 0.032, 0.036, m.Dark),
             Y([-0.04, sd * 0.15, 0.72], 0.042, 0.01, m.Trim, { round: 0.004 }), Y([-0.04, sd * 0.15, 0.725], 0.03, 0.01, m.Glow),
             S([-0.07, sd * 0.19, 0.78], 0.026, m.Trim), S([-0.1, sd * 0.22, 0.82], 0.02, m.Trim)]),
@@ -23378,18 +23669,18 @@ function MG_SFX(L) {
     };
     // Coral Court: a scallop fan, a mage's raised tentacles, the lighthouse's lit lantern
     // the halo: a string of pearls, a lit bubble rising off every third
-    const pearls = (m, ctr, r) => halo(12, ctr, r, m.Shell, (p, c, s, i) => [S(p, 0.024, m.Pearl), ...(i % 3 ? [] : [S([p[0], p[1], p[2] + 0.04], 0.018, m.Glow)])]);
+    const pearls = (m, ctr, r) => halo(12, ctr, r, m.Shell, (p, c, s, i) => [S(p, 0.032, m.Pearl), ...(i % 3 ? [] : [S([p[0], p[1], p[2] + 0.05], 0.024, m.Glow)])]);
     X.reef = (m) => ({
-      knight: () => ({ top: [-0.05, 0.76], prims: [...ring5(COL[2].collar, m.Shell, m.Pearl), ...band5(0.011, 0.22, 0.08, m.Pearl, m.Glow), ...pearls(m, [-0.04, 0.42], 0.2),
+      knight: () => ({ top: [-0.05, 0.76], wing: [-0.13, 0.32], prims: [...ring5(COL[2].collar, m.Shell, m.Pearl), ...band5(0.011, 0.22, 0.08, m.Pearl, m.Glow), ...pearls(m, [-0.04, 0.42], 0.23),
         ...arc(7, [-0.05, 0.56], 0.14, 20 * deg, 160 * deg, (p, a) => [Cap([-0.05, 0, 0.56], p, 0.012, 0.02, m.Shell), S(p, 0.02, m.Pearl)]),
         S([-0.05, 0, 0.72], 0.026, m.Glow),
       ] }),
-      bishop: () => ({ top: [-0.04, 0.84], prims: [...ring5(COL[3].collar, m.Shell, m.Pearl), ...band5(0, 0.56, 0.127, m.Pearl, m.Glow), ...pearls(m, [0, 0.4], 0.21),
+      bishop: () => ({ top: [-0.04, 0.84], wing: [-0.101, 0.3], prims: [...ring5(COL[3].collar, m.Shell, m.Pearl), ...band5(0, 0.56, 0.127, m.Pearl, m.Glow), ...pearls(m, [0, 0.4], 0.24),
         ...pair((sd) => [Cap([0, sd * 0.1, 0.48], [0, sd * 0.19, 0.58], 0.026, 0.018, m.Coral), Cap([0, sd * 0.19, 0.58], [0, sd * 0.2, 0.7], 0.018, 0.01, m.Coral),
           S([0, sd * 0.2, 0.73], 0.032, m.Pearl), S([0.02, sd * 0.2, 0.74], 0.016, m.Glow)]),
         S([-0.04, 0, 0.8], 0.03, m.Glow),
       ] }),
-      rook: () => ({ top: [0, 0.73], prims: [...ring5(COL[4].collar, m.Shell, m.Pearl), ...band5(0, 0.25, 0.145, m.Shell, m.Glow), ...pearls(m, [0, 0.46], 0.22),
+      rook: () => ({ top: [0, 0.73], wing: [-0.12, 0.365], prims: [...ring5(COL[4].collar, m.Shell, m.Pearl), ...band5(0, 0.25, 0.145, m.Shell, m.Glow), ...pearls(m, [0, 0.46], 0.25),
         Y([0, 0, 0.58], 0.075, 0.012, m.Shell, { round: 0.005 }), S([0, 0, 0.63], 0.045, m.Glow),
         ...around(4, (c, s) => Cap([c * 0.06, s * 0.06, 0.58], [c * 0.06, s * 0.06, 0.66], 0.008, 0.008, m.Shell), TAU / 8),
         Cap([0, 0, 0.66], [0, 0, 0.72], 0.08, 0.01, m.Coral),
@@ -23405,11 +23696,12 @@ function MG_SFX(L) {
         return { r: b.r, h: +h.toFixed(3), prims: [...b.prims, ...x.prims] };
       });
       ME.ASSET_BY[name] += '"dcs_src"'; ME.ASSET_SRC += '"dcs_src"';
-      (TOP5[s.id] = TOP5[s.id] || [])[t] = X[s.id](ROLE_OF(s.id, 0))[TYPES[t]]().top;
+      const x0 = X[s.id](ROLE_OF(s.id, 0))[TYPES[t]]();
+      (TOP5[s.id] = TOP5[s.id] || [])[t] = x0.top; (WING5[s.id] = WING5[s.id] || [])[t] = x0.wing;
     }
   };
-  // where a five's finials stack (its crown's top), per set and type
-  const TOP5 = {};
+  // where a five's finials stack (its crown's top) and where a Phoenix's wings sit on it (inside its halo), per set and type
+  const TOP5 = {}, WING5 = {};
   {
     const ME = window.ME, src = String(build) + JSON.stringify(ROLES) + JSON.stringify(C.pieces.SLOT);
     ME.ASSET_BY.dcs_src = src; ME.ASSET_SRC += src;
@@ -23442,7 +23734,7 @@ function MG_SFX(L) {
           models[c][t] = { frames, h, r, fine: m.fine || 1, fit, height: +(h * fit).toFixed(3), name: "dcs_" + id + "_" + TYPES[t], set: id };
           // its tier-5 figurine, for DC.pieces' layout (drawn at this model's fit; finials on its crown)
           const f5 = MB.extraFrames[key5(id, c, t)];
-          if (f5) models[c][t].five = { f: f5[0], fine: MB.models[f5[0]].fine || 1, top: TOP5[id][t], head: P.SLOT[t].head };
+          if (f5) models[c][t].five = { f: f5[0], fine: MB.models[f5[0]].fine || 1, top: TOP5[id][t], head: P.SLOT[t].head, back: WING5[id][t] };
         }
         out[id] = models;
       }
@@ -24181,9 +24473,10 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
   // a Sanctuary's ground: a lilac wash, its lines lit
   if ((bb & ${G.CELL_B.SANCT}u) != 0u) { col = mix(col, vec3f(0.64, 0.51, 0.95), (0.16 + 0.3 * line) * top); col += vec3f(0.2, 0.12, 0.35) * line * 0.4 * top; }
   if ((bb & ${G.CELL_B.LAST}u) != 0u) { col = mix(col, vec3f(1.0, 0.78, 0.3), (0.22 + 0.35 * line) * top); }
-  // a Ward's square: a ring of ice light round the piece, breathing
+  // a Ward's square: a ring of ice light round the piece, breathing, at 0.6 of full: at full it was the
+  // brightest mark on the board and drew the eye from the pieces (the foot ring, dcWard, glows at 0.6 too)
   if ((bb & ${G.CELL_B.WARD}u) != 0u) {
-    let wr = (1.0 - sstep(0.015, 0.045, abs(d - 0.43))) * (0.75 + 0.25 * sin(tm * 2.2 + dcHash(cc) * 6.28));
+    let wr = (1.0 - sstep(0.015, 0.045, abs(d - 0.43))) * (0.75 + 0.25 * sin(tm * 2.2 + dcHash(cc) * 6.28)) * 0.6;
     col = mix(col, vec3f(0.62, 0.84, 1.0) * 1.35, wr * top);
   }
   if (cell.r > 0.75) { col = mix(col, sel * 1.2, (0.3 + 0.55 * line) * top); }
@@ -25114,7 +25407,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.36.0", name: "DeckChess", commit: "4be5e35b" };
+  G.VERSION = { v: "0.37.0", name: "DeckChess", commit: "d3595494" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
