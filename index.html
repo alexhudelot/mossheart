@@ -18314,7 +18314,23 @@ fn boxOf(V: Vox) -> Box {
      ME.content.mapLight.everstair       its light, { L, light, look }: a high sun from +x+y, the void's sky
    The lithograph stamps of the first layout (es_stair, es_arch, es_facade, es_inlay and
    ME.content.everstairInlays, in the lithograph palette of content/lithograph.js) stay below for DeckChess's
-   board; the islands use none of them. Every motif is original, and nothing in the game names an artist. */
+   board; the islands use none of them.
+   The decor set for the redesign (the user, 2026-11-09: a terrarium in the sky, tiles that change shape,
+   impossible stairs; it lifts §10.4's "no tessellated, no lithograph look"), waiting on the Architect's §11
+   layout before it goes on the map:
+     ME.content.everstairTiling(u, v, stage, tone)  the two-tone interlocking tiling, squares to creatures
+     window.MODELS          es_tile (a floor tile of it), es_frieze (a wall band of it), es_frame (the
+                            impossible frame), es_loop (the endless stair), es_ruin (a terraced, overgrown
+                            ruin), es_roots (roots under an island), es_cloud (cloud puffs for a jar)
+   S1 of the Architect's §11 (docs/designs/2026-11-08-escher-level-engine.md, 11.4) adds, for the court
+   and the walls:
+     ME.content.everstairCourt(cells, band)  the court's es_tile props, the pattern in drawn coordinates
+     ME.content.kinds       es_terrace (turf on the terraces under the court)
+     window.MODELS          es_panel's o.road (the wall road's tiles), pieces arcade and through, hatched
+                            and mossy courses; es_nowhere (a stair to nowhere), es_archBroken, es_facing (a
+                            hatched side for the court's bands and the terraces); es_roots o.keel: false
+   es_tile replaces es_inlay on the court (es_inlay stays for DeckChess). The creatures are our own pair,
+   newts and moths. Every motif is original, and nothing in the game names an artist. */
 (function () {
   const ME = window.ME, P = window.PX, { S, E, C, B, Y } = P.prim, M = window.MODELS, CT = (ME.content = ME.content || {}), TAU = Math.PI * 2;
   const ry = (a) => P.rot("y", a);
@@ -18346,6 +18362,8 @@ fn boxOf(V: Vox) -> Box {
     es_tread: { recipe: "layer", top: "isleTread", depth: 0.12, under: "isleSlab" },
     es_turf: { recipe: "layer", top: "isleTurf", depth: 0.12, under: "isleSlab" },
     es_deck: { recipe: "layer", top: "isleDeck", depth: 0.12, under: "isleSlab" },
+    // the terraces stepping down under the court (§11.4): turf on top, rock under, a deep keel
+    es_terrace: Object.assign({ recipe: "layer", top: "isleTurf", mottle: "moss2", mottleK: 0.2, depth: 0.15, under: "rock", keel: { d: 0.75, k: 0.35, max: 2.5 } }, drape),
     // a still pool: Mossheart's water with little glint
     es_water: Object.assign({}, CT.kinds.water || {}, { bank: "moss", under: "rock", calm: 1, glint: 0.5 }, drape),
   });
@@ -18489,6 +18507,20 @@ fn boxOf(V: Vox) -> Box {
   // ---------------------------------------------------------------- the islands' stamps
   // Mossheart's stone: courses a quarter tile high in rock joints, a few stones gone to moss
   const masonry = (u, z, m) => (ashlar(u, z) ? "rock" : P.hash(Math.floor(u * 2 + (Math.floor(z * 4) & 1) * 0.5), Math.floor(z * 4), 0, 23) < 0.12 ? "moss2" : m);
+  // the engraver's lines on a share of the ashlar's stones (§11.4), picked by the stone
+  const hatched = (u, z) => P.hash(Math.floor(u * 2 + (Math.floor(z * 4) & 1) * 0.5), Math.floor(z * 4), 0, 37) < 0.3 && hatch(u, z);
+  // moss running down a face from its top edge zt, in columns two voxels wide (vs16), a few reaching far
+  const streak = (u, z, zt, sd = 0) => {
+    const c = Math.floor(u * 8), h = P.hash(c, 0, sd, 41);
+    return h < 0.3 && z < zt && zt - z < 0.12 + 8 * h * P.hash(c, 1, sd, 41) ? (P.hash(c, Math.floor(z * 8), sd, 43) < 0.3 ? "moss2" : "moss") : null;
+  };
+  // an arch's ring on a face (opening half width sp, springing at hs): "j" on a voussoir joint, "r" in the ring
+  const ring = (y, z, hs, sp, line) => {
+    const r = Math.hypot(y, z - hs);
+    if (z < hs || r < sp || r > sp + 0.13) return null;
+    const j = fr((Math.atan2(z - hs, y) / Math.PI) * 9 + 0.5);
+    return (Math.min(j, 1 - j) * Math.PI * r) / 9 < line ? "j" : "r";
+  };
   // moss cushions along a top edge from y0 to y1 at height z, a little over the face at x
   const cushions = (p, x, y0, y1, z, n, s = 0.07) => { for (let i = 0; i < n; i++) p.push(E([x + (fr(i * 0.618) - 0.5) * 0.06, y0 + ((i + 0.5) / n) * (y1 - y0), z], [s, s * 1.2, s * 0.7], i & 1 ? "moss2" : "moss")); };
   // an iron lamp: a post from at along axis d (a unit vector) o.h long, a glowing box under a cap at its end
@@ -18528,9 +18560,18 @@ fn boxOf(V: Vox) -> Box {
   // Anchored at the tile's middle at the panel's foot (the cell's h); panels in a run meet edge to edge.
   // A walked wall (wall walkers, Escher design 9.1) takes o.flush: the face at the tile's front (x 0.5, flush
   // with the next cell's edge, for the road's arc), no foot; and o.clear = [z0, z1], the walkers' band above
-  // the foot: the piece grows below z0 and nothing stands out of the face from z0 up.
+  // the foot: the piece grows below z0 and nothing stands out of the face from z0 up. o.t is a flush panel's
+  // thickness (0.22; the Ever Stair's walls take 1, a whole tile, so nothing shows through behind them).
+  // §11.4 adds two pieces, both under G (the band's foot, or the top):
+  //   arcade  a blind arch, recessed one voxel (the arcades under the wall roads)
+  //   through an arch through the panel (the walls' through-arches)
+  // and o.road = { z, stage, k, tone }: the court's tiles in the face, a band one tile high from z (tone face,
+  // k 2 rows), running on along a wall by o.u, the tile's coordinate along it, and o.dir (1 or -1) the way
+  // the panel's +y runs in it. Outside the walkers' band the courses are hatched and moss runs down from the
+  // coping (o.seed varies it); a flush panel with no o.clear stays plain all over.
   model("es_panel", (o = {}) => {
-    const H = o.h ?? 2, F = o.flush ? 0.5 : -0.28, X0 = o.flush ? 0.28 : -0.5, xm = (X0 + F) / 2, G = o.clear ? o.clear[0] : H, p = [];
+    const H = o.h ?? 2, F = o.flush ? 0.5 : -0.28, X0 = o.flush ? F - (o.t ?? 0.22) : -0.5, xm = (X0 + F) / 2, G = o.clear ? o.clear[0] : H, p = [];
+    const U0 = (o.u || 0) + 0.5, D = o.dir || 1, sd = o.seed || 0, AS = 0.3, AH = Math.max(0.35, G - AS - 0.3), Rd = o.road;
     p.push(B([xm, 0, H / 2], [(F - X0) / 2, 0.5, H / 2], 0, "stone"));
     cushions(p, xm + 0.02, -0.46, 0.46, H + 0.03, 8);
     // the foot: a rock wedge narrowing downward, two roots trailing out of it
@@ -18558,14 +18599,27 @@ fn boxOf(V: Vox) -> Box {
     } else if (piece === "lamp") {
       lamp(p, [F, 0, G * 0.45], [1, 0, 0], 0.3);
     }
+    const arch = piece === "arcade" || piece === "through";
+    if (arch) {
+      const x0 = piece === "through" ? X0 - 0.01 : F - 0.07, x1 = F + 0.01, xc = (x0 + x1) / 2, hx = (x1 - x0) / 2;
+      p.push(Y([xc, 0, AH], AS, hx, "stone", { sub: true, R: ry(Math.PI / 2) }), B([xc, 0, AH / 2 - 0.01], [hx, AS, AH / 2 + 0.01], 0, "stone", { sub: true }));
+      p.push(B([F + 0.02, 0, AH + AS + 0.07], [0.03, 0.055, 0.07], 0, "litPaper"));
+    }
     return {
       prims: p, r: 0.75, h: H + 0.1, k: 1,
-      detail: (x, y, z, m, nx, ny) => {
+      detail: (x, y, z, m, nx, ny, nz, vx) => {
         if (m !== "stone") return m;
+        const u = U0 + D * y, face = nx > 0.6, j = arch && face ? ring(y, z, AH, AS, Math.max(0.015, vx * 0.6)) : null;
+        if (arch && face && x < F - 0.035 - vx / 2) return hatch(y, z) ? "litGraphite" : o.flush ? "isleSlab" : "rock"; // the recess's back
         // a walked face: pale courses in slab-grey joints, no moss, so the walkers read on it (past the slab's
-        // middle: at F, the model's edge, the face voxels' centres sit half a voxel inside it)
-        if (o.flush && x > xm && nx > 0.6) return ashlar(y, z) ? "isleSlab" : "isleFace";
-        if (x > F - 0.02 && nx > 0.6) return masonry(y, z, m); // the face
+        // middle: at F, the model's edge, the face voxels' centres sit half a voxel inside it); the road's
+        // tiles in their band
+        if (o.flush && x > xm && face) {
+          if (Rd && z >= Rd.z && z < Rd.z + 1) { const k = Rd.k || 2; return tiling(u * k, (z - Rd.z) * k, Rd.stage || 0, Rd.tone || "face", Math.max(0.03, vx * 0.7) * k); }
+          if (!o.clear || (z >= o.clear[0] && z < o.clear[1])) return ashlar(y, z) ? "isleSlab" : "isleFace";
+          return j === "j" || ashlar(y, z) || hatched(u, z) ? "isleSlab" : j ? "isleFace" : streak(u, z, H, sd) || "isleFace";
+        }
+        if (x > F - 0.02 && face) return j === "j" ? "rock" : j ? m : streak(u, z, H, sd) || (hatched(u, z) ? "rock" : masonry(y, z, m)); // the face
         if (x < F) return Math.abs(ny) > 0.6 ? masonry(x, z, m) : m; // the ends
         if (piece === "stair") return "rock"; // this stair's risers face along z
         return m;
@@ -18627,6 +18681,286 @@ fn boxOf(V: Vox) -> Box {
   // the inlays for a road: tiles [[x, y], ...] in walking order, gate first; the stage climbs evenly along it
   CT.everstairInlays = (tiles) => tiles.map(([x, y], i) => ["es_inlay", { stage: tiles.length > 1 ? i / (tiles.length - 1) : 0, u: x, v: y }, x, y, {}]);
 
+  // ---------------------------------------------------------------- the redesign's decor motifs
+  // The user's look for the redesign (2026-11-09): interlocking two-tone tiling that changes shape along a
+  // band, impossible frames and stairs, hatched stone, some green tiling, and sky ruins: terraced overgrown
+  // stone, big roots under the islands, clouds to keep in a jar. Original motifs; the light stays the map's.
+  Object.assign(CT.ramps, {
+    // a pale cloud, cel-banded: the shade side cool, the lit side near white
+    isleCloud: ["#a9b6cc", "#c6d0e0", "#dde4ee", "#eef2f7", "#fbfcfd"],
+  });
+  CT.mats.isleCloud = { wrap: 0.7 };
+
+  // The interlocking tiling. A square checker of cells, one to a tile times o.k, seen through two shears
+  // (u moved by a profile of v, then v by one of u): a shear is one to one, so at every stage the cells still
+  // tile the plane with no gap. st, 0 to 1: square cells up to 0.2, the edges bend into waves to 0.55, a
+  // second harmonic hooks them to 0.85, and from 0.8 each cell opens an eye and a stroke, so the two tones
+  // read as two kinds of terrarium creature, dark newts and pale moths, nosing into each other (our own pair, no print's). Returns a material name of the tone.
+  const TONES = {
+    lit: { a: "litGraphite", b: "litBone", line: "litInk", eyeA: "litPaper", eyeB: "litInk" },
+    moss: { a: "moss", b: "litPaper", line: "litDark", eyeA: "litPaper", eyeB: "litDark" },
+    jade: { a: "litMoss", b: "litMossL", line: "litDark", eyeA: "litPaper", eyeB: "litDark" },
+    // the wall roads: the walked face's own pale stone, so the walkers still read on it
+    face: { a: "isleSlab", b: "isleFace", line: "litSlate", eyeA: "isleFace", eyeB: "litSlate" },
+  };
+  // mossK: the share of dark cells gone to moss (picked by the cell, so it runs on across tiles)
+  const tiling = (U, V, st, tone, line, mossK = 0) => {
+    const T = TONES[tone] || TONES.lit;
+    const w = st < 0.2 ? 0 : Math.min(1, (st - 0.2) / 0.35), hk = st < 0.55 ? 0 : Math.min(1, (st - 0.55) / 0.3), a = 0.1 * w + 0.02 * hk;
+    const f = (t) => Math.sin(TAU * t) + 0.45 * hk * Math.sin(2 * TAU * t + 1.2);
+    const U2 = U + a * f(V), V2 = V + a * f(U2);
+    const cu = Math.floor(U2), cv = Math.floor(V2), s = U2 - cu, t = V2 - cv, dark = ((cu + cv) & 1) === 1;
+    if (st >= 0.1 && Math.min(s, 1 - s, t, 1 - t) < line * Math.min(1, (st - 0.1) / 0.2)) return T.line;
+    if (dark && mossK && P.hash(cu, cv, 0, 31) < mossK) { const h = P.hash(Math.floor(U2 * 8), Math.floor(V2 * 8), 0, 32); return h < 0.18 ? T.a : h < 0.45 ? "moss2" : "moss"; }
+    if (st >= 0.8) {
+      const e = (st - 0.8) / 0.2;
+      // an eye: the dark ones (newts) look toward +u, the pale ones (moths) toward -u; the newts a pupil once it is open
+      const ex = dark ? 0.7 : 0.3, ey = dark ? 0.68 : 0.32, er = 0.05 + 0.06 * e;
+      const de = Math.hypot(s - ex, t - ey);
+      if (de < er) return dark ? (e > 0.5 && de < er * 0.45 ? T.a : T.eyeA) : T.eyeB;
+    }
+    return dark ? T.a : T.b;
+  };
+
+  CT.everstairTiling = tiling;
+
+  // A floor tile with the tiling on its top: o.stage, o.tone (lit, moss, jade), o.k cells a tile, o.u, o.v the
+  // tile's map coordinates so the pattern runs on across tiles, o.mossK moss in that share of dark cells;
+  // o.ramp = [s0, len] sets the stage per voxel instead, (s0 - u - v) / len, so it changes without steps.
+  // A slab 0.1 deep under the ground's top
+  model("es_tile", (o = {}) => {
+    const st = Math.min(1, Math.max(0, o.stage || 0)), k = o.k || 1, u0 = (o.u || 0) + 0.5, v0 = (o.v || 0) + 0.5, R = o.ramp;
+    return {
+      prims: [B([0, 0, -0.05], [0.5, 0.5, 0.05], 0, "litRoad")], r: 0.72, h: 0.05, k: 1,
+      detail: (x, y, z, m, nx, ny, nz, vx) => {
+        if (nz <= 0.6) return "litSlate";
+        const U = u0 + x, V = v0 + y, s = R ? Math.min(1, Math.max(0, (R[0] - U - V) / R[1])) : st;
+        return tiling(U * k, V * k, s, o.tone, Math.max(0.03, vx * 0.7) * k, o.mossK || 0);
+      },
+    };
+  });
+  // the court's tiles (§11.1, 11.4): cells [[x, y], ...] of band b (0 K0, 1 K1, 2 K2) in real coordinates. The
+  // pattern runs in drawn ones, (x + 4b, y + 4b), so it carries on across a seam on screen; the stage falls
+  // with drawn x + y from 44 at the gate (squares) to 34 toward the tree (creatures, eyes open past 36: K2)
+  CT.everstairCourt = (cells, b, o = {}) => cells.map(([x, y]) => ["es_tile", Object.assign({ u: x + 4 * b, v: y + 4 * b, ramp: [44, 10], tone: "lit", mossK: 0.15 }, o), x, y, {}]);
+
+  // A frieze: a wall band o.n tiles long along y, o.h high, facing +x, the tiling on its face changing from
+  // squares at -y to the creatures at +y (o.from, o.to the stages at its ends), between a hatched plinth and
+  // a slate coping. Anchored at the band's middle on the ground
+  model("es_frieze", (o = {}) => {
+    const n = o.n || 4, H = o.h ?? 1, k = o.k || 1, s0 = o.from ?? 0, s1 = o.to ?? 1, tone = o.tone || "lit", Y0 = -n / 2, pl = 0.2, p = [];
+    p.push(B([-0.1, 0, H / 2], [0.1, n / 2, H / 2], 0, "litBone"));
+    p.push(B([-0.08, 0, pl / 2], [0.14, n / 2 + 0.02, pl / 2], 0, "litSlate"), B([-0.08, 0, H + 0.04], [0.14, n / 2 + 0.03, 0.04], 0, "litSlate"));
+    return {
+      prims: p, r: n / 2 + 0.3, h: H + 0.1, k: 1,
+      detail: (x, y, z, m, nx, ny, nz, vx) => {
+        if (m === "litSlate") return nx > 0.6 && hatch(y, z) ? "litGraphite" : m;
+        if (nx < 0.6 || z < pl) return m;
+        const st = s0 + (s1 - s0) * Math.min(1, Math.max(0, (y - Y0) / n));
+        return tiling((y - Y0) * k, (z - pl) * k * 1.25 + 0.5, st, tone, Math.max(0.03, vx * 0.7) * k);
+      },
+    };
+  });
+
+  // stone for the frames and ruins: bone ashlar, hatched in graphite on the faces turned from the sun
+  const litStone = (u, z, m, nx, ny) => (ashlar(u, z) ? "litSlate" : (nx > 0.6 || ny < -0.6) && hatch(u, z) ? "litGraphite" : m);
+
+  // The impossible frame: three square beams along x, then y, then up z, each joined to the next at a real
+  // corner. The third beam's top lies (L, L, L) from the first beam's start, straight along the camera's
+  // line (it looks along -(1,1,1)), so on screen it lands on that start and the three close into a triangle
+  // that cannot stand. Only the locked view closes it, like the map's joins. o.L the beams' length, o.w their
+  // half width; moss on its top faces with o.moss. Anchored under the first beam's start
+  model("es_frame", (o = {}) => {
+    const L = o.L ?? 1.25, w = o.w ?? 0.11, c = -L / 2, p = [];
+    p.push(B([c + L / 2, c, w], [L / 2 + w, w, w], 0, "litBone"));
+    p.push(B([c + L, c + L / 2, w], [w, L / 2 + w, w], 0, "litBone"));
+    p.push(B([c + L, c + L, w + L / 2], [w, w, L / 2], 0, "litBone"));
+    if (o.moss) for (let i = 0; i < 5; i++) p.push(E([c + 0.15 + 0.22 * i, c + (fr(i * 0.618) - 0.5) * 0.08, 2 * w + 0.01], [0.07, 0.06, 0.035], i & 1 ? "moss2" : "moss"));
+    return {
+      prims: p, r: L + 0.3, h: L + 2 * w + 0.05, k: 1,
+      detail: (x, y, z, m, nx, ny, nz) => {
+        if (m !== "litBone") return m;
+        if (nz > 0.6) return "litPaper";
+        return Math.abs(nx) > 0.6 ? litStone(y, z, m, nx, ny) : litStone(x, z, m, nx, ny);
+      },
+    };
+  });
+
+  // The looping stair: four flights round a square, each climbing, the last two shorter, so the end lies
+  // (t, t, t) from the start: on screen the top step meets the bottom one and the stair climbs for ever.
+  // Each step is a block 6 voxels deep, not down to the ground: the high flights are the near ones, so walls
+  // under them would hide the low ones behind. The camera never sees a riser on the flights climbing toward
+  // it, so every tread gets an ink line along its low edge, the engraver's nosing. Treads paper and parchment
+  // by turns; o.a the long flights'
+  // length, o.t the loop's offset, o.na and o.nb steps on a long and a short flight (the defaults make every
+  // step 6 voxels long and 2 high at vs16: whole voxels, or the steps melt into a ramp). Anchored at the
+  // square's middle under the lowest step
+  model("es_loop", (o = {}) => {
+    const a = o.a ?? 2.25, t = o.t ?? 1, na = o.na || 3, nb = o.nb || 1, w = o.w ?? 0.18, d = o.d ?? 0.375, b = a - t, c = -a / 2, p = [], steps = [];
+    const legs = [[1, 0, a, na], [0, 1, a, na], [-1, 0, b, nb], [0, -1, b, nb]], rise = t / (2 * na + 2 * nb);
+    let x = c, y = c, z = d - rise, k = 0;
+    for (const [dx, dy, len, n] of legs) {
+      const run = len / n;
+      for (let i = 0; i < n; i++, k++) {
+        z += rise;
+        const cx = x + dx * run * (i + 0.5), cy = y + dy * run * (i + 0.5);
+        // the corner steps run on under the turn, so a flight meets the next without a gap
+        const ex = i === n - 1 ? w : 0, sx = i === 0 && k ? w : 0;
+        const bx = cx + (dx * (ex - sx)) / 2, by = cy + (dy * (ex - sx)) / 2, hx = dx ? run / 2 + (ex + sx) / 2 + 0.001 : w, hy = dy ? run / 2 + (ex + sx) / 2 + 0.001 : w;
+        // the low edge: the previous step's end; a flight's first step meets the last one's side over the
+        // turn, and its own side shows that rise, so no line
+        if (!sx) steps.push({ z, ux: dx, uy: dy, e: [x + dx * run * i, y + dy * run * i], x0: bx - hx, x1: bx + hx, y0: by - hy, y1: by + hy });
+        p.push(B([bx, by, z - d / 2], [hx, hy, d / 2], 0, k & 1 ? "litBone" : "litChalk"));
+      }
+      x += dx * len; y += dy * len;
+    }
+    return {
+      prims: p, r: a / 2 + w + 0.1, h: d + t + 0.05, k: 1,
+      detail: (x, y, z, m, nx, ny, nz) => {
+        if (nz > 0.35) { // the edge voxels' normals lean, so a lower bar for the nosing than for the tread
+          const st = steps.find((q) => Math.abs(z - q.z) < 0.09 && x >= q.x0 - 0.04 && x <= q.x1 + 0.04 && y >= q.y0 - 0.04 && y <= q.y1 + 0.04);
+          if (st && st.ux * (x - st.e[0]) + st.uy * (y - st.e[1]) < 0.07) return "litInk";
+        }
+        if (nz > 0.6) return m === "litChalk" ? "litParchment" : "litPaper";
+        if (nz < -0.6) return "litSlate";
+        return Math.abs(nx) > 0.6 ? litStone(y, z, "litBone", nx, ny) : litStone(x, z, "litBone", nx, ny);
+      },
+    };
+  });
+
+  // A terraced ruin: three stepped terraces of hatched ashlar, moss carpeting their tops and spilling over
+  // the edges, a broken pier and half an arch on the top one, vines hanging down the faces. o.seed varies
+  // the moss and vines. Anchored at the bottom terrace's middle on the ground
+  model("es_ruin", (o = {}) => {
+    const sd = o.seed || 0, h = 0.32, p = [], tiers = [[0, 0, 0.62], [-0.12, -0.08, 0.46], [-0.22, -0.16, 0.3]];
+    tiers.forEach(([cx, cy, r], i) => p.push(B([cx, cy, h * i + h / 2], [r, r, h / 2], 0, "litBone")));
+    const [tx, ty] = [tiers[2][0], tiers[2][1]], top = 3 * h;
+    p.push(B([tx - 0.12, ty + 0.18, top + 0.3], [0.08, 0.08, 0.3], 0, "litBone"), B([tx - 0.12, ty + 0.18, top + 0.63], [0.11, 0.11, 0.03], 0, "litSlate"));
+    p.push(B([tx - 0.12, ty - 0.22, top + 0.16], [0.08, 0.08, 0.16], 0, "litBone"));
+    p.push(Y([tx - 0.12, ty - 0.02, top + 0.5], 0.2, 0.08, "litBone", { R: ry(Math.PI / 2) }), Y([tx - 0.12, ty - 0.02, top + 0.5], 0.13, 0.1, "litBone", { sub: true, R: ry(Math.PI / 2) }), B([tx - 0.12, ty - 0.12, top + 0.5], [0.1, 0.11, 0.25], 0, "litBone", { sub: true }));
+    // moss over the terraces' front edges, and vines down the faces
+    tiers.forEach(([cx, cy, r], i) => {
+      cushions(p, cx + r, cy - r + 0.05, cy + r - 0.05, h * (i + 1), 5 + (i < 2 ? 2 : 0), 0.07);
+      for (let j = 0; j < 4; j++) { const yy = cy - r + 0.1 + 0.22 * j + (P.hash(i, j, sd, 5) - 0.5) * 0.06; p.push(E([cx + (fr(j * 0.618) - 0.5) * r, cy + r, h * (i + 1)], [0.07, 0.06, 0.04], "moss2")); if (P.hash(i, j, sd, 7) < 0.55) p.push(C([cx + r + 0.02, yy, h * (i + 1)], [cx + r + 0.03, yy + 0.02, h * (i + 1) - 0.12 - P.hash(i, j, sd, 9) * h * (i + 0.6)], 0.022, 0.012, j & 1 ? "leaf" : "leaf2")); }
+    });
+    return {
+      prims: p, r: 0.9, h: top + 0.7, k: 1,
+      detail: (x, y, z, m, nx, ny, nz) => {
+        if (m !== "litBone") return m;
+        if (nz > 0.6) return P.hash(Math.floor(x * 8), Math.floor(y * 8), sd, 3) < 0.7 ? (P.hash(Math.floor(x * 16), Math.floor(y * 16), sd, 4) < 0.3 ? "moss2" : "moss") : "litPaper";
+        return Math.abs(nx) > 0.6 ? litStone(y, z, m, nx, ny) : litStone(x, z, m, nx, ny);
+      },
+    };
+  });
+
+  // Big roots hanging under an island: a rock keel narrowing downward, moss over its rim, and o.n roots
+  // curling down and out of it, thick at the rock and thin at the tips, a clod of earth on some. o.len the
+  // longest root, o.seed varies them. Anchored under the longest root's tip; the keel's top (the island's
+  // underside) is o.len + 0.15 above it. o.keel: false leaves the rock out, for a few thin roots under a
+  // lap step (§11.4)
+  model("es_roots", (o = {}) => {
+    const kl = o.keel !== false, n = o.n || (kl ? 13 : 5), len = o.len ?? (kl ? 2 : 0.8), sd = o.seed || 0, Z = len + 0.15, p = [];
+    if (kl) {
+      p.push(C([0, 0, Z - 0.04], [0.04, -0.03, Z - 0.5], 0.34, 0.08, "rock"), C([0.12, 0.08, Z - 0.1], [0.1, 0.16, Z - 0.36], 0.16, 0.05, "rock"));
+      for (let i = 0; i < 10; i++) { const a = (i / 10) * TAU; p.push(E([0.33 * Math.cos(a), 0.33 * Math.sin(a), Z - 0.04], [0.09, 0.09, 0.06], i & 1 ? "moss2" : "moss")); }
+    }
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU + P.hash(i, 0, sd, 11), r0 = kl ? 0.22 + 0.08 * P.hash(i, 1, sd, 11) : 0.05 + 0.15 * P.hash(i, 1, sd, 11), L = len * (i ? 0.3 + 0.6 * P.hash(i, 2, sd, 11) : 1), th = i ? 0.035 + 0.025 * P.hash(i, 4, sd, 11) : 0.065;
+      let q = [r0 * Math.cos(a), r0 * Math.sin(a), Z - 0.1];
+      const segs = 6;
+      for (let s = 0; s < segs; s++) {
+        const k0 = s / segs, k1 = (s + 1) / segs, out = 0.11 * Math.sin(k1 * 2.6 + 0.3) + 0.05 * Math.sin(k1 * 7 + i), sw = 0.1 * Math.sin(k1 * 5 + i * 2);
+        const nq = [q[0] + Math.cos(a) * out + -Math.sin(a) * sw, q[1] + Math.sin(a) * out + Math.cos(a) * sw, q[2] - L / segs];
+        p.push(C(q, nq, th * (1 - k0) + 0.012, th * (1 - k1) + 0.012, "bark"));
+        q = nq;
+      }
+      if (P.hash(i, 3, sd, 11) < 0.35) p.push(E([q[0], q[1], q[2] + L * 0.3], [0.07, 0.07, 0.06], "earth"));
+    }
+    return { prims: p, r: 0.9, h: Z + 0.05, k: 1, detail: (x, y, z, m, nx, ny, nz) => (m === "bark" && nx > 0.6 && fr(z * 6 + x * 2) < 0.2 ? "earth" : m) };
+  });
+
+  // Cloud puffs for a jar: o.n puffs heaped on a flat underside, pale and soft. o.seed varies the heap.
+  // Anchored at its underside's middle
+  model("es_cloud", (o = {}) => {
+    const n = o.n || 9, sd = o.seed || 0, s = o.s ?? 0.5, p = [E([0, 0, s * 0.3], [s * 1.05, s * 0.7, s * 0.32], "isleCloud")];
+    // a low ring of small puffs round the rim, a higher ring of bigger ones, a crown on top
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU + P.hash(i, 0, sd, 13) * 0.5, d = s * (0.78 + 0.18 * P.hash(i, 1, sd, 13)), r = s * (0.2 + 0.12 * P.hash(i, 2, sd, 13));
+      p.push(S([d * Math.cos(a) * 1.25, d * Math.sin(a) * 0.85, r * 0.75], r, "isleCloud"));
+    }
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * TAU + 0.6 + P.hash(i, 3, sd, 13) * 0.6, d = s * (0.4 + 0.15 * P.hash(i, 4, sd, 13)), r = s * (0.3 + 0.12 * P.hash(i, 5, sd, 13));
+      p.push(S([d * Math.cos(a) * 1.2, d * Math.sin(a) * 0.8, s * 0.32 + r * 0.7], r, "isleCloud"));
+    }
+    p.push(S([s * 0.08, s * 0.05, s * 0.78], s * 0.38, "isleCloud"), B([0, 0, -s], [s * 3, s * 3, s], 0, "isleCloud", { sub: true }));
+    return { prims: p, r: s * 1.7, h: s * 1.25, k: 1 };
+  });
+
+  // A stair to nowhere (§11.4, the west isle): o.n lithograph steps o.rise high and o.run deep climbing
+  // toward -x, the first o.solid down to the ground, the rest a sawtooth beam hanging in the air with roots
+  // under it, and the last broken off to half its width, its fallen stones on the ground below. Ink nosing on
+  // each tread's low, +x edge, the risers toward the camera. o.w the half width. Anchored on the
+  // first step's ground centre
+  model("es_nowhere", (o = {}) => {
+    const n = o.n || 5, rise = o.rise ?? 0.25, run = o.run ?? 0.25, w = o.w ?? 0.3, solid = o.solid ?? 2, sd = o.seed || 0, p = [];
+    for (let i = 0; i < n; i++) {
+      const top = (i + 1) * rise, z0 = i < solid ? 0 : top - rise - 0.06, xc = -i * run, hw = i === n - 1 ? w * 0.55 : w;
+      p.push(B([xc, hw - w, (z0 + top) / 2], [run / 2, hw, (top - z0) / 2], 0, "litBone"));
+      if (i >= solid) for (let j = 0; j < 2; j++) { const yy = (P.hash(i, j, sd, 51) - 0.5) * w * 1.4, L = 0.25 + 0.5 * P.hash(i, j, sd, 52); p.push(C([xc, yy, z0 + 0.02], [xc - 0.06, yy + 0.04, z0 - L], 0.03, 0.01, "bark")); }
+    }
+    cushions(p, run / 2 - 0.03, -w + 0.05, w - 0.05, rise, 4, 0.06);
+    for (let i = 0; i < 3; i++) p.push(B([-(n - 1) * run - 0.1 * i, w * 0.5 + 0.08 * (i & 1), 0.05], [0.07, 0.05, 0.05], 0.01, "litBone", { R: P.rot("z", 0.4 + i) }));
+    return {
+      prims: p, r: n * run + w, h: n * rise + 0.1, k: 1,
+      detail: (x, y, z, m, nx, ny, nz) => {
+        if (m !== "litBone") return m;
+        if (nz > 0.35 && z > rise * 0.5) return fr((x + run / 2) / run) > 0.82 ? "litInk" : nz > 0.6 ? "litPaper" : m;
+        if (nz < -0.6) return "litSlate";
+        return Math.abs(nx) > 0.6 ? litStone(y, z, m, nx, ny) : litStone(x, z, m, nx, ny);
+      },
+    };
+  });
+
+  // A broken arch (§11.4, the west isle): the -y pier standing with its half of the ring to just past the
+  // crown, the +y pier a stump, fallen voussoirs between, moss on the breaks. o.span the opening's half
+  // width, o.h the springing. The way would run along x. Anchored at the opening's middle on the ground
+  model("es_archBroken", (o = {}) => {
+    const sp = o.span ?? 0.42, hs = o.h ?? 0.8, d = 0.15, rr = sp + 0.15, py = sp + 0.09, p = [];
+    p.push(Y([0, 0, hs], rr, d, "litBone", { R: ry(Math.PI / 2) }), Y([0, 0, hs], sp, d + 0.05, "litBone", { sub: true, R: ry(Math.PI / 2) }));
+    p.push(B([0, 0, hs - rr / 2 - 0.01], [d + 0.05, rr + 0.05, rr / 2 + 0.01], 0, "litBone", { sub: true }), B([0, rr / 2 + 0.1, hs + rr / 2], [d + 0.05, rr / 2, rr / 2 + 0.05], 0, "litBone", { sub: true }));
+    p.push(B([0, -py, hs / 2], [d, 0.09, hs / 2], 0, "litBone"), B([0, py, 0.16], [d, 0.09, 0.16], 0, "litBone"));
+    for (const s of [-1, 1]) p.push(B([0, s * py, s < 0 ? hs + 0.02 : 0.34], [d + 0.03, 0.11, 0.025], 0, "litSlate"));
+    for (let i = 0; i < 3; i++) p.push(B([0.18 - 0.17 * i, 0.12 + 0.12 * i, 0.06], [0.07, 0.1, 0.06], 0.01, "litBone", { R: P.rot("z", 0.7 * i - 0.3) }));
+    cushions(p, 0, py - 0.08, py + 0.08, 0.37, 2, 0.08);
+    cushions(p, 0, -0.02, 0.12, hs + rr - 0.02, 2, 0.07);
+    p.push(C([d + 0.01, -py - 0.04, hs], [d + 0.03, -py - 0.02, hs * 0.35], 0.022, 0.012, "leaf"));
+    return {
+      prims: p, r: 0.85, h: hs + rr + 0.1, k: 1,
+      detail: (x, y, z, m, nx, ny, nz, vx) => {
+        if (m !== "litBone") return m;
+        if (nz > 0.6) return "litPaper";
+        if (Math.abs(nx) > 0.6) { const j = ring(y, z, hs, sp, Math.max(0.015, vx * 0.6)); if (j) return j === "j" ? "litGraphite" : m; }
+        return Math.abs(nx) > 0.6 ? litStone(y, z, m, nx, ny) : litStone(x, z, m, nx, ny);
+      },
+    };
+  });
+
+  // A facing for a band's or a terrace's side (§11.4: the court's sides hatched): a lithograph ashlar slab
+  // o.n tiles long along y and o.h deep, on the cell's +x edge (rot for the +y one), moss along its top edge
+  // and running down. o.u, o.dir and o.seed as es_panel's, so the moss runs on along a side. Anchored at the
+  // run's middle cell's centre at the slab's foot (a model's box stops 0.45 under its anchor): place it with
+  // dz -o.h so its top meets the ground's top. o.x moves the slab's middle off the anchor (0.47, the edge of
+  // the anchor's cell): an anchor half a tile out (dx or dy 0.5, so it sits over the sky and blocks no plot)
+  // takes -0.03
+  model("es_facing", (o = {}) => {
+    const n = o.n || 1, Dp = o.h ?? 2, SX = o.x ?? 0.47, U0 = (o.u || 0) + n / 2, D = o.dir || 1, sd = o.seed || 0, p = [B([SX, 0, Dp / 2], [0.05, n / 2, Dp / 2], 0, "litBone")];
+    cushions(p, SX + 0.05, -n / 2 + 0.05, n / 2 - 0.05, Dp, Math.round(n * 6), 0.06);
+    return {
+      prims: p, r: n / 2 + 0.3, h: Dp + 0.1, k: 1,
+      detail: (x, y, z, m, nx, ny) => (m !== "litBone" ? m : nx > 0.6 ? streak(U0 + D * y, z, Dp, sd) || litStone(y, z, m, 1, 0) : "litSlate"),
+    };
+  });
+
   // ---------------------------------------------------------------- light
   // a high sun from +x+y (§10.4), so the seen faces are lit and a join's two sides take the same light; no
   // beams, canopy mottle or haze: depth or height fog would tell the pieces' real heights apart. The sky is
@@ -18647,82 +18981,91 @@ fn boxOf(V: Vox) -> Box {
 
 </script>
 <script>/* ../MossheartEngine/content/everstair-map.js */
-// Mossheart, the Ever Stair (level 4): the map, as floating islands in a void (the Architect's §10, the user's go
-// 2026-11-08). There is no floor: every piece hangs in the sky on its own keel, and the level reads as one only
-// from the locked view, where pieces 4 apart in x, y and z share a pixel. Art owns the ground (the islands, their
-// bottoms and keels, the ring, the causeway, the decks, the floating walls, the debris and the dressing); Game owns
-// the `game` block. Heights and bottoms are in steps of 0.25:
-//   the Overlook     14..19 x 1..10, top 5.0; the gate at (17, 1), the spawn
-//   the Low Terrace  1..13 x 1..6 and 1..6 x 7..19, top 1.0; on screen its x = 9 edge meets the Overlook's x = 14
-//                    edge as one floor, and its cells 10..13 lie under the Overlook (unplanted)
-//   the Ever Stair   the 32-cell ring from (14, 11), 5.0 down to 1.0, a slab 0.75 thick; the notch (10..13, 7) is sky
-//   the causeway     3..4 x 20..21 and 3..10 x 22..23, 1.0 down to -0.25, with a moss shoulder at y = 24
-//   the Seen Bridge  the far deck 11..13 x 22..23 at -0.5 and the near deck 18..20 x 26..27 at 3.5, equally thick
-//   Heart Isle       21..25 x 21..27, top 3.5
-//   the turned walls stone panels floating on x = 0 and y = 0; the x = 0, y 8..19 run is route 1's walked wall
-// Cells on a join's two edges are plain kinds (es_tread, es_turf, es_deck: no world-space pattern to break there).
+// Mossheart, the Ever Stair (level 4): the map, as floating islands in a void (the Architect's §11, "the stair
+// as the spine", the user's go 2026-11-09). There is no floor: every piece hangs in the sky on its own keel, and
+// the level reads as one only from the locked view (along -(1, 1, 1)), where pieces 4 apart in x, y and z share
+// a pixel. Art owns the ground (the islands, their bottoms and keels, the court, the laps, the ledge and its
+// walls, the terraces, the isles, the debris and the dressing); Game owns the `game` block. Tops and bottoms are
+// in steps of 0.25:
+//   the court   one square on screen, drawn x, y 16..23 at 9.0, cut by drawn x + y into three bands, each 4
+//               lower and 4 further back than the one before:
+//                 K0  x + y >= 42 in 19..23, top 9.0: the gate and the spawn, at the court's near corner
+//                 K1  x, y 12..19, x + y 29..33, top 5.0: the plots, lap A's landing, lap B's start
+//                 K2  x, y 8..15, x + y <= 20, top 1.0: the Heart Tree at (9.5, 9.6), the court's far corner
+//   lap A       24 treads from K0 (23, 19) round the court's +x and +y sides down onto K1 at (14, 19)
+//   lap B       24 treads from K1 (17, 12) round its -y and -x sides down onto K2 at (8, 12)
+//               tops 36 - floor(16 (i + 1) / 25) and 20 - floor(16 (i + 1) / 25) steps (9.0 -> 5.25, 5.0 -> 1.25)
+//   the ledge   an L of crag at 0.0 behind lap B (3..19 x 5..6, 3..4 x 7..14), holding two walls 9 high:
+//               the North Wall (x 4..18, y 6, its face the plane y = 7, route 2's road at z 6.5) and the West
+//               Wall (x 4, y 7..13, its face the plane x = 5, route 3's road at z 4.5)
+//   dressing    stepped terraces under the court's +y and +x sides, an east isle with the impossible frame, a
+//               west isle with a stair to nowhere and a broken arch, three ruins, three debris crags, big roots
+//               under the islands and some lap treads, low clouds between them
+// Plots are es_court cells with no prop on them (level.js blocks a cell under any model's anchor), so the
+// court's tiles (es_tile) go only on its walked cells (es_tread), and props on a band's edge are anchored half a
+// tile out over the sky. The seams' cells and K1's cells behind the gate's frame are plain turf.
 //
-// Needs content/everstair.js (Art's kinds and models) first, and F1+F2 (Engine, #581): `bottom`, the kinds'
-// keel, `floor: "void"` and the void backdrop. The bake box is derived (it makes room for the keels).
+// Needs content/everstair.js (Art's kinds and models) first. The frame stays the box until J1 (the jar over a
+// void map); the content stays inside its glass (c [15.5, 15.5], r 16.5, z >= -5.4).
 //
-//   ME.content.maps.everstair     the v1 map (plain data), with game: { route (three), split, spawn, heart, lane, build }
+//   ME.content.maps.everstair     the v1 map (plain data), with game: { route (three), spawn, heart, lane, build }
 (function () {
   const ME = window.ME, CT = (ME.content = ME.content || {});
   CT.maps = CT.maps || {};
-  const W = 30, H = 30, FLOOR = -16;
+  const W = 32, H = 32, FLOOR = -16;
 
   // h: tops, b: bottoms (steps), kind: legend chars ("." the sky), isle: which island a cell keels with
   const h = [], b = [], kind = [], isle = [];
   for (let y = 0; y < H; y++) { h.push(Array(W).fill(FLOOR)); b.push(Array(W).fill(FLOOR)); kind.push(Array(W).fill(".")); isle.push(Array(W).fill(0)); }
-  const box = (x0, y0, x1, y1, z, k, id) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { h[y][x] = z; kind[y][x] = k; if (id !== undefined) isle[y][x] = id; } };
-  const paint = (x0, y0, x1, y1, k) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) kind[y][x] = k; };
+  const cell = (x, y, z, k, id) => { h[y][x] = z; kind[y][x] = k; isle[y][x] = id; };
+  const box = (x0, y0, x1, y1, z, k, id) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) cell(x, y, z, k, id); };
+  const paint = (cells, k) => cells.forEach(([x, y]) => (kind[y][x] = k));
 
-  // the islands: id -> [slab thickness, the keel's cap in tiles from the edge]; the keel deepens 0.5 a tile
-  // inward up to the cap, so each island hangs a blunt cone (F1's keel option adds the per-voxel taper and noise)
-  const ISLES = { 1: [3, 2], 2: [3, 3], 3: [3, 0], 4: [3, 0], 5: [2, 0], 6: [2, 0], 7: [3, 2], 8: [3, 0], 9: [3, 1] };
-  box(14, 1, 19, 10, 20, "l", 1); // the Overlook
-  box(1, 1, 13, 6, 4, "l", 2); box(1, 7, 6, 19, 4, "l", 2); // the Low Terrace
-  // the Ever Stair, i0 at the Overlook's foot to i31 by the notch: 20 - floor((i + 1) / 2), so the seam falls
-  // mid-landing (i31 and i0's on-screen copy both at 1.0)
-  const stair = [];
-  for (let x = 14; x <= 17; x++) stair.push([x, 11]);
-  for (let y = 12; y <= 17; y++) stair.push([17, y]);
-  for (let x = 16; x >= 7; x--) stair.push([x, 17]);
-  for (let y = 16; y >= 7; y--) stair.push([7, y]);
-  stair.push([8, 7], [9, 7]);
-  stair.forEach(([x, y], i) => box(x, y, x, y, 20 - Math.floor((i + 1) / 2), "t", 3));
-  // the causeway: 0.25 a step down from the terrace's west arm to the far deck; the walked cells are road,
-  // the outer row (x = 3, y = 23) flags; the shoulder at each causeway column's height holds plots
-  box(3, 20, 4, 20, 4, "c", 4); box(3, 21, 4, 21, 3, "c", 4);
-  [[3, 4, 2], [5, 6, 1], [7, 8, 0], [9, 10, -1]].forEach(([x0, x1, z]) => { box(x0, 22, x1, 23, z, "c", 4); if (x0 > 3) box(x0, 24, x1, 24, z, "l", 4); });
-  box(10, 24, 10, 24, FLOOR, ".", 0); // the shoulder ends at x = 9
-  box(11, 22, 13, 23, -2, "b", 5); // the Seen Bridge's far deck
-  box(18, 26, 20, 27, 14, "b", 6); // its near deck
-  box(21, 21, 25, 27, 14, "l", 7); // Heart Isle
-  // the stair to nowhere, east of Heart Isle: four treads climbing off its edge into the sky
-  for (let x = 26; x <= 29; x++) box(x, 24, x, 24, 15 + (x - 26), "t", 8);
-  // debris: small islets around the level and below it (their own keels, ids 9+)
-  [[24, 4, 25, 5, 8], [10, 13, 11, 14, -8], [1, 25, 2, 27, -12], [27, 15, 27, 15, 4], [15, 27, 15, 27, -10]].forEach(([x0, y0, x1, y1, z], n) => box(x0, y0, x1, y1, z, "k", 9 + n));
-  for (let n = 10; n < 14; n++) ISLES[n] = [3 + (n & 1), 1];
+  // the islands: id -> [slab thickness, the keel's cap in tiles from the edge]; the bottom deepens 0.5 a tile
+  // inward up to the cap (the kinds' keels add the taper and noise below it)
+  const ISLES = { 1: [3, 1], 2: [3, 2], 3: [3, 2], 4: [3, 0], 5: [3, 0], 6: [4, 1], 7: [3, 1], 8: [3, 1], 9: [3, 0], 10: [3, 0] };
+  for (let n = 11; n <= 16; n++) ISLES[n] = [3, 0];
 
-  // the walks (Game's routes, plan 2026-11-08): the gate leg down the Overlook, the terrace's two rows and west
-  // arm, the causeway's y = 22 row, and the near deck onto Heart Isle
-  paint(17, 1, 17, 8, "r"); paint(15, 8, 16, 8, "r");
-  paint(4, 4, 8, 4, "r"); paint(4, 6, 8, 6, "r"); paint(4, 7, 4, 19, "r"); paint(4, 20, 4, 21, "r"); paint(4, 22, 10, 22, "r");
-  paint(21, 26, 22, 26, "r");
-  // route 1's wall leg (wall walkers v1, Escher design 9.1): out along rows 8 and 19 to the terrace's west edge, up the
-  // x = 0 wall at z 3 between them (its face x 1.0); x = 4 stays road, the other two routes walk it
-  paint(2, 8, 3, 8, "r"); paint(2, 19, 3, 19, "r");
-  // plain ground on the joins' edges. The Overlook seam: the Overlook's x = 14 edge on screen meets the terrace's
-  // x = 9 column, so both are plain, and the walked cells there are treads; the terrace's 10..13 strip is under
-  // the Overlook on screen, plain and unplanted. The ring's seam: i31 (9, 7) and i0 (14, 11) are both treads,
-  // and the Overlook's cells by i0 are the x = 14 column and the 15..17 x 9..10 block behind it
-  paint(14, 1, 14, 10, "p"); paint(15, 9, 17, 10, "p"); paint(14, 8, 14, 10, "t");
-  paint(9, 1, 9, 6, "p"); paint(9, 4, 9, 4, "t"); paint(9, 6, 9, 6, "t"); paint(8, 5, 8, 5, "p");
-  paint(10, 1, 13, 6, "p");
-  // the walked wall's landings, (1, 8) and (1, 19) between the road and the face: plain turf, so no ground lamp
-  // (the lawn's, lining the road) stands on the arc's foot and the edge at x = 1.0 stays crisp
-  paint(1, 8, 1, 8, "p"); paint(1, 19, 1, 19, "p");
+  // the court's three bands (isles 1..3), es_court ("c") but for the walked cells and the plain edges below
+  const band = [[], [], []];
+  for (let y = 8; y <= 23; y++) for (let x = 8; x <= 23; x++) {
+    const s = x + y, k = x >= 19 && y >= 19 && s >= 42 ? 0 : x >= 12 && x <= 19 && y >= 12 && y <= 19 && s >= 29 && s <= 33 ? 1 : x <= 15 && y <= 15 && s <= 20 ? 2 : -1;
+    if (k >= 0) { band[k].push([x, y]); cell(x, y, 36 - 16 * k, "c", 1 + k); }
+  }
+  // the laps (isles 4, 5): real stairs, 24 treads each, down 3.75 round the court and back onto it
+  const lapA = [[24, 19], [25, 19], [26, 19]], lapB = [];
+  for (let y = 20; y <= 24; y++) lapA.push([26, y]);
+  for (let x = 25; x >= 14; x--) lapA.push([x, 24]);
+  for (let y = 23; y >= 20; y--) lapA.push([14, y]);
+  for (let y = 11; y >= 7; y--) lapB.push([17, y]);
+  for (let x = 16; x >= 5; x--) lapB.push([x, 7]);
+  for (let y = 8; y <= 12; y++) lapB.push([5, y]);
+  lapB.push([6, 12], [7, 12]);
+  const step = (i) => Math.floor((16 * (i + 1)) / 25);
+  lapA.forEach(([x, y], i) => cell(x, y, 36 - step(i), "t", 4));
+  lapB.forEach(([x, y], i) => cell(x, y, 20 - step(i), "t", 5));
+  // the court's walked cells (treads, the court's tiles on them) and its plain edges (turf: the bands' seams on
+  // screen, the hidden cells behind the gate's frame, the tree's tuft)
+  const walked = [
+    [[22, 21], [23, 21], [23, 20], [23, 19]],
+    [[14, 19], [14, 18], [14, 17], [14, 16], [14, 15], [15, 15], [16, 15], [17, 15], [17, 14], [17, 13], [17, 12]],
+    [[8, 12], [8, 11], [8, 10], [9, 10]],
+  ];
+  walked.forEach((c) => paint(c, "t"));
+  paint([[19, 23], [20, 22], [21, 21], [22, 20]], "p");
+  paint([[15, 18], [16, 17], [17, 16], [18, 15], [19, 14], [12, 17], [13, 16], [15, 14], [16, 13], [15, 16], [16, 16]], "p");
+  paint([[9, 11], [10, 10], [11, 9], [12, 8]], "p");
+
+  // the ledge (isle 6): crag at 0.0 behind lap B, the walls' foot
+  box(3, 5, 19, 6, 0, "k", 6); box(3, 7, 4, 14, 0, "k", 6);
+  // the terraces (es_terrace, "e"): under the court's +y side (isle 7, 12/8/4 by row) and +x side (isle 8)
+  [12, 8, 4].forEach((z, i) => box(16, 25 + i, 24, 25 + i, z, "e", 7));
+  box(27, 17, 27, 23, 12, "e", 8); box(28, 17, 28, 23, 8, "e", 8);
+  // the isles: east (the frame), west (the stair to nowhere, the broken arch), three ruins, three debris crags
+  box(28, 11, 29, 12, 16, "k", 9);
+  box(1, 17, 3, 20, 8, "l", 10);
+  box(20, 2, 21, 3, 6, "k", 11); box(8, 25, 9, 26, -6, "k", 12); box(27, 7, 27, 7, 5, "k", 13);
+  box(12, 28, 12, 28, -8, "k", 14); box(30, 17, 30, 17, 0, "k", 15); box(1, 9, 1, 9, -4, "k", 16);
 
   // bottoms: each island's slab, deepened toward its middle (a BFS from its edge, capped)
   const dist = Array.from({ length: H }, () => Array(W).fill(-1)), q = [];
@@ -18745,20 +19088,53 @@ fn boxOf(V: Vox) -> Box {
     b[y][x] = Math.max(FLOOR + 1, h[y][x] - thick - 2 * Math.min(dist[y][x], cap));
   }
 
-  // the turned walls: stone panels floating in the sky beyond the terrace's back edges, in runs of three with
-  // gaps, each run on its own height (the cell's h is the panel's foot). None behind the Overlook or the hidden
-  // strip, so nothing hangs over a seam. The walked wall (wall walkers, Escher design 9.1): one run on x = 0,
-  // y 8..19, from the terrace's top (1.0) to 4.0, its face flush with the terrace's edge at x = 1.0 for route
-  // 1's face leg; its pieces grow below the walkers' band (z 2.5 to 3.6), and its end columns, where the leg
-  // climbs and comes down, are plain
-  const pieces = ["plain", "lawn", "plain", "tree", "stair", "plain", "lamp", "lawn"];
-  const panels = [];
-  const run = (cells, rot, base, n0, o) => cells.forEach(([x, y], i) => { h[y][x] = base; panels.push(["es_panel", { piece: pieces[(n0 + i) % pieces.length], h: 2, ...o }, x, y, rot ? { rot } : {}]); });
-  run([[0, 2], [0, 3], [0, 4]], 0, 8, 0);
-  run(Array.from({ length: 12 }, (_, i) => [0, 8 + i]), 0, 4, 1, { h: 3, flush: true, clear: [1.5, 2.6] });
-  panels[3][1].piece = panels[14][1].piece = "plain";
-  run([[2, 0], [3, 0], [4, 0]], 1, 10, 1);
-  run([[7, 0], [8, 0], [9, 0]], 1, 14, 4);
+  const props = [];
+  // the gate on K0, its way along y (the anchor at (22, 22): K0's gate cell, no plot)
+  props.push(["es_gate", { span: 0.8, h: 0.82 }, 21, 21, { rot: 1, dx: 0.5, dy: 0.5 }]);
+  // the court's tiles on its walked cells, the pattern in drawn coordinates (band b drawn 4b on)
+  walked.forEach((c, k) => props.push(...CT.everstairCourt(c, k)));
+
+  // the walls: flush panels a whole tile thick on the ledge, 9 high, the walkers' band clear and the road's
+  // tiles in it, arcades and through-arches under it. North: rot 1 (its face +y), u = x running -x; West: its
+  // face +x, u = y
+  const N = ["plain", "arcade", "arcade", "through", "arcade", "lamp", "arcade", "tree", "arcade", "through", "arcade", "lawn", "arcade", "arcade", "plain"];
+  for (let x = 4; x <= 18; x++) {
+    props.push(["es_panel", { piece: N[x - 4], h: 9, flush: true, t: 1, clear: [2.0, 7.6], road: { z: 6.0, stage: +(0.3 + (0.45 * Math.min(12, Math.max(0, 17 - x))) / 12).toFixed(3) }, u: x, dir: -1, seed: x }, x, 6, { rot: 1 }]);
+  }
+  const Wp = ["arcade", "plain", "through", "lamp", "through", "plain", "arcade"];
+  for (let y = 7; y <= 13; y++) {
+    props.push(["es_panel", { piece: Wp[y - 7], h: 9, flush: true, t: 1, clear: [1.3, 5.6], road: { z: 4.0, stage: +(0.75 + (0.2 * Math.min(5, Math.max(0, y - 7))) / 5).toFixed(3) }, u: y, dir: 1, seed: 20 + y }, 4, y, {}]);
+  }
+
+  // facings, hatched ashlar on the sides the camera sees, foot-anchored (dz -h). K0's two: listed on its own
+  // cells, anchored half a tile out over the sky (no plot under them), the slab back on the edge (x -0.03)
+  props.push(["es_facing", { n: 5, h: 1.5, x: -0.03, u: 19, dir: -1, seed: 1 }, 21, 23, { rot: 1, dy: 0.5, dz: -1.5 }]);
+  props.push(["es_facing", { n: 4, h: 2, x: -0.03, u: 20, seed: 2 }, 23, 21, { dx: 0.5, dy: 0.5, dz: -2 }]);
+  // the terraces': each row's +y side the step down (the last 2), the +x ends 2
+  [1, 1, 2].forEach((d, i) => props.push(["es_facing", { n: 9, h: d, u: 16, dir: -1, seed: 3 + i }, 20, 25 + i, { rot: 1, dz: -d }]));
+  for (let i = 0; i < 3; i++) props.push(["es_facing", { n: 1, h: 2, u: 25 + i, seed: 6 + i }, 24, 25 + i, { dz: -2 }]);
+  [1, 2].forEach((d, i) => props.push(["es_facing", { n: 7, h: d, u: 17, seed: 9 + i }, 27 + i, 20, { dz: -d }]));
+  for (let i = 0; i < 2; i++) props.push(["es_facing", { n: 1, h: 2, u: 27 + i, dir: -1, seed: 11 + i }, 27 + i, 23, { rot: 1, dz: -2 }]);
+
+  // the isles' dressing
+  props.push(["es_frame", { L: 1.25, moss: true }, 28, 11, { dx: 0.5, dy: 0.5 }]);
+  props.push(["es_nowhere", { n: 6, rise: 0.3, run: 0.3, solid: 2, seed: 3 }, 3, 19, {}]);
+  props.push(["es_archBroken", { span: 0.42, h: 0.8 }, 2, 17, {}]);
+  props.push(["es_ruin", { seed: 1 }, 20, 2, { dx: 0.5, dy: 0.5 }], ["es_ruin", { seed: 2 }, 8, 25, { dx: 0.5, dy: 0.5 }], ["es_ruin", { seed: 3 }, 27, 7, {}]);
+
+  // roots: big ones under the islands (the keel's top at the cell's bottom), thin ones under some lap treads.
+  // Anchored at the longest root's tip; the tips stay above the jar's floor (-5.4)
+  const root = (x, y, len, seed, o = {}, at = {}) => {
+    const keel = o.keel !== false, bt = keel ? b[y][x] * 0.25 : h[y][x] * 0.25 - 0.75, L = Math.min(len, bt + 5.25);
+    props.push(["es_roots", { len: +L.toFixed(2), seed, ...o }, x, y, { ...at, dz: +(bt - h[y][x] * 0.25 - L - 0.15).toFixed(3) }]);
+  };
+  root(22, 22, 3.1, 1); root(16, 15, 2.5, 2); root(9, 9, 2.5, 3); root(10, 5, 2.5, 4); root(4, 12, 2, 5);
+  root(20, 26, 2.2, 6); root(27, 20, 2, 7); root(28, 11, 1.8, 8, {}, { dx: 0.5, dy: 0.5 });
+  root(20, 2, 1.6, 9, {}, { dx: 0.5, dy: 0.5 }); root(8, 25, 1.4, 10, {}, { dx: 0.5, dy: 0.5 }); root(27, 7, 1.4, 11);
+  root(2, 18, 1.8, 12);
+  [[26, 22], [20, 24], [14, 22], [17, 9], [11, 7], [5, 10]].forEach(([x, y], i) => root(x, y, 0.8, 20 + i, { keel: false }));
+  // low clouds between the islands (z -2.5 or so, under everything walked: they hide nothing)
+  [[20, 15, 0.7], [24, 13, 0.6], [18, 21, 0.8], [15, 27, 0.7], [27, 15, 0.6]].forEach(([x, y, s], i) => props.push(["es_cloud", { n: 9, seed: i + 1, s }, x, y, { dz: 1.5 - 0.25 * (i % 3) }]));
 
   CT.maps.everstair = {
     v: 1, id: "everstair", W, H, hStep: 0.25,
@@ -18766,21 +19142,24 @@ fn boxOf(V: Vox) -> Box {
     floor: "void",
     h, bottom: b.map((r, y) => r.map((z, x) => (isle[y][x] ? z : null))),
     kind: kind.map((r) => r.join("")),
-    // r: the road (Mossheart's setts), c: flags, l: moss, t: the treads, p: plain turf, b: the decks (the last
-    // three plain: the joins' edges), k: the debris crags
-    legend: { ".": null, r: "es_road", c: "es_court", l: "es_lawn", t: "es_tread", p: "es_turf", b: "es_deck", k: "es_crag" },
-    // the gate over the road's first tile (its way along y), a lamp at the top of the stair to nowhere
-    props: [["es_gate", null, 17, 1, { rot: 1 }], ["es_lamp", null, 29, 24, {}], ...panels],
+    // c: the court (its plots), t: the treads (the laps and the court's walked cells), p: plain turf (the
+    // seams, the hidden cells), k: crag (the ledge, the isles, the debris), e: the terraces
+    legend: { ".": null, c: "es_court", t: "es_tread", p: "es_turf", k: "es_crag", e: "es_terrace", l: "es_lawn" },
+    props,
     frame: { type: "box" },
-    // The rules' data (the engine never reads it): Game's (plan 2026-11-08), a placeholder until its F3 half
+    // The rules' data (the engine never reads it): routes as §11.1, no split; Game's S3 adds the rest
     game: {
       route: [
-        [[17, 1], [17, 8], [14, 8], [14, 11], [17, 11], [17, 17], [7, 17], [7, 7], [9, 7], [9, 6], [4, 6], [4, 8], [2, 8], { face: "+x", at: 1.0, path: [[8, 3], [19, 3]] }, [2, 19], [4, 19], [4, 22], [13, 22], [18, 26, { j: 4 }], [22, 26]],
-        [[17, 1], [17, 8], [14, 8], [9, 4, { j: -4 }], [4, 4], [4, 22], [13, 22], [18, 26, { j: 4 }], [22, 26]],
-        [[17, 1], [17, 8], [14, 8], [14, 11], [17, 11], [17, 17], [7, 17], [7, 7], [9, 7], [14, 11, { j: 4 }], [17, 11], [17, 17], [7, 17], [7, 7], [9, 7], [9, 6], [4, 6], [4, 22], [13, 22], [18, 26, { j: 4 }], [22, 26]],
+        // 1, the spine: the gate, lap A, across K1, lap B, the tree
+        [[22, 21], [23, 21], [23, 19], [26, 19], [26, 24], [14, 24], [14, 15], [17, 15], [17, 7], [5, 7], [5, 12], [8, 12], [8, 10], [9, 10]],
+        // 2, the North Wall: off lap B at (17, 8), along the face y = 7 at z 6.5, back on lap B at (5, 8)
+        [[22, 21], [23, 21], [23, 19], [26, 19], [26, 24], [14, 24], [14, 15], [17, 15], [17, 8],
+          { face: "+y", at: 7.0, path: [[17, 6.5], [5, 6.5]] }, [5, 8], [5, 12], [8, 12], [8, 10], [9, 10]],
+        // 3, the West Wall: off lap B at (6, 7), along the face x = 5 at z 4.5, back on lap B at (6, 12)
+        [[22, 21], [23, 21], [23, 19], [26, 19], [26, 24], [14, 24], [14, 15], [17, 15], [17, 7], [6, 7],
+          { face: "+x", at: 5.0, path: [[7, 4.5], [12, 4.5]] }, [6, 12], [8, 12], [8, 10], [9, 10]],
       ],
-      split: [[1, 3, 3, 2], [2, 5, 5, 0]],
-      spawn: [17.5, 1.5], heart: [23.5, 24.5], lane: ["es_road", "es_tread", "es_deck"], build: ["es_court", "es_lawn"],
+      spawn: [22.5, 21.5], heart: [9.5, 9.6], lane: ["es_road", "es_tread", "es_deck"], build: ["es_court", "es_lawn"],
     },
   };
 })();
@@ -20765,7 +21144,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.109.0", name: "Mossheart", commit: "8bb47e36" };
+  G.VERSION = { v: "0.110.0", name: "Mossheart", commit: "5771ba4b" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
