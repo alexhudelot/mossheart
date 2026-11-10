@@ -478,6 +478,10 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 /* a tall card scrolls inside (.cscroll), not itself: the skin grows its moss over the card's edge */
 .card.wide, #over .card { display: flex; flex-direction: column; max-height: calc(var(--vh) - 32px); }
 .card.wide > :not(.cscroll), #over .card > :not(.cscroll) { flex: none; }
+/* the game over veil stands over the tray (#tray, z-index 2), and its card keeps clear of the notch and the
+   gesture bar: on a phone a long summary once ran the card under the dew tube and the seeds, hiding Plant anew */
+#over { z-index: 5; padding: calc(16px + var(--st)) calc(16px + var(--sr)) calc(16px + var(--sb)) calc(16px + var(--sl)); }
+#over .card { max-height: calc(var(--vh) - 32px - var(--st) - var(--sb)); }
 .cscroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .oversum { text-align: left; font-size: calc(15px * var(--ts)); margin: 0 0 16px; display: flex; flex-direction: column; gap: 10px; }
 .oversum .sh { display: inline-block; min-width: 5.5em; color: var(--moss); text-transform: uppercase; letter-spacing: 0.05em; font-size: calc(13px * var(--ts)); }
@@ -814,8 +818,9 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
   .card { padding: 14px 14px 12px; width: calc(var(--vw) - 16px); line-height: 1.3; }
   .card p { font-size: calc(16px * var(--ts)); margin: 0 0 10px; }
   .card .btn { height: 50px; font-size: calc(20px * var(--ts)); }
-  .card.wide, #over .card { max-height: calc(var(--vh) - 16px); }
-  .card.wide { width: calc(var(--vw) - 16px); }
+  .card.wide { max-height: calc(var(--vh) - 16px); width: calc(var(--vw) - 16px); }
+  #over { padding: calc(8px + var(--st)) calc(8px + var(--sr)) calc(8px + var(--sb)) calc(8px + var(--sl)); }
+  #over .card { max-height: calc(var(--vh) - 16px - var(--st) - var(--sb)); width: calc(var(--vw) - 16px - var(--sl) - var(--sr)); }
   .btn.big { height: 46px; margin-bottom: 8px; font-size: calc(17px * var(--ts)); }
   .settabs { display: flex; flex: none; margin: 0 0 6px; }
   .settabs button { flex: 1; padding: 6px 4px; }
@@ -4416,6 +4421,11 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   ME.params = new URLSearchParams(location.search);
   ME.q = (k, d) => (ME.params.has(k) ? ME.params.get(k) : d);
   ME.qn = (k, d) => (ME.params.has(k) ? parseFloat(ME.params.get(k)) : d);
+  // a key from outside (the page address, a save, an imported asset) that is safe to look up in or write into a
+  // plain table: not one every object inherits (constructor, toString, __proto__...), which table[k] would find
+  // on any table or, written, would set its prototype. The one rule for all of them (audit SEC-6); MossAsset
+  // takes it as AF.safeKey.
+  ME.safeKey = (k) => !(k in Object.prototype);
 
   // ------------------------------------------------------------------ keys by physical position
   // A key binding is a position on the keyboard (KeyboardEvent.code: KeyQ, KeyW, Digit1...), so it stays
@@ -6100,6 +6110,22 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       this.BX = I1 - I0; this.BY = J1 - J0; this.BXY = this.BX * this.BY; this.o = J0 * this.BX + I0;
       this.table = new Uint32Array(this.BXY * this.BZ);
       this.pool = new Uint8Array(0); this.used = 0; this.free = [];
+      if (win && ME.gridCheck) BrickGrid.guard(this);
+    }
+    // ME.gridCheck (a debug switch: region-check sets it, and the terrain workers take it from the main thread;
+    // #598's review, note 1): a window's ix, get, put and row throw on a brick outside the window, which would
+    // otherwise alias another brick of the window or read undefined without an error. Off, nothing is added
+    static guard(g) {
+      const P = BrickGrid.prototype, out = (I, J, K, w) => {
+        if (I < g.I0 || I >= g.I1 || J < g.J0 || J >= g.J1 || K < 0 || K >= g.BZ) throw new Error(`BrickGrid.${w}: brick ${I},${J},${K} outside the window ${g.win} (BZ ${g.BZ})`);
+      };
+      g.ix = (I, J, K) => (out(I, J, K, "ix"), P.ix.call(g, I, J, K));
+      g.get = (i, j, k) => (out(i >> 4, j >> 4, k >> 4, "get"), P.get.call(g, i, j, k));
+      g.put = (i, j, k, m) => (out(i >> 4, j >> 4, k >> 4, "put"), P.put.call(g, i, j, k, m));
+      g.row = (j, k, i0, i1, dst, off = 0) => {
+        if (i1 > i0) { out(i0 >> 4, j >> 4, k >> 4, "row"); out((i1 - 1) >> 4, j >> 4, k >> 4, "row"); }
+        return P.row.call(g, j, k, i0, i1, dst, off);
+      };
     }
     ix(I, J, K) { return (K * this.BY + J) * this.BX + I - this.o; }
     // brick row J from band (the bake): 16 rows of j, NX x 16 x NZ cells, x fastest, then j - 16 J, then k.
@@ -6352,7 +6378,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     ].join("\n");
   };
   // the worker's side (runs there, from its source): { probe } -> { probe }; { init } -> { ready, digest, check }
-  // (check: its probe bake of init.check's boxes; or { err }); { job: r } -> { r, res } with res's buffers transferred, { r, full } or { r, err }, in order
+  // (check: its probe bake of init.check's boxes; or { err }); { job: r } -> { r, res } with res's buffers transferred, { r, full } or { r, err }, in order.
+  // W1's baker adds ring (the region's ring, 16) and keep (the map's state put back after: region's keep)
   const terrainServe = () => {
     let region = null, chain = Promise.resolve();
     self.onmessage = (e) => {
@@ -6360,7 +6387,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       if (m.probe) { postMessage({ probe: ME.bakeTerrain.pxProbe(window.PX) }); return; }
       if (m.init) {
         const I = m.init;
-        ME.VS = I.VS; ME.content = I.CT; ME.qn = (k, d) => (k in I.QN ? I.QN[k] : d); ME.VOLUME_DECO = new Set(I.vdeco); ME.sdf.cull = I.cull; window.MODELS = I.models;
+        ME.VS = I.VS; ME.content = I.CT; ME.qn = (k, d) => (k in I.QN ? I.QN[k] : d); ME.VOLUME_DECO = new Set(I.vdeco); ME.sdf.cull = I.cull; window.MODELS = I.models; ME.gridCheck = !!I.gc;
         if (I.water) I.st.map.waterD = ME.waterDist(I.water);
         const pal = new ME.Palette(I.st);
         pal.names = I.plan.names; pal.ids = I.plan.ids;
@@ -6371,7 +6398,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       const r = m.job;
       chain = chain.then(async () => {
         try {
-          const res = await region(r, true), gr = res.grid;
+          const res = await region(r, true, m.ring || 1, null, !!m.keep), gr = res.grid;
           postMessage({ r, res }, [gr.table.buffer, gr.pool.buffer, gr.free.buffer, res.d1.buffer, res.d2.buffer, res.top.buffer]);
         } catch (er) { postMessage(er && er.full ? { r, full: true } : { r, err: String((er && er.stack) || er) }); }
       });
@@ -6384,12 +6411,13 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // drops region r's answer when it comes (the main thread baked r). Each worker holds 2 regions at most, and a
   // region is posted or grabbed only while it is fewer than `ahead` past the one taken, so the records waiting
   // here stay few. The watchdog (ME.bakeJobMs, 30 s; restarted on each answer) loses a worker that holds regions
-  // and sends nothing; its regions, and the queue once no worker is left, answer null
+  // and sends nothing; its regions, and the queue once no worker is left, answer null. job(r, x) (W1's baker) queues
+  // one region in any order, its message carrying x's fields too; a pool given such jobs posts them with no window
   const terrainPool = (n) => {
     let url = null;
     try { url = URL.createObjectURL(new Blob([terrainWorkerSrc()], { type: "text/javascript" })); } catch (e) { return null; }
-    const limit = ME.bakeJobMs || 30000, ahead = n * 3, ws = [], got = new Map(), dropped = new Set(), queue = [], ch = new MessageChannel();
-    let taken = 0, stopped = false;
+    const limit = ME.bakeJobMs || 30000, ahead = n * 3, ws = [], got = new Map(), dropped = new Set(), queue = [], extra = new Map(), ch = new MessageChannel();
+    let taken = 0, stopped = false, loose = false;
     const whys = []; // why each worker was lost (pool.why; T.stats.regions.workers.lost)
     // waiters: the stream's bake waiting on an answer (pool.wait); an answer, a lost worker or stop wakes them
     const waiters = [], wake = () => { for (const f of waiters.splice(0)) f(); };
@@ -6430,14 +6458,20 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       send, lose, why: whys,
       live: () => ws.filter((w) => w.ready && !w.lost).length,
       jobs: (N) => { for (let r = 0; r < N; r++) queue.push(r); pool.feed(); },
+      job: (r, x) => {
+        loose = true;
+        if (!ws.some((v) => !v.lost)) { settle(r, null); return; }
+        if (x) extra.set(r, x);
+        queue.push(r); pool.feed();
+      },
       // round by round (one region each), so the regions spread over the workers
       feed: () => {
         if (stopped) return;
         for (let k = 1; k <= 2; k++) for (const w of ws) {
-          if (w.lost || !w.ready || w.held.size >= k || !queue.length || queue[0] >= taken + ahead) continue;
+          if (w.lost || !w.ready || w.held.size >= k || !queue.length || (!loose && queue[0] >= taken + ahead)) continue;
           const r = queue.shift(), was = w.held.size;
-          if (!send(w, { job: r })) { queue.unshift(r); if (!ws.some((v) => !v.lost)) while (queue.length) settle(queue.shift(), null); continue; }
-          w.held.add(r);
+          if (!send(w, Object.assign({ job: r }, extra.get(r)))) { queue.unshift(r); if (!ws.some((v) => !v.lost)) while (queue.length) settle(queue.shift(), null); continue; }
+          w.held.add(r); extra.delete(r);
           if (!was) arm(w);
         }
       },
@@ -6460,7 +6494,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       stop: () => {
         stopped = true; wake();
         for (const w of ws) { w.held.clear(); lose(w, null); }
-        got.clear(); dropped.clear(); queue.length = 0;
+        got.clear(); dropped.clear(); extra.clear(); queue.length = 0;
         ch.port1.close();
         if (url) { URL.revokeObjectURL(url); url = null; }
       },
@@ -6475,10 +6509,12 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // o.serve(region, digest, check), called where the regions would bake, in place of the rest of the bake. o.bg: the
   // terrain stream's bake (P3, src/stream.js), while the game plays: quiet, by regions on the terrain workers
   // (with or without ?regions), none of them on the main thread, the coarse grid a tile row at a time; it throws
-  // an error with .noWorkers where it would bake a region here
+  // an error with .noWorkers where it would bake a region here. o.hold (W1, ME.hiBaker): quiet, the map up to its
+  // regions (the lamps' heights, the workers started and checked as for the regions bake, with or without
+  // ?regions), then no region: it returns a baker that bakes a region at a time when asked (baker below)
   ME.bakeTerrain = async function (st, pal, o = {}) {
-    const RULES = !!o.rules, progress = RULES || o.serve || o.bg ? () => {} : ME.progress;
-    const t0 = ME.now(), VS = o.vs || ME.VS, CT = ME.content || {}, G = gridOf(st, CT, RULES || !!o.serve), F = G.frame, jar = F.type === "jar";
+    const RULES = !!o.rules, quiet = !!(o.serve || o.hold), progress = RULES || quiet || o.bg ? () => {} : ME.progress;
+    const t0 = ME.now(), VS = o.vs || ME.VS, CT = ME.content || {}, G = gridOf(st, CT, RULES || quiet), F = G.frame, jar = F.type === "jar";
     // the jar (Momiji's island): a circle of radius RI round (C, CY), over a strata drum and a wooden plinth
     const C = jar ? F.c[0] : 0, CY = jar ? F.c[1] : 0, RI = jar ? F.r : 0;
     const RG = RI + 0.35, DRUM = F.foot, PL_R = RG + 0.45, PL_ZB = -2.15, PL_ZT = -1.5, ZF = G.floorZ;
@@ -6952,8 +6988,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // bricks' cells (cut(I0, I1, J0, J1) gives their boxes), and no fold first (a brick of one material in the
     // pool gives what the uniform brick gives)
     let solid = 0, kMax = 0;
-    const MX = NX >> 1, MY = NY >> 1, MZ = NZ >> 1, d1 = RULES || o.serve ? null : new Uint8Array(MX * MY * MZ);
-    const LX = MX >> 1, LY = MY >> 1, LZ = MZ >> 1, d2 = RULES || o.serve ? null : new Uint8Array(LX * LY * LZ);
+    const MX = NX >> 1, MY = NY >> 1, MZ = NZ >> 1, d1 = RULES || quiet ? null : new Uint8Array(MX * MY * MZ);
+    const LX = MX >> 1, LY = MY >> 1, LZ = MZ >> 1, d2 = RULES || quiet ? null : new Uint8Array(LX * LY * LZ);
     const s7 = (j, i0) => i0 + (7 - (j * NX + i0) % 7) % 7; // row j's first 7th cell from i0
     // a region's blocks: [x0, y0, w, h] of mip0's, then of mip1's (each block every z)
     const cut = (I0, I1, J0, J1) => [I0 << 3, J0 << 3, Math.min(MX, I1 << 3) - (I0 << 3), Math.min(MY, J1 << 3) - (J0 << 3),
@@ -7004,14 +7040,14 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // regions: the count, the lamp pre-pass and each region's time (ms: its bake and its take; mipMs: its mips),
     // kept in T.stats.regions
     let regions = null;
-    if (RULES || !(o.serve || o.bg || ME.regionsOn(VS))) await fill(g, null, lamps.length);
+    if (RULES || !(quiet || o.bg || ME.regionsOn(VS))) await fill(g, null, lamps.length);
     else {
       const RT = 4 * VS, NRX = Math.ceil(NX / RT), NRY = Math.ceil(NY / RT), N = NRX * NRY, tl = ME.now();
       const grow = (b, d) => [Math.max(0, b[0] - d), Math.max(0, b[1] - d), Math.min(NX, b[2] + d), Math.min(NY, b[3] + d)];
       // #548 note C: a region's grid (and a lamp's) is a window of the bricks its columns C reach, not the map's
       const bwin = (c) => [c[0] >> 4, (c[2] + 15) >> 4, c[1] >> 4, (c[3] + 15) >> 4];
       // P1c: the workers start (and boot) during the lamp pre-pass; a worker takes the lamps' heights from the plan
-      const nw = o.serve ? 0 : terrainWorkerN(VS, !!o.bg), pool = nw > 0 ? terrainPool(nw) : null;
+      const nw = o.serve ? 0 : terrainWorkerN(VS, !!(o.bg || o.hold)), pool = nw > 0 ? terrainPool(nw) : null;
       if (o.bg && !pool) throw noWorkers("no terrain workers");
       // o.only (W1, a single region's bake): only the lamps within 3 tiles of region o.only get their heights (a
       // lamp's stamp reaches less than 1.5 tiles); the others' stamps are clipped out of it
@@ -7048,10 +7084,14 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       // ring (W1): the columns round the region that come out as the map's (1 by default); at 16 or more the mips
       // (and res.M, the bricks they cover) take ring >> 4 bricks round the region too
       // Rb (the probe bake, check): the columns [i0, j0, i1, j1] to bake in place of region r's
-      const region = async (r, def, ring = 1, Rb = null) => {
+      // keep (the probe bake, W1's baker): the map's top and lobe over the columns it bakes are put back after it,
+      // so the next one bakes from the map's state as it was, in whatever order they come
+      const region = async (r, def, ring = 1, Rb = null, keep = false) => {
         const i0 = (r % NRX) * RT, j0 = Math.floor(r / NRX) * RT, R = Rb || [i0, j0, Math.min(NX, i0 + RT), Math.min(NY, j0 + RT)], tr = ME.now();
         const I0 = R[0] >> 4, I1 = (R[2] + 15) >> 4, J0 = R[1] >> 4, J1 = (R[3] + 15) >> 4, rb = ring >> 4;
         const Mb = [Math.max(0, I0 - rb), Math.min((NX + 15) >> 4, I1 + rb), Math.max(0, J0 - rb), Math.min((NY + 15) >> 4, J1 + rb)];
+        const C = grow(R, ring + 1), cw = C[2] - C[0], sTop = keep ? new Int16Array(cw * (C[3] - C[1])) : null, sLobe = keep ? new Uint8Array(sTop.length) : null;
+        if (keep) for (let j = C[1]; j < C[3]; j++) { sTop.set(top.subarray(j * NX + C[0], j * NX + C[2]), (j - C[1]) * cw); sLobe.set(lobe.subarray(j * NX + C[0], j * NX + C[2]), (j - C[1]) * cw); }
         const sv = [wetCols, ebCols, ebCarved, lwCols, lobes, stamped, solid, kMax], base = PAL.names.length, entries = [], mats = [], mi = new Map();
         wetCols = ebCols = ebCarved = lwCols = lobes = stamped = solid = kMax = 0;
         pal = forkPal(PAL, def);
@@ -7062,8 +7102,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         };
         try {
           // the window: C's bricks, and the mips' (Mb, within them as R's edge is a brick's)
-          const C = grow(R, ring + 1), cw = bwin(C);
-          const rg = new BrickGrid(NX, NY, NZ, [Math.min(cw[0], Mb[0]), Math.max(cw[1], Mb[1]), Math.min(cw[2], Mb[2]), Math.max(cw[3], Mb[3])]);
+          const bw = bwin(C);
+          const rg = new BrickGrid(NX, NY, NZ, [Math.min(bw[0], Mb[0]), Math.max(bw[1], Mb[1]), Math.min(bw[2], Mb[2]), Math.max(bw[3], Mb[3])]);
           await fill(rg, { C, W: grow(R, ring), R }, lamps.length);
           const tm = ME.now(), cb = cut(...Mb), D1 = new Uint8Array(cb[2] * cb[3] * MZ), D2 = new Uint8Array(cb[6] * cb[7] * LZ);
           mips(rg, ...Mb, D1, D2, cb);
@@ -7074,18 +7114,21 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         } finally {
           [wetCols, ebCols, ebCarved, lwCols, lobes, stamped, solid, kMax] = sv;
           pal = PAL; deferTo = null;
+          if (keep) for (let j = C[1]; j < C[3]; j++) { top.set(sTop.subarray((j - C[1]) * cw, (j - C[1] + 1) * cw), j * NX + C[0]); lobe.set(sLobe.subarray((j - C[1]) * cw, (j - C[1] + 1) * cw), j * NX + C[0]); }
         }
       };
-      const take = (res) => {
-        const tk = ME.now(), rg = BrickGrid.from(res.grid), [I0, I1, J0, J1] = res.I, R = res.R, E = res.entries, nE = E.length / 12;
+      // lay(res, [I0, I1, J0, J1]): res's grid in the map's palette (PAL: a region baking here meanwhile has pal
+      // forked), its deferred details made, compacted over those bricks
+      const lay = (res, [I0, I1, J0, J1]) => {
+        const rg = BrickGrid.from(res.grid), E = res.entries, nE = E.length / 12;
         // the entries whose cell is still 255, before the renumbering (a fork's own ids stay under 255)
         const live = new Uint8Array(nE), ids = new Uint8Array(nE), LUT = new Uint8Array(256).map((_, i) => i);
         for (let e = 0; e < nE; e++) live[e] = rg.get(E[e * 12 + 1], E[e * 12 + 2], E[e * 12 + 3]) === 255 ? 1 : 0;
         let same = true;
-        res.names.forEach((n, i) => { LUT[res.base + i] = pal.id(n); if (LUT[res.base + i] !== res.base + i) same = false; });
+        res.names.forEach((n, i) => { LUT[res.base + i] = PAL.id(n); if (LUT[res.base + i] !== res.base + i) same = false; });
         for (let e = 0, o = 0; e < nE; e++, o += 12) {
           const m0 = res.mats[E[o + 7]], m = mdT[E[o]].detail(E[o + 4], E[o + 5], E[o + 6], m0, E[o + 8], E[o + 9], E[o + 10], E[o + 11]) || m0;
-          ids[e] = pal.id(m || (ME.content || {}).defaultMaterial);
+          ids[e] = PAL.id(m || (ME.content || {}).defaultMaterial);
         }
         if (!same) {
           const T = rg.table, P = rg.pool;
@@ -7094,6 +7137,10 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         }
         for (let e = 0; e < nE; e++) if (live[e]) rg.put(E[e * 12 + 1], E[e * 12 + 2], E[e * 12 + 3], ids[e]);
         rg.compact([I0 << 4, J0 << 4, 0], [Math.min(NX, I1 << 4) - 1, Math.min(NY, J1 << 4) - 1, NZ - 1]);
+        return rg;
+      };
+      const take = (res) => {
+        const tk = ME.now(), rg = lay(res, res.I), [I0, I1, J0, J1] = res.I, R = res.R;
         const [ax, ay, aw, ah, bx, by, bw, bh] = res.cb, w = R[2] - R[0];
         for (let z = 0; z < MZ; z++) for (let y = 0; y < ah; y++) d1.set(res.d1.subarray((z * ah + y) * aw, (z * ah + y + 1) * aw), (z * MY + ay + y) * MX + ax);
         for (let z = 0; z < LZ; z++) for (let y = 0; y < bh; y++) d2.set(res.d2.subarray((z * bh + y) * bw, (z * bh + y + 1) * bw), (z * LY + by + y) * LX + bx);
@@ -7119,11 +7166,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         const out = [];
         for (const { R: Rb } of boxes) {
           await ME.tick(); // (the stream's bake: a box at a time between the game's frames)
-          const C = grow(Rb, 2), w = C[2] - C[0], sTop = new Int16Array(w * (C[3] - C[1])), sLobe = new Uint8Array(sTop.length);
-          for (let j = C[1]; j < C[3]; j++) { sTop.set(top.subarray(j * NX + C[0], j * NX + C[2]), (j - C[1]) * w); sLobe.set(lobe.subarray(j * NX + C[0], j * NX + C[2]), (j - C[1]) * w); }
           let res = null;
-          try { res = await region(-1, true, 1, Rb); } catch (e) { if (!e.full) throw e; }
-          finally { for (let j = C[1]; j < C[3]; j++) { top.set(sTop.subarray((j - C[1]) * w, (j - C[1] + 1) * w), j * NX + C[0]); lobe.set(sLobe.subarray((j - C[1]) * w, (j - C[1] + 1) * w), j * NX + C[0]); } }
+          try { res = await region(-1, true, 1, Rb, true); } catch (e) { if (!e.full) throw e; }
           if (!res) { out.push("full"); continue; }
           const gr = BrickGrid.from(res.grid), T = gr.table, Pq = gr.pool, [I0, I1, J0, J1] = res.I, BZ = gr.BZ;
           let h = 2166136261;
@@ -7167,7 +7211,52 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         if (out.length < 2) add(O[0] + NX / VS / 2, O[1] + NY / VS / 2, "centre");
         return out;
       };
-      let ready = 0, took = 0, late = 0, fell = 0, boxes = [], checkMs = 0;
+      // W1's baker (o.hold, ME.hiBaker): the regions at this density, one at a time as they are asked for, in any
+      // order. bake(r, ring) gives region r's record laid in the map's palette (its details made, names [] as
+      // nothing is left to number), baked from the map's state as it was after the prelude (keep). A live worker
+      // takes it; none, a worker's error or a record that does not fit and it bakes here (one at a time: a bake
+      // here forks the palette). The same r asked twice while it bakes gives the same promise. stop() ends the
+      // workers; stats: { workers (the pool's start, as regions.workers), took, here, lost }
+      const baker = (pl, wk, fits) => {
+        const busy = new Map();
+        let here = Promise.resolve(), stopped = false, took = 0, inHere = 0;
+        const local = (r, ring) => {
+          const p = here.then(() => region(r, DEF(), ring, null, true).catch((e) => { if (!e.full) throw e; return region(r, false, ring, null, true); }));
+          here = p.catch(() => {});
+          return p;
+        };
+        const one = async (r, ring) => {
+          let res = null;
+          if (pl && pl.live()) {
+            pl.job(r, { ring, keep: true });
+            let m;
+            while ((m = pl.answer(r)) === undefined) { if (stopped) throw new Error("W1: the baker was stopped"); await pl.wait(1000); }
+            if (m && m.res && fits(m.res)) { res = m.res; took++; }
+            else if (m && m.err) ME.log("WARN TERRAIN worker: region " + r + ": " + m.err.split("\n")[0] + "; baked on the main thread");
+          }
+          if (stopped) throw new Error("W1: the baker was stopped");
+          if (!res) { res = await local(r, ring); inHere++; }
+          const rg = lay(res, res.M);
+          return Object.assign({}, res, { grid: rg.record(), base: PAL.names.length, names: [], entries: [], mats: [] });
+        };
+        return {
+          vs: VS, n: N, size: [NRX, NRY], workers: pl ? pl.ws.filter((w) => !w.lost).length : 0,
+          bake: (r, ring = 16) => {
+            if (!(r >= 0 && r < N) || r !== Math.floor(r)) return Promise.reject(new Error("W1: no region " + r + " (0.." + (N - 1) + ")"));
+            if (stopped) return Promise.reject(new Error("W1: the baker was stopped"));
+            // (the pool keys its answers by r: another ring for the same r waits for the one baking)
+            const b = busy.get(r);
+            if (b && b.ring === ring) return b.p;
+            const p = (b ? b.p.catch(() => {}) : Promise.resolve()).then(() => one(r, ring));
+            busy.set(r, { ring, p });
+            p.catch(() => {}).then(() => { if (busy.get(r) && busy.get(r).p === p) busy.delete(r); });
+            return p;
+          },
+          stop: () => { stopped = true; if (pl) pl.stop(); },
+          get stats() { return { workers: wk, live: pl ? pl.ws.filter((w) => !w.lost).length : 0, took, here: inHere, lost: pl ? pl.why.slice() : [] }; },
+        };
+      };
+      let ready = 0, took = 0, late = 0, fell = 0, boxes = [], checkMs = 0, held = false;
       try {
         // a worker's region always defers (def), so none bakes once the palette is full here
         if (pool && DEF()) {
@@ -7208,7 +7297,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           }
           if (fnW && !water) for (const w of pool.ws) pool.lose(w, "the map's waterD is a closure with no matching water shapes (ME.content.gardenWater." + st.id + ")");
           boxes = checkBoxes();
-          const init = { VS, cull: ME.sdf.cull, vdeco: [...ME.VOLUME_DECO], QN, models: keys(window.MODELS), CT: noFn(ct), st: noFn(sw), water, plan, check: boxes };
+          const init = { VS, cull: ME.sdf.cull, vdeco: [...ME.VOLUME_DECO], QN, models: keys(window.MODELS), CT: noFn(ct), st: noFn(sw), water, plan, check: boxes, gc: !!ME.gridCheck };
           // (tools/region-check.js breaks an input here, to see the check lose the workers)
           if (ME.terrainWorkerInit) ME.terrainWorkerInit(init);
           // the probe bake here, while the workers bake theirs (nothing else touches the bake's state meanwhile)
@@ -7224,16 +7313,24 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
             else pool.lose(w, !m ? "no answer to its plan in " + limit + " ms" : m.err ? m.err.split("\n")[0] : m.digest !== digest ? "its bake differs (digest " + m.digest + ", here " + digest + ")"
               : !Array.isArray(h) ? "the probe bake fails here (" + h.err + ")" : off >= 0 ? "its probe bake differs at the " + boxes[off].at + " (check " + m.check[off] + ", here " + h[off] + ")" : "no probe bake in its answer");
           }));
+          // the probe bake here ends before a region bakes here (every worker may have been lost before awaiting it)
+          await want;
           ready = pool.live();
         }
         if (o.bg && !ready) throw noWorkers(pool && DEF() ? "no terrain worker is ready" : "the palette is full");
+        // a record that would take the palette here past 255 (the full a region baked here would throw) bakes again
+        // here
+        const fits = (res) => PAL.names.length + res.names.filter((n) => PAL.ids[n] === undefined).length <= 255;
         if (pool && !ready) pool.stop();
-        else if (pool) pool.jobs(N);
+        if (o.hold) {
+          const wk = pool ? { n: pool.ws.length, ready, checks: boxes.length, checkMs, lost: pool.why } : null;
+          held = !!ready;
+          return baker(ready ? pool : null, wk, fits);
+        }
+        if (pool && ready) pool.jobs(N);
         // the main thread never waits on a worker: while region r is out, it bakes the next region no worker holds
         // (mine, taken in its turn) and looks again; with none left in the window, it bakes r too and drops the
-        // worker's answer (late). A record that would take the palette here past 255 (the full a region baked here
-        // would throw; a record from mine was forked before the regions taken since) bakes again here
-        const fits = (res) => PAL.names.length + res.names.filter((n) => PAL.ids[n] === undefined).length <= 255;
+        // worker's answer (late). fits: a record from mine too was forked before the regions taken since
         const mine = new Map();
         for (let r = 0; r < N; r++) {
           progress("terrain region " + (r + 1) + "/" + N, 0.05 + 0.27 * (r / N)); await ME.tick();
@@ -7260,7 +7357,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           else if (ready && !own) fell++;
         }
         if (pool) regions.workers = { n: pool.ws.length, ready, took, here: N - took, late, fell, checks: boxes.length, checkMs, lost: pool.why.slice() };
-      } finally { if (pool) pool.stop(); }
+      } finally { if (pool && !held) pool.stop(); }
     }
 
     // The lamps' lights, then the map's point lights (tiles)
@@ -7390,17 +7487,27 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // rules' bake is whole (no regions), so the terrain workers (P1c) never take it.
   ME.terrain16 = (st) => ME.bakeTerrain(st, new ME.Palette(st), { vs: 16, rules: true });
 
-  // W1 (docs/designs/2026-11-08-whole-game-128.md): region r of the regions bake (4 x 4 tiles) at a second density
+  // W1 (docs/designs/2026-11-08-whole-game-128.md): the regions of map st at density vs on the terrain workers.
+  // The prelude (the map's tops, the props, the lamps' heights) bakes once here and once in each worker, which
+  // is checked as the regions bake's are (digest and probe bake); then baker.bake(r) bakes region r in any
+  // order, on a worker when one is live, else here. Resolves to { vs, n, size, workers, bake(r, ring = 16),
+  // stop(), stats }; pass it to ME.bakeRegionHi. The baker keeps its workers (and the prelude's arrays) until
+  // stop(). pal: the app's, as ME.bakeRegionHi's
+  ME.hiBaker = (st, pal, vs = 128) => ME.bakeTerrain(st, pal, { vs, hold: true });
+
+  // W1: region r of the regions bake (4 x 4 tiles) at a second density
   // vs, apart from the map's terrain, on the main thread. Its grid is cropped to its bricks with one brick round
   // (the ring the mesh's faces and the density's samples read, baked as the map's) and, in z, from a brick under
   // the lowest one with a surface to two over the highest that isn't air; its mips cover the same bricks. pal is
   // the app's: the grid's ids are its ids (a material it hasn't yet is added, with a WARN: the draw's material
   // table doesn't know it). Returns { r, vs, grid, dims (the crop's voxels), origin (its corner, in vs voxels),
   // box (the region in the crop, for greedyMesh's opt.boxes), rect (the region in the map's grid at VS), d1, d2,
-  // bakeMs, MB }
-  ME.bakeRegionHi = async (st, pal, r, vs = 128, VS = ME.VS) => {
+  // bakeMs, MB }. baker (ME.hiBaker's, made with the same st and pal): the region comes from it (its workers, or
+  // its main thread), with no prelude of its own, and vs is the baker's
+  ME.bakeRegionHi = async (st, pal, r, vs = 128, VS = ME.VS, baker = null) => {
     const t0 = ME.now(), n0 = pal.names.length;
-    const res = await ME.bakeTerrain(st, pal, { vs, only: r, serve: (region) => region(r, false, 16) });
+    if (baker) vs = baker.vs;
+    const res = baker ? await baker.bake(r, 16) : await ME.bakeTerrain(st, pal, { vs, only: r, serve: (region) => region(r, false, 16) });
     const g = BrickGrid.from(res.grid), [I0, I1, J0, J1] = res.M, S = g.table;
     // the names the region's fork added, in the app's palette
     const LUT = new Uint8Array(256).map((_, i) => i);
@@ -8502,7 +8609,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // each occupied brick into its pool slot, 8 x 8 rows of 8 voxels. Its 4^3 octants that hold a voxel go into
     // the brick map's top byte (bit x + 2y + 4z), and each volume gets the bounds of its voxels, lo and hi (the
     // volume shader skips the empty octants and draws its proxy box over lo..hi, not the whole dims). putVol(v,
-    // take): volume v's, take(bk) the pool slot of brick-map entry bk (by default the one the count above gave it);
+    // take): volume v's, take(bk) the pool slot of brick-map entry bk (by default the one the count above gave it;
+    // an upgrade's take, below, ignores bk: it hands out the lowest free slot);
     // a generator that yields every 64 bricks, run through at once here (drive) and over frames by an upgrade (E4)
     const putVol = function* (v, take = (bk) => bricks[bk] - 1) {
       const [px, py, pz] = v.pdims.map((n) => n / 8), [bx, by, bz] = v.base.map((n) => n / 8), lo = [1e9, 1e9, 1e9], hi = [0, 0, 0];
@@ -8514,6 +8622,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         // an interior brick: never extremal (solid neighbours on every side), so lo and hi don't need it. Its map
         // entry has no octant (the shader's empty) and 1 + its index in MB.inner below
         if (v.inner && v.inner.is[bi]) {
+          // (1 + its index must stay in the entry's 24 bits: past them it would read as octants, a pool slot)
+          if (!v.copy && ni + 1 >= 1 << 24) throw new Error(`MB.inner is full: ${ni} interior bricks, past the brick map's 24 bits`);
           if (!v.copy) { bricks[bk] = ni + 1; for (let j = 0; j < 512; j++) inner.mats[ni * 512 + j] = b[j * 4 + 3]; ni++; }
           continue;
         }
@@ -8540,6 +8650,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // the slots written since the last upload (P4, #492's PERF-E11: R.uploadSlots writes only theirs)
     const slots = (PZ / 8) * PB * PB, used = prog ? new Uint8Array(slots).fill(1, 0, nb) : null, touched = new Set();
     let lw = nb, inUse = nb;
+    // take: the lowest free slot (putVol passes it a brick-map entry, which it doesn't need)
     const take = () => { let k = lw; while (used[k]) k++; if (k >= slots) throw new Error("the progressive pool is full"); used[k] = 1; lw = k + 1; inUse++; touched.add(k); return k; };
     // the bricks of a volume's place in the layout (base, dims) out of the map, their slots freed: the box in bricks
     const clear = (base, dims) => {
@@ -8649,7 +8760,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
             const g = order.shift();
             if (cancelled) { ok = false; break; }
             const tg = ME.now(), cur = lists.slice(), recs = [], lrecs = [], put = [], boxes = [];
-            let fail = null, wait = 0, got = 0;
+            // ni0: MB.inner's count before this flipbook's frames (a fail gives their interior bricks back)
+            let fail = null, wait = 0, got = 0, ni0 = ni;
             for (const i of g.vs) {
               const { md, vf } = mds[i], px = vols[i].px, lp = lods.length ? lods[i].px : null;
               let t = ME.now();
@@ -8694,10 +8806,15 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
             }
             if (cancelled) { ok = false; break; } // (the app is done with R: nothing more to upload)
             if (fail) {
-              // the frames put so far out again; the flipbook stays coarse
+              // the frames put so far out again; the flipbook stays coarse. Their interior bricks are given back
+              // (only their map entries, cleared here, point at MB.inner past ni0; the trim at the end cuts them),
+              // and the materials their full bakes added to pal go up to R as a swap's would, so R's tables
+              // always hold all of pal
               for (const [b, d] of put) boxes.push(clear(b, d));
               for (const b of boxes) R.uploadBricks(b);
               touched.clear();
+              ni = ni0;
+              if (pal.names.length > palN) { R.refreshPalette(pal); palN = pal.names.length; }
               ok = false; sp.failed.push({ key: g.key, why: fail });
               if (!cancelled) ME.log(`WARN BAKE progressive ${g.key}: ${fail}; it stays coarse`);
               continue;
@@ -15168,7 +15285,7 @@ fn boxOf(V: Vox) -> Box {
     // double, the heavy share by the wave, a rare one now and then
     next(wave, levelId) {
       const pin = ME.q("wxfront", ""), F = fronts();
-      if (F[pin]) return pin;
+      if (ME.safeKey(pin) && F[pin]) return pin; // (ME.safeKey: ?wxfront=constructor is no front)
       const c = climate(levelId);
       const rare = c.rare || {};
       for (const k in F) if (F[k].rare && !this.rareSeen.has(k) && k !== this.front && this.rng() < F[k].rare * (rare[k] ?? 1)) return k;
@@ -15185,7 +15302,7 @@ fn boxOf(V: Vox) -> Box {
     newRun(seed, levelId) {
       this.reseed(seed); this.seen.clear(); this.rareSeen.clear(); this.left = 0; this.sun = 0; this.hurt = false; this.rainbow = 0;
       const c = climate(levelId), pin = ME.q("wxfront", "");
-      this.enter(fronts()[pin] ? pin : c.calm[(this.rng() * c.calm.length) | 0]);
+      this.enter(ME.safeKey(pin) && fronts()[pin] ? pin : c.calm[(this.rng() * c.calm.length) | 0]);
     }
     // a wave starts: a boss's front, or the next one when this one has run its waves
     waveStart(wave, levelId, boss) {
@@ -15405,14 +15522,16 @@ fn boxOf(V: Vox) -> Box {
     constructor(app, host) {
       this.app = app; this.R = app.R; this.scene = app.scene;
       this.host = Object.assign({}, HOST, host);
-      this.look = ME.q("preset", "cosy"); // the settings' Light (the game's menu calls setLook)
+      const look = ME.q("preset", "cosy");
+      this.look = ME.safeKey(look) ? look : "cosy"; // the settings' Light (the game's menu calls setLook)
       const fixed = ME.qn("selftest", 0) || ME.qn("autoplay", 0), saved = fixed ? {} : load(this.host.key), F = ME.WX.fronts();
       // the page address first (any front), then the saved choice (a panel one), then the level's mood or Auto
       // and Dynamic (a new player: weather on at the settings' Normal; the bot and the self-test run Clear)
-      const first = (table, ...vs) => vs.find((v) => table[v] || v === "random");
+      // (ME.safeKey: ?mood=constructor or ?weather=toString is no mood or front)
+      const first = (table, ...vs) => vs.find((v) => (ME.safeKey(v) && table[v]) || v === "random");
       this.mood = first(MOODS, ME.q("mood", ""), saved.mood, fixed ? "" : this.host.mood(this.host.run().level)) || "auto";
       const pin = ME.q("weather", "");
-      this.weather = F[pin] || pin === "random" || pin === "dynamic" ? pin
+      this.weather = (ME.safeKey(pin) && F[pin]) || pin === "random" || pin === "dynamic" ? pin
         : PANEL.includes(saved.weather) || saved.weather === "random" || saved.weather === "dynamic" ? saved.weather
           : fixed ? "clear" : "dynamic";
       this.steady = ME.params.has("wxsteady") ? ME.qn("wxsteady", 0) === 1 : !!saved.steady;
@@ -15468,7 +15587,7 @@ fn boxOf(V: Vox) -> Box {
     shownFront() { return this.level > 0 ? this.model.front : "clear"; }
     // the settings' Weather (a game's menu); ?wxi=off|subtle|normal|heavy pins it (screenshots)
     setIntensity(name, quiet) {
-      const pin = ME.q("wxi", ""), k = pin in INTENSITY ? pin : name in INTENSITY ? name : "normal";
+      const has = (v) => ME.safeKey(v) && v in INTENSITY, pin = ME.q("wxi", ""), k = has(pin) ? pin : has(name) ? name : "normal";
       this.level = INTENSITY[k]; this.levelName = k;
       if (!quiet) this.renderPanel();
     }
@@ -15478,7 +15597,7 @@ fn boxOf(V: Vox) -> Box {
       if (!ME.qn("selftest", 0) && !ME.qn("autoplay", 0)) try { localStorage.setItem(this.host.key, JSON.stringify({ v: VERSION, mood: this.mood, weather: this.weather, steady: this.steady })); } catch (e) { /* storage blocked */ }
       if (kind === "steady") this.renderPanel(); else this.roll();
     }
-    setLook(name) { this.look = ME.PRESETS[name] ? name : "cosy"; }
+    setLook(name) { this.look = ME.safeKey(name) && ME.PRESETS[name] ? name : "cosy"; }
     // the settings the view's mood() blends from: the style's defaults, the mood's look preset, the level's
     // own look values over it (R.lookSet: a preset doesn't undo a night level's base), the mood's overrides
     base() {
@@ -20090,7 +20209,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.96.0", name: "Mossheart", commit: "f4b6c150" };
+  G.VERSION = { v: "0.97.0", name: "Mossheart", commit: "0f4d35b7" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
