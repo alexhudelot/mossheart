@@ -14351,6 +14351,8 @@ fn boxOf(V: Vox) -> Box {
     // the share left, 1..0, of the sand that kept digs (o.keep, the default) may have loose at once (half the
     // capacity; with none left such a dig takes nothing): a game that digs often backs off early with it
     keepRoom() { const half = Math.floor(this.capacity / 2); return half > 0 ? Math.max(0, 1 - (this.keepLive + this.keepQueued) / half) : 0; }
+    // the same room in voxels: how many more kept voxels free and a dig can make (ME.Fracture caps an island at it)
+    keepLeft() { return Math.max(0, Math.floor(this.capacity / 2) - this.keepLive - this.keepQueued); }
     get active() { return this.enabled && (this.clock < this.activeUntil || this.queued > 0 || this.clearReq || this.pours.length > 0 || this.digs.length > 0 || this.carveQ.length > 0 || this.jobs.length > 0 || this.occReset > 0 || (this.keepLive > 0 && this.clock < this.keepUntil)); }
     rng() { let t = (this.seed = (this.seed + 0x6d2b79f5) | 0); t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }
 
@@ -20763,7 +20765,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.108.0", name: "Mossheart", commit: "31605dd7" };
+  G.VERSION = { v: "0.109.0", name: "Mossheart", commit: "8bb47e36" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -21194,6 +21196,9 @@ function MA_DSP() {
   };
   // the floor the lane's blight never heals below, per act past the first (Blight.floor)
   D.ACT_SCAR = 0.05;
+  // the gardens whose creatures walk as before, through each other (no crowd pass: core/enemies.js). Corn Moon
+  // keeps today's movement (the user, 2026-11-10)
+  D.LEVEL_CROWD = { cornmoon: false };
   // whether a boon belongs where only `plants` grow: one tied to a plant (its `el`) only where that plant does
   D.boonFits = (b, plants) => !D.TOWERS[b.el] || plants.includes(b.el);
 
@@ -21909,6 +21914,14 @@ function MA_DSP() {
   const DEFS = D.ENEMY_ORDER.map((k) => D.ENEMIES[k]);
   // the counter traits by index (Defs.CTRAITS)
   const CT = { WINGED: 0, VEILED: 1, PLATED: 2, REGROWING: 3 };
+  // the crowd (the Architect's swarm design, section 2.2): the heavy ones (golems, bosses) shove and are never
+  // climbed; a body's length and width along and across its road; the cell the bucket sort uses; how fast the
+  // sideways offset eases out and back, how fast a climber rises and falls, and how high a pile may go
+  const HEAVY = Uint8Array.from(D.ENEMY_ORDER, (k) => (D.ENEMIES[k].boss || k === "golem" ? 1 : 0));
+  const BODY_L = Float32Array.from(DEFS, (d) => 0.42 * d.size), BODY_W = Float32Array.from(DEFS, (d) => 0.3 * d.size);
+  const CELL = 0.25, LANE = 0.2, SL_OUT = 0.5, SL_BACK = 0.3, SH_UP = 1.2, SH_DOWN = 1.8, SH_CAP = 0.45;
+  const SIZE = Float32Array.from(DEFS, (d) => d.size), WALKS = Uint8Array.from(DEFS, (d) => (d.fly === 0 ? 1 : 0));
+  const MIDGE = D.ENEMY_ORDER.indexOf("midge");
 
   class Enemies {
     constructor(world, body) {
@@ -21943,6 +21956,11 @@ function MA_DSP() {
       // on a face leg of its road or its arcs (World.upAt's z under 1): face, and the frame it is drawn in (9 a
       // creature, row-major: G.frameOf; its third column the up). Its height counts in the rules' distances (d2)
       this.face = new Uint8Array(N); this.frame = F(N * 9); this.up3 = [0, 0, 1];
+      // the crowd (crowd(), after the walk): sl, a sideways offset added to lat; sh, how high it rides on the one
+      // under it (along the up). Neither changes dist, so targeting and "first" are as before; both are view-
+      // and-rules position only (shots, rings, bars and bursts read px/py/vz), never saved (saves are at rest).
+      // A level with crowd: false (D.LEVEL_CROWD: Corn Moon, the user's pick) keeps both at 0
+      this.sl = F(); this.sh = F(); this.slT = F(); this.shT = F(); this.crowdOn = true;
       this.count = 0; this.kindCounts = new Int32Array(D.ENEMY_ORDER.length);
       this.lastHit = Hit.PLAIN; this.hitStats = [0, 0, 0];
       this.free = []; for (let i = N - 1; i >= 0; i--) this.free.push(i);
@@ -21968,6 +21986,7 @@ function MA_DSP() {
       this.slowAmt[i] = 0; this.slowT[i] = 0; this.flash[i] = 0; this.phase[i] = rng.f() * Math.PI * 2;
       const side = (rng.f() - 0.5) * 0.3;
       this.lat[i] = def.boss ? 0 : Math.max(-0.2, Math.min(0.2, (at ? at.lat : 0) + side));
+      this.sl[i] = 0; this.sh[i] = 0;
       const aff = D.affinity(kindName, trait);
       for (let e = 0; e < 4; e++) { this.affinity[i * 4 + e] = aff[e]; this.armour[i * 4 + e] = 0; }
       this.hitEl[i] = -1; this.hitRes[i] = Hit.PLAIN; this.burnDps[i] = 0; this.burnT[i] = 0;
@@ -22174,6 +22193,14 @@ function MA_DSP() {
     // swinging 90 degrees, and jumping sideways by its offset, at every step; a corner turns over two tiles.
     // (The user, 2026-10-24: twitchy movers. Before, the facing looked 0.35 ahead and the offset followed the
     // local step.)
+    // its lane offset with the crowd's (a midge cloud weaves inside the lane: section 2.3), and its lift: what it
+    // rides on, and the midges' rise and fall (both 0 where the crowd is off)
+    latOf(i, time) {
+      let l = this.lat[i] + this.sl[i];
+      if (this.crowdOn && this.kind[i] === MIDGE) l += 0.08 * Math.sin(2.3 * time + this.phase[i]);
+      return Math.max(-LANE, Math.min(LANE, l));
+    }
+    liftOf(i, time) { return this.sh[i] + (this.crowdOn && this.kind[i] === MIDGE ? 0.06 * Math.sin(3.1 * time + 1.7 * this.phase[i]) : 0); }
     place(i, time) {
       const W = this.world, r = this.road[i], s = Math.max(0, this.dist[i]), [X, Y, Z, sx, sy, sz] = W.roadAt(s, r);
       // On a face leg (a garden with faces, the road's up there off +z): the creature stands on the wall, in the frame
@@ -22183,8 +22210,8 @@ function MA_DSP() {
       this.face[i] = U && U[2] < 1 ? 1 : 0;
       if (this.face[i]) {
         const F = G.frameOf(sx, sy, sz, U[0], U[1], U[2], this.frame.subarray(i * 9, i * 9 + 9));
-        const def = this.defOf(i), lat = W.latAt(s, this.lat[i], r);
-        const fly = this.flyOf(i, def) - this.body.hover[this.kind[i]] + (this.flyOf(i, def) > 0 ? Math.sin(time * 3 + this.phase[i]) * 0.075 : 0);
+        const def = this.defOf(i), lat = W.latAt(s, this.latOf(i, time), r);
+        const fly = this.flyOf(i, def) - this.body.hover[this.kind[i]] + (this.flyOf(i, def) > 0 ? Math.sin(time * 3 + this.phase[i]) * 0.075 : 0) + this.liftOf(i, time);
         this.jw[i] = 0; this.jd[i] = 0;
         this.px[i] = X + F[1] * lat + U[0] * fly; this.py[i] = Y + F[4] * lat + U[1] * fly; this.pz[i] = Z + F[7] * lat + U[2] * fly;
         this.vz[i] = this.pz[i] + (W.viewRoadZ(s, r, Z) - Z);
@@ -22208,10 +22235,10 @@ function MA_DSP() {
       let dx = ax - bx, dy = ay - by, l = Math.hypot(dx, dy);
       if (l < 1e-3) { dx = sx; dy = sy; l = Math.hypot(dx, dy) || 1; }
       const def = this.defOf(i);
-      const lat = W.latAt(s, this.lat[i], r);
+      const lat = W.latAt(s, this.latOf(i, time), r);
       this.px[i] = X - (dy / l) * lat + jd; this.py[i] = Y + (dx / l) * lat + jd;
       const fly = this.flyOf(i, def) - this.body.hover[this.kind[i]];
-      this.pz[i] = Z + fly + (this.flyOf(i, def) > 0 ? Math.sin(time * 3 + this.phase[i]) * 0.075 : 0);
+      this.pz[i] = Z + fly + (this.flyOf(i, def) > 0 ? Math.sin(time * 3 + this.phase[i]) * 0.075 : 0) + this.liftOf(i, time);
       // (pz is the rules' height, off their road; vz the view's, off the road it draws: the same where the two match)
       this.vz[i] = this.pz[i] + (W.viewRoadZ(s, r, Z) - Z) + jd;
       this.yaw[i] = Math.atan2(dy, dx);
@@ -22247,8 +22274,67 @@ function MA_DSP() {
       }
     }
 
+    // The crowd pass (the swarm design, section 2.2), after the walk. The ground walkers of each road are bucketed
+    // by dist (cells of CELL); each looks at those just ahead of it on its road whose bodies overlap its own. A
+    // small one (under 0.8 of the other's size), or one pinned at the lane's edge, climbs the one ahead (never a
+    // heavy one); the others step aside, twice as far from a heavy one; a heavy one behind a lighter one shoves
+    // it aside instead. The pushes are summed, then sl and sh ease toward them (and back when clear). dist,
+    // speed and targeting are untouched; no rng, no clock: the same run gives the same crowd
+    crowd(dt) {
+      const W = this.world, CAP = CAPACITY;
+      if (this.cWorld !== W) {
+        const R = W.roads.length;
+        this.cOff = new Int32Array(R + 1); this.cN = new Int32Array(R);
+        for (let r = 0; r < R; r++) { this.cN[r] = Math.ceil(W.lenOf(r) / CELL) + 1; this.cOff[r + 1] = this.cOff[r] + this.cN[r]; }
+        this.cHead = new Int16Array(this.cOff[R]); this.cNext = new Int16Array(CAP); this.cIn = new Uint8Array(CAP); this.cCell = new Int32Array(CAP);
+        this.cWorld = W;
+      }
+      const head = this.cHead, next = this.cNext, inB = this.cIn, cell = this.cCell, slT = this.slT, shT = this.shT;
+      const lat = this.lat, sl = this.sl, sh = this.sh, dist = this.dist, kind = this.kind, H = this.body.creatureH;
+      head.fill(-1); inB.fill(0); slT.fill(0); shT.fill(0);
+      // (inserted from the top slot down, so each cell lists its creatures in slot order)
+      // (a Winged-trait walker in the air, Defs.CTRAITS, stays out of the crowd like the kinds that fly)
+      for (let i = CAP - 1; i >= 0; i--) {
+        if (!this.alive[i] || !WALKS[kind[i]] || this.flyOf(i, this.defOf(i)) > 0 || this.under[i] === 1 || dist[i] < 0) continue;
+        const r = this.road[i], c = Math.min(this.cN[r] - 1, Math.floor(dist[i] / CELL));
+        cell[i] = c; inB[i] = 1;
+        const h = this.cOff[r] + c; next[i] = head[h]; head[h] = i;
+      }
+      for (let i = 0; i < CAP; i++) {
+        if (!inB[i]) continue;
+        const r = this.road[i], ki = kind[i], o = this.cOff[r], n = this.cN[r], li = lat[i] + sl[i];
+        for (let c = Math.max(0, cell[i] - 1), c1 = Math.min(n - 1, cell[i] + 2); c <= c1; c++) {
+          for (let j = head[o + c]; j >= 0; j = next[j]) {
+            const kj = kind[j], dd = dist[j] - dist[i];
+            if (j === i || dd <= 0 || dd > (BODY_L[ki] + BODY_L[kj]) / 2) continue;
+            const d = li - (lat[j] + sl[j]), w = (BODY_W[ki] + BODY_W[kj]) / 2;
+            if (Math.abs(d) >= w) continue;
+            // the side i would step to: away from j (on a tie, the higher slot steps to +)
+            const side = d > 0 ? 1 : d < 0 ? -1 : i > j ? 1 : -1, push = w - Math.abs(d);
+            if (HEAVY[ki] && !HEAVY[kj]) { slT[j] -= side * push; continue; }
+            if (!HEAVY[kj] && (SIZE[ki] < 0.8 * SIZE[kj] || side * li >= LANE - 1e-4)) {
+              shT[i] = Math.max(shT[i], Math.min(SH_CAP, sh[j] + 0.6 * H[kj]));
+              continue;
+            }
+            slT[i] += side * push * (HEAVY[kj] ? 2 : 1);
+          }
+        }
+      }
+      for (let i = 0; i < CAP; i++) {
+        if (!this.alive[i]) continue;
+        if (slT[i] !== 0) { const t = sl[i] + slT[i], m = SL_OUT * dt; sl[i] += Math.max(-m, Math.min(m, t - sl[i])); }
+        else if (sl[i] !== 0) { const m = SL_BACK * dt; sl[i] = Math.abs(sl[i]) <= m ? 0 : sl[i] - Math.sign(sl[i]) * m; }
+        const l = lat[i] + sl[i];
+        if (l > LANE) sl[i] = LANE - lat[i]; else if (l < -LANE) sl[i] = -LANE - lat[i];
+        const t = shT[i];
+        if (t > sh[i]) sh[i] = Math.min(t, sh[i] + SH_UP * dt); else if (t < sh[i]) sh[i] = Math.max(t, sh[i] - SH_DOWN * dt);
+      }
+    }
+
     update(dt, time) {
       const S = G.state, counts = new Int32Array(D.ENEMY_ORDER.length);
+      // (where the crowd is on, each is placed after the crowd pass, below; where it is off, as it walks, as before)
+      const crowdOn = (this.crowdOn = D.LEVEL_CROWD[S.level] !== false);
       for (let i = 0; i < CAPACITY; i++) {
         if (!this.alive[i]) continue;
         const kind = this.kindOf(i), def = this.defOf(i), c = this.ct[i];
@@ -22298,10 +22384,14 @@ function MA_DSP() {
           S.damageHeart(harm);
           continue;
         }
-        this.place(i, time);
+        this.place(i, time); // (in slot order, as on main: what the rules read this frame; the crowd re-places after)
         this.flash[i] = Math.max(0, this.flash[i] - dt * 5);
         if (this.flash[i] <= 0) this.hitEl[i] = -1;
         counts[this.kind[i]]++;
+      }
+      if (crowdOn) {
+        this.crowd(dt);
+        for (let i = 0; i < CAPACITY; i++) if (this.alive[i]) this.place(i, time);
       }
       this.kindCounts = counts;
     }
