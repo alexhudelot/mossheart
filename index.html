@@ -285,6 +285,13 @@ body.calm .coach-spot { animation: none; }
   padding: 8px 14px; border-radius: 12px; background: rgba(40, 22, 30, 0.88); color: #ffd9e0; font-size: calc(17px * var(--ts)); font-weight: 800; text-align: center;
   pointer-events: none; opacity: 0; transition: opacity 0.18s, transform 0.18s; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
+/* the counter warning (hud.js ctWarn): a wave brings a trait no plant in the garden answers; under the top strip, gone on a tap */
+#ctwarn { position: fixed; left: 50%; top: calc(76px * var(--ts) + var(--st)); transform: translate(-50%, -6px); z-index: 4; max-width: min(560px, calc(var(--vw) - 24px - var(--sl) - var(--sr)));
+  padding: 7px 14px; border-radius: 12px; border: 2px solid #e2405a; background: rgba(48, 16, 26, 0.9); color: #ffe3e8; font-size: calc(15px * var(--ts)); font-weight: 600; line-height: 1.35; text-align: center;
+  cursor: pointer; visibility: hidden; opacity: 0; pointer-events: none; transition: opacity 0.25s, transform 0.25s, visibility 0s 0.25s; }
+#ctwarn.show { visibility: visible; opacity: 1; transform: translate(-50%, 0); pointer-events: auto; transition: opacity 0.25s, transform 0.25s; }
+#ctwarn b { color: #ffb3c0; } #ctwarn b.hard { color: #ff6f86; }
+@media (max-width: 760px) { #ctwarn { top: calc(104px * var(--ts) + var(--st)); font-size: calc(13.5px * var(--ts)); padding: 6px 10px; } }
 #dew.short { animation: dewshort 0.42s; }
 @keyframes dewshort { 0%, 100% { transform: none; } 20% { transform: translateX(-5px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(3px); }
   30% { outline: 3px solid #e0506a; } }
@@ -20690,7 +20697,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.105.0", name: "Mossheart", commit: "0bff291d" };
+  G.VERSION = { v: "0.106.0", name: "Mossheart", commit: "6e45c963" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -21989,7 +21996,7 @@ function MA_DSP() {
       if (this.shell[i] > 0 && !leak) {
         const took = Math.min(this.shell[i], amount);
         this.shell[i] -= took; amount -= took;
-        if (this.shell[i] <= 0) G.emit("shell_broken", { kind: this.kindOf(i), pos: this.centre(i) });
+        if (this.shell[i] <= 0) G.emit("shell_broken", { kind: this.kindOf(i), pos: this.centre(i), plated: this.ct[i] === CT.PLATED });
       }
       this.hp[i] -= amount;
       if (this.hp[i] <= 0) { this.kill(i, element); return true; }
@@ -25811,9 +25818,11 @@ ${K} .coachrow .btn { box-shadow: 0 2px 0 #2b2c22; }
   // is in: G.standIn), tinted in its own colour, 18-20 which (Defs.TOWER_ORDER); with bit 21 set, a
   // creature standing in another's model (G.creatureStandIn), 18-20 which (STANDIN_CREATURES); 22 the Heart
   // Tree, 23-24 its stage (healthy, wounded, critical), and then markV is its knot's glow 0..1 (view/scene.js)
+  // 26-28 a creature's counter trait (view/scene.js traitLook): 26 Veiled (a pale rim on its dithered ghost), 27 a
+  // Veiled one a Glowcap shows (a warm rim), 28 a Regrowing one healing (a green pulse)
   // 25 a garden wispling (MossheartEngine/content/critters.js wispPut, through ME.content.wispMark), and then markV
   // is its glow 0..1 (dim by day, full at dusk)
-  G.MARK = { WEAK_SHIFT: 4, HIT_SHIFT: 8, HIT_WEAK: 1 << 10, HIT_RESISTED: 1 << 11, SLOWED: 1 << 13, GHOST_OK: 1 << 14, GHOST_BAD: 1 << 15, SELECTED: 1 << 16, STANDIN: 1 << 17, PLANT_SHIFT: 18, CREATURE: 1 << 21, HEART: 1 << 22, HEART_SHIFT: 23, WISP: 1 << 25 };
+  G.MARK = { WEAK_SHIFT: 4, HIT_SHIFT: 8, HIT_WEAK: 1 << 10, HIT_RESISTED: 1 << 11, SLOWED: 1 << 13, GHOST_OK: 1 << 14, GHOST_BAD: 1 << 15, SELECTED: 1 << 16, STANDIN: 1 << 17, PLANT_SHIFT: 18, CREATURE: 1 << 21, HEART: 1 << 22, HEART_SHIFT: 23, WISP: 1 << 25, VEIL: 1 << 26, LIT: 1 << 27, REGROW: 1 << 28 };
   ME.content = ME.content || {}; ME.content.wispMark = G.MARK.WISP;
   G.plantMark = (kind) => (G.standIn && G.standIn(kind) !== kind && !G.Defs.TOWERS[kind].util ? G.MARK.STANDIN | (G.Defs.TOWER_ORDER.indexOf(kind) << G.MARK.PLANT_SHIFT) : 0);
   // the creatures that can stand in another's model (the first 8 with a Defs `standIn`), and the mark of a
@@ -25879,6 +25888,11 @@ fn hookMark(m: u32, flash: f32, n: vec3f, lp: vec3f, hc: f32, seed: f32) -> Mark
     let pc = select(PLANT_COL[si], CREATURE_COL[si], (m & ${G.MARK.CREATURE}u) != 0u);
     g.tint = vec4f(pc, 0.6); g.emit += pc * (0.12 + 0.25 * rim);
   }
+  // the counter traits (scene.js traitLook): a Veiled one's pale outline over its dithered ghost, breathing; a
+  // revealed one's warm rim (the Glowcap's light on it); a Regrowing one's green pulse while it heals
+  if ((m & ${G.MARK.VEIL}u) != 0u) { g.emit += vec3f(0.72, 0.9, 1.0) * (0.15 + 1.6 * rim) * (0.85 + 0.15 * sin(tm * 2.0 + seed)); }
+  if ((m & ${G.MARK.LIT}u) != 0u) { g.emit += vec3f(1.0, 0.9, 0.45) * rim * 1.3; }
+  if ((m & ${G.MARK.REGROW}u) != 0u) { let rp = pow(0.5 + 0.5 * sin(tm * 4.0 + seed * 1.3), 2.0); g.emit += vec3f(0.35, 1.0, 0.45) * rp * (0.2 + 1.1 * rim); }
   // spore dust clinging while slowed
   if ((m & ${G.MARK.SLOWED}u) != 0u) { g.tint = vec4f(0.8, 0.66, 0.95, step(0.62, hc) * 0.55); }
   // hit flash: the element's colour on a weak spot, dull grey when resisted, white otherwise
@@ -26990,6 +27004,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 (function () {
   const G = window.MG, D = G.Defs, S = G.state, ME = window.ME;
   const K = ME.SPRITE, MARK = G.MARK, TAU = Math.PI * 2;
+  const VEIL_A = +ME.params.get("veila") || 0.4; // (a Veiled creature's alpha: traitLook; ?veila= tries others)
   const POOR_RING = [0.55, 0.72, 0.95]; // (the reach of a seed too dear for the spot: dew blue, as its ghost)
   // a dying creature bursts into [n] of its voxels (each a terrain voxel, chunkier than the creature's own),
   // thrown at [speed] for [life] seconds; the boss also blasts the ground under it
@@ -27061,6 +27076,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       // (a graft: the other parent goes from its plot, crumbling as if uprooted, Game.graft)
       on("tower_grafted", (e) => { this.crumble(e.other); this.anim.delete(e.other); if (this.selected === e.other) this.selected = e.tower; this.updateCells(); this.updateLights(); });
       on("kill", (e) => this.burst(e.kind, e.pos));
+      // (a Plated one's plate breaks: it is drawn bare from now on, traitLook, and the plate crumbles off it as an
+      // uprooted plant does, slowly)
+      on("shell_broken", (e) => { const fr = e.plated && G.models.traitFrames(e.kind, "plated"); if (fr) this.emitModel(fr[0], e.pos, Math.random() * TAU, { n: 36, speed: 0.7, life: 3 }); });
       on("hit", (e) => { if (!e.shot) return; const z = this.waterAt(e.pos[0], e.pos[1]); if (z !== null) this.phys.splash([e.pos[0], e.pos[1], z], 0.3); });
       // the boss comes through its rift: the banks beside it give way
       on("boss", (e) => { const c = this.game.world.roads[(e && e.road) || 0].path[0]; this.slam(c[0] + 0.5, c[1] + 0.5, 2.5, 0.3); });
@@ -27361,6 +27379,28 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (E.slowT[k] > 0) m |= MARK.SLOWED;
       return m;
     }
+    // a creature's counter trait as drawn this frame (Defs.CTRAITS; the user 2026-11-10: "enemy traits must be visibly
+    // obvious"): its flipbook, its instance flags and extra glow bits, in one reused object.
+    // - Veiled: the ghost model (Art's veil ramp) dithered to VEIL_A with a pale rim (MARK.VEIL), so it reads as a
+    //   see-through silhouette; while a Glowcap shows it (seenT) its own model, solid, with a warm rim (MARK.LIT).
+    // - Plated: the plated model while the shell holds; the bare one once it breaks (creaturefx.js crumbles it).
+    // - Regrowing: the regrow model, with a green pulse (MARK.REGROW) while it heals (hurt, and no spore stops it).
+    // - Winged: a flier's blob shadow (ME.INST_FLY) while it flies; none once a Downpour has it down (groundT).
+    traitLook(E, k, MD, frames) {
+      const o = this.look || (this.look = { frames: null, flags: 1, mark: 0 }), c = E.ct[k];
+      o.frames = frames; o.flags = 1; o.mark = 0;
+      if (c < 0) return o;
+      const kind = E.kindOf(k), id = D.CTRAITS[c].id;
+      if (id === "veiled") {
+        if (E.seenT[k] > 0) o.mark = MARK.LIT;
+        else { o.frames = MD.traitFrames(kind, "veiled") || frames; o.flags |= ME.veilBits(VEIL_A); o.mark = MARK.VEIL; }
+      } else if (id === "plated") { if (E.shell[k] > 0) o.frames = MD.traitFrames(kind, "plated") || frames; }
+      else if (id === "regrowing") {
+        o.frames = MD.traitFrames(kind, "regrowing") || frames;
+        if (E.sporeT[k] <= 0 && E.hp[k] < E.maxHp[k] && E.dist[k] >= 0) o.mark = MARK.REGROW;
+      } else if (id === "winged" && E.groundT[k] <= 0) o.flags |= ME.INST_FLY;
+      return o;
+    }
 
     // --- the instance layer: the sim calls this every frame. Creatures are also points the wildlife
     // scatters from.
@@ -27404,13 +27444,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (cm.flap) ph = time * cm.gait + E.phase[k];
         else ph = Math.max(0, E.dist[k]) * cm.gait + E.phase[k] / (Math.PI * 2);
         if (n === 1) { const s = Math.sin(ph * Math.PI * 2); pitch = s * 0.07; bob = Math.abs(s) * 0.035; }
-        const f = cm.frames[Math.floor((((ph % 1) + 1) % 1) * n) % n], fl = E.flash[k], sq = fl * 0.1, s = cm.scale;
+        const fr = this.traitLook(E, k, MD, cm.frames), n2 = fr.frames.length;
+        const f = fr.frames[Math.floor((((ph % 1) + 1) % 1) * n2) % n2], fl = E.flash[k], sq = fl * 0.1, s = cm.scale, mk = this.marks(E, k) | fr.mark;
         const wob = n === 1 ? Math.sin(ph * Math.PI * 2) * 0.08 : 0, sc = [s * (1 + sq), s * (1 + sq), s * (1 - sq)];
         if (E.face[k]) {
           // on a wall: drawn in its frame (heading, across, up: core/enemies.js place), its bob along the up
           const Fr = E.frame.subarray(k * 9, k * 9 + 9);
-          sim.put(i++, f, E.px[k] + Fr[2] * bob, E.py[k] + Fr[5] * bob, E.vz[k] + Fr[8] * bob, wob - cm.fwd, false, sc, [0, 0], 1, pitch, this.marks(E, k), fl * (G.flashK ?? 1), Fr);
-        } else sim.put(i++, f, E.px[k], E.py[k], E.vz[k] + bob, E.yaw[k] - cm.fwd + wob, false, sc, [0, 0], 1, pitch, this.marks(E, k), fl * (G.flashK ?? 1));
+          sim.put(i++, f, E.px[k] + Fr[2] * bob, E.py[k] + Fr[5] * bob, E.vz[k] + Fr[8] * bob, wob - cm.fwd, false, sc, [0, 0], fr.flags, pitch, mk, fl * (G.flashK ?? 1), Fr);
+        } else sim.put(i++, f, E.px[k], E.py[k], E.vz[k] + bob, E.yaw[k] - cm.fwd + wob, false, sc, [0, 0], fr.flags, pitch, mk, fl * (G.flashK ?? 1));
         sim.avoid(E.px[k], E.py[k]);
       }
       return i;
@@ -27792,8 +27833,15 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     return { name: t.name, does: CT_DOES[id], fix, line: `${t.name}: ${CT_DOES[id]}. ${fix}`, badge: ctBadge(id), inked: ctBadge(id, ink), el: D.ELEMENTS[t.counter] };
   };
   G.ctAnswered = (id) => { const t = D.CTRAITS.find((c) => c.id === id); return S.plants.some((k) => D.TOWERS[k] && !D.TOWERS[k].util && D.elementOf(k) === t.counter); };
+  // what answers a trait: the plants of its counter element, and for Veiled the Glowcap that reveals it.
+  // G.ctPlanted(id, game): one is planted in the garden (the pouch does not count; the warning and the almanac's
+  // warn chip, the user 2026-11-10: "warning message if no tower built to counter a certain trait")
+  const ctFixers = (id) => { const t = D.CTRAITS.find((c) => c.id === id); return ctAnswers(t).concat(id === "veiled" ? ["glowcap"] : []); };
+  G.ctPlanted = (id, game) => { const f = ctFixers(id); return !!game && game.towers.some((t) => f.includes(t.kind)); };
   // at most TAGS trait tags on the meadow at once (nearest the Heart Tree first)
   const TAGS = 24;
+  // how long the counter warning stays up once its wave is called (ms)
+  const CW_CALL_MS = 6000;
   // a screen without hover (a phone): planting takes two taps (main.js)
   const TOUCH = window.matchMedia("(hover: none)");
 
@@ -27956,6 +28004,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       });
       // links change as plants come and go around the one in the inspector
       G.on("links", () => { if (this.inspected && $("inspector").classList.contains("show") && this.inspected.links) this.inspect(this.inspected); });
+      // the counter warning (ctWarn): a strip over the meadow, gone on a tap for the rest of that wave; a plant
+      // set or sold redraws it and the almanac's warn chips (main.js redraws the waves on "waves")
+      const cw = (this.cwEl = document.createElement("div"));
+      cw.id = "ctwarn"; cw.setAttribute("role", "alert");
+      cw.addEventListener("pointerdown", (e) => e.stopPropagation());
+      cw.addEventListener("click", (e) => { e.stopPropagation(); this.cwGone = this.cwWave; this.ctWarn(); });
+      $("ui").appendChild(cw);
+      this.cwWave = -1; this.cwGone = -1; this.cwCall = 0; this.cwPlan = null;
+      for (const ev of ["tower_placed", "tower_sold"]) G.on(ev, () => G.emit("waves"));
+      G.on("wave_start", () => { this.cwCall = performance.now() + CW_CALL_MS; });
       this.refresh();
     }
     // the counter climbs to dewTo, about a tenth of the gap a frame and at least 1, and keeps a frame
@@ -28443,6 +28501,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     frame(cam, canvas) {
       this.view = { cam, canvas };
       this.placeCard();
+      if (this.cwCall && performance.now() > this.cwCall) { this.cwCall = 0; this.ctWarn(); }
       const E = this.game.enemies, f = this.foe;
       if (f && f.i >= 0) {
         if (!E.isValid(f.i, f.uid)) this.closeCard();
@@ -28521,12 +28580,33 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (html !== this.almHtml) { this.almHtml = html; $("almbody").innerHTML = html; this.skipBtn(); this.showDetail(); }
       this.matchup = this.matchups(first, running ? left : null);
       // the folded tab's line: the wave on the field (or coming), how many creatures it still holds, and the first
-      // of its counter traits no seed of the pouch answers
+      // of its counter traits no plant in the garden answers
       const n = running ? Object.values(left).reduce((a, b) => a + b, 0) : first.groups.reduce((a, g) => a + g.count, 0);
-      const bare = Object.keys(first.cts || {}).find((id) => !G.ctAnswered(id));
+      const bare = Object.keys(first.cts || {}).find((id) => !G.ctPlanted(id, this.game));
       this.almSummary = `Wave ${first.wave} · ${n}${bare ? " · ⚠ " + G.ctWords(bare).name : ""}`;
       this.showAlmanac();
+      this.cwPlan = first; this.ctWarn();
       if (this.hold) this.stale = true; else this.refresh();
+    }
+    // The counter warning: the wave in the build before it (and for CW_CALL_MS once called) brings a counter trait
+    // no plant in the garden answers: "⚠ 3 Veiled next wave: no Ghost Lily or Glowcap planted", naming the answers
+    // in the pouch, or, when the pouch holds none, saying so. Once per wave: a tap hides it until the next one.
+    ctWarn() {
+      const p = this.cwPlan, el = this.cwEl, build = S.phase === G.Phase.BUILD, wave = build || S.phase === G.Phase.WAVE;
+      let t = "";
+      if (p && wave && (build || performance.now() < this.cwCall) && this.cwGone !== p.wave) {
+        const when = build ? "next wave" : "this wave", lines = [];
+        for (const [id, n] of Object.entries(p.cts || {})) {
+          if (G.ctPlanted(id, this.game)) continue;
+          const w = G.ctWords(id), have = ctFixers(id).filter((k) => S.plants.includes(k)).map((k) => esc(D.TOWERS[k].name));
+          lines.push(have.length ? `<b>⚠ ${n} ${esc(w.name)}</b> ${when}: no ${have.join(" or ")} planted`
+            : `<b class="hard">⚠ ${n} ${esc(w.name)}</b> ${when} and no seed of yours answers them. ${esc(w.fix)}`);
+        }
+        t = lines.join("<br>");
+      }
+      this.cwWave = p ? p.wave : -1;
+      if (el.innerHTML !== t) el.innerHTML = t;
+      el.classList.toggle("show", !!t);
     }
     // the garden's gifts so far, each at its level, then the fusions of the plants it grows (State.fits): those
     // found on this device (with their recipes) and those one boon away in this run
@@ -28577,11 +28657,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const wt = p.trait, count = (g) => (left ? left[g.kind] || 0 : g.count), n = p.groups.reduce((a, g) => a + count(g), 0);
       let t = `<div class="wv"><b class="wn">Wave ${p.wave}</b> <span class="wt">· ${left ? `now · ${n} left` : `${n} creatures`}</span>${wt ? ` <span class="tr">${this.traitIcon(wt)}${esc(wt.name)}</span>` : ""}${p.boss ? ` <span class="tr">· boss</span>` : ""}</div>`;
       // its counter traits with their counts and answers ("3 Winged: bring light"); a tap or a hover says the
-      // whole line, and one no seed of the pouch answers is tinted as a warning
+      // whole line, and one no plant in the garden answers is tinted as a warning (as ctWarn)
       const cts = Object.entries(p.cts || {});
       if (cts.length) t += `<div class="cts">` + cts.map(([id, k]) => {
-        const w = G.ctWords(id), warn = !G.ctAnswered(id);
-        return `<span class="ctc${warn ? " warn" : ""}" data-ct="${id}" title="${esc(w.line)}${warn ? " No seed of yours answers it." : ""}">${w.badge}${k} ${esc(w.name)}: bring ${esc(w.el)}</span>`;
+        const w = G.ctWords(id), warn = !G.ctPlanted(id, this.game), none = warn && !ctFixers(id).some((k) => S.plants.includes(k));
+        return `<span class="ctc${warn ? " warn" : ""}" data-ct="${id}" title="${esc(w.line)}${none ? " No seed of yours answers it." : warn ? " None planted yet." : ""}">${w.badge}${k} ${esc(w.name)}: bring ${esc(w.el)}</span>`;
       }).join(" ") + `</div>`;
       // its creatures as icons (a tap opens the card), then the elements its creatures, by count, are weakest and
       // strongest against (the matchups' sums, in words)
