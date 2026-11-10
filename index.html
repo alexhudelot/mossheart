@@ -20697,7 +20697,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.106.0", name: "Mossheart", commit: "6e45c963" };
+  G.VERSION = { v: "0.107.0", name: "Mossheart", commit: "2370ddb8" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -21116,8 +21116,8 @@ function MA_DSP() {
   // (Game.actTurn) and can open ground (open: cells; freeze: boxes whose water freezes into ground), wake a
   // second road's split (wake: a World split row, only where the garden has that road), widen the
   // Heartwood (heartwood: its reach), put the Dewbank to sleep (dewbank: false) and grow the Heart Tree
-  // (heart: n, n * 2 more vitality, healed). Only where G.LEVELS marks the garden living and ?acts=1 asks
-  // (G.actsOf); tools/sim.html ?acts=1 the same. Momiji's cells wait on Art's A-L2 map.
+  // (heart: n, n * 2 more vitality, healed). Only where G.LEVELS marks the garden living unless ?acts=0
+  // (G.actsOf); tools/sim.html the same. Momiji's cells wait on Art's A-L2 map.
   D.LEVEL_ACTS = {
     momiji: [
       null,
@@ -21642,7 +21642,7 @@ function MA_DSP() {
       const dist = (this.pathDist = new Float32Array(W * H).fill(99));
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) for (const [px, py] of this.laneCells) dist[at(x, y)] = Math.min(dist[at(x, y)], Math.max(Math.abs(px - x), Math.abs(py - y)));
       this.buildCount = blocked.reduce((a, b) => a + (b ? 0 : 1), 0);
-      // the living map's acts (docs/designs/2026-11-10-living-map.md; level.acts, Defs.LEVEL_ACTS behind ?acts=1):
+      // the living map's acts (docs/designs/2026-11-10-living-map.md; level.acts, Defs.LEVEL_ACTS on by default, ?acts=0 off):
       // the act the rules stand in (actAt, toAct), the Heartwood's reach and whether the Dewbank zone is awake, and
       // the cells an act opens (cell index -> its act: open's cells and freeze's water, never a lane, the Heart
       // Tree's crown or a hidden cell). Acts only ever add ground, so a cell once open stays open.
@@ -26078,8 +26078,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // the water tiles (the "water" recipe or a flood), for the plots beside them (core/world.js, zones)
     const water = new Uint8Array(W * H);
     for (let i = 0; i < W * H; i++) if (TL.recipe[i] === "water" || (TL.wet && TL.wet[i] === 1)) water[i] = 1;
-    // the living map's acts (Defs.LEVEL_ACTS) on a living garden, behind ?acts=1 for now
-    const acts = ME.qn("acts", 0) && (G.LEVELS[G.state.level] || {}).living ? G.Defs.LEVEL_ACTS[G.state.level] || null : null;
+    // the living map's acts (Defs.LEVEL_ACTS) on a living garden, on by default (?acts=0 turns them off)
+    const acts = ME.qn("acts", 1) && (G.LEVELS[G.state.level] || {}).living ? G.Defs.LEVEL_ACTS[G.state.level] || null : null;
     G.living = !!acts;
     return Object.assign(G.rulesLevel(rec), { blocked, water, heart: (map.game && map.game.heart) || [7.5, 5.5], split: (map.game && map.game.split) || null, acts, viewGroundZ: G.groundOf(T), rules: rec }, rec.VS !== T.VS ? { viewRoads: sim.roads || [sim] } : {});
   };
@@ -29059,7 +29059,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
   // ------------------------------------------------------------------ the run log (the proxy only)
   const MOBILE = !!(window.ME && ME.phone && ME.phone()); // (the engine's phone test; no engine in the leaderboard check)
-  // (a living-map run, G.living: its acts on, ?acts=1, tags its build " acts" so the one board tells them apart)
+  // (a living-map run, G.living: its acts on (the default, ?acts=0 off), tags its build " acts" so the one board tells them apart)
   const version = () => (G.VERSION ? `${G.VERSION.v} ${G.VERSION.commit}`.slice(0, G.living ? 27 : 32) + (G.living ? " acts" : "") : null);
   const logOff = () => {
     const q = new URLSearchParams(location.search).get("runlog");
