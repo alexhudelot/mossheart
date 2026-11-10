@@ -274,8 +274,9 @@ body.calm .coach-spot { animation: none; }
 #dew.short { animation: dewshort 0.42s; }
 @keyframes dewshort { 0%, 100% { transform: none; } 20% { transform: translateX(-5px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(3px); }
   30% { outline: 3px solid #e0506a; } }
-/* the seed in hand over a cell (scene.ghostTag): the links it would make there, the dew it lacks */
-.ghosttag { position: absolute; left: 0; top: 0; max-width: min(340px, 72vw); padding: 5px 9px; border-radius: 10px; background: rgba(26, 38, 13, 0.78); color: #f4f1e2;
+/* the seed in hand over a cell (scene.ghostTag): the links it would make there, the dew it lacks. Fixed on its own
+   layer over the tips (.hintbit, .coach: 3) and the tray (2), not in #floats, which every bubble covered */
+.ghosttag { position: fixed; z-index: 4; pointer-events: none; left: 0; top: 0; max-width: min(340px, 72vw); padding: 5px 9px; border-radius: 10px; background: rgba(26, 38, 13, 0.78); color: #f4f1e2;
   font-size: calc(13.5px * var(--ts)); font-weight: 600; line-height: 1.25; text-align: center; animation: tagpulse 1.6s ease-in-out infinite; }
 .ghosttag b { font-weight: 800; }
 .ghosttag i { font-style: normal; font-weight: 800; color: #cfe7ff; }
@@ -691,7 +692,6 @@ body:not(:has(#menus .veil.show)) #version { display: none; } /* (in the pause c
 #rites.pick { box-shadow: 0 0 0 3px #b48ae8, 0 0 12px 2px rgba(150, 100, 230, 0.7); animation: ritepick 1.4s ease-in-out infinite; }
 @keyframes ritepick { 50% { box-shadow: 0 0 0 3px #b48ae8, 0 0 4px 0 rgba(150, 100, 230, 0.3); } }
 body.calm #rites.pick { animation: none; }
-#seedcap { display: none; }
 #toast { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* (the desktop: the tray centred, its chips named; the card docks in the right margin, the Rites in the left one,
    the margins hud.js freeRect keeps clear) */
@@ -751,10 +751,7 @@ body.calm #rites.pick { animation: none; }
   #tray #wavebtn, body[data-seedcols] #tray #wavebtn { width: 76px; height: 56px; padding: 2px 3px; font-size: calc(13px * var(--ts)); line-height: 1.1; border-radius: 12px; }
   #tray #wavebtn.early { font-size: calc(12px * var(--ts)); }
   #tray #wavebtn small { font-size: 0.78em; }
-  body.seed-picked #seedcap { display: block; order: -1; align-self: center; max-width: 100%; padding: 2px 10px; border-radius: 9px; background: rgba(26, 38, 13, 0.72); color: #f4f1e2;
-    font-size: calc(12.5px * var(--ts)); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  /* (a creature's or a gift's card or the Rites take the chip row's place; the seed's card is the caption; a plant's stands by it) */
-  #tray #inspector.seedinfo { display: none; }
+  /* (a creature's or a gift's card or the Rites take the chip row's place; a plant's card and the seed's stand by it) */
   #tray:has(#inspector.show:not(.seedinfo):not(.docked)) #trayrow, body.rites-open #trayrow { display: none; }
   body.rites-open #tray #inspector { display: none; }
   #tray #inspector { width: auto; max-height: calc(var(--vh) * 0.22); padding: 8px 10px; gap: 5px; }
@@ -952,18 +949,22 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   /* (the gifts screen's draw-again and +1 gift buttons come down over the seed rows, which can't be used then) */
   body:has(#boons.show) #seeds { visibility: hidden; }
 }
-/* (a plant's card docked above the tray, across it, the user 2026-11-10: folded, one thin row (two on a phone) of its
-   head, More and its actions as short buttons (data-short, hud.js label; the full text is the tooltip); open, it
-   grows upward to the top strip, hud.js placeCard, its text scrolling. Out of the desktop's right-margin dock) */
+/* (a plant's card and the seed's docked above the tray, across it, the user 2026-11-10: folded, one thin row (three
+   on a phone: head and More, the stat chips, the actions) of its head, More, its stat chips in one row and a plant's
+   actions as short buttons (data-short, hud.js label; the full text is the tooltip); no tips. Open, it grows upward
+   to the top strip, hud.js placeCard, its text scrolling. Out of the desktop's right-margin dock) */
 #tray #inspector.docked { position: relative; order: -1; left: auto; right: auto; top: auto; bottom: auto; width: auto; transform: none;
   padding: 6px 10px; gap: 6px; box-shadow: var(--shadow), 0 4px 12px #0004; }
 #tray #inspector.docked:not(.open) { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 4px; padding-right: 42px; }
 #tray #inspector.docked:not(.open) #insptitle { flex: 1 1 9em; min-width: 0; padding-right: 0; font-size: calc(16px * var(--ts)); }
-#tray #inspector.docked:not(.open) #inspbody { flex: none; order: 1; }
-#tray #inspector.docked:not(.open) #inspbody > :not(.tomore) { display: none; }
-#tray #inspector.docked:not(.open) #inspbody .tomore { margin: 0; padding: 0 2px; }
+/* (folded, the text's box gives way to its chips and More, which line up with the head and the buttons) */
+#tray #inspector.docked:not(.open) #inspbody { display: contents; }
+#tray #inspector.docked:not(.open) #inspbody > :not(.chips):not(.tomore) { display: none; }
+#tray #inspector.docked:not(.open) #inspbody .tomore { order: 1; flex: none; margin: 0; padding: 0 2px; }
+#tray #inspector.docked:not(.open) #inspbody .chips { order: 2; flex: 0 1 22em; min-width: 0; margin: 0; gap: 3px; }
+#tray #inspector.docked:not(.open) #inspbody .chip { padding: 1px 2px; line-height: 1.15; }
 #tray #inspector.docked:not(.open) > #grafts { display: none; }
-#tray #inspector.docked:not(.open) #inspact { order: 2; flex: 0 1 auto; flex-wrap: nowrap; gap: 5px; }
+#tray #inspector.docked:not(.open) #inspact { order: 3; flex: 0 1 auto; flex-wrap: nowrap; gap: 5px; }
 #tray #inspector.docked:not(.open) #inspact > .btn { order: 0; flex: 0 1 auto; flex-basis: auto; min-width: 0; height: 34px; min-height: 34px; padding: 0 8px;
   font-size: calc(13px * var(--ts)); white-space: nowrap; }
 #tray #inspector.docked:not(.open) #inspact > .btn .lb { display: none; }
@@ -971,6 +972,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 #tray #inspector.docked.open #inspbody { min-height: 0; overflow-y: auto; }
 @media (max-width: 760px) {
   #tray #inspector.docked:not(.open) { padding: 4px 46px 4px 8px; }
+  #tray #inspector.docked:not(.open) #inspbody .chips { flex: 1 1 100%; }
   #tray #inspector.docked:not(.open) #inspact { flex: 1 1 100%; }
   #tray #inspector.docked:not(.open) #inspact > .btn { flex: 1 1 0; padding: 0 3px; font-size: calc(12px * var(--ts)); }
 }
@@ -997,7 +999,6 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     <div id="dewgauge"><div id="dew" role="status" aria-label="Dew 0"><svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 .6C4.4 3.4 1 7.2 1 10.6a5 5 0 0 0 10 0C11 7.2 7.6 3.4 6 .6z"/><path class="glint" d="M3.6 10.2a2.6 2.6 0 0 0 1.9 3.1"/></svg><b id="dewn">0</b></div><div id="dewbar" role="meter" aria-label="Dew bank" aria-valuemin="0" aria-valuenow="0"><i class="tick" style="--at: 0.3"></i><i class="tick" style="--at: 0.55"></i><i class="tick" style="--at: 0.8"></i><i class="fill"><i class="bub"></i><i class="bub"></i><i class="bub"></i></i><b class="luck"></b></div></div>
     <div id="ritepanel" class="panel"><div class="rhead"><b>✦ Rites</b><span class="dim">gathered every 3rd wave and with each boss; each works once</span><button id="riteclose" class="btn small" title="close">✕</button></div><div id="ritebody"></div></div>
     <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspact"><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="deepen" class="btn"><span class="lb">Deepen</span></button><button id="move" class="btn"><span class="lb">Move</span></button><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div><div id="grafts"></div><div id="inspbody"></div></div>
-    <div id="seedcap"></div>
     <div id="trayrow"><div id="seeds"></div><button id="rites" class="btn" title="Rites: gathered every 3rd wave and with each boss; each works once"><span class="lb">✦</span><small>0/3</small></button><button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button></div>
   </div>
   <div id="boons" class="veil"><div class="col"><h2>The garden offers a gift</h2><div id="boonrow"></div><div id="boonbuy"><button id="reroll" class="btn"></button><button id="morepick" class="btn"></button></div></div></div>
@@ -20667,7 +20668,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.101.0", name: "Mossheart", commit: "0fa50f26" };
+  G.VERSION = { v: "0.102.0", name: "Mossheart", commit: "187d4ceb" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -27450,7 +27451,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // the dew it lacks, and after a touch's first tap (armed: main.js's pending) "tap again to plant"
     ghostTag(cam, canvas) {
       let el = this.tagEl;
-      if (!el) { el = this.tagEl = document.createElement("div"); el.className = "ghosttag"; document.getElementById("floats").appendChild(el);
+      if (!el) { el = this.tagEl = document.createElement("div"); el.className = "ghosttag"; document.body.appendChild(el); // (its own layer, over the tips and the tray: game.css)
         // (an invisible box inset by the safe area, a notch's or a home bar's, to clamp the tag inside it)
         const sa = this.safeEl = document.createElement("div"); sa.style.cssText = "position: fixed; left: var(--sl); right: var(--sr); top: var(--st); bottom: var(--sb); visibility: hidden;";
         document.getElementById("floats").appendChild(sa);
@@ -27773,8 +27774,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("wavebtn").addEventListener("click", () => this.act.startWave());
       // the card's More (open or folded for the session, every card alike)
       this.moreOpen = false; this.foe = null; this.gift = "";
-      // (a plant's card has its own: it opens folded for each plant, towerOpen, the user 2026-11-10)
-      $("inspector").addEventListener("click", (e) => { if (e.target.closest(".tomore")) { const box = $("inspector"), tw = box.classList.contains("docked"); const open = tw ? (this.towerOpen = !this.towerOpen) : (this.moreOpen = !this.moreOpen); box.classList.toggle("open", open); this.fitCard(); this.placeCard(); } });
+      // (a plant's card and the seed's have their own, docked: each opens folded for each plant or seed, towerOpen and
+      // seedOpen, the user 2026-11-10)
+      $("inspector").addEventListener("click", (e) => { if (e.target.closest(".tomore")) { const box = $("inspector"), sd = box.classList.contains("seedinfo"), tw = box.classList.contains("docked"); const open = sd ? (this.seedOpen = !this.seedOpen) : tw ? (this.towerOpen = !this.towerOpen) : (this.moreOpen = !this.moreOpen); box.classList.toggle("open", open); this.fitCard(); this.placeCard(); } });
       $("speed").addEventListener("click", () => this.act.speed());
       $("sound").addEventListener("click", () => { const on = this.act.sound(); label("sound", on ? "♪" : "♪̸"); $("sound").classList.toggle("off", !on); });
       // the almanac: folded unless the player left it open
@@ -27991,10 +27993,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     short(kind) {
       const cost = S.towerCost(D.TOWERS[kind].cost, kind), t = $("toast"), d = $("dew");
       this.seedInfo();
-      // (a phone hides the seed's card behind its one-line caption: the toast says it there)
-      const line = this.selected === kind && this.showing("seedinfo") && !NARROW.matches && $("inspbody").querySelector(".tips .short");
-      if (line) line.animate([{ transform: "none" }, { transform: "translateX(-4px)" }, { transform: "translateX(4px)" }, { transform: "none" }], { duration: 320, easing: "ease-out" });
-      else this.toast(`Need ${fmtDew(cost)} dew (you have ${fmtDew(S.dew)})`);
+      // (the seed's card, folded, shows its cost in red in its head: that shakes, and its "Need N more dew" line
+      // when open; the toast says the dew it needs and has either way)
+      if (this.selected === kind && this.showing("seedinfo"))
+        for (const line of $("inspector").querySelectorAll("#insptitle .cfig.short, .open .tips .short"))
+          line.animate([{ transform: "none" }, { transform: "translateX(-4px)" }, { transform: "translateX(4px)" }, { transform: "none" }], { duration: 320, easing: "ease-out" });
+      this.toast(`Need ${fmtDew(cost)} dew (you have ${fmtDew(S.dew)})`);
       d.classList.remove("short"); void d.offsetWidth; d.classList.add("short"); // (restarts the shake)
     }
     // On a phone the open almanac folds while a plant is inspected (the two would overlap) and opens again
@@ -28124,12 +28128,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const box = $("inspector");
       box.classList.remove("tower", "seedinfo", "foe", "gift");
       box.classList.add(kind);
-      // (a plant's card docks above the tray, across it, folded to one row: its head and short buttons, the user
-      // 2026-11-10; More opens it upward, and it opens for a fork's choice. The others keep their place)
-      const tw = kind === "tower";
-      box.classList.toggle("open", tw ? this.towerOpen || (!!this.forking && this.forking === this.inspected) : this.moreOpen);
-      box.classList.toggle("docked", tw);
-      box.style.left = box.style.top = ""; if (!tw) box.style.maxHeight = "";
+      // (a plant's card and the seed's dock above the tray, across it, folded: the head, one row of stat chips and
+      // a plant's short buttons, the user 2026-11-10; More opens it upward, and it opens for a fork's choice. The
+      // others keep their place)
+      const tw = kind === "tower", dk = tw || kind === "seedinfo";
+      box.classList.toggle("open", tw ? this.towerOpen || (!!this.forking && this.forking === this.inspected) : dk ? !!this.seedOpen : this.moreOpen);
+      box.classList.toggle("docked", dk);
+      box.style.left = box.style.top = ""; if (!dk) box.style.maxHeight = "";
       $("insptitle").innerHTML = head;
       $("inspbody").innerHTML = (chips.length ? `<div class="chips">${chips.map(([l, v]) => `<span class="chip"><small>${l}</small><b>${v}</b></span>`).join("")}</div>` : "") +
         (tips.length ? `<div class="tips">${tips.map((t) => `<div>${t}</div>`).join("")}</div>` : "") +
@@ -28301,13 +28306,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     seedInfo() {
       const box = $("inspector"), kind = this.selected;
       const on = !!kind && !this.inspected && !this.foe && !this.gift && (S.phase === G.Phase.BUILD || S.phase === G.Phase.WAVE);
-      // (a phone shows the seed in hand as one line over the raised chip, #seedcap, in place of its card)
       document.body.classList.toggle("seed-picked", on);
-      if (on) {
-        const c = S.towerCost(D.TOWERS[kind].cost, kind), lack = c - S.dew;
-        setText($("seedcap"), lack > 0 ? `${D.TOWERS[kind].name} · need ${fmtDew(lack)} more dew`
-          : `${D.TOWERS[kind].name} · ${fmtDew(c)} dew · ${TOUCH.matches ? "tap a spot, tap again to plant" : "click a spot to plant"}`);
-      }
+      // (its card docks above the tray on a phone and a desktop alike, folded for each seed picked)
+      if (kind !== this.seedFor) { this.seedFor = kind; this.seedOpen = false; }
       if (!on) {
         if (box.classList.contains("seedinfo")) { box.classList.remove("show", "seedinfo", "docked"); this.seedKey = ""; this.showAlmanac(); }
         return;
