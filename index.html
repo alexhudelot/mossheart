@@ -325,11 +325,6 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 #inspector:not(.open) .more { display: none; }
 #inspector.foe, #inspector.gift { gap: 4px; }
 #inspector.foe .btn, #inspector.gift .btn { display: none; }
-/* (a plant's card stands beside its plant, out of the tray and its dock: hud.js placeCard sets left, top and its
-   max-height to the room between the top strip and the chip row; its text scrolls, its buttons stay in view) */
-#inspector.anchored, #tray #inspector.anchored { position: fixed; transform: none; right: auto; bottom: auto; width: 280px; box-shadow: var(--shadow), 0 6px 18px #0005; z-index: 3; }
-#inspector.anchored #inspbody { min-height: 0; overflow-y: auto; }
-@media (max-width: 760px) { #inspector.anchored, #tray #inspector.anchored { width: min(300px, calc(var(--vw) - 16px)); } }
 /* a creature's trait glyphs beside its HP bar (hud.js foeTags) */
 .foetag { position: absolute; left: 0; top: 0; font: 800 12px/1 system-ui, sans-serif; color: #fff4d8; letter-spacing: 0.05em; white-space: nowrap;
   text-shadow: 0 0 2px #2a1e10, 0 0 2px #2a1e10, 0 1px 1px #2a1e10; will-change: transform; }
@@ -689,6 +684,13 @@ body:not(:has(#menus .veil.show)) #version { display: none; } /* (in the pause c
 #ritepanel .rhead .dim { flex: 1; min-width: 0; font-size: calc(12px * var(--ts)); line-height: 1.2; }
 #ritepanel .rhead .btn.small { flex: none; width: 40px; height: 36px; font-size: calc(16px * var(--ts)); }
 #ritebody { overflow-y: auto; font-size: calc(14px * var(--ts)); }
+#ritebody .rsub { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0; font-weight: 800; }
+#ritebody .rsub .btn.small { height: 30px; padding: 0 12px; font-size: calc(13px * var(--ts)); }
+#ritebody .dim { margin: 2px 0; font-size: 0.9em; }
+/* (a pick waiting: the chip glows, hud.js riteLabel) */
+#rites.pick { box-shadow: 0 0 0 3px #b48ae8, 0 0 12px 2px rgba(150, 100, 230, 0.7); animation: ritepick 1.4s ease-in-out infinite; }
+@keyframes ritepick { 50% { box-shadow: 0 0 0 3px #b48ae8, 0 0 4px 0 rgba(150, 100, 230, 0.3); } }
+body.calm #rites.pick { animation: none; }
 #seedcap { display: none; }
 #toast { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* (the desktop: the tray centred, its chips named; the card docks in the right margin, the Rites in the left one,
@@ -753,7 +755,7 @@ body:not(:has(#menus .veil.show)) #version { display: none; } /* (in the pause c
     font-size: calc(12.5px * var(--ts)); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* (a creature's or a gift's card or the Rites take the chip row's place; the seed's card is the caption; a plant's stands by it) */
   #tray #inspector.seedinfo { display: none; }
-  #tray:has(#inspector.show:not(.seedinfo):not(.anchored)) #trayrow, body.rites-open #trayrow { display: none; }
+  #tray:has(#inspector.show:not(.seedinfo):not(.docked)) #trayrow, body.rites-open #trayrow { display: none; }
   body.rites-open #tray #inspector { display: none; }
   #tray #inspector { width: auto; max-height: calc(var(--vh) * 0.22); padding: 8px 10px; gap: 5px; }
   #tray #inspector:not(.open):has(#grafts .btn) { max-height: calc(var(--vh) * 0.28); }
@@ -950,6 +952,28 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   /* (the gifts screen's draw-again and +1 gift buttons come down over the seed rows, which can't be used then) */
   body:has(#boons.show) #seeds { visibility: hidden; }
 }
+/* (a plant's card docked above the tray, across it, the user 2026-11-10: folded, one thin row (two on a phone) of its
+   head, More and its actions as short buttons (data-short, hud.js label; the full text is the tooltip); open, it
+   grows upward to the top strip, hud.js placeCard, its text scrolling. Out of the desktop's right-margin dock) */
+#tray #inspector.docked { position: relative; order: -1; left: auto; right: auto; top: auto; bottom: auto; width: auto; transform: none;
+  padding: 6px 10px; gap: 6px; box-shadow: var(--shadow), 0 4px 12px #0004; }
+#tray #inspector.docked:not(.open) { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 4px; padding-right: 42px; }
+#tray #inspector.docked:not(.open) #insptitle { flex: 1 1 9em; min-width: 0; padding-right: 0; font-size: calc(16px * var(--ts)); }
+#tray #inspector.docked:not(.open) #inspbody { flex: none; order: 1; }
+#tray #inspector.docked:not(.open) #inspbody > :not(.tomore) { display: none; }
+#tray #inspector.docked:not(.open) #inspbody .tomore { margin: 0; padding: 0 2px; }
+#tray #inspector.docked:not(.open) > #grafts { display: none; }
+#tray #inspector.docked:not(.open) #inspact { order: 2; flex: 0 1 auto; flex-wrap: nowrap; gap: 5px; }
+#tray #inspector.docked:not(.open) #inspact > .btn { order: 0; flex: 0 1 auto; flex-basis: auto; min-width: 0; height: 34px; min-height: 34px; padding: 0 8px;
+  font-size: calc(13px * var(--ts)); white-space: nowrap; }
+#tray #inspector.docked:not(.open) #inspact > .btn .lb { display: none; }
+#tray #inspector.docked:not(.open) #inspact > .btn::after { content: attr(data-short); }
+#tray #inspector.docked.open #inspbody { min-height: 0; overflow-y: auto; }
+@media (max-width: 760px) {
+  #tray #inspector.docked:not(.open) { padding: 4px 46px 4px 8px; }
+  #tray #inspector.docked:not(.open) #inspact { flex: 1 1 100%; }
+  #tray #inspector.docked:not(.open) #inspact > .btn { flex: 1 1 0; padding: 0 3px; font-size: calc(12px * var(--ts)); }
+}
 </style>
 </head>
 <body>
@@ -971,10 +995,10 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   <!-- the bottom tray (HUD A): the dew tube along its top edge, then the seed row, or a plant's card or the Rites in its place -->
   <div id="tray">
     <div id="dewgauge"><div id="dew" role="status" aria-label="Dew 0"><svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 .6C4.4 3.4 1 7.2 1 10.6a5 5 0 0 0 10 0C11 7.2 7.6 3.4 6 .6z"/><path class="glint" d="M3.6 10.2a2.6 2.6 0 0 0 1.9 3.1"/></svg><b id="dewn">0</b></div><div id="dewbar" role="meter" aria-label="Dew bank" aria-valuemin="0" aria-valuenow="0"><i class="tick" style="--at: 0.3"></i><i class="tick" style="--at: 0.55"></i><i class="tick" style="--at: 0.8"></i><i class="fill"><i class="bub"></i><i class="bub"></i><i class="bub"></i></i><b class="luck"></b></div></div>
-    <div id="ritepanel" class="panel"><div class="rhead"><b>✦ Rites</b><span class="dim">once each, on the whole garden; dearer each time this run</span><button id="riteclose" class="btn small" title="close">✕</button></div><div id="ritebody"></div></div>
+    <div id="ritepanel" class="panel"><div class="rhead"><b>✦ Rites</b><span class="dim">gathered every 3rd wave and with each boss; each works once</span><button id="riteclose" class="btn small" title="close">✕</button></div><div id="ritebody"></div></div>
     <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspact"><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="deepen" class="btn"><span class="lb">Deepen</span></button><button id="move" class="btn"><span class="lb">Move</span></button><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div><div id="grafts"></div><div id="inspbody"></div></div>
     <div id="seedcap"></div>
-    <div id="trayrow"><div id="seeds"></div><button id="rites" class="btn" title="Rites: once each, on the whole garden"><span class="lb">✦</span><small>Rites</small></button><button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button></div>
+    <div id="trayrow"><div id="seeds"></div><button id="rites" class="btn" title="Rites: gathered every 3rd wave and with each boss; each works once"><span class="lb">✦</span><small>0/3</small></button><button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button></div>
   </div>
   <div id="boons" class="veil"><div class="col"><h2>The garden offers a gift</h2><div id="boonrow"></div><div id="boonbuy"><button id="reroll" class="btn"></button><button id="morepick" class="btn"></button></div></div></div>
   <div id="over" class="veil dark"><div class="panel card"><h2>The Heart Tree sleeps</h2><div class="cscroll"><p id="overtxt"></p><div id="oversum" class="oversum"></div><div id="overboard" class="lboard" style="display:none"></div></div><button id="again" class="btn pink">Plant anew</button></div></div>
@@ -20643,7 +20667,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.100.0", name: "Mossheart", commit: "1cf52b10" };
+  G.VERSION = { v: "0.101.0", name: "Mossheart", commit: "0fa50f26" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -20850,15 +20874,24 @@ function MA_DSP() {
     { id: "lantern", link: "ghostlight", name: "Ghost Lantern", gives: { lily: { lantern: 0.5 } }, desc: "The beam leaps to the next creature (50%) and keeps its heat" },
   ];
   D.GRAFT_FEE = 2;
-  // One-shot rites (the same design, F): bought while a wave runs, each acts once on the whole garden
-  // (Game.rite). Each is priced on its own: 60 + 6 a wave the first time in a run, then x1.5 each later use.
+  // Rites (the user, 2026-11-10): one-off effects gathered through play, not bought. Every 3rd wave cleared and
+  // every boss beaten earns a pick of one of three (Game.riteEarn); the one taken is held until a tap uses it,
+  // once (Game.rite). At most RITE_HOLD held, and as many picks waiting.
   //   frost     slows every creature by `slow` for `secs` (as a slow: big ones feel less, a shell none)
   //   downpour  washes every creature `cells` back down its road (big ones less, a boss a third; a shell not)
   //   bloom     every plant attacks `rate` times as fast for `secs`
+  //   sun       hits every creature for `share` of its full vitality (a boss `boss` of that)
+  //   dew       dew[0] + dew[1] a wave of dew, at once
+  //   mend      heals the Heart Tree `heal`
+  // `foes`: only with creatures on the road; `any`: between waves too (the rest only while a wave runs)
+  D.RITE_HOLD = 3;
   D.RITES = [
-    { id: "frost", name: "Morning Frost", color: [0.68, 0.86, 1], slow: 0.4, secs: 4, desc: "Slows every creature 40% for 4 s; big ones feel it less" },
-    { id: "downpour", name: "Downpour", color: [0.42, 0.6, 0.9], cells: 2, desc: "Washes every creature 2 tiles back; big ones less" },
-    { id: "bloom", name: "Bloom Burst", color: [1, 0.76, 0.32], rate: 1.5, secs: 6, desc: "Every plant attacks 50% faster for 6 s" },
+    { id: "frost", name: "Morning Frost", color: [0.68, 0.86, 1], slow: 0.4, secs: 4, foes: true, desc: "Slows all creatures for 4 s" },
+    { id: "downpour", name: "Downpour", color: [0.42, 0.6, 0.9], cells: 2, foes: true, desc: "Pushes all creatures 2 tiles back" },
+    { id: "bloom", name: "Bloom Burst", color: [1, 0.76, 0.32], rate: 1.5, secs: 6, desc: "Plants attack 50% faster for 6 s" },
+    { id: "sun", name: "Sunflash", color: [1, 0.9, 0.5], share: 0.2, boss: 0.25, foes: true, desc: "Burns a fifth off every creature" },
+    { id: "dew", name: "Dew Rain", color: [0.55, 0.85, 0.95], dew: [30, 4], any: true, desc: "Dew at once: 30, +4 a wave" },
+    { id: "mend", name: "Heart Mend", color: [0.95, 0.5, 0.6], heal: 5, any: true, desc: "Heals the Heart Tree 5" },
   ];
   // the graft two kinds make, or null
   D.graftOf = (a, b) => { const l = D.linkOf(a, b); return (l && a !== b && D.GRAFTS.find((g) => g.link === l.id)) || null; };
@@ -22397,7 +22430,7 @@ function MA_DSP() {
   // ------------------------------------------------------------------ shots
   // Homing seeds, wisps and spore bombs; handles hits, crits, wisp chaining, split shots, piercing seeds
   // and bomb splashes, and the poison puddles bombs leave ({ x, y, z, t (seconds left), dps }).
-  const BR = D.FORKS.thorn.b, CAP = 256, CHAIN_RANGE = 1.6, NO_CRIT = new Set(["pulse", "puffball"]), NONE = {};
+  const BR = D.FORKS.thorn.b, CAP = 256, CHAIN_RANGE = 1.6, NO_CRIT = new Set(["pulse", "puffball", "rite"]), NONE = {};
 
   class Shots {
     constructor(enemies) {
@@ -22573,6 +22606,8 @@ function MA_DSP() {
       // the gifts on offer while the phase is CHOOSE_BOON; how often this screen was drawn again (Game.reroll) and how
       // many more picks from it are paid for (Game.buyPick)
       this.offer = null; this.redraws = 0; this.extra = 0;
+      // the rites held and the picks of them waiting (Game.riteEarn)
+      this.riteHeld = []; this.riteOffers = [];
       // the running wave's dew challenge (D.challengeFor, set when a wave starts from BUILD; its state "live",
       // "met" or "failed"), or null
       this.chal = null;
@@ -22598,6 +22633,7 @@ function MA_DSP() {
         G.on("dew", () => { if (S.dew > st.peakDew) st.peakDew = S.dew; }),
         // (a dew sink bought while a wave runs is a hand on the garden too)
         G.on("sunk", () => { if (S.phase === G.Phase.WAVE) this.chalFail("handsoff"); }),
+        G.on("rite", () => { if (S.phase === G.Phase.WAVE) this.chalFail("handsoff"); }),
       ];
     }
     // a new run replaces this game: drop its event handlers
@@ -22889,6 +22925,8 @@ function MA_DSP() {
         t.upgrade(); this.stats.grown++;
         G.emit("tower_upgraded", { kind: t.kind, level: t.level, pos: [t.X, t.Y, t.VZ], tower: t, free: true });
       }
+      // (a rite pick for every 3rd wave and every boss among them)
+      for (let w = S.wave - n + 1; w <= S.wave; w++) if (this.riteEarns(w)) this.riteEarn(w);
       this.owed = n - 1;
       this.offerBoons();
     }
@@ -22998,27 +23036,57 @@ function MA_DSP() {
       this.sink("graft", fee); // last: its "sunk" saves the game (Save.watch)
       return true;
     }
-    // One-shot rites (the same design, F): bought only while a wave runs, each acts once on the whole garden
-    // (Defs.RITES), priced by the wave and by how often that rite was used this run (stats.rites, by id).
-    // Bloom Burst's timer (bloomT) holds S.riteRate up and goes with the wave (waveCleared).
-    riteCost(id) { return Math.round((60 + 6 * S.wave) * Math.pow(1.5, this.stats.rites[id] || 0)); }
+    // Rites (the user, 2026-11-10; Defs.RITES): gathered, not bought. Every 3rd wave cleared and every boss
+    // beaten earns a pick of one of three (riteOffers, the first one on show; drawn from the seed and the wave,
+    // not the run's rng, so the gift draws stay as they were); the one taken is held (riteHeld) until a tap
+    // uses it, once. At most D.RITE_HOLD of each: a pick past that is lost. "rites" goes out on any change
+    // (the HUD's chip; Save.watch). stats.rites counts the uses by id. Bloom Burst's timer (bloomT) holds
+    // S.riteRate up and goes with the wave (waveCleared).
+    riteEarns(w) { return w > 0 && (w % 3 === 0 || !!this.plan(w).boss); }
+    riteEarn(w) {
+      if (this.riteOffers.length >= D.RITE_HOLD) return;
+      const r = G.rng((Math.imul(S.seed | 0, 7919) + w * 104729 + this.riteOffers.length) >>> 0), ids = D.RITES.map((x) => x.id);
+      for (let i = ids.length - 1; i > 0; i--) { const j = r.i(i + 1); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+      this.riteOffers.push(ids.slice(0, 3));
+      G.emit("rites");
+    }
+    riteTakeBlocked(id) {
+      if (!this.riteOffers.length || !this.riteOffers[0].includes(id)) return "Not on offer";
+      return this.riteHeld.length >= D.RITE_HOLD ? "Hands full: use one first" : "";
+    }
+    // the offer's rite `id` taken, or with null the offer passed by
+    riteTake(id) {
+      if (id === null ? !this.riteOffers.length : this.riteTakeBlocked(id)) return false;
+      this.riteOffers.shift();
+      if (id !== null) this.riteHeld.push(id);
+      G.emit("rites");
+      return true;
+    }
     riteBlocked(id) {
-      if (S.phase !== G.Phase.WAVE) return "Only while a wave runs";
-      if (!D.RITES.some((r) => r.id === id)) return "No such rite";
-      // (one that would do nothing: Frost or Downpour with no creature on the road, Bloom while one runs)
+      const r = D.RITES.find((x) => x.id === id), P = G.Phase;
+      if (!r || !this.riteHeld.includes(id)) return "Not held";
+      if (S.phase !== P.WAVE && !(r.any && S.phase === P.BUILD)) return "In a wave";
+      // (one that would do nothing)
       if (id === "bloom" && this.bloomT > 0) return "Already blooming";
-      if (id !== "bloom" && this.enemies.count === 0) return "Nothing on the road";
-      return S.dew < this.riteCost(id) ? "Not enough dew" : "";
+      if (id === "mend" && S.heartHp >= S.heartMax) return "Heart is whole";
+      if (r.foes && this.enemies.count === 0) return "No creatures";
+      return "";
     }
     rite(id) {
       if (this.riteBlocked(id)) return false;
-      const r = D.RITES.find((x) => x.id === id), cost = this.riteCost(id), E = this.enemies;
+      const r = D.RITES.find((x) => x.id === id), E = this.enemies;
       if (id === "frost") E.forEachLive((i) => E.applySlow(i, r.slow, r.secs));
       else if (id === "downpour") E.forEachLive((i) => { E.wash(i, r.cells); if (E.ct[i] === 0) E.groundT[i] = D.CT_GROUND; });
       else if (id === "bloom") { this.bloomT = r.secs; S.riteRate = r.rate; }
+      else if (id === "sun") {
+        const hit = []; E.forEachLive((i) => hit.push(i));
+        for (const i of hit) if (E.alive[i]) this.shots.strike(i, E.maxHp[i] * r.share * (E.isBoss(i) ? r.boss : 1), -1, "rite");
+      } else if (id === "dew") { const n = r.dew[0] + r.dew[1] * S.wave; S.earnRaw(n, "rite"); this.stats.dew += n; }
+      else if (id === "mend") S.healHeart(r.heal);
+      this.riteHeld.splice(this.riteHeld.indexOf(id), 1);
       this.stats.rites[id] = (this.stats.rites[id] || 0) + 1;
-      G.emit("rite", { id, cost });
-      this.sink("rite", cost); // last: a hand on the garden (Hands-off)
+      G.emit("rite", { id }); // (a hand on the garden mid-wave: Hands-off)
+      G.emit("rites");
       return true;
     }
     // The wave skip (the same design, G), opt in: between waves the coming wave is passed over for 15 dew a
@@ -23279,6 +23347,8 @@ function MA_DSP() {
         towers: game.towers.map((t) => (t.twin ? [t.kind, t.cx, t.cy, t.level, t.invested, t.branch, t.twin.kind, t.twin.branch] : [t.kind, t.cx, t.cy, t.level, t.invested, t.branch])),
         // (the linked pairs deepened, by their cells: Game.deepen)
         deep: [...game.deep],
+        // (the rites held and the picks of them waiting: Game.riteEarn; none in a save from before them)
+        rites: { held: game.riteHeld.slice(), offers: game.riteOffers.map((o) => o.slice()) },
         blight: { level: b64(quantise(b.level)), scar: b64(quantise(b.scar)) },
         stats: JSON.parse(JSON.stringify(game.stats)), time: +game.time.toFixed(2),
         // what a restore needs to go on exactly as the run would have (tools/sim.html ?save=1 checks it): the
@@ -23337,6 +23407,9 @@ function MA_DSP() {
         }
         b.dirty = true;
         game.deep = new Set(d.deep || []);
+        const rite = (id) => D.RITES.some((r) => r.id === id), rs = d.rites || {};
+        game.riteHeld = (rs.held || []).filter(rite).slice(0, D.RITE_HOLD);
+        game.riteOffers = (rs.offers || []).map((o) => (Array.isArray(o) ? o.filter(rite) : [])).filter((o) => o.length).slice(0, D.RITE_HOLD);
         game.relink();
         game.stats = Object.assign(game.stats, JSON.parse(JSON.stringify(d.stats || {})));
         S.offBoard = game.stats.skipped > 0;
@@ -23351,7 +23424,7 @@ function MA_DSP() {
           game.towers.forEach((t, i) => { t.cooldown = x.cooldown[i]; if (t.twin && x.twin) t.twin.cooldown = x.twin[i]; });
           [S.intensity, S.combat, S.danger, S.corruption, game.heartShock] = x.live;
         }
-        G.emit("dew"); G.emit("heart"); G.emit("wave"); G.emit("mods");
+        G.emit("dew"); G.emit("heart"); G.emit("wave"); G.emit("mods"); G.emit("rites");
         const offer = d.phase === P.CHOOSE_BOON && d.offer ? d.offer.map(D.boon).filter(Boolean) : null;
         if (offer && offer.length) {
           game.offer = offer; game.owed = d.owed || 0; [game.redraws, game.extra] = (d.sink || [0, 0]).map((v) => Number(v) || 0);
@@ -23365,7 +23438,7 @@ function MA_DSP() {
     },
 
     // Autosave (PERF-G11): a phase change, a new offer or a restore saves at once; a plant placed, grown or
-    // uprooted, or dew sunk, saves ~0.5 s after the last of a burst, since a save is 120-170 KB of JSON. The
+    // uprooted, dew sunk, or a rite gathered or used, saves ~0.5 s after the last of a burst, since a save is 120-170 KB of JSON. The
     // pending save goes out before a wave starts (Game.startWave's "wave_starting": mid-wave there is none),
     // when the page hides or closes (main.js), and before a read of this garden's save (Save.read), so nothing reads
     // an older save than the run. A write or clear drops it.
@@ -23381,7 +23454,7 @@ function MA_DSP() {
       const later = () => { drop(); pending = setTimeout(save, SAVE_DELAY_MS); };
       flushFn = save;
       for (const ev of ["phase", "offer", "restored"]) G.on(ev, save);
-      for (const ev of ["tower_placed", "tower_upgraded", "tower_sold", "sunk"]) G.on(ev, later);
+      for (const ev of ["tower_placed", "tower_upgraded", "tower_sold", "sunk", "rites"]) G.on(ev, later);
       G.on("wave_starting", () => Save.flush());
       G.on("game_over", () => Save.clear());
     },
@@ -27412,7 +27485,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       // ghost's foot, and below the card if it still reaches there. (Docked over the seed rows, on a phone or a
       // touch screen, the card is one more floor under the tag, below.)
       let y = sy / dpr, under = false;
-      const box = document.getElementById("inspector"), docked = !!box && box.classList.contains("show") && !box.classList.contains("anchored");
+      const box = document.getElementById("inspector"), docked = !!box && box.classList.contains("show"); // (every card docks: a plant's above the tray since 2026-11-10)
       if (box && box.classList.contains("show") && !docked) {
         const r = box.getBoundingClientRect();
         if (x + h - 8 > r.left && x - h + 8 < r.right && y - this.tagH < r.bottom && y > r.top) {
@@ -27612,7 +27685,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const G = window.MG, D = G.Defs, S = G.state;
   const $ = (id) => document.getElementById(id);
   // a button's text lives in its .lb span, so the skin's ornament (the button's first child) is left alone when the text changes
-  const label = (b, text) => { (typeof b === "string" ? $(b) : b).querySelector(".lb").textContent = text; };
+  // (`sh`: the few words the docked plant card shows folded, data-short in game.css; the full text is its tooltip)
+  const label = (b, text, sh) => { const e = typeof b === "string" ? $(b) : b; e.querySelector(".lb").textContent = text; if (sh !== undefined) { e.dataset.short = sh; e.title = text; } };
   // markup written only when it changed, against the copy kept on the element (not its innerHTML, which
   // costs a serialisation and holds the skin's ornament too); true if it was written
   const setHtml = (el, html) => { if (el.keptHtml === html) return false; el.keptHtml = html; el.innerHTML = html; return true; };
@@ -27699,7 +27773,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("wavebtn").addEventListener("click", () => this.act.startWave());
       // the card's More (open or folded for the session, every card alike)
       this.moreOpen = false; this.foe = null; this.gift = "";
-      $("inspector").addEventListener("click", (e) => { if (e.target.closest(".tomore")) { this.moreOpen = !this.moreOpen; $("inspector").classList.toggle("open", this.moreOpen); this.fitCard(); } });
+      // (a plant's card has its own: it opens folded for each plant, towerOpen, the user 2026-11-10)
+      $("inspector").addEventListener("click", (e) => { if (e.target.closest(".tomore")) { const box = $("inspector"), tw = box.classList.contains("docked"); const open = tw ? (this.towerOpen = !this.towerOpen) : (this.moreOpen = !this.moreOpen); box.classList.toggle("open", open); this.fitCard(); this.placeCard(); } });
       $("speed").addEventListener("click", () => this.act.speed());
       $("sound").addEventListener("click", () => { const on = this.act.sound(); label("sound", on ? "♪" : "♪̸"); $("sound").classList.toggle("off", !on); });
       // the almanac: folded unless the player left it open
@@ -27773,19 +27848,21 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         this.graftArmed = null; this.game.graft(t, p.other);
         if (this.inspected === t) this.inspect(t);
       });
-      // (Rites, while a wave runs: the tray's ✦ chip opens their panel, a tile per rite (Defs.RITES), in place of
-      // the seed row on a phone and in the left margin on a desktop; a tile performs it and shuts the panel, as
-      // do ✕ and the chip again; the tiles' prices and greying follow the dew, refresh)
-      const riteTile = (r) => `<button class="fork" data-rite="${r.id}" style="--acc:${G.css(r.color)}"><b>${esc(r.name)}</b><span>${esc(r.desc)}</span><small></small></button>`;
-      $("ritebody").innerHTML = `<div class="forks rites">${D.RITES.map(riteTile).join("")}</div>`;
+      // (Rites, gathered in play (Game.riteEarn): the tray's ✦ chip, up while one is held or a pick waits, opens
+      // their panel, in place of the seed row on a phone and in the left margin on a desktop: the pick waiting
+      // (three tiles, data-take, and Pass) over the rites held (data-rite). A held tile uses it; the panel shuts
+      // after a use, and stays after a pick while there is more to do there; ✕ and the chip again shut it)
       this.riting = false;
       $("rites").addEventListener("click", () => this.rites(!this.riting));
       $("riteclose").addEventListener("click", () => this.rites(false));
       $("ritebody").addEventListener("click", (e) => {
-        const b = e.target.closest("[data-rite]");
+        const b = e.target.closest("[data-rite],[data-take],[data-pass]");
         if (!b || b.disabled) return;
-        this.game.rite(b.dataset.rite); this.rites(false);
+        if (b.dataset.rite) { this.game.rite(b.dataset.rite); this.rites(false); return; }
+        this.game.riteTake(b.dataset.take || null);
+        if (!this.game.riteOffers.length && !this.game.riteHeld.some((id) => !this.game.riteBlocked(id))) this.rites(false);
       });
+      G.on("rites", () => { if (this.riting) this.riteBody(); if (this.hold) this.stale = true; else this.refresh(); });
       // (Move, between waves: a tap arms it, the card says so and the next tap on a free plot moves the plant
       // there, main.js; Move again, Esc or any other plant cancels; Game.move)
       this.moving = null;
@@ -27899,7 +27976,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
     uprootLabel(t) {
       const armed = this.armed === t;
-      label("uproot", armed ? `Tap again to uproot  (+${t.sellValue()})` : `Uproot  (+${t.sellValue()} dew)`);
+      label("uproot", armed ? `Tap again to uproot  (+${t.sellValue()})` : `Uproot  (+${t.sellValue()} dew)`, armed ? `Sure? +${t.sellValue()}` : `Uproot +${t.sellValue()}`);
       $("uproot").classList.toggle("armed", armed);
     }
     clearSeed() { this.selected = ""; this.refresh(); }
@@ -28046,10 +28123,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     card(kind, head, chips, tips, more) {
       const box = $("inspector");
       box.classList.remove("tower", "seedinfo", "foe", "gift");
-      box.classList.add(kind); box.classList.toggle("open", this.moreOpen);
-      // (a plant's card stands beside its plant, placeCard; the others keep their dock)
-      box.classList.toggle("anchored", kind === "tower");
-      if (kind !== "tower") box.style.left = box.style.top = box.style.maxHeight = "";
+      box.classList.add(kind);
+      // (a plant's card docks above the tray, across it, folded to one row: its head and short buttons, the user
+      // 2026-11-10; More opens it upward, and it opens for a fork's choice. The others keep their place)
+      const tw = kind === "tower";
+      box.classList.toggle("open", tw ? this.towerOpen || (!!this.forking && this.forking === this.inspected) : this.moreOpen);
+      box.classList.toggle("docked", tw);
+      box.style.left = box.style.top = ""; if (!tw) box.style.maxHeight = "";
       $("insptitle").innerHTML = head;
       $("inspbody").innerHTML = (chips.length ? `<div class="chips">${chips.map(([l, v]) => `<span class="chip"><small>${l}</small><b>${v}</b></span>`).join("")}</div>` : "") +
         (tips.length ? `<div class="tips">${tips.map((t) => `<div>${t}</div>`).join("")}</div>` : "") +
@@ -28072,7 +28152,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // a creature's or a gift's card shut: the seed's comes back if one is in hand
     closeCard() {
       this.foe = null; this.gift = "";
-      $("inspector").classList.remove("show", "foe", "gift", "anchored");
+      $("inspector").classList.remove("show", "foe", "gift", "docked");
       this.showAlmanac(); this.seedInfo();
     }
     // a creature's element chips under the wave trait (D.affinity): what it is weak to and what it resists
@@ -28096,12 +28176,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (this.forking && (this.forking !== t || !this.forkable(t))) this.forking = null;
       if (this.moving && (this.moving !== t || this.game.moveBlocked(t))) this.moving = null;
       if (!t) {
-        box.classList.remove("show", "anchored"); this.inspected = null; this.foe = null; this.gift = "";
+        box.classList.remove("show", "docked"); this.inspected = null; this.foe = null; this.gift = "";
         this.arm(null); this.almOver = false; this.showAlmanac(); this.seedInfo(); return;
       }
       // (a phone's tray has room for one: the plant's card shuts the Rites)
       if (this.riting && NARROW.matches) this.rites(false);
-      if (t !== this.inspected || !this.showing("tower")) { this.openedAt = performance.now(); this.arm(null); this.cardSide = null; }
+      if (t !== this.inspected || !this.showing("tower")) { this.openedAt = performance.now(); this.arm(null); this.towerOpen = false; }
       this.seedKey = ""; this.foe = null; this.gift = "";
       const def = D.TOWERS[t.kind];
       // what it does at its level, and what growing it would change
@@ -28138,7 +28218,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         const tile = (b) => `<button class="fork" data-branch="${b}" style="--acc:${G.css(G.branchTint(t.kind, b) || def.color)}"${can ? "" : " disabled"}><b>${esc(fork[b].name)}</b><span>${esc(fork[b].text)}</span><small>${esc(fork[b].chip.join(" "))}</small></button>`;
         this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, `${ROMAN[t.level]} ▸ ${ROMAN[t.level + 1]}`, "step"), [],
           [`<div class="forks">${tile("a")}${tile("b")}</div>`, `<span class="dim">${can ? `Choose a branch: ${cost} dew, for good` : "Not enough dew"}</span>`], "");
-        label($("grow"), "Back"); $("grow").disabled = false;
+        label($("grow"), "Back", "Back"); $("grow").disabled = false;
         $("deepen").style.display = $("move").style.display = "none"; $("grafts").innerHTML = "";
         this.uprootLabel(t);
         box.classList.add("show"); this.showAlmanac();
@@ -28149,14 +28229,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         [["Damage", t.damage().toFixed(0)], ["Reach", t.range().toFixed(1)], ["Rate", `${t.rate().toFixed(2)}/s`], ["Aims", AIMS[t.kind] || "nearest"]],
         tips, `${now}${next}${links ? "<br>" + links : ""}${zone ? "<br>" + zone : ""}<br>Aims at ${esc(TARGETS[t.kind] || "the creature nearest the Heart Tree")}<br><span class="dim">${esc(this.matchupsOf(t.kind))}</span>`);
       const grow = $("grow");
-      if (t.level >= D.MAX_LEVEL) { label(grow, "Fully grown"); grow.disabled = true; }
-      else { label(grow, `Grow${this.forkable(t) ? " ▸ choose" : ""}  (${t.upgradeCost()} dew)`); grow.disabled = !S.canAfford(t.upgradeCost()); }
+      if (t.level >= D.MAX_LEVEL) { label(grow, "Fully grown", "Grown"); grow.disabled = true; }
+      else { label(grow, `Grow${this.forkable(t) ? " ▸ choose" : ""}  (${t.upgradeCost()} dew)`, `Grow · ${t.upgradeCost()}`); grow.disabled = !S.canAfford(t.upgradeCost()); }
       // (Deepen: the link it would double, shown while it has one not yet deepened, Game.deepenable; "for this
       // plant" or "for its partner" when the other already has that link ×2 through another pair; short of dew,
       // the greyed button says its price, as Grow and the Graft rows do)
       const deep = $("deepen"), dl = this.game.deepenable(t), why = this.game.deepenBlocked(t);
       deep.style.display = dl ? "" : "none";
-      if (dl) { const one = t.deep.has(dl.link) ? " for its partner" : dl.other.deep.has(dl.link) ? " for this plant" : ""; label(deep, `Deepen ${dl.link.name} ×2${one}  (${why && why !== "Not enough dew" ? why : G.DEEPEN_COST + " dew"})`); deep.disabled = !!why; }
+      if (dl) { const one = t.deep.has(dl.link) ? " for its partner" : dl.other.deep.has(dl.link) ? " for this plant" : ""; label(deep, `Deepen ${dl.link.name} ×2${one}  (${why && why !== "Not enough dew" ? why : G.DEEPEN_COST + " dew"})`, `Deepen · ${G.DEEPEN_COST}`); deep.disabled = !!why; }
       // (Graft: a row per partner it could be grafted with; the one asked about says what the two become)
       const gp = this.game.graftPartners(t);
       if (!gp.some((p) => p.other === this.graftArmed)) this.graftArmed = null;
@@ -28167,31 +28247,48 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }).join("");
       // (Move: its price, or why not, as Deepen; armed, it asks for the plot and cancels on a tap)
       const mv = $("move"), mwhy = this.game.moveBlocked(t), mc = this.game.moveCost(t);
-      label(mv, this.moving === t ? `Tap a free plot  (${mc} dew) · cancel` : `Move  (${mwhy && mwhy !== "Not enough dew" ? mwhy : mc + " dew"})`);
+      label(mv, this.moving === t ? `Tap a free plot  (${mc} dew) · cancel` : `Move  (${mwhy && mwhy !== "Not enough dew" ? mwhy : mc + " dew"})`, this.moving === t ? "Cancel" : `Move · ${mc}`);
       mv.disabled = !!mwhy && this.moving !== t; mv.classList.toggle("armed", this.moving === t);
       this.uprootLabel(t);
       box.classList.add("show");
       this.showAlmanac();
     }
-    // the Rites button's cheapest price, which rises with the wave (one called early starts while the card
-    // stays up) and with each rite cast (in place, only when it changed)
+    // whether the Rites chip is up: a rite held or a pick waiting, the run still going
+    riteShown() { const g = this.game; return S.phase !== G.Phase.GAME_OVER && (g.riteHeld.length > 0 || g.riteOffers.length > 0); }
+    // the Rites chip's count, held of D.RITE_HOLD, and its glow while a pick waits (in place, only when it changed)
     riteLabel() {
-      const txt = `${Math.min(...D.RITES.map((r) => this.game.riteCost(r.id)))}+`, sm = $("rites").querySelector("small");
+      const g = this.game, txt = `${g.riteHeld.length}/${D.RITE_HOLD}`, sm = $("rites").querySelector("small");
       if (sm.textContent !== txt) sm.textContent = txt;
+      $("rites").classList.toggle("pick", g.riteOffers.length > 0);
     }
-    // the Rites panel opened or shut (only while a wave runs); on a phone it takes the tray row's place, and a
+    // the Rites panel opened or shut (only while the chip is up); on a phone it takes the tray row's place, and a
     // card there shuts
     rites(on) {
-      on = !!on && S.phase === G.Phase.WAVE;
+      on = !!on && this.riteShown();
       this.riting = on;
       $("ritepanel").classList.toggle("show", on);
       document.body.classList.toggle("rites-open", on);
-      if (on) { if (NARROW.matches && (this.inspected || this.foe || this.gift)) this.act.closeCard(); this.riteTiles(); }
+      if (on) { if (NARROW.matches && (this.inspected || this.foe || this.gift)) this.act.closeCard(); this.riteBody(); }
     }
-    // the rite tiles' prices and greying, as the dew stands (in place, so a tap mid-press still lands)
+    // the panel's tiles, built again when the rites change ("rites"): the pick waiting, then those held
+    riteBody() {
+      const g = this.game, tile = (id, attr) => {
+        const r = D.RITES.find((x) => x.id === id);
+        return `<button class="fork" ${attr}="${id}" style="--acc:${G.css(r.color)}"><b>${esc(r.name)}</b><span>${esc(r.desc)}</span><small></small></button>`;
+      };
+      const offer = g.riteOffers[0];
+      $("ritebody").innerHTML =
+        (offer ? `<p class="rsub">Pick one to keep${g.riteOffers.length > 1 ? ` (${g.riteOffers.length} picks)` : ""} <button class="btn small" data-pass="1">Pass</button></p><div class="forks rites">${offer.map((id) => tile(id, "data-take")).join("")}</div>` : "") +
+        `<p class="rsub">Held ${g.riteHeld.length}/${D.RITE_HOLD}</p>` +
+        (g.riteHeld.length ? `<div class="forks rites">${g.riteHeld.map((id) => tile(id, "data-rite")).join("")}</div>` : `<p class="dim">None yet: one comes every 3rd wave and with each boss.</p>`);
+      this.riteTiles();
+    }
+    // the tiles' state as the garden stands (in place, so a tap mid-press still lands): a held one says why it
+    // can't be used now, else "Tap to use"; a pick's tile says "Take", or why not
     riteTiles() {
-      for (const b of $("ritebody").querySelectorAll("[data-rite]")) {
-        const id = b.dataset.rite, why = this.game.riteBlocked(id), txt = why || `${this.game.riteCost(id)} dew`;
+      for (const b of $("ritebody").querySelectorAll("[data-rite],[data-take]")) {
+        const why = b.dataset.rite ? this.game.riteBlocked(b.dataset.rite) : this.game.riteTakeBlocked(b.dataset.take);
+        const txt = why || (b.dataset.rite ? "Tap to use" : "Take");
         b.disabled = !!why;
         if (b.lastChild.textContent !== txt) b.lastChild.textContent = txt;
       }
@@ -28212,7 +28309,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
           : `${D.TOWERS[kind].name} · ${fmtDew(c)} dew · ${TOUCH.matches ? "tap a spot, tap again to plant" : "click a spot to plant"}`);
       }
       if (!on) {
-        if (box.classList.contains("seedinfo")) { box.classList.remove("show", "seedinfo", "anchored"); this.seedKey = ""; this.showAlmanac(); }
+        if (box.classList.contains("seedinfo")) { box.classList.remove("show", "seedinfo", "docked"); this.seedKey = ""; this.showAlmanac(); }
         return;
       }
       const def = D.TOWERS[kind], cost = S.towerCost(def.cost, kind), p = G.Tower.preview(kind), can = S.canAfford(cost);
@@ -28271,7 +28368,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.showAlmanac();
     }
 
-    // Each frame (main.js, after the ghost's tag): a plant's card follows its plant (placeCard); a creature's
+    // Each frame (main.js, after the ghost's tag): a plant's card keeps its height to the room (placeCard); a creature's
     // card follows its HP and shuts when it is gone; the creatures' trait tags sit beside their HP bars. (The
     // other cards dock, HUD A: a phone opens them in the tray, a desktop in the right margin: game.css.)
     frame(cam, canvas) {
@@ -28285,44 +28382,19 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const dpr = canvas.width / Math.max(1, canvas.clientWidth), scr = (p) => { const q = cam.toScreen(p, canvas.width, canvas.height); return [q[0] / dpr, q[1] / dpr]; };
       this.foeTags(E, scr);
     }
-    // A plant's card beside its plant (the user 2026-11-09: near the plant, not off to a side or corner): on its
-    // right if it fits, else its left, above or below, clear of the plant's box and inside the room between the
-    // top strip and the tray's chip row, so its buttons (first under its head) stay on screen. Screen px in, the
-    // zoomed px out (G.uiScale, as hints.js place); a side that still fits is kept, so it does not hop.
+    // A plant's card docked above the tray (game.css #inspector.docked): folded, one row as tall as it needs; open,
+    // it grows upward no higher than the top strip (its text scrolls, its buttons stay in view). Screen px in, the
+    // zoomed px out (G.uiScale, as hints.js place).
     placeCard() {
-      const box = $("inspector"), t = this.inspected, v = this.view;
-      if (!t || !v || !box.classList.contains("anchored") || !box.classList.contains("show")) return;
-      const { cam, canvas } = v, dpr = canvas.width / Math.max(1, canvas.clientWidth);
-      const scr = (x, y, z) => { const q = cam.toScreen([x, y, z], canvas.width, canvas.height); return [q[0] / dpr, q[1] / dpr]; };
-      // the plant's box: its foot, its top, and half a cell around them
-      const foot = scr(t.X, t.Y, t.VZ), top = scr(t.X, t.Y, t.VZ + t.body.towerH(t.kind, t.level));
-      const ex = scr(t.X + 0.5, t.Y, t.VZ), ey = scr(t.X, t.Y + 0.5, t.VZ);
-      const r = Math.max(14, Math.hypot(ex[0] - foot[0], ex[1] - foot[1]), Math.hypot(ey[0] - foot[0], ey[1] - foot[1]));
-      const px0 = Math.min(foot[0], top[0]) - r, px1 = Math.max(foot[0], top[0]) + r, py0 = Math.min(foot[1], top[1]) - r * 0.6, py1 = Math.max(foot[1], top[1]) + r * 0.6;
-      // the room: under the top strip, over the tray's chip row and dew tube (the card is out of the tray's flow)
-      const pad = 8, gap = 10, ui = G.uiScale || 1, x0 = pad, x1 = innerWidth - pad;
-      let y0 = pad, y1 = innerHeight - pad;
-      for (const id of ["top", "topright"]) { const e = $(id); if (e && e.offsetWidth) y0 = Math.max(y0, e.getBoundingClientRect().bottom + 6); }
-      for (const id of ["dewgauge", "trayrow"]) { const e = $(id); if (e && e.offsetWidth) y1 = Math.min(y1, e.getBoundingClientRect().top - pad); }
-      // (no taller than the room: its text scrolls, game.css)
-      const room = Math.max(120, y1 - y0), mh = Math.floor(room / ui) + "px";
+      const box = $("inspector");
+      if (!box.classList.contains("docked") || !box.classList.contains("show")) return;
+      let mh = "";
+      if (box.classList.contains("open")) {
+        let y0 = 8;
+        for (const id of ["top", "topright"]) { const e = $(id); if (e && e.offsetWidth) y0 = Math.max(y0, e.getBoundingClientRect().bottom + 6); }
+        mh = Math.floor(Math.max(120, box.getBoundingClientRect().bottom - y0) / (G.uiScale || 1)) + "px";
+      }
       if (box.style.maxHeight !== mh) box.style.maxHeight = mh;
-      const w = box.offsetWidth * ui, h = Math.min(box.offsetHeight * ui, room), cx = (px0 + px1) / 2, cy = (py0 + py1) / 2;
-      const clampX = (x) => Math.min(Math.max(x0, x), x1 - w), clampY = (y) => Math.min(Math.max(y0, y), y1 - h);
-      // [x, y, the room left over on that side (< 0: it does not fit)]
-      const sides = {
-        right: [px1 + gap, cy - h / 2, x1 - px1 - gap - w],
-        left: [px0 - gap - w, cy - h / 2, px0 - gap - w - x0],
-        above: [cx - w / 2, py0 - gap - h, py0 - gap - h - y0],
-        below: [cx - w / 2, py1 + gap, y1 - py1 - gap - h],
-      };
-      let side = sides[this.cardSide] && sides[this.cardSide][2] >= 0 ? this.cardSide : ["right", "left", "above", "below"].find((k) => sides[k][2] >= 0);
-      if (!side) side = Object.keys(sides).reduce((a, k) => (sides[k][2] > sides[a][2] ? k : a)); // (none fits: the roomiest)
-      this.cardSide = side;
-      const l = Math.round(clampX(sides[side][0]) / ui) + "px", tp = Math.round(clampY(sides[side][1]) / ui) + "px";
-      if (box.style.left !== l) box.style.left = l;
-      if (box.style.top !== tp) box.style.top = tp;
-      if (box.dataset.side !== side) box.dataset.side = side;
     }
     // The garden's room (CSS px): the screen less the top strip, the tray, and on a desktop the margins the
     // plant card and the Rites dock in. main.js fits the dome into it, so the HUD never covers the garden.
@@ -28498,12 +28570,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (hint && performance.now() - this.hintAt > HINT_MS) hint = false;
       $("hint").style.display = hint ? "" : "none";
       if (S.phase === G.Phase.GAME_OVER && $("inspector").classList.contains("show")) this.inspect(null);
-      // (the Rites chip while a wave runs, its price on it; the open panel's tiles follow the dew, and it shuts
-      // as the wave ends)
-      const wave = S.phase === G.Phase.WAVE;
-      $("rites").style.display = wave ? "" : "none";
-      if (wave) this.riteLabel();
-      if (this.riting) { if (!wave) this.rites(false); else this.riteTiles(); }
+      // (the Rites chip while one is held or a pick waits, the count on it; the open panel's tiles follow the
+      // garden, and it shuts when the chip goes)
+      const riteUp = this.riteShown();
+      $("rites").style.display = riteUp ? "" : "none";
+      if (riteUp) this.riteLabel();
+      if (this.riting) { if (!riteUp) this.rites(false); else this.riteTiles(); }
       this.seedInfo();
       this.boonBar();
       this.chalPill();
@@ -30050,6 +30122,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // else says so; shown with Game tips off too, and past the run's few)
     { id: "entrance", by: "wavebtn", run: true, due: (t, g) => g.world.roads.length > 1 && S.phase === P().BUILD && S.wave === 2,
       text: "<b>The east gate opens next wave.</b> Cover both roads, or where they meet." },
+    { id: "rites", by: "rites", due: (t, g) => S.phase !== P().CHOOSE_BOON && g.riteOffers.length > 0,
+      text: "<b>Rite earned</b>: tap ✦ to keep one. Use it when a wave needs it: it works once." },
     { id: "fusion", by: "boons", due: (t, g) => S.phase === P().CHOOSE_BOON && !!(g.offer || []).some((b) => b.needs),
       text: "<b>Fused gift</b>: grow the gifts it needs to unlock it." },
   ];
@@ -32968,7 +33042,7 @@ function MG_SFX(L) {
    deselect(), hideBoons(), setSpeed(x), finish(report), sinks, deepen, branch }. With hooks.sinks it also spends dew on the gifts
    screen (Game.reroll, Game.buyPick: Bot.sinks); with hooks.deepen it deepens links before it sows (Game.deepen:
    Bot.deepen; "boss" only in the build after a boss wave's clear); with hooks.branch(kind) true it grows that kind into its Lv III branch B (D.FORKS); with hooks.graft it grafts pairs (Bot.graft); with hooks.rite (ids of D.RITES) it
-   casts one rite a wave once a creature is RITE_AT (or hooks.riteAt) of the way in, with hooks.riteHp only while the
+   gathers the rites earned (those first) and uses one a wave once a creature is RITE_AT (or hooks.riteAt) of the way in, with hooks.riteHp only while the
    heart is under that share (Bot.rite); with hooks.skip [n, from] it skips up
    to n waves from wave `from` on (Bot.skip). */
 (function () {
@@ -33010,7 +33084,7 @@ function MG_SFX(L) {
         this.hooks.log(`  boon: ${b.name}`);
         this.game.chooseBoon(b);
       }
-      if (S.phase === G.Phase.WAVE && this.hooks.rite) this.rite();
+      if (this.hooks.rite) this.rite();
       if (S.phase === G.Phase.WAVE && this.early >= 0 && S.wave < this.maxWaves && this.game.canCallEarly() && this.game.earlyShare() <= this.early) {
         this.hooks.log(`  called wave ${S.wave + 1} early for ${this.game.earlyBonus()} dew`);
         this.game.startWave();
@@ -33064,20 +33138,22 @@ function MG_SFX(L) {
       }
     }
 
-    // a rite (Game.rite), once a wave, when a creature is RITE_AT of the way to the Heart Tree (hooks.riteAt, and
-    // with hooks.riteHp the heart under that share): the cheapest of
-    // hooks.rite's it can pay for (the list's order breaks a tie)
+    // rites (Game.riteTake, Game.rite): a pick waiting is taken at once, the first of hooks.rite's on offer (none of
+    // them: passed by); then, once a wave, when a creature is RITE_AT of the way to the Heart Tree (hooks.riteAt,
+    // and with hooks.riteHp the heart under that share), the first held one that would do something is used
     rite() {
       const g = this.game;
-      if (this.riteWave === S.wave || g.enemies.maxProgress() < (this.hooks.riteAt || RITE_AT)) return;
+      while (g.riteOffers.length && g.riteHeld.length < D.RITE_HOLD) {
+        const id = this.hooks.rite.find((x) => g.riteOffers[0].includes(x)) || null;
+        g.riteTake(id);
+        if (id) this.hooks.log(`  rite gathered: ${id}`);
+      }
+      if (S.phase !== G.Phase.WAVE || this.riteWave === S.wave || g.enemies.maxProgress() < (this.hooks.riteAt || RITE_AT)) return;
       if (this.hooks.riteHp && S.heartRatio() >= this.hooks.riteHp) return;
-      let best = null;
-      for (const id of this.hooks.rite) if (!g.riteBlocked(id) && (!best || g.riteCost(id) < g.riteCost(best))) best = id;
-      if (!best) return;
-      const cost = g.riteCost(best);
-      if (!g.rite(best)) return;
+      const best = g.riteHeld.find((id) => !g.riteBlocked(id));
+      if (!best || !g.rite(best)) return;
       this.riteWave = S.wave;
-      this.hooks.log(`  rite ${best} for ${cost} dew`);
+      this.hooks.log(`  rite ${best}`);
     }
 
     spend() {
