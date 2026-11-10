@@ -5345,23 +5345,35 @@ window.addEventListener("error", (e) => {
   // then the pool grows by an eighth); compact() folds uniform mixed bricks back (carve and resetTerrain
   // call it over their box, never on idle). Hot loops read whole rows (row, plane) or bricks (bricks). The
   // bake fills it a brick row at a time (band) and never holds the dense grid.
+  // #548 note C, a window (a region's bake, P1): new BrickGrid(NX, NY, NZ, [I0, I1, J0, J1]) holds only bricks
+  // I0..I1-1 x J0..J1-1 (every K) of the map's NX x NY x NZ, so a region's grid is the region's size, not the
+  // map's (14 MB of table a region at vs128). Its cells keep the map's coordinates; BX x BY is the window's,
+  // GX x GY the map's (GX: the stride of band's pre); ix(I, J, K) is a brick's entry in table. Cells outside
+  // the window are never written nor read (the bake's region writes and reads inside the window; down reads
+  // a column outside it as air). No window: the whole map, as before (ix's offset o is 0)
   class BrickGrid {
-    constructor(NX, NY, NZ) {
+    constructor(NX, NY, NZ, win = null) {
       this.NX = NX; this.NY = NY; this.NZ = NZ; this.PL = NX * NY;
-      this.BX = (NX + 15) >> 4; this.BY = (NY + 15) >> 4; this.BZ = (NZ + 15) >> 4; this.BXY = this.BX * this.BY;
+      this.GX = (NX + 15) >> 4; this.GY = (NY + 15) >> 4; this.BZ = (NZ + 15) >> 4;
+      const [I0, I1, J0, J1] = win || [0, this.GX, 0, this.GY];
+      this.win = win ? [I0, I1, J0, J1] : null; this.I0 = I0; this.I1 = I1; this.J0 = J0; this.J1 = J1;
+      this.BX = I1 - I0; this.BY = J1 - J0; this.BXY = this.BX * this.BY; this.o = J0 * this.BX + I0;
       this.table = new Uint32Array(this.BXY * this.BZ);
       this.pool = new Uint8Array(0); this.used = 0; this.free = [];
     }
+    ix(I, J, K) { return (K * this.BY + J) * this.BX + I - this.o; }
     // brick row J from band (the bake): 16 rows of j, NX x 16 x NZ cells, x fastest, then j - 16 J, then k.
     // The bricks sorted, then the mixed ones copied to slots (the pool grown once for the row). When NX is a
     // multiple of 4 (every density in use) a brick's rows are 4-byte aligned in band and in pool, so the
-    // uniform test and the copy go a word (4 cells) at a time. pre (optional, a brick row's K * BX + I): a
-    // material the caller knows fills the brick (0: air), which is taken without looking at buf; -1 scans
+    // uniform test and the copy go a word (4 cells) at a time. pre (optional, a brick row's K * GX + I): a
+    // material the caller knows fills the brick (0: air), which is taken without looking at buf; -1 scans.
+    // A window takes its bricks of the row (I0..I1-1) only
     band(J, buf, pre) {
-      const { NX, NY, NZ, table: T } = this, BPL = NX * 16, j1 = Math.min(16, NY - J * 16), mix = [];
+      const { NX, NY, NZ, GX, table: T } = this, BPL = NX * 16, j1 = Math.min(16, NY - J * 16), mix = [];
       const w = (NX & 3) === 0 && (buf.byteOffset & 3) === 0, B4 = w ? new Uint32Array(buf.buffer, buf.byteOffset, buf.length >> 2) : null;
-      for (let K = 0; K < this.BZ; K++) for (let I = 0; I < this.BX; I++) {
-        if (pre && pre[K * this.BX + I] >= 0) { T[(K * this.BY + J) * this.BX + I] = pre[K * this.BX + I]; continue; }
+      for (let K = 0; K < this.BZ; K++) for (let I = this.I0; I < this.I1; I++) {
+        const b = this.ix(I, J, K);
+        if (pre && pre[K * GX + I] >= 0) { T[b] = pre[K * GX + I]; continue; }
         const k1 = Math.min(NZ, K * 16 + 16), i0 = I * 16, i1 = Math.min(NX, i0 + 16), v = buf[K * 16 * BPL + i0];
         let uni = true;
         if (w) {
@@ -5376,16 +5388,16 @@ window.addEventListener("error", (e) => {
           let i = i0; while (i < i1 && buf[r + i] === v) i++;
           if (i < i1) { uni = false; break; }
         }
-        const b = (K * this.BY + J) * this.BX + I;
-        if (uni) T[b] = v; else mix.push(b);
+        if (uni) T[b] = v; else mix.push(b, I, K);
       }
-      if ((this.used + mix.length) * 4096 > this.pool.length) {
-        const p = new Uint8Array((this.used + Math.max(mix.length, 64, this.used >> 3)) * 4096);
+      const nm = mix.length / 3;
+      if ((this.used + nm) * 4096 > this.pool.length) {
+        const p = new Uint8Array((this.used + Math.max(nm, 64, this.used >> 3)) * 4096);
         p.set(this.pool.subarray(0, this.used * 4096)); this.pool = p;
       }
       const P = this.pool, P4 = w && (P.byteOffset & 3) === 0 ? new Uint32Array(P.buffer, P.byteOffset, P.length >> 2) : null;
-      for (const b of mix) {
-        const I = b % this.BX, K = Math.floor(b / this.BXY), s = this.used++, n = Math.min(16, NX - I * 16), k1 = Math.min(NZ, K * 16 + 16);
+      for (let q = 0; q < mix.length; q += 3) {
+        const b = mix[q], I = mix[q + 1], K = mix[q + 2], s = this.used++, n = Math.min(16, NX - I * 16), k1 = Math.min(NZ, K * 16 + 16);
         T[b] = 256 + s;
         for (let k = K * 16; k < k1; k++) for (let j = 0; j < j1; j++) {
           const r = k * BPL + j * NX + I * 16, d = s * 4096 + ((k & 15) << 8) + (j << 4);
@@ -5395,23 +5407,28 @@ window.addEventListener("error", (e) => {
       }
     }
     // the cache's form (cache.js packs it): the table, the pool's used slots and the free list
-    record() { return { brickGrid: 1, NX: this.NX, NY: this.NY, NZ: this.NZ, table: this.table, pool: this.pool.subarray(0, this.used * 4096), free: Int32Array.from(this.free) }; }
+    // (a window's adds win: a region's record, a worker's message)
+    record() {
+      const r = { brickGrid: 1, NX: this.NX, NY: this.NY, NZ: this.NZ, table: this.table, pool: this.pool.subarray(0, this.used * 4096), free: Int32Array.from(this.free) };
+      if (this.win) r.win = this.win.slice();
+      return r;
+    }
     // r.used: the slots in use when r.pool is longer (the cache unpacks it into room(used), so the first dig
     // after a load doesn't copy the whole pool to grow it)
     static from(r) {
-      const g = new BrickGrid(r.NX, r.NY, r.NZ);
+      const g = new BrickGrid(r.NX, r.NY, r.NZ, r.win || null);
       g.table = r.table; g.pool = r.pool; g.used = r.used ?? r.pool.length / 4096; g.free = Array.from(r.free);
       return g;
     }
     // a pool for `used` slots with the headroom alloc() grows by
     static room(used) { return new Uint8Array((used + Math.max(64, used >> 3)) * 4096); }
     get(i, j, k) {
-      const e = this.table[((k >> 4) * this.BY + (j >> 4)) * this.BX + (i >> 4)];
+      const e = this.table[((k >> 4) * this.BY + (j >> 4)) * this.BX + (i >> 4) - this.o];
       return e < 256 ? e : this.pool[(e - 256) * 4096 + ((k & 15) << 8) + ((j & 15) << 4) + (i & 15)];
     }
     at(idx) { const i = idx % this.NX, r = (idx - i) / this.NX, j = r % this.NY; return this.get(i, j, (r - j) / this.NY); }
     put(i, j, k, m) {
-      const b = ((k >> 4) * this.BY + (j >> 4)) * this.BX + (i >> 4), e = this.table[b];
+      const b = ((k >> 4) * this.BY + (j >> 4)) * this.BX + (i >> 4) - this.o, e = this.table[b];
       if (e === m) return;
       let s = e - 256;
       if (e < 256) { s = this.alloc(); this.pool.fill(e, s * 4096, s * 4096 + 4096); this.table[b] = 256 + s; }
@@ -5431,7 +5448,7 @@ window.addEventListener("error", (e) => {
     compact(lo, hi) {
       const P = this.pool;
       for (let K = lo[2] >> 4; K <= hi[2] >> 4; K++) for (let J = lo[1] >> 4; J <= hi[1] >> 4; J++) for (let I = lo[0] >> 4; I <= hi[0] >> 4; I++) {
-        const b = (K * this.BY + J) * this.BX + I, e = this.table[b];
+        const b = this.ix(I, J, K), e = this.table[b];
         if (e < 256) continue;
         const s = (e - 256) * 4096, n0 = Math.min(16, this.NX - I * 16), n1 = Math.min(16, this.NY - J * 16), n2 = Math.min(16, this.NZ - K * 16), v = P[s];
         let uni = true;
@@ -5443,22 +5460,23 @@ window.addEventListener("error", (e) => {
         if (uni) { this.table[b] = v; this.free.push(e - 256); }
       }
     }
-    // bricks I0..I1-1 x J0..J1-1 (every K) of rg, a grid of the same size (a region's bake, P1), into this
-    // one, whose bricks there are still air: a uniform brick's material, a mixed one's slot copied to a new
-    // slot (the pool grown once for them)
+    // bricks I0..I1-1 x J0..J1-1 (every K) of rg, a grid of the same map (a region's bake, P1: its window holds
+    // them), into this one, whose bricks there are still air: a uniform brick's material, a mixed one's slot
+    // copied to a new slot (the pool grown once for them)
     adopt(rg, I0, I1, J0, J1) {
       const T = this.table, S = rg.table, mix = [];
       for (let K = 0; K < this.BZ; K++) for (let J = J0; J < J1; J++) for (let I = I0; I < I1; I++) {
-        const b = (K * this.BY + J) * this.BX + I;
-        if (S[b] < 256) T[b] = S[b]; else mix.push(b);
+        const b = this.ix(I, J, K), e = S[rg.ix(I, J, K)];
+        if (e < 256) T[b] = e; else mix.push(b, e);
       }
-      if ((this.used + mix.length) * 4096 > this.pool.length) {
-        const p = new Uint8Array((this.used + Math.max(mix.length, 64, this.used >> 3)) * 4096);
+      const nm = mix.length >> 1;
+      if ((this.used + nm) * 4096 > this.pool.length) {
+        const p = new Uint8Array((this.used + Math.max(nm, 64, this.used >> 3)) * 4096);
         p.set(this.pool.subarray(0, this.used * 4096)); this.pool = p;
       }
-      for (const b of mix) {
-        const s = this.used++, e = (S[b] - 256) * 4096;
-        this.pool.set(rg.pool.subarray(e, e + 4096), s * 4096); T[b] = 256 + s;
+      for (let q = 0; q < mix.length; q += 2) {
+        const s = this.used++, e = (mix[q + 1] - 256) * 4096;
+        this.pool.set(rg.pool.subarray(e, e + 4096), s * 4096); T[mix[q]] = 256 + s;
       }
     }
     // a grid of bricks I0..I1-1 x J0..J1-1 x K0..K1-1 of this one (W1, a region at a second density): uniform
@@ -5467,16 +5485,18 @@ window.addEventListener("error", (e) => {
       const c = new BrickGrid(Math.min(this.NX, I1 << 4) - (I0 << 4), Math.min(this.NY, J1 << 4) - (J0 << 4), Math.min(this.NZ, K1 << 4) - (K0 << 4));
       const S = this.table, T = c.table, mix = [];
       for (let K = K0; K < K1; K++) for (let J = J0; J < J1; J++) for (let I = I0; I < I1; I++) {
-        const e = S[(K * this.BY + J) * this.BX + I], b = ((K - K0) * c.BY + J - J0) * c.BX + I - I0;
+        const e = S[this.ix(I, J, K)], b = c.ix(I - I0, J - J0, K - K0);
         if (e < 256) T[b] = e; else { T[b] = 256 + mix.length; mix.push(e - 256); }
       }
       c.pool = new Uint8Array(mix.length * 4096); c.used = mix.length;
       mix.forEach((s, n) => c.pool.set(this.pool.subarray(s * 4096, s * 4096 + 4096), n * 4096));
       return c;
     }
-    // the first solid cell's k in column (i, j) from kFrom down (air bricks skipped), -1 if none
+    // the first solid cell's k in column (i, j) from kFrom down (air bricks skipped), -1 if none (a column
+    // outside the window: -1)
     down(i, j, kFrom) {
-      const c = (j >> 4) * this.BX + (i >> 4), o = ((j & 15) << 4) + (i & 15);
+      if (this.win && ((i >> 4) < this.I0 || (i >> 4) >= this.I1 || (j >> 4) < this.J0 || (j >> 4) >= this.J1)) return -1;
+      const c = (j >> 4) * this.BX + (i >> 4) - this.o, o = ((j & 15) << 4) + (i & 15);
       let k = Math.min(this.NZ - 1, kFrom);
       while (k >= 0) {
         const e = this.table[(k >> 4) * this.BXY + c];
@@ -5490,7 +5510,7 @@ window.addEventListener("error", (e) => {
     // cells i0..i1-1 of row (j, k) into dst from off. A run of bricks with one uniform material is one write
     // (a fill when long, a loop when short: fill's call costs more than 16 stores)
     row(j, k, i0, i1, dst, off = 0) {
-      const b0 = ((k >> 4) * this.BY + (j >> 4)) * this.BX, ro = ((k & 15) << 8) + ((j & 15) << 4), T = this.table, P = this.pool;
+      const b0 = ((k >> 4) * this.BY + (j >> 4)) * this.BX - this.o, ro = ((k & 15) << 8) + ((j & 15) << 4), T = this.table, P = this.pool;
       for (let i = i0; i < i1; ) {
         const e = T[b0 + (i >> 4)];
         let e1 = (i | 15) + 1;
@@ -5505,9 +5525,15 @@ window.addEventListener("error", (e) => {
       return dst;
     }
     // plane k (NX * NY cells, as the dense grid's) into dst: a brick row (16 rows of j) that is one uniform
-    // material is one fill
+    // material is one fill (a window: air round it)
     plane(k, dst) {
       const { NX, NY, BX, table: T } = this;
+      if (this.win) {
+        dst.fill(0, 0, NX * NY);
+        const i0 = this.I0 << 4, i1 = Math.min(NX, this.I1 << 4);
+        for (let j = this.J0 << 4, j1 = Math.min(NY, this.J1 << 4); j < j1; j++) this.row(j, k, i0, i1, dst, j * NX + i0);
+        return dst;
+      }
       for (let J = 0; J < this.BY; J++) {
         const b0 = ((k >> 4) * this.BY + J) * BX, e = T[b0], j0 = J * 16, j1 = Math.min(NY, j0 + 16);
         let I = 1;
@@ -5517,11 +5543,11 @@ window.addEventListener("error", (e) => {
       }
       return dst;
     }
-    // every brick (or bricks I0..I1-1 x J0..J1-1, every K): fn(I, J, K, v, s) with v its material when uniform
-    // (s -1), else v -1 and s its slot's offset in pool
-    bricks(fn, I0 = 0, I1 = this.BX, J0 = 0, J1 = this.BY) {
+    // every brick (the window's) or bricks I0..I1-1 x J0..J1-1, every K: fn(I, J, K, v, s) with v its material
+    // when uniform (s -1), else v -1 and s its slot's offset in pool
+    bricks(fn, I0 = this.I0, I1 = this.I1, J0 = this.J0, J1 = this.J1) {
       const T = this.table;
-      for (let K = 0; K < this.BZ; K++) for (let J = J0; J < J1; J++) for (let I = I0, b = (K * this.BY + J) * this.BX + I0; I < I1; I++, b++) {
+      for (let K = 0; K < this.BZ; K++) for (let J = J0; J < J1; J++) for (let I = I0, b = this.ix(I0, J, K); I < I1; I++, b++) {
         const e = T[b];
         if (e < 256) fn(I, J, K, e, -1); else fn(I, J, K, -1, (e - 256) * 4096);
       }
@@ -5547,7 +5573,8 @@ window.addEventListener("error", (e) => {
   // here; ME.bakeWorkers false: none). A worker runs this file, sdf.js and palette.js from their own sources (each
   // one's .module) over a PX rebuilt from window.PX's, and is trusted once pxProbe gives the same numbers as here.
   // It bakes the map up to its regions itself (o.serve: no lamp pre-pass, the lamps' heights and the models from
-  // o.plan, the main thread's) and must reach the same digest; then each region it bakes comes back as the record
+  // o.plan, the main thread's) and must reach the same digest and the same probe bake (check, #548 note A: a few
+  // small boxes baked on both sides, which an input the worker never got changes); then each region it bakes comes back as the record
   // region(r) makes here, its buffers transferred, and take lays it in, in region order. The main thread bakes
   // regions too, the same way, while it waits, and a region whose worker is late or fails (an error, no answer
   // within ME.bakeJobMs, a record that would take the palette past 255) bakes here. The terrain stream's bake
@@ -5584,8 +5611,8 @@ window.addEventListener("error", (e) => {
       "(" + ME.sdf.module + ")();", "(" + ME.Palette.module + ")();", "(" + terrainModule + ")();", "(" + terrainServe + ")();",
     ].join("\n");
   };
-  // the worker's side (runs there, from its source): { probe } -> { probe }; { init } -> { ready, digest } (or
-  // { err }); { job: r } -> { r, res } with res's buffers transferred, { r, full } or { r, err }, in order
+  // the worker's side (runs there, from its source): { probe } -> { probe }; { init } -> { ready, digest, check }
+  // (check: its probe bake of init.check's boxes; or { err }); { job: r } -> { r, res } with res's buffers transferred, { r, full } or { r, err }, in order
   const terrainServe = () => {
     let region = null, chain = Promise.resolve();
     self.onmessage = (e) => {
@@ -5597,7 +5624,7 @@ window.addEventListener("error", (e) => {
         if (I.water) I.st.map.waterD = ME.waterDist(I.water);
         const pal = new ME.Palette(I.st);
         pal.names = I.plan.names; pal.ids = I.plan.ids;
-        ME.bakeTerrain(I.st, pal, { vs: I.VS, plan: I.plan, serve: (rg, digest) => { region = rg; postMessage({ ready: true, digest }); } })
+        ME.bakeTerrain(I.st, pal, { vs: I.VS, plan: I.plan, serve: (rg, digest, check) => { region = rg; return check(I.check || []).then((c) => postMessage({ ready: true, digest, check: c })); } })
           .catch((er) => postMessage({ err: String((er && er.stack) || er) }));
         return;
       }
@@ -5623,13 +5650,14 @@ window.addEventListener("error", (e) => {
     try { url = URL.createObjectURL(new Blob([terrainWorkerSrc()], { type: "text/javascript" })); } catch (e) { return null; }
     const limit = ME.bakeJobMs || 30000, ahead = n * 3, ws = [], got = new Map(), dropped = new Set(), queue = [], ch = new MessageChannel();
     let taken = 0, stopped = false;
+    const whys = []; // why each worker was lost (pool.why; T.stats.regions.workers.lost)
     // waiters: the stream's bake waiting on an answer (pool.wait); an answer, a lost worker or stop wakes them
     const waiters = [], wake = () => { for (const f of waiters.splice(0)) f(); };
     const settle = (r, m) => { if (!dropped.delete(r)) got.set(r, m); wake(); };
     const lose = (w, why) => {
       if (w.lost) return;
       w.lost = true; clearTimeout(w.dog); w.terminate(); w.onmessage = w.onerror = null;
-      if (why) ME.log("WARN TERRAIN worker: " + why + "; its regions bake on the main thread");
+      if (why) { ME.log("WARN TERRAIN worker: " + why + "; its regions bake on the main thread"); whys.push(why); }
       if (w.next) { const f = w.next; w.next = null; f(null); }
       for (const r of w.held) settle(r, null);
       w.held.clear();
@@ -5659,7 +5687,7 @@ window.addEventListener("error", (e) => {
         const t = setTimeout(() => { w.next = null; res(null); }, ms);
         w.next = (m) => { clearTimeout(t); res(m); };
       }),
-      send, lose,
+      send, lose, why: whys,
       live: () => ws.filter((w) => w.ready && !w.lost).length,
       jobs: (N) => { for (let r = 0; r < N; r++) queue.push(r); pool.feed(); },
       // round by round (one region each), so the regions spread over the workers
@@ -5704,7 +5732,7 @@ window.addEventListener("error", (e) => {
   // water and tiles only, whole (no regions), quiet (no progress bar, no map warnings), with no mips and no
   // coarse grid (T.mips, T.coarse, T.cdims, T.CPU null; T.stats.solid and .zTop null). In a terrain worker (P1c,
   // terrainServe): o.plan, the main thread's models (mdT, key), the lamps' heights (lampZ) and the litter trees;
-  // o.serve(region, digest), called where the regions would bake, in place of the rest of the bake. o.bg: the
+  // o.serve(region, digest, check), called where the regions would bake, in place of the rest of the bake. o.bg: the
   // terrain stream's bake (P3, src/stream.js), while the game plays: quiet, by regions on the terrain workers
   // (with or without ?regions), none of them on the main thread, the coarse grid a tile row at a time; it throws
   // an error with .noWorkers where it would bake a region here
@@ -5723,7 +5751,7 @@ window.addEventListener("error", (e) => {
     // its columns' runs fills is handed to g.band whole (pre), one that no column writes as air, and the runs'
     // cells in the other bricks are written in at the brick row's end (or by roughen, before it carves)
     const wLo = new Int32Array(BPL), wHi = new Int32Array(BPL), dLo = new Int32Array(BPL), dHi = new Int32Array(BPL), dM = new Uint8Array(BPL);
-    const pre = new Int32Array(g.BZ * g.BX);
+    const pre = new Int32Array(g.BZ * g.GX);
     const undefer = (bc) => { const a = dLo[bc]; if (a < 0) return; for (let k = a, b = dHi[bc], m = dM[bc]; k < b; k++) band[k * BPL + bc] = m; dLo[bc] = -1; };
     const top = new Int16Array(PLANE).fill(-1), lobe = new Uint8Array(PLANE); // lobe: the material a column hangs over lower neighbours
     const id = (n) => pal.id(n);
@@ -6119,7 +6147,7 @@ window.addEventListener("error", (e) => {
           top[col] = kEnd;
         }
         if ((j & 15) === 15 || j === cj1 - 1) {
-          const j1 = (j & 15) + 1, BX = g.BX;
+          const j1 = (j & 15) + 1, BX = g.GX; // (pre's stride: the map's bricks, a window's grid or not)
           for (let K = 0; K < g.BZ; K++) for (let I = bx0; I < bx1; I++) {
             const k0 = K * 16, k1 = Math.min(NZ, k0 + 16), i0 = I * 16, i1 = Math.min(NX, i0 + 16);
             let w = false, m = -1; // m: the runs' material while every column's run fills the brick, -2 once one doesn't
@@ -6240,6 +6268,8 @@ window.addEventListener("error", (e) => {
     else {
       const RT = 4 * VS, NRX = Math.ceil(NX / RT), NRY = Math.ceil(NY / RT), N = NRX * NRY, tl = ME.now();
       const grow = (b, d) => [Math.max(0, b[0] - d), Math.max(0, b[1] - d), Math.min(NX, b[2] + d), Math.min(NY, b[3] + d)];
+      // #548 note C: a region's grid (and a lamp's) is a window of the bricks its columns C reach, not the map's
+      const bwin = (c) => [c[0] >> 4, (c[2] + 15) >> 4, c[1] >> 4, (c[3] + 15) >> 4];
       // P1c: the workers start (and boot) during the lamp pre-pass; a worker takes the lamps' heights from the plan
       const nw = o.serve ? 0 : terrainWorkerN(VS, !!o.bg), pool = nw > 0 ? terrainPool(nw) : null;
       if (o.bg && !pool) throw noWorkers("no terrain workers");
@@ -6251,8 +6281,8 @@ window.addEventListener("error", (e) => {
         for (let n = 0; n < lamps.length; n++) {
           const lp = lamps[n], i = Math.floor((lp.X - O[0]) * VS), j = Math.floor((lp.Y - O[1]) * VS), b = [i, j, i + 1, j + 1];
           if (near && (i < near[0] || j < near[1] || i >= near[2] || j >= near[3])) continue;
-          const rg = new BrickGrid(NX, NY, NZ);
-          await fill(rg, { C: grow(b, 2), W: grow(b, 1), R: null }, n);
+          const C = grow(b, 2), rg = new BrickGrid(NX, NY, NZ, bwin(C));
+          await fill(rg, { C, W: grow(b, 1), R: null }, n);
           lp.Z = surfZ(rg, lp.X, lp.Y, lp.z0);
         }
       } catch (e) { if (pool) pool.stop(); throw e; }
@@ -6277,8 +6307,9 @@ window.addEventListener("error", (e) => {
       };
       // ring (W1): the columns round the region that come out as the map's (1 by default); at 16 or more the mips
       // (and res.M, the bricks they cover) take ring >> 4 bricks round the region too
-      const region = async (r, def, ring = 1) => {
-        const i0 = (r % NRX) * RT, j0 = Math.floor(r / NRX) * RT, R = [i0, j0, Math.min(NX, i0 + RT), Math.min(NY, j0 + RT)], tr = ME.now();
+      // Rb (the probe bake, check): the columns [i0, j0, i1, j1] to bake in place of region r's
+      const region = async (r, def, ring = 1, Rb = null) => {
+        const i0 = (r % NRX) * RT, j0 = Math.floor(r / NRX) * RT, R = Rb || [i0, j0, Math.min(NX, i0 + RT), Math.min(NY, j0 + RT)], tr = ME.now();
         const I0 = R[0] >> 4, I1 = (R[2] + 15) >> 4, J0 = R[1] >> 4, J1 = (R[3] + 15) >> 4, rb = ring >> 4;
         const Mb = [Math.max(0, I0 - rb), Math.min((NX + 15) >> 4, I1 + rb), Math.max(0, J0 - rb), Math.min((NY + 15) >> 4, J1 + rb)];
         const sv = [wetCols, ebCols, ebCarved, lwCols, lobes, stamped, solid, kMax], base = PAL.names.length, entries = [], mats = [], mi = new Map();
@@ -6290,8 +6321,10 @@ window.addEventListener("error", (e) => {
           entries.push(mdI.get(md), x, y, z, lx, ly, lz, k, nx, ny, nz, tv);
         };
         try {
-          const rg = new BrickGrid(NX, NY, NZ);
-          await fill(rg, { C: grow(R, ring + 1), W: grow(R, ring), R }, lamps.length);
+          // the window: C's bricks, and the mips' (Mb, within them as R's edge is a brick's)
+          const C = grow(R, ring + 1), cw = bwin(C);
+          const rg = new BrickGrid(NX, NY, NZ, [Math.min(cw[0], Mb[0]), Math.max(cw[1], Mb[1]), Math.min(cw[2], Mb[2]), Math.max(cw[3], Mb[3])]);
+          await fill(rg, { C, W: grow(R, ring), R }, lamps.length);
           const tm = ME.now(), cb = cut(...Mb), D1 = new Uint8Array(cb[2] * cb[3] * MZ), D2 = new Uint8Array(cb[6] * cb[7] * LZ);
           mips(rg, ...Mb, D1, D2, cb);
           const mipMs = +(ME.now() - tm).toFixed(1), w = R[2] - R[0], tp = new Int16Array(w * (R[3] - R[1]));
@@ -6335,12 +6368,74 @@ window.addEventListener("error", (e) => {
       // P1c: what the regions read that a worker makes itself (the kinds and the roles' ids, the props, the lamps,
       // the litter trees, the palette's length): the same digest here and there, or the worker is left out
       const digest = o.serve || pool ? fnv(JSON.stringify([[...R.values()], M, stamps.map((s) => [s.n, s.name, s.o, s.place]), lamps.map((l) => [l.X, l.Y, l.z0, l.Z]), trees, pal.names.length])) : null;
-      if (o.serve) return o.serve(region, digest);
-      let ready = 0, took = 0, late = 0, fell = 0;
+      // #548 note A: the digest covers what a worker makes from its inputs, not the inputs it was never sent (a
+      // map's waterD closure, a key of the content or the map that no list in pick names): such a worker bakes
+      // other voxels and its digest still matches. So both sides also bake a few probe boxes (16 x 16 columns,
+      // a brick wide, all of NZ: the shore, a lamp, a jar's drum, one tile of each kind; checkBoxes) as regions with the
+      // map's state put back after, and a worker whose hashes of them (its bricks' cells, mips, tops, counts,
+      // palette names and deferred entries) differ from these is lost before it takes a region. check(boxes):
+      // one hash per box ("full": its fork of the palette filled up)
+      const check = async (boxes) => {
+        const out = [];
+        for (const { R: Rb } of boxes) {
+          await ME.tick(); // (the stream's bake: a box at a time between the game's frames)
+          const C = grow(Rb, 2), w = C[2] - C[0], sTop = new Int16Array(w * (C[3] - C[1])), sLobe = new Uint8Array(sTop.length);
+          for (let j = C[1]; j < C[3]; j++) { sTop.set(top.subarray(j * NX + C[0], j * NX + C[2]), (j - C[1]) * w); sLobe.set(lobe.subarray(j * NX + C[0], j * NX + C[2]), (j - C[1]) * w); }
+          let res = null;
+          try { res = await region(-1, true, 1, Rb); } catch (e) { if (!e.full) throw e; }
+          finally { for (let j = C[1]; j < C[3]; j++) { top.set(sTop.subarray((j - C[1]) * w, (j - C[1] + 1) * w), j * NX + C[0]); lobe.set(sLobe.subarray((j - C[1]) * w, (j - C[1] + 1) * w), j * NX + C[0]); } }
+          if (!res) { out.push("full"); continue; }
+          const gr = BrickGrid.from(res.grid), T = gr.table, Pq = gr.pool, [I0, I1, J0, J1] = res.I, BZ = gr.BZ;
+          let h = 2166136261;
+          const hb = (v) => { h = Math.imul(h ^ v, 16777619); };
+          for (let K = 0; K < BZ; K++) for (let J = J0; J < J1; J++) for (let I = I0; I < I1; I++) {
+            const v = T[gr.ix(I, J, K)];
+            if (v < 256) { hb(v); continue; }
+            hb(256);
+            for (let q = (v - 256) * 4096, e = q + 4096; q < e; q++) hb(Pq[q]);
+          }
+          for (const a of [res.d1, res.d2, res.top]) { hb(a.length); for (let q = 0; q < a.length; q++) hb(a[q] & 0xffff); }
+          out.push(fnv(JSON.stringify([h >>> 0, res.counts, res.kMax, res.names, res.entries, res.mats])));
+        }
+        return out;
+      };
+      if (o.serve) return o.serve(region, digest, check);
+      // the probe boxes, at most 8, each { R: columns, at: its label and tile }: the tile nearest the water's edge
+      // (G.wd), the first lamp, on a jar the drum's shell (its strata show only there, in a ring past every tile),
+      // then the first tile of each kind from the map's centre out; the centre if fewer than 2. ME.terrainCheck
+      // false: none (tools/region-check.js, to bake a broken input unchecked)
+      const checkBoxes = () => {
+        if (ME.terrainCheck === false) return [];
+        const out = [], seen = new Set();
+        const add = (X, Y, at) => {
+          const i = Math.min(Math.max(0, Math.floor((X - O[0]) * VS)), NX - 1) & ~15, j = Math.min(Math.max(0, Math.floor((Y - O[1]) * VS)), NY - 1) & ~15;
+          if (out.length >= 8 || seen.has(i + "," + j)) return;
+          seen.add(i + "," + j); out.push({ R: [i, j, Math.min(NX, i + 16), Math.min(NY, j + 16)], at: at + " (" + Math.floor(X) + "," + Math.floor(Y) + ")" });
+        };
+        const cx = G.W / 2, cy = G.H / 2, tiles = [];
+        for (let y = 0; y < G.H; y++) for (let x = 0; x < G.W; x++) if (kinds[y * G.W + x]) tiles.push([x, y, (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2]);
+        tiles.sort((a, b) => a[2] - b[2]);
+        if (G.wd && tiles.length) {
+          let b = null, bd = Infinity;
+          for (const [x, y] of tiles) { const d = Math.abs(G.wd(x + 0.5, y + 0.5)); if (d < bd) { bd = d; b = [x, y]; } }
+          add(b[0] + 0.5, b[1] + 0.5, "shore");
+        }
+        if (lamps.length) add(lamps[0].X, lamps[0].Y, "lamp");
+        if (jar) add(C + RG - 0.06 - 1.25 / VS, CY, "drum");
+        const ks = new Set();
+        for (const [x, y] of tiles) { const kd = kinds[y * G.W + x]; if (!ks.has(kd)) { ks.add(kd); add(x + 0.5, y + 0.5, "kind " + (kd.recipe || ks.size)); } }
+        if (out.length < 2) add(O[0] + NX / VS / 2, O[1] + NY / VS / 2, "centre");
+        return out;
+      };
+      let ready = 0, took = 0, late = 0, fell = 0, boxes = [], checkMs = 0;
       try {
         // a worker's region always defers (def), so none bakes once the palette is full here
         if (pool && DEF()) {
           const limit = ME.bakeJobMs || 30000, probe = JSON.stringify(pxProbe(window.PX));
+          // the keys a worker gets are listed by hand (ct, sw below, the QN params): a key the bake reads that no
+          // list names never reaches a worker, which bakes without it. The digest cannot see that; the probe
+          // bake (check, #548 note A) loses such a worker, with a WARN, and the map bakes here. A new key the
+          // bake reads goes in its list
           const pick = (src, ks) => { const d = {}; for (const k of ks) if (k in src) d[k] = src[k]; return d; };
           const keys = (x) => Object.fromEntries(Object.keys(x || {}).map((k) => [k, 1]));
           // a copy without functions, at any depth, for postMessage (the generated maps of vendor/gen carry waterD and
@@ -6372,15 +6467,22 @@ window.addEventListener("error", (e) => {
             for (let y = -1; water && y <= mp.H + 1; y += 1 / 8) for (let x = -1; x <= mp.W + 1; x += 1 / 8) if (wd(x, y) !== mp.waterD(x, y)) { water = null; break; }
           }
           if (fnW && !water) for (const w of pool.ws) pool.lose(w, "the map's waterD is a closure with no matching water shapes (ME.content.gardenWater." + st.id + ")");
-          const init = { VS, cull: ME.sdf.cull, vdeco: [...ME.VOLUME_DECO], QN, models: keys(window.MODELS), CT: noFn(ct), st: noFn(sw), water, plan };
+          boxes = checkBoxes();
+          const init = { VS, cull: ME.sdf.cull, vdeco: [...ME.VOLUME_DECO], QN, models: keys(window.MODELS), CT: noFn(ct), st: noFn(sw), water, plan, check: boxes };
+          // (tools/region-check.js breaks an input here, to see the check lose the workers)
+          if (ME.terrainWorkerInit) ME.terrainWorkerInit(init);
+          // the probe bake here, while the workers bake theirs (nothing else touches the bake's state meanwhile)
+          const tc = ME.now(), want = check(boxes).then((h) => { checkMs = Math.round(ME.now() - tc); return h; }, (e) => ({ err: String((e && e.message) || e) }));
           await Promise.all(pool.ws.map(async (w) => {
             if (w.lost) return;
             const p = await pool.recv(w, 10000);
             if (!p || JSON.stringify(p.probe) !== probe) { pool.lose(w, p ? "its PX gives other numbers" : "no probe answer in 10 s"); return; }
             if (!pool.send(w, { init })) return;
-            const m = await pool.recv(w, limit);
-            if (m && m.ready && m.digest === digest) w.ready = true;
-            else pool.lose(w, !m ? "no answer to its plan in " + limit + " ms" : m.err ? m.err.split("\n")[0] : "its bake differs (digest " + m.digest + ", here " + digest + ")");
+            const m = await pool.recv(w, limit), h = await want;
+            const off = m && m.ready && m.digest === digest && Array.isArray(h) && m.check ? boxes.findIndex((b, n) => m.check[n] !== h[n]) : -2;
+            if (off === -1) w.ready = true;
+            else pool.lose(w, !m ? "no answer to its plan in " + limit + " ms" : m.err ? m.err.split("\n")[0] : m.digest !== digest ? "its bake differs (digest " + m.digest + ", here " + digest + ")"
+              : !Array.isArray(h) ? "the probe bake fails here (" + h.err + ")" : off >= 0 ? "its probe bake differs at the " + boxes[off].at + " (check " + m.check[off] + ", here " + h[off] + ")" : "no probe bake in its answer");
           }));
           ready = pool.live();
         }
@@ -6417,7 +6519,7 @@ window.addEventListener("error", (e) => {
           if (stole) late++;
           else if (ready && !own) fell++;
         }
-        if (pool) regions.workers = { n: pool.ws.length, ready, took, here: N - took, late, fell };
+        if (pool) regions.workers = { n: pool.ws.length, ready, took, here: N - took, late, fell, checks: boxes.length, checkMs, lost: pool.why.slice() };
       } finally { if (pool) pool.stop(); }
     }
 
@@ -6567,8 +6669,8 @@ window.addEventListener("error", (e) => {
     if (pal.names.length > n0) ME.log("WARN W1: materials new to the map at vs" + vs + ": " + pal.names.slice(n0).join(","));
     let K0 = g.BZ, K1 = 0;
     for (let J = J0; J < J1; J++) for (let I = I0; I < I1; I++) for (let K = 0; K < g.BZ; K++) {
-      const e = S[(K * g.BY + J) * g.BX + I];
-      if (K < K0 && (e >= 256 || (K + 1 < g.BZ && (e === 0) !== (S[((K + 1) * g.BY + J) * g.BX + I] === 0)))) K0 = K;
+      const e = S[g.ix(I, J, K)];
+      if (K < K0 && (e >= 256 || (K + 1 < g.BZ && (e === 0) !== (S[g.ix(I, J, K + 1)] === 0)))) K0 = K;
       if (e !== 0) K1 = Math.max(K1, K + 1);
     }
     K0 = Math.max(0, Math.min(K0, K1) - 1); K1 = Math.min(g.BZ, K1 + 1);
@@ -8572,17 +8674,36 @@ window.addEventListener("error", (e) => {
   // 3x3 products into a scratch matrix (row-major, the same sums in the same order as before E9)
   const mul3 = (A, B, O) => { for (let r = 0; r < 3; r++) for (let k = 0; k < 3; k++) O[r * 3 + k] = A[r * 3] * B[k] + A[r * 3 + 1] * B[3 + k] + A[r * 3 + 2] * B[6 + k]; return O; };
   const set9 = (O, a, b, c, d, e, f, g, h, i) => { O[0] = a; O[1] = b; O[2] = c; O[3] = d; O[4] = e; O[5] = f; O[6] = g; O[7] = h; O[8] = i; return O; };
+  // a face leg's corner arcs, floor to face and back at right angles: their radius in tiles
+  const FACE_R = 0.5;
 
   // Path cells in walking order, from polylines of cell corners (styles5.js cellsOf).
   // A corner [x, y, { j }] is a join: one step from the cell before into the cell (x - j, y - j), which is
   // drawn at (x, y), j tiles higher or lower (the copy rule: a point and its copy moved by j(1,1,1) share a
   // pixel under the locked view). Its cell (x, y) comes next in the walk; joins, if given, gets
   // { i, j } with i the index of that cell.
-  const cellsOf = (pts, joins) => {
+  // An entry { face, at, path } is a face leg (#579 section 9.1): off the floor onto the wall face "+x" (the
+  // plane x = at) or "+y" (y = at), along path ([[a, z], ...]: a the cell along the wall, z the height) and back
+  // down. It leaves from the cell next to the wall on the row of path's first a and lands on the row of its
+  // last; the two floor cells under its arcs, w = floor(at + FACE_R) across, come next in the walk, and legs,
+  // if given, gets { i, leg, w } with i the index of the first.
+  const cellsOf = (pts, joins, legs) => {
+    if (!Array.isArray(pts[0])) throw new Error("route: a face leg can't be the first corner");
     if (pts[0][2]) throw new Error("route: a join can't be the first corner");
     const out = [pts[0].slice()];
     for (let k = 0; k + 1 < pts.length; k++) {
-      let [x, y] = out[out.length - 1]; const [x1, y1, jn] = pts[k + 1];
+      let [x, y] = out[out.length - 1];
+      if (!Array.isArray(pts[k + 1])) {
+        const L = pts[k + 1], X = L.face === "+x", P = L.path, nx = pts[k + 2];
+        if ((!X && L.face !== "+y") || !Number.isFinite(L.at) || !Array.isArray(P) || !P.length || P.some((q) => !Number.isInteger(q[0]) || !Number.isFinite(q[1]))) throw new Error(`route: the face leg at corner ${k + 1} needs face "+x" or "+y", a plane at and a path [[a, z], ...]`);
+        const w = Math.floor(L.at + FACE_R), a0 = P[0][0], a1 = P[P.length - 1][0], fx = X ? w + 1 : a0, fy = X ? a0 : w + 1;
+        if (x !== fx || y !== fy) throw new Error(`route: the face leg at corner ${k + 1} leaves from (${fx}, ${fy}), not (${x}, ${y})`);
+        if (!Array.isArray(nx) || nx[2]) throw new Error(`route: the face leg at corner ${k + 1} must be followed by a floor corner`);
+        out.push(X ? [w, a0] : [a0, w], X ? [w, a1] : [a1, w]);
+        if (legs) legs.push({ i: out.length - 2, leg: L, w, k: k + 1 });
+        continue;
+      }
+      const [x1, y1, jn] = pts[k + 1];
       if (jn) {
         const j = jn.j, sx = x1 - j, sy = y1 - j;
         if (!Number.isInteger(j) || !j || Math.abs(sx - x) + Math.abs(sy - y) !== 1) throw new Error(`route: the join at corner ${k + 1} ([${x1}, ${y1}, { j: ${j} }]) steps into (${sx}, ${sy}), which isn't next to (${x}, ${y})`);
@@ -8595,73 +8716,170 @@ window.addEventListener("error", (e) => {
     return out;
   };
 
-  // A road from a route (a polyline of tile corners) on terrain T: { cells, route, len, at(s, o), joins }.
-  // cells: its tiles in walking order; route: the ground line at voxel spacing, smoothed; len: its length in
-  // tiles; at(s, o): the point s tiles along it, as sim.at. It reads the terrain (T.VS, T.tiles, T.groundAt)
-  // and changes nothing. sim.road on the sim's terrain; ME.roadOn on any (the rules' vs16 bake: ME.terrain16).
+  // A face leg's samples (#579 section 9.1), after the last floor sample of the run before it (z zA) and up to
+  // the first of the run after it (z zB), pushed onto line; its up keyframes onto ups, and { face, at, s0, s1 }
+  // onto legs (s0, s1: its floor ends). The pieces, across the wall as n and along it as e: from the cell
+  // centre next to the wall to the arc's foot, the arc (centre (at + r) n + (zA + r) k, up sin φ n + cos φ k),
+  // the climb to path's first point, path, the descent to zB + r and the arc and run back out. Samples are
+  // evenly spaced by length, about 1/VS apart, on the plane x = at (or y = at): no ground, no smoothing. The
+  // two floor stretches run level at zA and zB, so the landings must be flat: ground(X, Y, z) (T.groundAt)
+  // under each, cell centre to arc foot every 1/VS, is within 0.3 of it, or it throws.
+  const legOf = (q, zA, zB, VS, line, ups, legs, ground) => {
+    const L = q.leg, X = L.face === "+x", P = L.path, r = FACE_R, at = L.at, w = q.w, a0 = P[0][0] + 0.5, a1 = P[P.length - 1][0] + 0.5;
+    if (P[0][1] < zA + r - 1e-6 || P[P.length - 1][1] < zB + r - 1e-6) throw new Error(`route: the face leg at corner ${q.k} must run at least ${r} above the floor at both ends (${+zA.toFixed(2)} and ${+zB.toFixed(2)}), not at ${P[0][1]} and ${P[P.length - 1][1]}`);
+    const fl = w + 1.5 - at - r, nf = Math.ceil(fl * VS);
+    for (const [a, zf] of [[a0, zA], [a1, zB]]) for (let k = 0; k <= nf; k++) {
+      const n = w + 1.5 - (fl * k) / nf, x = X ? n : a, y = X ? a : n, g = ground(x, y, zf + 0.6);
+      if (g === null || Math.abs(g - zf) > 0.3) throw new Error(`route: the face leg at corner ${q.k} needs a flat landing: the ground at (${+x.toFixed(2)}, ${+y.toFixed(2)}) is ${g === null ? "void" : +g.toFixed(2)}, not ${+zf.toFixed(2)}`);
+    }
+    // pieces in (n, e, z): a segment { a, b, u: [un, uz] } or an arc { c, d } (d = 1 onto the face, -1 off it)
+    const pc = [{ a: [w + 1.5, a0, zA], b: [at + r, a0, zA], u: [0, 1] }, { c: [at + r, a0, zA + r], d: 1 }, { a: [at, a0, zA + r], b: [at, a0, P[0][1]], u: [1, 0] }];
+    for (let k = 0; k + 1 < P.length; k++) pc.push({ a: [at, P[k][0] + 0.5, P[k][1]], b: [at, P[k + 1][0] + 0.5, P[k + 1][1]], u: [1, 0] });
+    pc.push({ a: [at, a1, P[P.length - 1][1]], b: [at, a1, zB + r], u: [1, 0] }, { c: [at + r, a1, zB + r], d: -1 }, { a: [at + r, a1, zB], b: [w + 1.5, a1, zB], u: [0, 1] });
+    for (const p of pc) p.len = p.c ? (r * Math.PI) / 2 : Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1], p.b[2] - p.a[2]);
+    const pcs = pc.filter((p) => p.len > 1e-9), Lt = pcs.reduce((t, p) => t + p.len, 0), N = Math.max(2, Math.round(Lt * VS)), base = line.length - 1;
+    const U = [[0, 0, 1]];
+    let m = 0, c0 = 0;
+    for (let k = 1; k < N; k++) {
+      const t = (k * Lt) / N;
+      while (m < pcs.length - 1 && t > c0 + pcs[m].len) c0 += pcs[m++].len;
+      const p = pcs[m], u = Math.min(1, Math.max(0, (t - c0) / p.len));
+      let n, e, z, un, uz;
+      if (p.c) {
+        const f = ((p.d > 0 ? u : 1 - u) * Math.PI) / 2, sf = Math.sin(f), cf = Math.cos(f);
+        n = p.c[0] - r * sf; e = p.c[1]; z = p.c[2] - r * cf; un = sf; uz = cf;
+      } else {
+        n = p.a[0] + (p.b[0] - p.a[0]) * u; e = p.a[1] + (p.b[1] - p.a[1]) * u; z = p.a[2] + (p.b[2] - p.a[2]) * u; un = p.u[0]; uz = p.u[1];
+      }
+      line.push(X ? [n, e, z] : [e, n, z]);
+      U.push(X ? [un, 0, uz] : [0, un, uz]);
+    }
+    U.push([0, 0, 1]);
+    // a keyframe wherever the up changes: the arcs' samples and their neighbours on the floor and the face
+    const ne = (a, b) => a[0] !== b[0] || a[1] !== b[1] || a[2] !== b[2];
+    for (let k = 0; k <= N; k++) if ((k > 0 && ne(U[k], U[k - 1])) || (k < N && ne(U[k], U[k + 1]))) ups.push([(base + k) / VS, U[k][0], U[k][1], U[k][2]]);
+    legs.push({ face: L.face, at, s0: base / VS, s1: (base + N) / VS });
+  };
+
+  // A road from a route (a polyline of tile corners) on terrain T: { cells, route, len, at(s, o), joins, ups,
+  // upAt(s, o), legs }. cells: its tiles in walking order; route: the ground line at voxel spacing, smoothed;
+  // len: its length in tiles; at(s, o): the point s tiles along it, as sim.at. It reads the terrain (T.VS,
+  // T.tiles, T.groundAt) and changes nothing. sim.road on the sim's terrain; ME.roadOn on any (the rules' vs16
+  // bake: ME.terrain16).
   // joins: [{ s, j }], where the road jumps by j(1,1,1) at s (a join corner, cellsOf). The line runs from the
   // cell before to its edge, jumps, and runs on from the copy of that edge to the cell's centre; at() never
   // mixes the two sides, and neither does the smoothing. It throws "join doesn't close" unless the tiles'
   // heights differ by j, and "road over void at s = ..." where a void map has no ground under it.
+  // Face legs (cellsOf) split the road into floor runs, each built and smoothed on its own as a whole road
+  // was, so a route with none is the same road to the byte; legOf lays each leg between two runs. ups:
+  // [[s, ux, uy, uz]], the up's keyframes (none on a floor-only road); upAt(s, o): the up at s, [ux, uy, uz],
+  // their nlerp (+z with no keyframes). legs: [{ face, at, s0, s1 }], each leg between its floor ends.
   const roadOf = (T, route) => {
-    const VS = T.VS, jc = [], cells = route && route.length ? cellsOf(route, jc) : [];
+    const VS = T.VS, jc = [], lc = [], cells = route && route.length ? cellsOf(route, jc, lc) : [];
     const TL = T.tiles, tz = (c) => TL.z[c[1] * TL.W + c[0]], isW = (c) => TL.recipe[c[1] * TL.W + c[0]] === "water" || (TL.wet && TL.wet[c[1] * TL.W + c[0]] === 1);
-    // nominal height per cell; water cells take the higher bank around their crossing plus the bridge rise
-    const zc = cells.map((c, i) => {
-      if (!isW(c)) return tz(c);
-      let a = i, b = i;
-      while (a > 0 && isW(cells[a])) a--;
-      while (b < cells.length - 1 && isW(cells[b])) b++;
-      return Math.max(tz(cells[a]), tz(cells[b])) + 0.45;
-    });
-    const jAt = new Map(jc.map((q) => [q.i, q.j])), joins = [], jk = [];
-    for (const { i, j } of jc) {
-      const P = cells[i - 1], W = cells[i];
-      if (Math.abs(zc[i] - zc[i - 1] - j) > 0.3) throw new Error(`route: join doesn't close: (${P}) at ${zc[i - 1]} to (${W}) at ${zc[i]} is ${+(zc[i] - zc[i - 1]).toFixed(2)}, not j = ${j}`);
-    }
-    // dense polyline at voxel spacing, ground from the voxel grid, then smoothed
-    const pts = [];
-    const ground = (X, Y, z) => {
-      const g = T.groundAt(X, Y, z);
-      if (g === null) throw new Error(`route: road over void at s = ${(pts.length / VS).toFixed(2)} (${X.toFixed(2)}, ${Y.toFixed(2)})`);
-      return g;
-    };
-    for (let i = 0; i + 1 < cells.length; i++) {
-      const [x0, y0] = cells[i], [x1, y1] = cells[i + 1], n = VS, j = jAt.get(i + 1);
-      if (j) {
-        // to the edge of the cell stepped into (x1 - j, y1 - j), then on from its copy at (x1, y1)
-        const h = n >> 1;
-        for (let s = 0; s < n; s++) {
-          const u = s / n, d = s < h ? 0 : j, X = x0 + 0.5 + (x1 - j - x0) * u + d, Y = y0 + 0.5 + (y1 - j - y0) * u + d;
-          pts.push([X, Y, ground(X, Y, (s < h ? zc[i] : zc[i + 1]) + 0.6)]);
+    // one floor run, cells [r0, r1): { line, joins: [{ k, j }] (k: the sample), bad: its first void sample }
+    const runOf = (r0, r1) => {
+      const C = cells.slice(r0, r1);
+      // nominal height per cell; water cells take the higher bank around their crossing plus the bridge rise
+      const zc = C.map((c, i) => {
+        if (!isW(c)) return tz(c);
+        let a = i, b = i;
+        while (a > 0 && isW(C[a])) a--;
+        while (b < C.length - 1 && isW(C[b])) b++;
+        return Math.max(tz(C[a]), tz(C[b])) + 0.45;
+      });
+      const jr = jc.filter((q) => q.i >= r0 && q.i < r1).map((q) => ({ i: q.i - r0, j: q.j }));
+      const jAt = new Map(jr.map((q) => [q.i, q.j])), joins = [], jk = [];
+      for (const { i, j } of jr) {
+        const P = C[i - 1], W = C[i];
+        if (Math.abs(zc[i] - zc[i - 1] - j) > 0.3) throw new Error(`route: join doesn't close: (${P}) at ${zc[i - 1]} to (${W}) at ${zc[i]} is ${+(zc[i] - zc[i - 1]).toFixed(2)}, not j = ${j}`);
+      }
+      // dense polyline at voxel spacing, ground from the voxel grid, then smoothed
+      const pts = [];
+      let bad = null;
+      const ground = (X, Y, z) => {
+        const g = T.groundAt(X, Y, z);
+        if (g === null) { if (!bad) bad = [pts.length, X, Y]; return 0; }
+        return g;
+      };
+      for (let i = 0; i + 1 < C.length; i++) {
+        const [x0, y0] = C[i], [x1, y1] = C[i + 1], n = VS, j = jAt.get(i + 1);
+        if (j) {
+          // to the edge of the cell stepped into (x1 - j, y1 - j), then on from its copy at (x1, y1)
+          const h = n >> 1;
+          for (let s = 0; s < n; s++) {
+            const u = s / n, d = s < h ? 0 : j, X = x0 + 0.5 + (x1 - j - x0) * u + d, Y = y0 + 0.5 + (y1 - j - y0) * u + d;
+            pts.push([X, Y, ground(X, Y, (s < h ? zc[i] : zc[i + 1]) + 0.6)]);
+          }
+          jk.push(i * n + h); joins.push({ k: i * n + h, j });
+          continue;
         }
-        jk.push(i * n + h); joins.push({ s: (i * n + h) / VS, j });
-        continue;
+        for (let s = 0; s < n; s++) {
+          const u = s / n, X = x0 + 0.5 + (x1 - x0) * u, Y = y0 + 0.5 + (y1 - y0) * u;
+          pts.push([X, Y, ground(X, Y, Math.max(zc[i], zc[i + 1]) + 0.6)]);
+        }
       }
-      for (let s = 0; s < n; s++) {
-        const u = s / n, X = x0 + 0.5 + (x1 - x0) * u, Y = y0 + 0.5 + (y1 - y0) * u;
-        pts.push([X, Y, ground(X, Y, Math.max(zc[i], zc[i + 1]) + 0.6)]);
-      }
+      const last = C[C.length - 1];
+      if (last) pts.push([last[0] + 0.5, last[1] + 0.5, ground(last[0] + 0.5, last[1] + 0.5, zc[zc.length - 1] + 0.6)]);
+      // the smoothing window stays on its side of a join: [lo, hi] is the sample's stretch between joins
+      const lo = new Int32Array(pts.length), hi = new Int32Array(pts.length).fill(pts.length - 1);
+      for (const k of jk) for (let i = 0; i < pts.length; i++) if (i < k) hi[i] = Math.min(hi[i], k - 1); else lo[i] = Math.max(lo[i], k);
+      const sz = pts.map((_, i) => { let s = 0, w = 0; for (let k = -5; k <= 5; k++) { const p = pts[Math.min(hi[i], Math.max(lo[i], i + k))]; s += p[2]; w++; } return s / w; });
+      // never sink below the raw ground (stair noses)
+      return { line: pts.map((p, i) => [p[0], p[1], Math.max(p[2], sz[i])]), joins, bad };
+    };
+    // the runs between the legs; each leg lands on the cell next to the wall on its last row
+    const runs = [];
+    let r0 = 0;
+    for (const q of lc) {
+      const X = q.leg.face === "+x", a1 = q.leg.path[q.leg.path.length - 1][0], ex = X ? q.w + 1 : a1, ey = X ? a1 : q.w + 1, c = cells[q.i + 2];
+      if (!c || c[0] !== ex || c[1] !== ey) throw new Error(`route: the face leg at corner ${q.k} lands on (${ex}, ${ey}), not ${c ? `(${c[0]}, ${c[1]})` : "nothing"}`);
+      runs.push(runOf(r0, q.i));
+      r0 = q.i + 2;
     }
-    const last = cells[cells.length - 1];
-    if (last) pts.push([last[0] + 0.5, last[1] + 0.5, ground(last[0] + 0.5, last[1] + 0.5, zc[zc.length - 1] + 0.6)]);
-    // the smoothing window stays on its side of a join: [lo, hi] is the sample's stretch between joins
-    const lo = new Int32Array(pts.length), hi = new Int32Array(pts.length).fill(pts.length - 1);
-    for (const k of jk) for (let i = 0; i < pts.length; i++) if (i < k) hi[i] = Math.min(hi[i], k - 1); else lo[i] = Math.max(lo[i], k);
-    const sz = pts.map((_, i) => { let s = 0, w = 0; for (let k = -5; k <= 5; k++) { const p = pts[Math.min(hi[i], Math.max(lo[i], i + k))]; s += p[2]; w++; } return s / w; });
-    // never sink below the raw ground (stair noses)
-    const line = pts.map((p, i) => [p[0], p[1], Math.max(p[2], sz[i])]);
-    // the road at arc length s: [x, y, z, dx, dy], into o if given (no allocation). In the one step that
+    runs.push(runOf(r0, cells.length));
+    const line = [], joins = [], jk = [], ups = [], legs = [];
+    runs.forEach((R, q) => {
+      const base = line.length;
+      if (R.bad) throw new Error(`route: road over void at s = ${((base + R.bad[0]) / VS).toFixed(2)} (${R.bad[1].toFixed(2)}, ${R.bad[2].toFixed(2)})`);
+      for (const p of R.line) line.push(p);
+      for (const { k, j } of R.joins) { jk.push(base + k); joins.push({ s: (base + k) / VS, j }); }
+      if (q < lc.length) legOf(lc[q], R.line[R.line.length - 1][2], runs[q + 1].line[0][2], VS, line, ups, legs, T.groundAt);
+    });
+    // the road at arc length s: [x, y, z, dx, dy, dz], into o if given (no allocation). In the one step that
     // holds a join, from the last sample before it to the edge's copy, it runs on the near side to the
     // edge (b moved back by j) and jumps at the join's s.
     const jStep = new Map(jk.map((k, q) => [k - 1, joins[q].j]));
-    const at = (s, o = [0, 0, 0, 0, 0]) => {
+    const at = (s, o = [0, 0, 0, 0, 0, 0]) => {
       const f = Math.max(0, Math.min(line.length - 1.001, s * VS)), i = Math.floor(f), u = f - i, a = line[i], b = line[i + 1];
       const j = jk.length ? jStep.get(i) || 0 : 0;
-      o[0] = a[0] + (b[0] - j - a[0]) * u; o[1] = a[1] + (b[1] - j - a[1]) * u; o[2] = a[2] + (b[2] - j - a[2]) * u; o[3] = b[0] - j - a[0]; o[4] = b[1] - j - a[1];
+      o[0] = a[0] + (b[0] - j - a[0]) * u; o[1] = a[1] + (b[1] - j - a[1]) * u; o[2] = a[2] + (b[2] - j - a[2]) * u; o[3] = b[0] - j - a[0]; o[4] = b[1] - j - a[1]; o[5] = b[2] - j - a[2];
       return o;
     };
-    return { cells, route: line, len: Math.max(0, line.length - 1) / VS, at, joins };
+    const upAt = (s, o = [0, 0, 0]) => {
+      if (!ups.length) { o[0] = 0; o[1] = 0; o[2] = 1; return o; }
+      let lo = 0, hi = ups.length - 1;
+      if (s <= ups[0][0]) hi = 0;
+      else if (s >= ups[hi][0]) lo = hi;
+      else while (hi - lo > 1) { const m = (lo + hi) >> 1; if (ups[m][0] <= s) lo = m; else hi = m; }
+      const a = ups[lo], b = ups[hi];
+      if (!(a[1] !== b[1] || a[2] !== b[2] || a[3] !== b[3])) { o[0] = a[1]; o[1] = a[2]; o[2] = a[3]; return o; }
+      const u = (s - a[0]) / (b[0] - a[0]), x = a[1] + (b[1] - a[1]) * u, y = a[2] + (b[2] - a[2]) * u, z = a[3] + (b[3] - a[3]) * u, l = Math.hypot(x, y, z);
+      o[0] = x / l; o[1] = y / l; o[2] = z / l;
+      return o;
+    };
+    return { cells, route: line, len: Math.max(0, line.length - 1) / VS, at, joins, ups, upAt, legs };
+  };
+
+  // A walker's frame for put (a 9-array, row-major, into O if given): model x along the heading (dx, dy, dz)
+  // made square to the up (ux, uy, uz), model z along the up, y = z × x. On the floor it is the turn by
+  // atan2(dy, dx); walking +y on the west wall it is ME.FACE_FRAMES["+x"]. put it with yaw 0 and pitch 0.
+  const frameOf = (dx, dy, dz, ux, uy, uz, O = new Float64Array(9)) => {
+    const d = dx * ux + dy * uy + dz * uz;
+    let fx = dx - d * ux, fy = dy - d * uy, fz = dz - d * uz, l = Math.hypot(fx, fy, fz);
+    if (l < 1e-9) { if (Math.abs(uz) < 0.9) { fx = -uy; fy = ux; fz = 0; } else { fx = uz; fy = 0; fz = -ux; } l = Math.hypot(fx, fy, fz); } // heading along the up: any square one
+    fx /= l; fy /= l; fz /= l;
+    return set9(O, fx, uy * fz - uz * fy, ux, fy, uz * fx - ux * fz, uy, fz, ux * fy - uy * fx, uz);
   };
 
   class Sim {
@@ -8695,8 +8913,8 @@ window.addEventListener("error", (e) => {
       // statics', so a second Sim over the same MB writes everything once; stillN counts the skipped statics
       const NS = MB.statics.length;
       this.stillAt = new Int32Array(NS).fill(-1); this.stillMi = new Int32Array(NS); this.stillP = new Float64Array(NS * 5); this.stillN = 0;
-      this.mx = { R: new Float64Array(9), P: new Float64Array(9), F: new Float64Array(9), S: new Float64Array(9), H: new Float64Array(9), A: new Float64Array(9), B: new Float64Array(9), C: new Float64Array(9), L: new Float64Array(9) };
-      this.sh2 = [0, 0]; this.sc3 = [0, 0, 0]; this.at5 = [0, 0, 0, 0, 0]; this.dirty = [0, 0];
+      this.mx = { R: new Float64Array(9), P: new Float64Array(9), F: new Float64Array(9), S: new Float64Array(9), H: new Float64Array(9), A: new Float64Array(9), B: new Float64Array(9), C: new Float64Array(9), L: new Float64Array(9), G: new Float64Array(9), W: new Float64Array(9) };
+      this.sh2 = [0, 0]; this.sc3 = [0, 0, 0]; this.at5 = [0, 0, 0, 0, 0, 0]; this.up3 = [0, 0, 1]; this.dirty = [0, 0];
     }
     // A road from a route on this sim's terrain (roadOf)
     road(route) { return roadOf(this.T, route); }
@@ -8718,15 +8936,19 @@ window.addEventListener("error", (e) => {
     }
     // a point the critters shy away from this frame
     avoid(x, y) { if (this.wn >= this.capacity) return; this.wpos[this.wn * 2] = x; this.wpos[this.wn * 2 + 1] = y; this.wn++; }
-    // the first road at arc length s: [x, y, z, dx, dy], into o if given (no allocation)
+    // the first road at arc length s: [x, y, z, dx, dy, dz], into o if given (no allocation)
     at(s, o) { return this.roads[0].at(s, o); }
+    // the first road's up at arc length s: [ux, uy, uz] (+z off its face legs), into o if given
+    upAt(s, o) { return this.roads[0].upAt(s, o); }
 
     // Write one instance: model m, placement, yaw, flip, scale [sx,sy,sz], shear [hx,hy] (x += hx*z), flags,
     // and an optional pitch (raises the model's +x end; climbing squirrels, leaping koi).
     // mark (bits) and markV (a float) are the app's marks: a marked instance is shaded by the hookMark
     // shader hook (see ME.SHADER_HOOKS).
+    // frame, if given (a 9-array, row-major: ME.frameOf, ME.FACE_FRAMES), turns the model before the yaw and
+    // pitch: R = frame * R(yaw) * P(pitch), a walker on a wall face. No frame: the floor's arithmetic, the same bytes.
     // (E9: scalar math on scratch matrices, no allocation; the same arithmetic as before, so the same bytes)
-    put(i, mi, X, Y, Z, yaw, flip, sc, sh, flags, pitch = 0, mark = 0, markV = 0) {
+    put(i, mi, X, Y, Z, yaw, flip, sc, sh, flags, pitch = 0, mark = 0, markV = 0, frame = null) {
       const m = this.MB.models[mi], vs = this.VS / (m.kf || 1), c = Math.cos(yaw), s = Math.sin(yaw), M = this.mx;
       // L = R * F * S * H / vs ; t = L * box + [X,Y,Z] (vs: a coarse model of a progressive bake, m.kf, has voxels kf times bigger)
       set9(M.H, 1, 0, sh[0], 0, 1, sh[1], 0, 0, 1);
@@ -8734,6 +8956,7 @@ window.addEventListener("error", (e) => {
       if (flip) set9(M.F, 0, 1, 0, 1, 0, 0, 0, 0, 1); else set9(M.F, 1, 0, 0, 0, 1, 0, 0, 0, 1);
       let R = set9(M.R, c, -s, 0, s, c, 0, 0, 0, 1);
       if (pitch) { const cp = Math.cos(pitch), sp = Math.sin(pitch); R = mul3(R, set9(M.P, cp, 0, -sp, 0, 1, 0, sp, 0, cp), M.A); }
+      if (frame) R = mul3(frame, R, M.G);
       const L = mul3(mul3(mul3(R, M.F, M.B), M.S, M.C), M.H, M.L);
       for (let k = 0; k < 9; k++) L[k] = L[k] / vs;
       const b = m.box;
@@ -8813,18 +9036,26 @@ window.addEventListener("error", (e) => {
       }
       this.staticCount = i;
       this.dirty[0] = hi < 0 ? 0 : lo; this.dirty[1] = hi + 1;
-      const A5 = this.at5;
+      const A5 = this.at5, U3 = this.up3, faces = this.roads[0].ups.length > 0;
       for (let w = 0; w < this.walkers.length; w++) {
         const u = this.walkers[w], s = (u.s0 + u.speed * time) % this.len, A = this.at(s, A5), X = A[0], Y = A[1], Z = A[2], dx = A[3], dy = A[4];
-        const yaw = Math.atan2(dy, dx), nx = -Math.sin(yaw), ny = Math.cos(yaw);
         const fr = MB.walkerFrames[u.type], g = u.w.gait, ph = s * u.w.rate + u.ph, k = Math.floor((ph % 1) * fr.length);
         let hop = 0, sq = 0;
         if (g === "hop") { const a = Math.abs(Math.sin(ph * Math.PI * 2)); hop = a * 0.06; sq = (0.5 - a) * 0.12; }
         else if (g === "fly") hop = u.w.fly + Math.sin(time * 2.1 + u.ph * 6.3) * 0.05; // hover with a slow bob
         else sq = Math.sin(ph * Math.PI * 4) * 0.03;
-        const px = X + nx * u.lat, py = Y + ny * u.lat, pz = Z + hop;
         sc[0] = 1 + sq * 0.5; sc[1] = 1 + sq * 0.5; sc[2] = 1 - sq; sh[0] = 0; sh[1] = 0;
-        this.put(i++, fr[k], px, py, pz, yaw, false, sc, sh, 1);
+        let px, py, pz;
+        if (faces && this.upAt(s, U3)[2] < 1) {
+          // on a face leg or its arcs: the walker's frame from the heading and the up; lateral is its y, the hop is along the up
+          const F = frameOf(dx, dy, A[5], U3[0], U3[1], U3[2], this.mx.W);
+          px = X + F[1] * u.lat + U3[0] * hop; py = Y + F[4] * u.lat + U3[1] * hop; pz = Z + F[7] * u.lat + U3[2] * hop;
+          this.put(i++, fr[k], px, py, pz, 0, false, sc, sh, 1, 0, 0, 0, F);
+        } else {
+          const yaw = Math.atan2(dy, dx), nx = -Math.sin(yaw), ny = Math.cos(yaw);
+          px = X + nx * u.lat; py = Y + ny * u.lat; pz = Z + hop;
+          this.put(i++, fr[k], px, py, pz, yaw, false, sc, sh, 1);
+        }
         this.wpos[w * 2] = px; this.wpos[w * 2 + 1] = py;
       }
       this.wn = this.walkers.length;
@@ -8878,7 +9109,12 @@ window.addEventListener("error", (e) => {
   ME.roadOn = roadOf;
   // the code a road comes from, for the rules key (cache.js: ME.rulesKey hashes it, so a cached rules record's
   // roads follow any change to it)
-  ME.roadOn.parts = [roadOf, cellsOf, ME.groundAt, ME.BrickGrid && ME.BrickGrid.prototype.down];
+  ME.roadOn.parts = [roadOf, cellsOf, legOf, ME.groundAt, ME.BrickGrid && ME.BrickGrid.prototype.down];
+  // a wall walker's frame (put's frame), and the two walkable faces' fixed frames (#579 section 9.1): G1 on "+x"
+  // (model x -> world y, y -> z, z -> x) and G2 = G1² on "+y" (x -> z, y -> x, z -> y). With one of them, put's
+  // yaw is the heading on the face: on "+x" yaw 0 runs +y and π/2 climbs, on "+y" yaw 0 climbs and π/2 runs +x
+  ME.frameOf = frameOf;
+  ME.FACE_FRAMES = { "+x": [0, 0, 1, 1, 0, 0, 0, 1, 0], "+y": [0, 1, 0, 0, 0, 1, 1, 0, 0] };
   ME.INST_FLOATS = INST_FLOATS;
 })();
 
@@ -9219,6 +9455,38 @@ fn faceN(d: u32) -> vec3f {
     .replaceAll("u.grid", "rg.grid").replaceAll("u.dims", "rg.dims")
     .replace("tv + n * 2.2, 0.0", "tv + n * 2.2 * rg.dims.w, 0.0").replace("tv + n * 5.0, 1.0", "tv + n * 5.0 * rg.dims.w, 1.0");
   if (!W.terrainHi.includes("2.2 * rg.dims.w") || !W.terrainHi.includes("5.0 * rg.dims.w")) throw new Error("terrainHi: the terrain shader changed");
+  // P3b (docs/designs/2026-11-07-engine-opt-progressive-density.md, 4.6): the stream's crossfade (R.swapTerrain
+  // with o.fade). For a while the terrain draws twice, the stream's (new) and the boot's (old, drawn with the boot's
+  // grid and density texture), each a fragment's region's share of the pixels on a 4x4 ordered dither: the new
+  // keeps a pixel below the region's fade, the old one at or above it, so the two never overlap and leave no gap.
+  // fade: [O.x, O.y, regions per unit, columns], then each region's fade (0 old, 1 new). A fragment's region is its
+  // solid voxel's (as greedyMesh's regions part the faces), the same for the two densities: a region's edge is a
+  // voxel edge in both
+  const FADE = (b) => `@group(1) @binding(${b}) var<storage, read> fade: array<f32>;
+fn fadeOf(w: vec2f) -> f32 {
+  let c = i32(fade[3]);
+  let rx = clamp(i32(floor((w.x - fade[0]) * fade[2])), 0, c - 1);
+  let ry = max(i32(floor((w.y - fade[1]) * fade[2])), 0);
+  return fade[4u + min(u32(ry * c + rx), arrayLength(&fade) - 5u)];
+}
+fn dith4(p: vec2f) -> f32 {
+  let x = u32(p.x) & 3u; let y = u32(p.y) & 3u; let a = x ^ y;
+  return (f32(((a & 1u) << 3u) | ((y & 1u) << 2u) | (a & 2u) | ((y >> 1u) & 1u)) + 0.5) / 16.0;
+}
+`;
+  const faded = (src, b, keepNew) => src.replace("@fragment fn fs(i: VO) -> GO {", FADE(b) + "@fragment fn fs(i: VO) -> GO {")
+    .replace("let vox = floor(tv - fnm * 0.5);", "let vox = floor(tv - fnm * 0.5);\n  if (dith4(i.pos.xy) " + (keepNew ? ">=" : "<") + " fadeOf((vox.xy + 0.5) / u.grid.w + u.grid.xy)) { discard; }");
+  W.terrainFade = faded(W.terrain, 3, true);
+  W.terrainCarveFade = faded(W.terrainCarve, 4, true);
+  // the boot's terrain: terrainHi's own grid (rg: the boot's origin, density and dims, dims.w 1), its carve (binding
+  // 4: its carved cells, as it drew them before the swap) and the old side of the dither
+  W.terrainOld = W.common + faded(W.terrainCarve.replace("@group(1) @binding(3) var<storage, read> carved", "@group(1) @binding(4) var<storage, read> carved"), 5, false).slice(W.common.length)
+    .replace("@vertex fn vs(", "struct RG { grid: vec4f, dims: vec4f };\n@group(1) @binding(3) var<uniform> rg: RG;\n@vertex fn vs(")
+    .replaceAll("u.grid", "rg.grid").replaceAll("u.dims", "rg.dims");
+  for (const [n, s, b] of [["terrainFade", W.terrainFade, 3], ["terrainCarveFade", W.terrainCarveFade, 4], ["terrainOld", W.terrainOld, 5]]) {
+    if (!s.includes(`@binding(${b}) var<storage, read> fade`) || !s.includes("fadeOf((vox.xy") || (n !== "terrainFade") !== s.includes("carved[")) throw new Error(n + ": the terrain shader changed");
+  }
+  if (!W.terrainOld.includes("@binding(4) var<storage, read> carved") || !W.terrainOld.includes("rg.grid.w + rg.grid.xy") || !W.terrainOld.includes("< fadeOf")) throw new Error("terrainOld: the terrain shader changed");
 
   // Ray-marched voxel volumes on instanced proxy boxes: two-level DDA (8^3 bricks, then voxels) in the
   // model's local voxel space, writing the true hit depth. Instances carry an affine transform, so
@@ -11356,12 +11624,27 @@ fn boxOf(V: Vox) -> Box {
     // carve, the carve's state goes (its bitsets and patch are the old grid's): the new terrain draws as baked,
     // and the next carve starts it again at the new grid's size (P5: the stream mirrors the edits into T's grid
     // before the swap, then carves those cells, so they show).
-    swapTerrain(T, mesh, grass) {
+    // P3b (4.6): with o.fade (ms) and the fade's pipelines ready (R.prepFade), the old terrain stays a while: each
+    // region of the new one comes in over it on a dither in o.fade ms, the regions on screen one after the other
+    // from the view's centre out, those off screen at once (R.tfade, tfadeStep). Only the terrain's mesh fades: the
+    // density the lighting, the particles and the grass read, the grass and the lights go at the swap. Returns the
+    // fade's stats (filled in as it runs: regions, shown, the ones on screen, staggerMs, endMs), or null
+    swapTerrain(T, mesh, grass, o = {}) {
       const d = this.dev, S = this.S, P = this.pl, bg = this.bg, old = S.T;
       if (T.cdims.some((n, a) => n !== old.cdims[a])) throw new Error("swapTerrain: another coarse grid (" + T.cdims + " for " + old.cdims + ")");
+      if (this.tfade) this.endTfade();
+      const fade = o.fade > 0 && this.plFadeReady ? o.fade : 0, D0 = this.carveDraw;
+      // the old terrain's draw, kept for the fade: its grid, mesh, buffers, density and carve
+      const keep = fade ? {
+        O: old.O.slice(), VS: old.VS, NX: old.NX, NY: old.NY, NZ: old.NZ, snaps: S.mesh.snaps, regions: S.mesh.regions || null,
+        idx: S.mesh.index.BYTES_PER_ELEMENT === 2 ? "uint16" : "uint32", vb: this.tVB, ib: this.tIB, tex: this.densTex,
+        carved: this.carved ? this.carvedBuf : null, cvb: D0 && D0.n ? D0.vb : null, cib: D0 && D0.n ? D0.ib : null, cn: D0 ? D0.n || 0 : 0,
+        drop: [D0 && !D0.n && D0.vb, D0 && !D0.n && D0.ib],
+      } : null;
       if (this.carved) {
         const D = this.carveDraw;
-        for (const b of [this.carvedBuf, D && D.vb, D && D.ib]) b && b.destroy();
+        if (!keep) for (const b of [this.carvedBuf, D && D.vb, D && D.ib]) b && b.destroy();
+        else for (const b of keep.drop) b && b.destroy();
         this.carved = this.carvedCells = this.addedCells = this.carvedBuf = this.carveDraw = null;
         this.blockCells = this.patchBlocks = this.patchDirtyList = this.patchDirtyBlock = this.patchScratch = this.patchAll = null;
         this.patchDirty = false;
@@ -11369,12 +11652,13 @@ fn boxOf(V: Vox) -> Box {
       // W1: the region at a second density was the old terrain's
       if (this.hi) this.setHiRegion(null);
       S.T = T; S.mesh = mesh; S.grass = grass;
-      this.densTex.destroy();
+      if (!keep) this.densTex.destroy();
       this.densTex = ME.tex3d(d, "density", "r8unorm", [T.NX >> 1, T.NY >> 1, T.NZ >> 1], T.mips, 1);
       T.mips = null;
       d.queue.writeTexture({ texture: this.occTex }, T.coarse, { bytesPerRow: T.cdims[0], rowsPerImage: T.cdims[1] }, T.cdims);
       this.sunDirty = true;
-      this.tVB.destroy(); this.tIB.destroy(); this.grassBuf.destroy();
+      if (!keep) { this.tVB.destroy(); this.tIB.destroy(); }
+      this.grassBuf.destroy();
       this.tVB = ME.buffer(d, mesh.verts, BU.VERTEX, "terrain vb");
       this.tIB = ME.buffer(d, mesh.index, BU.INDEX, "terrain ib");
       this.grassBuf = ME.buffer(d, grass.blades, BU.STORAGE, "grass blades");
@@ -11388,6 +11672,115 @@ fn boxOf(V: Vox) -> Box {
       this.lightList = null;
       this.setLights(this.lightExtra || []);
       if (list) { const now = this.lightList; list.length = 0; list.push(...now); this.lightList = list; }
+      return keep ? this.startTfade(keep, fade) : null;
+    }
+    // the crossfade's pipelines (W.terrainFade, terrainCarveFade, terrainOld), compiled once, ahead of the swap (the
+    // stream asks at its start): a promise; this.plFadeReady once they are
+    prepFade() {
+      if (!this.plFade) {
+        const k = kit(this.gpu, this.hooks), o = { targets: ME.GBUFFER.G, depthStencil: ME.GBUFFER.DEPTH, vertex: { buffers: [{ arrayStride: 8, attributes: [{ shaderLocation: 0, offset: 0, format: "uint16x4" }] }] } };
+        this.plFade = Promise.all(["terrainFade", "terrainCarveFade", "terrainOld"].map((n) => k.rp(n, k.mod(n), o))).then(([terrain, carve, old]) => {
+          const g0 = (pl) => this.bg(pl, 0, [{ buffer: this.ubuf }]);
+          this.plFadeReady = { terrain, carve, old, g0: g0(terrain), g0carve: g0(carve), g0old: g0(old) };
+          return this.plFadeReady;
+        });
+      }
+      return this.plFade;
+    }
+    // The fade: a grid of the new terrain's regions (its mesh's rt voxels a side, from its origin; one for a mesh
+    // not by regions), each one's fade 0 (old) to 1 (new) in the fade buffer the three pipelines read (a header: the
+    // origin's x and y, regions per unit, columns). Each region of the two meshes goes to the cell its centre is in
+    startTfade(B, ms) {
+      const d = this.dev, S = this.S, T = S.T, mesh = S.mesh, F = this.plFadeReady;
+      const rt = mesh.rt || 0, per = rt ? T.VS / rt : 1 / Math.max(T.NX, T.NY) / 2, cols = rt ? Math.ceil(T.NX / rt) : 1, rows = rt ? Math.ceil(T.NY / rt) : 1, N = cols * rows;
+      const data = new Float32Array(4 + N);
+      data.set([T.O[0], T.O[1], per, cols]);
+      const buf = d.createBuffer({ label: "terrain fade", size: data.byteLength, usage: BU.STORAGE | BU.COPY_DST });
+      d.queue.writeBuffer(buf, 0, data);
+      const rg = ME.buffer(d, new Float32Array([B.O[0], B.O[1], B.O[2], B.VS, B.NX, B.NY, B.NZ, 1]), BU.UNIFORM, "grid old");
+      const dummy = B.carved ? null : d.createBuffer({ label: "carved none", size: 16, usage: BU.STORAGE });
+      // a box's grid cell, and the world box of each cell (z from both meshes' regions: -1 none)
+      const box = new Float32Array(N * 2).fill(Infinity);
+      for (let n = 0; n < N; n++) box[n * 2 + 1] = -Infinity;
+      const cellOf = (G, regs) => (regs ? regs.map(({ box: b }) => {
+        const iv = 1 / G.VS, x = (b[0] + b[3]) * 0.5 * iv + G.O[0], y = (b[1] + b[4]) * 0.5 * iv + G.O[1];
+        const n = Math.min(rows - 1, Math.max(0, Math.floor((y - T.O[1]) * per))) * cols + Math.min(cols - 1, Math.max(0, Math.floor((x - T.O[0]) * per)));
+        box[n * 2] = Math.min(box[n * 2], b[2] * iv + G.O[2]); box[n * 2 + 1] = Math.max(box[n * 2 + 1], b[5] * iv + G.O[2]);
+        return n;
+      }) : null);
+      const cellNew = cellOf(T, mesh.regions), cellOld = cellOf(B, B.regions);
+      // (a mesh not by regions: its geometry may be in any cell)
+      if (!cellNew || !cellOld) for (let n = 0; n < N; n++) { box[n * 2] = Math.min(box[n * 2], T.O[2]); box[n * 2 + 1] = Math.max(box[n * 2 + 1], T.O[2] + T.NZ / T.VS); }
+      this.tfade = {
+        B, ms, N, data, buf, rg, dummy, box, cellNew, cellOld, start: null, t0: ME.now(),
+        skipNew: new Uint8Array(cellNew ? cellNew.length : 0), skipOld: new Uint8Array(cellOld ? cellOld.length : 0),
+        g1: this.bg(F.terrain, 1, [this.densTex.createView(), this.lin, { buffer: this.matBuf }, { buffer: buf }]),
+        g1old: this.bg(F.old, 1, [B.tex.createView(), this.lin, { buffer: this.matBuf }, { buffer: rg }, { buffer: B.carved || dummy }, { buffer: buf }]),
+        g1carve: null, carveFor: null,
+        stats: { regions: N, ms, shown: 0, onScreen: 0, staggerMs: 0, endMs: null },
+      };
+      return this.tfade.stats;
+    }
+    // each frame (writeUniforms, vp the view): the first one orders the cells, those on screen (each one's box, as
+    // cullRegions) from the view's centre out, a stagger apart (at most 60 ms, 1.2 s in all), the others done at
+    // once; then each cell's fade, and which regions of the two meshes have nothing to draw. Ends the fade (the old
+    // terrain's resources go) once every cell is new
+    tfadeStep(vp) {
+      const F = this.tfade, T = this.S.T, N = F.N, now = ME.now();
+      if (!F.start) {
+        F.start = new Float64Array(N);
+        const cols = F.data[3], per = F.data[2], on = [];
+        for (let n = 0; n < N; n++) {
+          const z0 = F.box[n * 2], z1 = F.box[n * 2 + 1];
+          if (!(z1 >= z0)) { F.start[n] = -Infinity; continue; }
+          const x0 = T.O[0] + (n % cols) / per, y0 = T.O[1] + Math.floor(n / cols) / per, h = 0.5 / per;
+          const cx = x0 + h, cy = y0 + h, cz = (z0 + z1) * 0.5, hz = (z1 - z0) * 0.5;
+          let off = 0, r2 = 0;
+          for (let a = 0; a < 2; a++) {
+            const c = vp[a] * cx + vp[4 + a] * cy + vp[8 + a] * cz + vp[12 + a], e = (Math.abs(vp[a]) + Math.abs(vp[4 + a])) * h + Math.abs(vp[8 + a]) * hz;
+            if (c - e > 1.02 || c + e < -1.02) off = 1;
+            r2 += c * c;
+          }
+          if (off) F.start[n] = -Infinity; else on.push([r2, n]);
+        }
+        on.sort((a, b) => a[0] - b[0]);
+        const gap = on.length > 1 ? Math.min(60, 1200 / on.length) : 0;
+        on.forEach(([, n], i) => { F.start[n] = now + i * gap; });
+        Object.assign(F.stats, { onScreen: on.length, staggerMs: +gap.toFixed(1) });
+      }
+      let done = 0;
+      for (let n = 0; n < N; n++) {
+        const f = F.start[n] === -Infinity ? 1 : Math.min(1, Math.max(0, (now - F.start[n]) / F.ms));
+        F.data[4 + n] = f; if (f >= 1) done++;
+      }
+      if (done === N) {
+        F.stats.endMs = Math.round(now - F.t0);
+        this.endTfade();
+        return;
+      }
+      if (F.cellNew) F.cellNew.forEach((n, m) => { F.skipNew[m] = F.data[4 + n] <= 0 ? 1 : 0; });
+      if (F.cellOld) F.cellOld.forEach((n, m) => { F.skipOld[m] = F.data[4 + n] >= 1 ? 1 : 0; });
+      F.stats.shown = done;
+      this.dev.queue.writeBuffer(F.buf, 0, F.data);
+    }
+    endTfade() {
+      const F = this.tfade, B = F.B;
+      this.tfade = null;
+      for (const b of [B.vb, B.ib, B.tex, B.carved, B.cvb, B.cib, F.rg, F.dummy, F.buf]) b && b.destroy();
+      if (F.stats.endMs == null) F.stats.endMs = Math.round(ME.now() - F.t0);
+      F.stats.shown = F.N;
+    }
+    // the old terrain under the fade: its snaps k0 and k1 (the regions not yet all new), then its carve's patch
+    drawOld(r, k0, k1) {
+      const F = this.tfade, B = F.B, P = this.plFadeReady, sk = F.skipOld;
+      r.setPipeline(P.old); r.setBindGroup(0, P.g0old); r.setBindGroup(1, F.g1old);
+      r.setVertexBuffer(0, B.vb); r.setIndexBuffer(B.ib, B.idx);
+      for (const k of k1 !== k0 ? [k0, k1] : [k0]) {
+        const sn = B.snaps[k];
+        if (!sn.parts) r.drawIndexed(sn.count, 1, sn.first, 0, 0);
+        else for (let n = 0; n < sn.parts.length; n += 4) if (!sk[sn.parts[n]]) r.drawIndexed(sn.parts[n + 3], 1, sn.parts[n + 2], sn.parts[n + 1], 0);
+      }
+      if (B.cn) { r.setVertexBuffer(0, B.cvb); r.setIndexBuffer(B.cib, "uint32"); r.drawIndexed(B.cn); }
     }
     setWeather(kind, intensity = 1, seconds = 8) { this.weather.set(kind, intensity, seconds); }
     // the wind the sim, the critters and the shaders see this frame: R.set's, times the weather's (gust: the mix's once active)
@@ -12175,6 +12568,7 @@ fn boxOf(V: Vox) -> Box {
       const u = this.u, O = ME.UOFF, S = this.S, T = S.T, st = S.st, s = this.set, [w, h] = this.size;
       const M = cam.matrices(this.out[0], this.out[1]);
       if (S.mesh.regions) this.cullRegions(M.vp, T);
+      if (this.tfade) this.tfadeStep(M.vp);
       u.set(M.vp, O.vp); u.set(M.ivp, O.ivp);
       u.set(M.vdir, O.vdir); u[O.vdir + M.vdir.length] = time;
       const L = this.sunDir(this.sunL || (this.sunL = [0, 0, 0])), LL = this.lastL;
@@ -12264,12 +12658,13 @@ fn boxOf(V: Vox) -> Box {
       this.regionDrawn = drawn;
     }
 
-    // the terrain's index range for snap k: one draw, or by regions each part whose region is on screen
-    drawSnap(r, k) {
+    // the terrain's index range for snap k: one draw, or by regions each part whose region is on screen (and under a
+    // crossfade, not still all old: skip)
+    drawSnap(r, k, skip) {
       const sn = this.S.mesh.snaps[k];
       if (!sn.parts) { r.drawIndexed(sn.count, 1, sn.first, 0, 0); return; }
       const p = sn.parts, out = this.regionOut, hn = this.hi ? this.hi.n : -1;
-      for (let n = 0; n < p.length; n += 4) if (!out[p[n]] && p[n] !== hn) r.drawIndexed(p[n + 3], 1, p[n + 2], p[n + 1], 0);
+      for (let n = 0; n < p.length; n += 4) if (!out[p[n]] && p[n] !== hn && !(skip && skip[p[n]])) r.drawIndexed(p[n + 3], 1, p[n + 2], p[n + 1], 0);
     }
 
     // W1 (docs/designs/2026-11-08-whole-game-128.md): one region drawn from a bake at a second density (h from
@@ -12419,11 +12814,17 @@ fn boxOf(V: Vox) -> Box {
       });
       if (this.patchDirty) this.carvePatch();
       const CD = this.carveDraw; // terrain voxels carved by the app: the variant that skips them, and their patch
-      if (CD) { r.setPipeline(CD.pl); r.setBindGroup(0, CD.g0); r.setBindGroup(1, CD.g1); } else { r.setPipeline(P.terrain); r.setBindGroup(0, g0.terrain); r.setBindGroup(1, g1.terrain); }
+      const TF = this.tfade, PF = this.plFadeReady; // the stream's crossfade (swapTerrain's o.fade): the fade variants, then the old terrain
+      if (TF && CD) {
+        if (TF.carveFor !== this.carvedBuf) { TF.carveFor = this.carvedBuf; TF.g1carve = this.bg(PF.carve, 1, [this.densTex.createView(), this.lin, { buffer: this.matBuf }, { buffer: this.carvedBuf }, { buffer: TF.buf }]); }
+        r.setPipeline(PF.carve); r.setBindGroup(0, PF.g0carve); r.setBindGroup(1, TF.g1carve);
+      } else if (TF) { r.setPipeline(PF.terrain); r.setBindGroup(0, PF.g0); r.setBindGroup(1, TF.g1); }
+      else if (CD) { r.setPipeline(CD.pl); r.setBindGroup(0, CD.g0); r.setBindGroup(1, CD.g1); } else { r.setPipeline(P.terrain); r.setBindGroup(0, g0.terrain); r.setBindGroup(1, g1.terrain); }
       r.setVertexBuffer(0, this.tVB); r.setIndexBuffer(this.tIB, S.mesh.index.BYTES_PER_ELEMENT === 2 ? "uint16" : "uint32");
-      const k0 = cam.turning ? cam.snapIndex(cam.from) : cam.snapIndex(), k1 = cam.turning ? cam.snapIndex(cam.to) : k0;
-      this.drawSnap(r, k0); if (k1 !== k0) this.drawSnap(r, k1);
+      const k0 = cam.turning ? cam.snapIndex(cam.from) : cam.snapIndex(), k1 = cam.turning ? cam.snapIndex(cam.to) : k0, skip = TF ? TF.skipNew : null;
+      this.drawSnap(r, k0, skip); if (k1 !== k0) this.drawSnap(r, k1, skip);
       if (CD && CD.n) { r.setVertexBuffer(0, CD.vb); r.setIndexBuffer(CD.ib, "uint32"); r.drawIndexed(CD.n); }
+      if (TF) this.drawOld(r, k0, k1);
       if (this.hi) this.drawHi(r, k0, k1);
       if (s.grass && S.grass.count) { r.setPipeline(P.grass); r.setBindGroup(0, g0.grass); r.setBindGroup(1, g1.grass); r.draw(42, S.grass.count); }
       r.setPipeline(P.volume); r.setBindGroup(0, g0.volume); r.setBindGroup(1, g1.volume); r.draw(36, nInst);
@@ -14430,12 +14831,13 @@ fn boxOf(V: Vox) -> Box {
                             the corn), cmtallgrass, cmpatch (the pumpkin patch's dark soil), cmpen (the pen's
                             straw), cmgarden (the garden's rows), cmditch (the ditch's still, dark water)
      window.MODELS          stamps cm_gate (two stone pillars and a timber gate; o.swing, the side it opens to,
-                            o.open 0-1), cm_bridge, cm_fence, cm_hay, cm_leaves (fallen leaves; o.n); volumes
+                            o.open 0-1), cm_bridge, cm_fence, cm_hay, cm_leaves (fallen leaves; o.n), cm_leafpile
+                            (a mound of autumn leaves; o.w 2 two heaps); volumes
                             cm_corn and cm_tallgrass (o.w 1 or 2 tiles; they sway hard), cm_thingrass (fine
                             blades in green, tan and rust; o.tall a high clump, else a low tuft; o.seed),
                             cm_shrub (a low autumn bush; o.leaf its colour), cm_scarecrow (a carved
                             pumpkin head), cm_lantern (a pole with a hung lantern),
-                            cm_pumpkin (o.carved: a face glowing on +x; o.vines), cm_apple (a small tree; o.leaf
+                            cm_pumpkin (o.carved: a face glowing on +x; o.vines), cm_apple (a tree; o.leaf
                             its crown, o.fruit false for no apples), cm_sheep (o.a its yaw, o.lamb), cm_trough,
                             cm_coop (a lit window on +x), cm_hen (o.n hens), cm_cabbage (o.kale), cm_sunflower
      ME.content.maps.cornmoon       the v1 map (plain data), with game: { route, spawn, heart, lane, build,
@@ -14501,19 +14903,22 @@ fn boxOf(V: Vox) -> Box {
     cmAppleLeaf: ["#4a1c10", "#5e2414", "#742e18", "#8a3a1e", "#a04824", "#b4582c", "#c66a34"],
     cmScarlet: ["#4e1218", "#64181c", "#7a2020", "#902a26", "#a6362c", "#b84434"],
     cmAmber: ["#5a3e14", "#70501a", "#866322", "#9c762b", "#b08a36", "#c29e44", "#d2b052"],
+    // the crowns' shaded undersides and insides, and their lit leaf tips (cm_apple's detail)
+    cmLeafShade: ["#2a120c", "#36180e", "#421e12", "#4e2616", "#5a2e1a", "#66361e"],
+    cmLeafLit: ["#a86a2c", "#bc7e36", "#ce9240", "#dea64c", "#ecba5a", "#f4cc6c"],
     cmApple: ["#6a1a1a", "#821f20", "#9a2a26", "#b03a30", "#c24c3a"],
   });
   CT.mats = Object.assign(CT.mats || {}, {
     cmPumpkinGlow: { em: 1, flat: 1 }, cmWool: { wrap: 0.5 },
     cmCabbage: { wrap: 0.5 }, cmKale: { wrap: 0.5 }, cmPetal: { wrap: 0.5 },
-    cmLeaf: { wrap: 0.6 }, cmLeafDk: { wrap: 0.6 }, cmTassel: { wrap: 0.5 }, cmGrass: { wrap: 0.6 }, cmGrassTan: { wrap: 0.6 }, cmGrassRust: { wrap: 0.6 }, cmGrassTip: { wrap: 0.6 }, cmAppleLeaf: { wrap: 0.6 }, cmAmber: { wrap: 0.6 }, cmScarlet: { wrap: 0.6 },
+    cmLeaf: { wrap: 0.6 }, cmLeafDk: { wrap: 0.6 }, cmTassel: { wrap: 0.5 }, cmGrass: { wrap: 0.6 }, cmGrassTan: { wrap: 0.6 }, cmGrassRust: { wrap: 0.6 }, cmGrassTip: { wrap: 0.6 }, cmAppleLeaf: { wrap: 0.6 }, cmAmber: { wrap: 0.6 }, cmScarlet: { wrap: 0.6 }, cmLeafShade: { wrap: 0.6 }, cmLeafLit: { wrap: 0.6 },
   });
   Object.assign(CT.materialClass = CT.materialClass || {}, {
     cmMeadowN: "MOSS", cmMeadow: "MOSS", cmMeadowA: "MOSS", cmMeadowR: "MOSS", cmMeadow2: "MOSS", cmBank: "MOSS", cmLitter: "MOSS", cmStraw: "MOSS", cmWindrow: "MOSS", cmFieldstone: "ROCK", cmClod: "ROCK", cmTimber: "BARK",
-    cmLeaf: "FOLIAGE", cmLeafDk: "FOLIAGE", cmTassel: "FOLIAGE", cmHusk: "FOLIAGE", cmGrass: "FOLIAGE", cmGrassTan: "FOLIAGE", cmGrassRust: "FOLIAGE", cmGrassTip: "FOLIAGE", cmSeed: "FOLIAGE", cmAppleLeaf: "FOLIAGE", cmAmber: "FOLIAGE", cmScarlet: "FOLIAGE",
+    cmLeaf: "FOLIAGE", cmLeafDk: "FOLIAGE", cmTassel: "FOLIAGE", cmHusk: "FOLIAGE", cmGrass: "FOLIAGE", cmGrassTan: "FOLIAGE", cmGrassRust: "FOLIAGE", cmGrassTip: "FOLIAGE", cmSeed: "FOLIAGE", cmAppleLeaf: "FOLIAGE", cmAmber: "FOLIAGE", cmScarlet: "FOLIAGE", cmLeafShade: "FOLIAGE", cmLeafLit: "FOLIAGE",
     cmCabbage: "FOLIAGE", cmKale: "FOLIAGE", cmPetal: "FOLIAGE",
   });
-  CT.sunShadeHalf = (CT.sunShadeHalf || []).concat(["cmLeaf", "cmAppleLeaf", "cmAmber", "cmScarlet"]);
+  CT.sunShadeHalf = (CT.sunShadeHalf || []).concat(["cmLeaf", "cmAppleLeaf", "cmAmber", "cmScarlet", "cmLeafShade", "cmLeafLit"]);
   // the terrain blades on the pasture, under the tall grass and on the wall tops (cmBank: the cheap way to keep
   // the walls grassy, as a prop on each is ray-marched): gold, tan and rust (the thin grass's mix), dark
   // corn-leaf reeds on the ditch banks; this map's own set (ME.grassFor), so Momiji keeps its greens
@@ -14610,27 +15015,28 @@ fn boxOf(V: Vox) -> Box {
   });
 
   // Corn: o.w 2 is a 2×2-tile stand of four rows of four stalks (the anchor on the corner the four tiles
-  // share), o.w 1 one tile of two by two. Each stalk stands 1.25-1.55 with three arching leaves, a tassel and
-  // most an ear in its husk. It sways (CT.sway), hard.
+  // share), o.w 1 one tile of two by two. Each stalk stands 1.0-1.3 (Z, 0.82 of the first cut: the user,
+  // "wheat stalks a bit smaller") with three arching leaves, a tassel and most an ear in its husk. It sways
+  // (CT.sway), hard.
   model("cm_corn", (o = {}) => {
-    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), w = o.w || 1, p = [], at = w > 1 ? [-0.75, -0.25, 0.25, 0.75] : [-0.25, 0.25];
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), w = o.w || 1, p = [], at = w > 1 ? [-0.75, -0.25, 0.25, 0.75] : [-0.25, 0.25], Z = 0.82;
     let j = 0;
     for (const y0 of at) for (const x0 of at) {
-      const i = j++, x = x0 + (h(i, 1) - 0.5) * 0.14, y = y0 + (h(i, 2) - 0.5) * 0.12, H = 1.25 + 0.3 * h(i, 3), tx = x + (h(i, 4) - 0.5) * 0.06, ty = y + (h(i, 5) - 0.5) * 0.06;
+      const i = j++, x = x0 + (h(i, 1) - 0.5) * 0.14, y = y0 + (h(i, 2) - 0.5) * 0.12, H = Z * (1.25 + 0.3 * h(i, 3)), tx = x + (h(i, 4) - 0.5) * 0.06, ty = y + (h(i, 5) - 0.5) * 0.06;
       p.push(C([x, y, 0], [(x + tx) / 2, (y + ty) / 2, H * 0.55], 0.034, 0.03, "cmLeaf"), C([(x + tx) / 2, (y + ty) / 2, H * 0.55], [tx, ty, H], 0.03, 0.026, "cmLeaf"));
       for (let k = 0; k < 3; k++) {
-        const a = TAU * h(i, 10 + k), c = Math.cos(a), s = Math.sin(a), z0 = H * (0.3 + 0.2 * k), L = 0.3 + 0.12 * h(i, 20 + k), u = (z0 / H), bx = x + (tx - x) * u, by = y + (ty - y) * u;
-        const mid = [bx + c * L * 0.55, by + s * L * 0.55, z0 + 0.16];
+        const a = TAU * h(i, 10 + k), c = Math.cos(a), s = Math.sin(a), z0 = H * (0.3 + 0.2 * k), L = 0.9 * (0.3 + 0.12 * h(i, 20 + k)), u = (z0 / H), bx = x + (tx - x) * u, by = y + (ty - y) * u;
+        const mid = [bx + c * L * 0.55, by + s * L * 0.55, z0 + 0.16 * Z];
         p.push(C([bx, by, z0], mid, 0.028, 0.024, "cmLeaf"), C(mid, [bx + c * L, by + s * L, z0 + 0.02], 0.024, 0.016, "cmLeafDk"));
       }
-      p.push(C([tx, ty, H], [tx + 0.04 * WIND[0], ty + 0.04 * WIND[1], H + 0.17], 0.026, 0.016, "cmTassel"));
-      if (h(i, 6) < 0.7) { const a = TAU * h(i, 7), c = Math.cos(a), s = Math.sin(a), z = H * (0.45 + 0.1 * h(i, 8)); p.push(C([x + c * 0.04, y + s * 0.04, z], [x + c * 0.12, y + s * 0.12, z + 0.2], 0.036, 0.026, "cmHusk")); }
+      p.push(C([tx, ty, H], [tx + 0.04 * WIND[0], ty + 0.04 * WIND[1], H + 0.17 * Z], 0.026, 0.016, "cmTassel"));
+      if (h(i, 6) < 0.7) { const a = TAU * h(i, 7), c = Math.cos(a), s = Math.sin(a), z = H * (0.45 + 0.1 * h(i, 8)); p.push(C([x + c * 0.04, y + s * 0.04, z], [x + c * 0.12, y + s * 0.12, z + 0.2 * Z], 0.036, 0.026, "cmHusk")); }
     }
-    return { prims: p, r: w > 1 ? 1.25 : 0.75, h: 1.75, k: 1, detail: (x, y, z, m) => (m === "cmLeaf" && z < 0.08 ? "cmLeafDk" : m) };
+    return { prims: p, r: w > 1 ? 1.25 : 0.75, h: 1.45, k: 1, detail: (x, y, z, m) => (m === "cmLeaf" && z < 0.08 ? "cmLeafDk" : m) };
   });
 
   // Tall grass, ripe and gold: o.w 2 a 2×2-tile sweep of nine tufts (the anchor on the shared corner), o.w
-  // 1 four tufts in one tile; five thin blades a tuft, 0.8-1.15 tall, all leaning downwind (ME.WIND_DIR, so
+  // 1 four tufts in one tile; five thin blades a tuft, 0.66-0.95 tall (0.82 of the first cut, "wheat stalks a bit smaller"), all leaning downwind (ME.WIND_DIR, so
   // set it unturned), pale at the tips and many with a seed head. It sways (CT.sway), harder than the corn,
   // and one tile at a time, so the gusts ripple across it. The blade count is the phone's frame cost: each
   // tuft is ray-marched over its box, so fewer blades in tufts set close and leaning less (the Corn Moon perf pass)
@@ -14640,7 +15046,7 @@ fn boxOf(V: Vox) -> Box {
     for (let t = 0; t < n; t++) {
       const cx = w > 1 ? ((t % 3) - 1) * 0.45 + (h(t, 1) - 0.5) * 0.14 : one[t][0] + (h(t, 1) - 0.5) * 0.1, cy = w > 1 ? (Math.floor(t / 3) - 1) * 0.45 + (h(t, 2) - 0.5) * 0.14 : one[t][1] + (h(t, 2) - 0.5) * 0.1;
       for (let b = 0; b < nb; b++) {
-        const i = t * 10 + b, a = TAU * (b / nb + 0.2 * h(i, 3)), r0 = 0.02 + 0.04 * h(i, 4), Hb = 0.8 + 0.35 * h(i, 5), lean = 0.12 + 0.12 * h(i, 6), side = (h(i, 7) - 0.5) * 0.1;
+        const i = t * 10 + b, a = TAU * (b / nb + 0.2 * h(i, 3)), r0 = 0.02 + 0.04 * h(i, 4), Hb = 0.82 * (0.8 + 0.35 * h(i, 5)), lean = 0.12 + 0.12 * h(i, 6), side = (h(i, 7) - 0.5) * 0.1;
         let q = [cx + Math.cos(a) * r0, cy + Math.sin(a) * r0, 0];
         for (let k = 1; k <= 3; k++) {
           const u = k / 3, d = lean * u * u, nq = [q[0] + 0, q[1] + 0, 0];
@@ -14650,7 +15056,7 @@ fn boxOf(V: Vox) -> Box {
         if (h(i, 8) < 0.5) p.push(E([q[0] + WIND[0] * 0.03, q[1] + WIND[1] * 0.03, q[2] + 0.04], [0.03, 0.03, 0.07], "cmSeed"));
       }
     }
-    return { prims: p, r: w > 1 ? 1.25 : 0.65, h: 1.3, k: 1 };
+    return { prims: p, r: w > 1 ? 1.25 : 0.65, h: 1.1, k: 1 };
   });
 
   // Thin grass, one tile: o.tall a clump of eight fine blades 0.6-1.0 tall with pale tips, or else a low tuft
@@ -14738,23 +15144,39 @@ fn boxOf(V: Vox) -> Box {
     };
   });
 
-  // A small tree in its autumn crown: a crooked trunk, three limbs, a lumpy crown of o.leaf (cmAppleLeaf rust,
-  // cmAmber, cmScarlet) flecked with o.leaf2 and scarlet and, unless o.fruit is false, red apples in it. It
-  // sways (CT.sway) and drops its leaves (CT.particles.leaves, CT.terrain.litterTree). Anchored on the ground.
+  // A tree in its autumn crown: a crooked trunk, five limbs with twigs out to the crown's edge, a crown of nine
+  // big lumps of o.leaf (cmAppleLeaf rust, cmAmber, cmScarlet) scalloped by fourteen small leaf clusters round
+  // its rim and under it, and, unless o.fruit is false, red apples in it. Q (1.22) scales it up (the user:
+  // "trees a bit bigger"), so it stands 2.4 tall. The leaves (detail) have patches of o.leaf2 a few voxels across, single
+  // leaves flecked scarlet or amber, the underside and the crown's inside in a deep shade (cmLeafShade) and
+  // pale gold tips on its top (cmLeafLit), so the crown reads as leaves and not a sponge. It sways (CT.sway)
+  // and drops its leaves (CT.particles.leaves, CT.terrain.litterTree). Anchored on the ground.
   model("cm_apple", (o = {}) => {
-    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), leaf = o.leaf || "cmAppleLeaf", leaf2 = o.leaf2 || (leaf === "cmAmber" ? "cmAppleLeaf" : "cmAmber"), p = [C([0, 0, 0], [0.08, -0.04, 0.6], 0.1, 0.075, "bark"), C([0.08, -0.04, 0.6], [0.02, 0.02, 1.0], 0.075, 0.06, "bark")];
-    for (let k = 0; k < 3; k++) { const a = (k / 3) * TAU + 0.4; p.push(C([0.05, -0.01, 0.8], [Math.cos(a) * 0.42, Math.sin(a) * 0.42, 1.25], 0.05, 0.03, "bark")); }
-    for (let k = 0; k < 9; k++) {
-      const a = TAU * (k / 9 + 0.1 * h(k, 1)), r = k === 0 ? 0 : 0.3 + 0.15 * h(k, 2), c = [Math.cos(a) * r, Math.sin(a) * r, 1.35 + 0.25 * h(k, 3) + (k === 0 ? 0.2 : 0)];
-      p.push(E(c, [0.3, 0.3, 0.24], leaf));
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), leaf = o.leaf || "cmAppleLeaf", leaf2 = o.leaf2 || (leaf === "cmAmber" ? "cmAppleLeaf" : "cmAmber"), Q = 1.22;
+    const v = (x, y, z) => [x * Q, y * Q, z * Q], p = [C(v(0, 0, 0), v(0.08, -0.04, 0.6), 0.1 * Q, 0.075 * Q, "bark"), C(v(0.08, -0.04, 0.6), v(0.02, 0.02, 1.0), 0.075 * Q, 0.06 * Q, "bark")];
+    for (let k = 0; k < 5; k++) {
+      const a = (k / 5) * TAU + 0.4 + 0.3 * h(k, 9), ca = Math.cos(a), sa = Math.sin(a), r = 0.36 + 0.08 * h(k, 10), z = 1.18 + 0.12 * h(k, 11);
+      p.push(C(v(0.05, -0.01, 0.78 + 0.06 * k), v(ca * r, sa * r, z), 0.05 * Q, 0.03 * Q, "bark"));
+      p.push(C(v(ca * r, sa * r, z), v(ca * (r + 0.24) - sa * 0.08, sa * (r + 0.24) + ca * 0.08, z + 0.12), 0.028 * Q, 0.016 * Q, "bark"));
     }
-    if (o.fruit !== false) for (let k = 0; k < 9; k++) { const a = TAU * h(k, 4), r = 0.48 + 0.08 * h(k, 5); p.push(S([Math.cos(a) * r, Math.sin(a) * r, 1.15 + 0.4 * h(k, 6)], 0.05, "cmApple")); }
+    for (let k = 0; k < 9; k++) {
+      const a = TAU * (k / 9 + 0.1 * h(k, 1)), r = k === 0 ? 0 : 0.3 + 0.15 * h(k, 2);
+      p.push(E(v(Math.cos(a) * r, Math.sin(a) * r, 1.35 + 0.25 * h(k, 3) + (k === 0 ? 0.2 : 0)), [0.3 * Q, 0.3 * Q, 0.24 * Q], leaf));
+    }
+    for (let k = 0; k < 14; k++) {
+      const a = TAU * (k / 14 + 0.05 * h(k, 12)), up = k % 2, r = up ? 0.55 + 0.1 * h(k, 13) : 0.4 + 0.12 * h(k, 13), z = up ? 1.42 + 0.3 * h(k, 14) : 1.12 + 0.08 * h(k, 14), q = 0.12 + 0.05 * h(k, 15);
+      p.push(E(v(Math.cos(a) * r, Math.sin(a) * r, z), [q * Q, q * Q, q * 0.8 * Q], k % 5 === 2 ? leaf2 : leaf));
+    }
+    if (o.fruit !== false) for (let k = 0; k < 9; k++) { const a = TAU * h(k, 4), r = 0.48 + 0.08 * h(k, 5); p.push(S(v(Math.cos(a) * r, Math.sin(a) * r, 1.15 + 0.4 * h(k, 6)), 0.05 * Q, "cmApple")); }
     return {
-      prims: p, r: 0.85, h: 1.95, k: 1,
-      detail: (x, y, z, m) => {
-        if (m !== leaf) return m;
-        const hh = P.hash(Math.floor(x * 14), Math.floor(y * 14), Math.floor(z * 14), 8);
-        return hh < 0.3 ? leaf2 : hh < 0.38 && leaf !== "cmScarlet" ? "cmScarlet" : m;
+      prims: p, r: 1.05, h: 2.55, k: 1,
+      detail: (x, y, z, m, nx, ny, nz) => {
+        if (m !== leaf && m !== leaf2) return m;
+        const f = P.hash(Math.floor(x * 16), Math.floor(y * 16), Math.floor(z * 16), 8), g = P.hash(Math.floor(x * 6), Math.floor(y * 6), Math.floor(z * 6), 9);
+        if (nz < -0.35 || (Math.hypot(x, y) < 0.3 * Q && nz < 0.3)) return f < 0.25 ? m : "cmLeafShade";
+        if (nz > 0.45 && f < 0.22) return "cmLeafLit";
+        if (f > 0.9) return leaf !== "cmScarlet" ? "cmScarlet" : "cmAmber";
+        return g < 0.3 ? (m === leaf ? leaf2 : leaf) : m;
       },
     };
   });
@@ -14843,6 +15265,25 @@ fn boxOf(V: Vox) -> Box {
       p.push(E([x, y, 0.02], [l, l * (0.6 + 0.3 * h(i, 6)), 0.05], L[Math.floor(h(i, 7) * L.length)]));
     }
     return { prims: p, r: 0.6, h: 0.08, k: 1 };
+  });
+
+  // A mound of autumn leaves raked or blown together, one tile: a low dome of litter 0.17-0.2 high under
+  // o.n (30) flat leaves in rust, amber, scarlet, orange and brown heaped over it; o.w 2 two heaps run
+  // together. A stamp like cm_leaves (no volume, no frame cost), scattered at the trees' feet, on the tall
+  // grass, the pen, the patch, the garden and the wall tops by the field, never on the path or a build tile
+  // (below the map). Anchored on the ground.
+  model("cm_leafpile", (o = {}) => {
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), p = [], n = o.n || 30, L = ["cmAppleLeaf", "cmAmber", "cmScarlet", "cmPumpkin", "cmLitter", "cmAppleLeaf", "cmAmber"];
+    const heaps = (o.w || 1) > 1 ? [[-0.16, 0.06, 0.28, 0.17], [0.2, -0.1, 0.22, 0.14]] : [[0, 0, 0.32, 0.2]];
+    heaps.forEach(([hx, hy, R, H], j) => {
+      p.push(E([hx, hy, 0], [R, R * (0.8 + 0.2 * h(j, 1)), H * (0.85 + 0.15 * h(j, 2))], "cmLitter"));
+      for (let i = 0; i < n / heaps.length; i++) {
+        const k = j * 100 + i, a = TAU * h(k, 3), d = R * Math.sqrt(h(k, 4)), x = hx + Math.cos(a) * d, y = hy + Math.sin(a) * d * 0.9;
+        const z = H * 0.9 * Math.sqrt(Math.max(0, 1 - (d / R) * (d / R))), l = 0.06 + 0.04 * h(k, 5);
+        p.push(E([x, y, z], [l, l * (0.55 + 0.3 * h(k, 6)), 0.04], L[Math.floor(h(k, 7) * L.length)]));
+      }
+    });
+    return { prims: p, r: 0.6, h: 0.3, k: 1 };
   });
 
   CT.volumeDeco = (CT.volumeDeco || []).concat(["cm_corn", "cm_tallgrass", "cm_thingrass", "cm_shrub", "cm_scarecrow", "cm_lantern", "cm_pumpkin", "cm_apple", "cm_sheep", "cm_trough", "cm_coop", "cm_hen", "cm_cabbage", "cm_sunflower"]);
@@ -15072,6 +15513,25 @@ fn boxOf(V: Vox) -> Box {
     }
   })();
 
+  // mounds of autumn leaves (the user: "mounds of autumn leaves as part of decor"): one at the foot of each
+  // tree, downwind of the trunk, and on about a quarter of the tall grass, the pen, the patch and the garden and
+  // about a sixth of the wall tops by the field; never on the path, a build tile or the ditch, nor on a tile
+  // that holds a volume prop (a tree's own tile aside), and clear of the gates, the stairs and the jar's glass
+  (function () {
+    const m = CT.maps.cornmoon, K = m.kind, at = (x, y) => (K[y] && K[y][x]) || "_", stairs = ["6,6", "7,6", "17,11", "18,11"], vol = CT.volumeDeco;
+    const B = chars(m.game.build), cell = (d) => Math.floor(d[2] + 0.5 + ((d[4] && d[4].dx) || 0)) + "," + Math.floor(d[3] + 0.5 + ((d[4] && d[4].dy) || 0));
+    const low = ["cm_thingrass", "cm_tallgrass", "cm_apple"], used = new Set(m.props.filter((d) => vol.includes(d[0]) && !low.includes(d[0])).map(cell)), piled = new Set();
+    const ok = (x, y) => { const k = at(x, y); return k !== ":" && k !== "~" && k !== "_" && !B.includes(k) && Math.hypot(x + 0.5 - 12, y + 0.5 - 12) <= 11 && !stairs.includes(x + "," + y) && !((y <= 2 && Math.abs(x - 11.5) <= 2.5) || (x >= 21 && Math.abs(y - 11.5) <= 2.5)); };
+    const pile = (x, y, dx, dy, i) => { if (piled.has(x + "," + y)) return; piled.add(x + "," + y); m.props.push(["cm_leafpile", { seed: 1 + Math.floor(P.hash(x, y, 20, i) * 6), w: P.hash(x, y, 21, i) < 0.35 ? 2 : 1 }, x, y, { dx, dy }]); };
+    m.props.filter((d) => d[0] === "cm_apple").forEach((d) => { const [x, y] = cell(d).split(",").map(Number); if (ok(x, y)) pile(x, y, ((d[4] && d[4].dx) || 0) + WIND[0] * 0.42, ((d[4] && d[4].dy) || 0) + WIND[1] * 0.42, 1); });
+    for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
+      const k = at(x, y), hs = P.hash(x, y, 22, 3);
+      if (!ok(x, y) || used.has(x + "," + y)) continue;
+      const wallByField = k === "#" && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !"#_".includes(at(x + dx, y + dy)));
+      if (("gnpk".includes(k) && hs < 0.25) || (wallByField && hs < 0.16)) pile(x, y, (P.hash(x, y, 23, 3) - 0.5) * 0.3, (P.hash(x, y, 24, 3) - 0.5) * 0.3, 2);
+    }
+  })();
+
   // The light: a low harvest moon in the south-east (shadows long across the rows), a few broad moon shafts
   // slanting in on the track, the corn and the east gate (the lower the moon, the longer they lean; each
   // pool lands on its tile's ground), and a dusky plum fog, a darker vignette and honey beams over the
@@ -15168,56 +15628,67 @@ fn boxOf(V: Vox) -> Box {
 
 </script>
 <script>/* ../MossheartEngine/content/everstair.js */
-/* The Ever Stair, Mossheart's fourth garden: a cloister of pale stone drawn like a print, where a stair runs
-   round the court and seems to come back to where it began, the back walls keep gardens with their own
-   gravity, and the paving of the road turns, tile by tile, from a checkerboard into moths and leaves. It is
-   in the lithograph palette (content/lithograph.js, loaded before this file). The user picked layouts A, B
-   and C of the S5 board (2026-11-08). This file holds Art's part of the level; the map is Game's
-   (content/everstair-map.js) and names these kinds and models:
-     ME.content.kinds       es_road (the paved road), es_court (the cloister's flags), es_lawn (moss lawn),
-                            es_wall (the walls' tops), es_water (a still grey pool), and the plain kinds
-                            round the stair's seam: es_tread (the stair) and es_turf (the ground behind it)
-     window.MODELS          stamps es_stair (o.steps, o.rise, o.w, o.rail), es_arch (o.span, o.h),
-                            es_facade (one tile of back wall, o.piece: plain, lawn, tree, stair, arch or
-                            lantern, o.h) and es_inlay (one road tile's paving, o.stage 0-1, o.u, o.v)
-     ME.content.everstairInlays(tiles)   -> the es_inlay props for a road, its tiles in walking order
-     ME.content.mapLight.everstair       its light, { L, light, look }: even and soft, no strong sun
-   The ground's patterns are original motifs (a checker, a checker bent into interlocking waves, moths and
-   leaves): no artist's prints or tilings are copied, and nothing in the game names one. */
+/* The Ever Stair, Mossheart's fourth garden: mossy islands floating in a pale sky (the Architect's §10, the
+   user's go 2026-11-08), where a stair runs round a ring of slabs and seems to come back to where it began,
+   and only the locked view joins the pieces into one garden. Its ground is Mossheart's own: moss tops, sett
+   paving, stone and roots under the islands, andon lamps. Art owns the ground of the map
+   (content/everstair-map.js) and this file; Game owns the map's `game` block. The map names:
+     ME.content.kinds       es_road (the sett road), es_court (flags), es_lawn (moss, the plots), es_crag (the
+                            debris' rock), es_water (a still pool), and the plain kinds on the joins' edges:
+                            es_tread (the ring's slabs and the seam's walk), es_turf (the ground by a seam),
+                            es_deck (the bridge's two decks): no pattern laid in world space, no lighting class
+     window.MODELS          stamps es_gate (the way in, o.span, o.h), es_lamp (an iron post lamp, o.h) and
+                            es_panel (one floating wall, o.piece: plain, lawn, tree, stair or lamp, o.h)
+     ME.content.mapLight.everstair       its light, { L, light, look }: a high sun from +x+y, the void's sky
+   The lithograph stamps of the first layout (es_stair, es_arch, es_facade, es_inlay and
+   ME.content.everstairInlays, in the lithograph palette of content/lithograph.js) stay below for DeckChess's
+   board; the islands use none of them. Every motif is original, and nothing in the game names an artist. */
 (function () {
   const ME = window.ME, P = window.PX, { S, E, C, B, Y } = P.prim, M = window.MODELS, CT = (ME.content = ME.content || {}), TAU = Math.PI * 2;
   const ry = (a) => P.rot("y", a);
   const fr = (x) => x - Math.floor(x);
 
   // ---------------------------------------------------------------- kinds
-  // the road: pale paper-toned paving with a graphite kerb where it meets the lawn; the court: worn bone
-  // flags; the lawn: the garden's one strong colour; the walls' tops: bone over graphite courses
+  // Mossheart's own ground (content/momiji.js): the road is its sett lane, the lawn its moss carpet with
+  // grass and andon lamps along the road, the flags worn stone, the debris bare rock with moss on top. Each
+  // island's sides and keel are the under material: rock, roots showing where moss drapes over the edge.
+  // keel: { d, k, max } is F1's (Engine) taper under a kind's bottom: d tiles deeper per tile in from the
+  // island's edge (up to 4 tiles, at most max), plus up to k tiles of noise. The map's bottoms already sink
+  // inward, so these stay shallow: the lawn's isles hang deepest, the causeway's flags barely
+  const drape = { drape: ["moss", "moss2"], overhang: "moss" };
   Object.assign((CT.kinds = CT.kinds || {}), {
-    es_road: { recipe: "layer", top: "litRoad", mottle: "litBone", mottleK: 0.08, depth: 0.12, under: "litSlate", edge: { mat: "litGraphite", width: 0.1, raise: 0.06, facing: ["es_lawn"] } },
-    es_court: { recipe: "layer", top: "litParchment", mottle: "litBone", mottleK: 0.18, depth: 0.12, under: "litSlate" },
-    es_lawn: { recipe: "carpet", top: "litMoss", mottle: "litMossL", cushions: true, drape: ["litMoss", "litMossL"], overhang: "litMoss", under: "litGraphite" },
-    es_wall: { recipe: "layer", top: "litBone", mottle: "litSlate", mottleK: 0.15, depth: 0.1, under: "litGraphite" },
-    // the plain kinds round the stair's seam (the Architect's tell 3): the loop closes only on screen, so the
-    // end's side shows next to the start's copy 4 tiles higher, and any pattern laid in world space breaks
-    // there. The stair's treads (es_tread, all 32 cells) and the plain ground behind its two ends (es_turf)
-    // have no mottle, no cushions, no edge breakup, and flat materials: litRoad's and litMoss's colours in
-    // the default lighting class, so no rock blotches, moss mottling or gust sheen either (light.js,
-    // gbuffer.js). Only the per-voxel grain stays, which has no pattern to line up. The kerb is laid by tile, not in
-    // world space, so the treads keep it
-    es_tread: { recipe: "layer", top: "litTread", depth: 0.12, under: "litSlate", edge: { mat: "litGraphite", width: 0.1, raise: 0.06, facing: ["es_lawn", "es_turf"] } },
-    es_turf: { recipe: "layer", top: "litTurf", depth: 0.12, under: "litGraphite" },
-    // a still pool the colour of slate: little glint, faint caustics, a grey tint
-    es_water: Object.assign({}, CT.kinds.water || {}, {
-      bed: ["litSlate", "litGraphite"], shore: "litBone", bank: "litMoss", drape: ["litMoss", "litMossL"], overhang: "litMoss", under: "litGraphite",
-      surface: 0, clarity: 0.6, tint: [0.12, 0.16, 0.2], absorb: 1.2, calm: 1, glint: 0.5, caustics: 0.3,
-    }),
+    es_road: Object.assign({
+      recipe: "lane", top: "gravel", edge: "moss", under: "rock",
+      paving: { stones: ["sett", "sett2", "sett3"], joint: "moss", dirt: "earth", hole: "gravel", moss: "moss2", scale: 2.2, gap: 0.1, sunk: 0.3, missing: 0.05, cracked: 0.18, jointK: 0.3, mossK: 0.14 },
+      keel: { d: 0.75, k: 0.3, max: 2.5 },
+    }, drape),
+    es_court: Object.assign({ recipe: "layer", top: "stone", mottle: "pebble", mottleK: 0.15, depth: 0.12, under: "rock", keel: { d: 0.5, k: 0.25, max: 1 } }, drape),
+    es_lawn: Object.assign({ recipe: "carpet", top: "moss", mottle: "moss2", cushions: true, litter: "maple", under: "rock", grass: true, lamps: true, keel: { d: 1, k: 0.4, max: 3.5 } }, drape),
+    es_crag: Object.assign({ recipe: "layer", top: "stone", mottle: "moss2", mottleK: 0.35, depth: 0.2, under: "rock", keel: { d: 1, k: 0.5, max: 2 } }, drape),
+    // the plain kinds on the joins' edges (the Architect's tell 3): a join closes only on screen, so one
+    // piece's side shows next to another's copy 4 tiles off, and any pattern laid in world space breaks
+    // there. These have no mottle, cushions, paving or edge breakup, and classless materials (no rock
+    // blotches, moss mottling or gust sheen: light.js, gbuffer.js), Mossheart's colours under new names.
+    // Only the per-voxel grain stays, which has no pattern to line up. The ring's slabs hang 0.75 thick with
+    // no keel, so their bottoms meet on screen the way their tops do
+    es_tread: { recipe: "layer", top: "isleTread", depth: 0.12, under: "isleSlab" },
+    es_turf: { recipe: "layer", top: "isleTurf", depth: 0.12, under: "isleSlab" },
+    es_deck: { recipe: "layer", top: "isleDeck", depth: 0.12, under: "isleSlab" },
+    // a still pool: Mossheart's water with little glint
+    es_water: Object.assign({}, CT.kinds.water || {}, { bank: "moss", under: "rock", calm: 1, glint: 0.5 }, drape),
   });
-  // the plain kinds' materials: the lithograph's road and moss ramps under names with no class (materialClass)
-  Object.assign(CT.ramps, { litTread: CT.ramps.litRoad, litTurf: CT.ramps.litMoss });
-  CT.mats = Object.assign(CT.mats || {}, { litTurf: { wrap: 0.5 } });
-  // the stone stays crisp: printed lines, not worn edges
-  CT.edgeRound = Object.assign(CT.edgeRound || {}, { kinds: Object.assign((CT.edgeRound && CT.edgeRound.kinds) || {}, { es_road: 0, es_court: 0.03, es_wall: 0, es_tread: 0, es_turf: 0 }) });
-  if (CT.edgeBreak) CT.edgeBreak.kinds = Object.assign(CT.edgeBreak.kinds || {}, { es_road: 0, es_court: 0, es_wall: 0, es_lawn: 0.1, es_tread: 0, es_turf: 0 });
+  // the plain kinds' materials: Mossheart's flags, moss and planks, and a slab grey, under names with no
+  // class (materialClass); the iron and the lamp's glow for es_lamp and the panels; and isleFace, the walked
+  // wall's pale limestone: +x takes 0.35 of the sun, so on Mossheart's grey the walkers' dark bodies sank into it
+  Object.assign(CT.ramps, {
+    isleTread: ["#9a9384", 8, 0.18, 0.84, 0.12], isleTurf: ["#6b9a3c", 7, 0.1, 0.78, 0.35], isleSlab: ["#7f8079", 6, 0.1, 0.8],
+    isleDeck: ["#7a6248", 6, 0.16, 0.62, 0.2], isleIron: ["#2f3a36", 5, 0.06, 0.42, 0.15], isleGlow: ["#f0a040", "#f4b858", "#f8cc78", "#fce0a0"],
+    isleFace: ["#c2bcaa", 7, 0.32, 0.93, 0.1],
+  });
+  CT.mats = Object.assign(CT.mats || {}, { isleTurf: { wrap: 0.5 }, isleGlow: { em: 1, flat: 1 } });
+  // the joins' kinds stay crisp: a rounded or broken edge is a world-space pattern too
+  CT.edgeRound = Object.assign(CT.edgeRound || {}, { kinds: Object.assign((CT.edgeRound && CT.edgeRound.kinds) || {}, { es_road: 0, es_court: 0.03, es_wall: 0, es_tread: 0, es_turf: 0, es_deck: 0 }) });
+  if (CT.edgeBreak) CT.edgeBreak.kinds = Object.assign(CT.edgeBreak.kinds || {}, { es_road: 0, es_court: 0, es_wall: 0, es_lawn: 0.1, es_tread: 0, es_turf: 0, es_deck: 0 });
 
   // ---------------------------------------------------------------- models
   // tile units, the anchor at the ground centre, Z up (content/fernglass.js)
@@ -15343,6 +15814,93 @@ fn boxOf(V: Vox) -> Box {
     };
   });
 
+  // ---------------------------------------------------------------- the islands' stamps
+  // Mossheart's stone: courses a quarter tile high in rock joints, a few stones gone to moss
+  const masonry = (u, z, m) => (ashlar(u, z) ? "rock" : P.hash(Math.floor(u * 2 + (Math.floor(z * 4) & 1) * 0.5), Math.floor(z * 4), 0, 23) < 0.12 ? "moss2" : m);
+  // moss cushions along a top edge from y0 to y1 at height z, a little over the face at x
+  const cushions = (p, x, y0, y1, z, n, s = 0.07) => { for (let i = 0; i < n; i++) p.push(E([x + (fr(i * 0.618) - 0.5) * 0.06, y0 + ((i + 0.5) / n) * (y1 - y0), z], [s, s * 1.2, s * 0.7], i & 1 ? "moss2" : "moss")); };
+  // an iron lamp: a post from at along axis d (a unit vector) o.h long, a glowing box under a cap at its end
+  const lamp = (p, at, d, h) => {
+    const tip = at.map((v, i) => v + d[i] * h), cap = at.map((v, i) => v + d[i] * (h + 0.14));
+    p.push(C(at, tip, 0.03, 0.022, "isleIron"), B(tip.map((v, i) => v + d[i] * 0.07), [0.06, 0.06, 0.06], 0.01, "isleGlow"), B(cap, [0.075, 0.075, 0.075].map((v, i) => (d[i] ? 0.015 : v)), 0, "isleIron"));
+  };
+
+  // The gate: the way in at the Overlook's top, a round stone arch on two piers with moss cushions on its
+  // crown and a lamp hanging inside each pier; the way runs through it along x. o.span is the opening's half
+  // width, o.h the springing height. Anchored at the opening's middle on the ground.
+  model("es_gate", (o = {}) => {
+    const sp = o.span ?? 0.42, hs = o.h ?? 0.75, d = 0.18, py = sp + 0.1, top = hs + sp + 0.18, p = [];
+    p.push(B([0, 0, top / 2], [d, py + 0.1, top / 2], 0.02, "stone"));
+    p.push(Y([0, 0, hs], sp, d + 0.05, "stone", { sub: true, R: ry(Math.PI / 2) }), B([0, 0, hs / 2 - 0.05], [d + 0.05, sp, hs / 2 + 0.05], 0, "stone", { sub: true }));
+    for (const s of [-1, 1]) p.push(B([0, s * py, 0.06], [d + 0.05, 0.13, 0.06], 0.02, "rock"));
+    cushions(p, 0, -py - 0.05, py + 0.05, top + 0.02, 9, 0.09);
+    for (const s of [-1, 1]) lamp(p, [0, s * (sp - 0.02), hs + 0.12], [0, 0, -1], 0.12);
+    return { prims: p, r: 0.75, h: top + 0.12, k: 1, detail: (x, y, z, m) => (m === "stone" ? masonry(y + x, z, m) : m) };
+  });
+
+  // A lamp post for the islands' dressing: o.h tall, on a small stone foot
+  model("es_lamp", (o = {}) => {
+    const h = o.h ?? 0.8, p = [Y([0, 0, 0.05], 0.09, 0.05, "stone")];
+    lamp(p, [0, 0, 0.1], [0, 0, 1], h - 0.2);
+    return { prims: p, r: 0.3, h: h + 0.05, k: 1 };
+  });
+
+  // One floating wall: a stone panel o.h high facing +x at the tile's back (x -0.5 to -0.28), a moss
+  // coping, and under it a tapering foot of rock with roots, so it hangs like the islands do. The pieces
+  // carry a garden of their own gravity, growing sideways out of the face (+x is its up):
+  //   plain   the panel alone, moss in its joints
+  //   lawn    a moss lawn on the face with cushions and a small tree
+  //   tree    one larger tree growing out of the face
+  //   stair   a stair climbing the face, its treads facing sideways
+  //   lamp    an iron lamp standing out from the face
+  // Anchored at the tile's middle at the panel's foot (the cell's h); panels in a run meet edge to edge.
+  // A walked wall (wall walkers, Escher design 9.1) takes o.flush: the face at the tile's front (x 0.5, flush
+  // with the next cell's edge, for the road's arc), no foot; and o.clear = [z0, z1], the walkers' band above
+  // the foot: the piece grows below z0 and nothing stands out of the face from z0 up.
+  model("es_panel", (o = {}) => {
+    const H = o.h ?? 2, F = o.flush ? 0.5 : -0.28, X0 = o.flush ? 0.28 : -0.5, xm = (X0 + F) / 2, G = o.clear ? o.clear[0] : H, p = [];
+    p.push(B([xm, 0, H / 2], [(F - X0) / 2, 0.5, H / 2], 0, "stone"));
+    cushions(p, xm + 0.02, -0.46, 0.46, H + 0.03, 8);
+    // the foot: a rock wedge narrowing downward, two roots trailing out of it
+    if (!o.flush) p.push(C([xm, 0, 0.02], [xm + 0.02, 0.05, -0.75], 0.22, 0.04, "rock"), C([xm, -0.25, 0.02], [xm, -0.3, -0.35], 0.12, 0.03, "rock"), C([xm, 0.25, 0.02], [xm, 0.28, -0.4], 0.12, 0.03, "rock"));
+    if (!o.flush) p.push(C([xm + 0.05, -0.1, -0.2], [xm + 0.16, -0.2, -0.9], 0.025, 0.008, "bark"), C([xm + 0.04, 0.16, -0.25], [xm + 0.1, 0.24, -0.7], 0.02, 0.006, "bark"));
+    const piece = o.piece || "plain";
+    // a tree growing along +x out of the face: the trunk from at, len out, its crown of leaves at the end
+    const tree = (at, len, crown, lean) => {
+      const [x, y, z] = at, tip = [x + len, y, z + lean];
+      p.push(C(at, tip, 0.05, 0.03, "bark"), C([x + len * 0.55, y, z + lean * 0.5], [x + len * 0.8, y + 0.13, z + lean * 0.5 + 0.1], 0.022, 0.012, "bark"));
+      p.push(E([tip[0] + crown * 0.6, y, tip[2]], [crown * 0.85, crown, crown * 0.9], "leaf"), E([tip[0] + crown * 0.9, y + 0.12, tip[2] + 0.1], [crown * 0.55, crown * 0.6, crown * 0.6], "leaf2"));
+    };
+    if (piece === "lawn") {
+      p.push(B([F + 0.04, 0, G * 0.5], [0.04, 0.44, G * 0.36], 0.02, "moss"));
+      for (let i = 0; i < 9; i++) p.push(E([F + 0.09, -0.38 + 0.095 * i, G * 0.2 + fr(i * 0.618) * G * 0.6], [0.045, 0.05, 0.05], "moss2"));
+      tree([F + 0.08, -0.15, G * 0.62], 0.28, 0.17, 0.04);
+    } else if (piece === "tree") {
+      p.push(E([F, 0, G * 0.55], [0.08, 0.2, 0.15], "moss"));
+      tree([F + 0.02, 0, G * 0.55], 0.42, 0.25, 0.06);
+    } else if (piece === "stair") {
+      // the floor of this stair is the panel's -y edge: each step stands further out toward +y
+      const n = 6, sh = (G * 0.75) / n;
+      for (let i = 0; i < n; i++) p.push(B([F + 0.08, -0.45 + 0.07 * (i + 1), G * 0.12 + sh * (i + 0.5)], [0.08, 0.07 * (i + 1), sh / 2], 0, "stone"));
+      p.push(B([F + 0.08, -0.47, G * 0.5], [0.09, 0.025, G * 0.4], 0, "rock"));
+    } else if (piece === "lamp") {
+      lamp(p, [F, 0, G * 0.45], [1, 0, 0], 0.3);
+    }
+    return {
+      prims: p, r: 0.75, h: H + 0.1, k: 1,
+      detail: (x, y, z, m, nx, ny) => {
+        if (m !== "stone") return m;
+        // a walked face: pale courses in slab-grey joints, no moss, so the walkers read on it (past the slab's
+        // middle: at F, the model's edge, the face voxels' centres sit half a voxel inside it)
+        if (o.flush && x > xm && nx > 0.6) return ashlar(y, z) ? "isleSlab" : "isleFace";
+        if (x > F - 0.02 && nx > 0.6) return masonry(y, z, m); // the face
+        if (x < F) return Math.abs(ny) > 0.6 ? masonry(x, z, m) : m; // the ends
+        if (piece === "stair") return "rock"; // this stair's risers face along z
+        return m;
+      },
+    };
+  });
+
   // ---------------------------------------------------------------- the road's paving
   // One road tile's paving, painted into the top voxel of its ground. o.stage (0 at the gate, 1 at the
   // court) picks the motif; o.u, o.v are the tile's map coordinates, so the pattern runs on across tiles
@@ -15398,13 +15956,19 @@ fn boxOf(V: Vox) -> Box {
   CT.everstairInlays = (tiles) => tiles.map(([x, y], i) => ["es_inlay", { stage: tiles.length > 1 ? i / (tiles.length - 1) : 0, u: x, v: y }, x, y, {}]);
 
   // ---------------------------------------------------------------- light
-  // a print's light: a high sun with little direction, deep ambient, soft shadows and no beams or mottle,
-  // so the stair's joins read cleanly; the paper's warmth in the key, a cool ink in the ambient
+  // a high sun from +x+y (§10.4), so the seen faces are lit and a join's two sides take the same light; no
+  // beams, canopy mottle or haze: depth or height fog would tell the pieces' real heights apart. The sky is
+  // the void's (F2, Engine: passes.js ME.VOID_SKY, linear RGB): a soft blue zenith, a pale warm band low on
+  // the screen, a cool mist, the drifting clouds and far islets at their defaults
   CT.mapLight = Object.assign(CT.mapLight || {}, {
     everstair: {
-      L: [-0.32, 0.38, 0.87],
+      // the sun at 55°, from +x+y (Escher design 9.1): the turned walls' faces lit, no wall shadow on the ground
+      L: [0.35, 0.45, 0.82],
       light: null,
-      look: { sunCol: [1.0, 0.97, 0.9], ambCol: [0.84, 0.88, 0.95], amb: 0.3, shade: 0.55, shaftK: 0, mottle: 0, haze: 0.04, vignette: 0.35, windK: 0.4 },
+      look: {
+        sunCol: [1.0, 0.96, 0.88], ambCol: [0.82, 0.88, 0.96], amb: 0.32, shade: 0.55, shaftK: 0, mottle: 0, haze: 0, vignette: 0.3, windK: 0.6,
+        backdrop: "void", skyTop: [0.24, 0.40, 0.66], skyLow: [0.84, 0.80, 0.72], mist: [0.70, 0.72, 0.76], horizon: 0.6, clouds: 1, islets: 1,
+      },
     },
   });
 })();
@@ -16820,6 +17384,9 @@ function MA_DSP() {
   const PROG_BOSS = [DM, DM, DM, DM, BB, BB, ASUS, ASUS]; // i | bVI vsus
   const PROG_BOSS_B = [GM, GM, DM, DM, BB, BB, DM, DM]; // iv i bVI i
   const PROG_OUTRO = [F, F, DM, DM, BB, BB, F, F]; // I vi IV I
+  // the build cue's rain arrangement: wistful, starting away from home (a rainy window, lofi)
+  const PROG_RAIN_A = [DM, DM, GM, GM, BB, BB, F, F]; // vi ii IV I
+  const PROG_RAIN_B = [BB, BB, F, F, DM, DM, CSUS, CSUS]; // IV I vi Vsus
 
   // Drift's own harmony, D minor: Dorian (its ii, Em11, and the natural sixth, B) for the calm, Aeolian
   // (iv, Gm9) for the fighting, Phrygian (the flat second, Eb) under the blight. Only minor chords and
@@ -16886,7 +17453,7 @@ function MA_DSP() {
     // the notes' scale, F major pentatonic (D minor's too)
     SCALE: [0, 2, 4, 7, 9],
     FIRST_CHORD: F,
-    PROG_A, PROG_B, PROG_C, PROG_WAVE, PROG_TENSE, PROG_BOSS, PROG_BOSS_B, PROG_OUTRO,
+    PROG_A, PROG_B, PROG_C, PROG_WAVE, PROG_TENSE, PROG_BOSS, PROG_BOSS_B, PROG_OUTRO, PROG_RAIN_A, PROG_RAIN_B,
     // The cues, one per phase: build, wave, boss (a boss wave) and over. Each has its tempo and how far
     // intensity pushes it, the progressions its sections take turns with (`tense`: the wave's when the
     // fighting is hard), the music bus's lowpass and reverb send (calm..intense), and how long it takes to
@@ -16900,14 +17467,20 @@ function MA_DSP() {
     // - breath: how long the music stays in, [min, max] seconds, and how long it then leaves only the
     //   valley's own sounds, before it fades back in.
     // `alt` is a cue's second arrangement, which takes turns with the first each time the phase comes
-    // round (music.js), with other instruments; its fields replace the cue's.
+    // round (music.js), with other instruments; its fields replace the cue's. `rain` is its arrangement while
+    // it rains steadily (music.js, RAIN.rainy), taken at the next section; its fields replace both.
     CUES: {
       build: { bpm: 64, drive: 0, progs: [PROG_A, PROG_B], lp: [4200, 4600], wet: [0.3, 0.32], fadeIn: 3, fadeOut: 4,
         bed: { every: 2, pad: -25, breath: -27, bass: -19 },
         voices: [V("glass", "Lead", -18, [44, 60], 1, [3, 8]), V("kalimba", "Lead", -16, [52, 76], 2, [-1, 4]), V("keys", "Keys", -20, [68, 92], 1, [-4, 1])],
         breath: { on: [20, 45], off: [30, 90] },
         alt: { bpm: 60, progs: [PROG_C, PROG_A],
-          voices: [V("celesta", "Keys", -21, [44, 60], 1, [3, 8]), V("piano", "Lead", -17, [52, 76], 2, [-1, 4]), V("harp", "Keys", -19, [68, 92], 1, [-4, 1])] } },
+          voices: [V("celesta", "Keys", -21, [44, 60], 1, [3, 8]), V("piano", "Lead", -17, [52, 76], 2, [-1, 4]), V("harp", "Keys", -19, [68, 92], 1, [-4, 1])] },
+        // rain on the window: slower, darker and wetter, a felt piano and the electric piano low, a celesta high
+        // and far apart (the music's drops fall over it, music.js)
+        rain: { bpm: 58, progs: [PROG_RAIN_A, PROG_RAIN_B], lp: [3800, 4200], wet: [0.34, 0.36],
+          bed: { every: 2, pad: -26, breath: -28, bass: -20 },
+          voices: [V("piano", "Lead", -17, [52, 76], 2, [-1, 4]), V("keys", "Keys", -20, [60, 84], 1, [-4, 1]), V("celesta", "Keys", -23, [40, 56], 1, [5, 9])] } },
       wave: { bpm: 66, drive: 3, progs: [PROG_WAVE, PROG_A], tense: PROG_TENSE, lp: [4400, 6000], wet: [0.28, 0.32], fadeIn: 2, fadeOut: 3,
         bed: { every: 2, pad: -24, breath: -26, bass: -17 },
         voices: [V("kalimba", "Lead", -16, [36, 52], 2, [-1, 4]), V("glass", "Lead", -18, [44, 60], 1, [3, 8]), V("keys", "Keys", -20, [60, 84], 1, [-4, 1]), V("glass", "Lead", -22, [28, 40], 1, [7, 10], 0.5)],
@@ -17549,9 +18122,9 @@ function MG_INSTRUMENTS(L) {
 </script>
 <script>/* ../Mossheart/src/audio/sfx.js */
 /* Every sound effect, a sound bank for the audio engine (MA.loadBanks; port of SfxBank, sfx_bank.gd):
-   noise, filters, pitch sweeps and grains for the plants, hits, creatures, the garden, its wildlife and
-   the valley's ambience. Loops (waterfall, stream, wind) are rendered long and cross-faded into
-   themselves. A name ending in a number is a take (hit_thorn_2 is the third take of hit_thorn), so
+   noise, filters, pitch sweeps and grains for the plants, hits, creatures, the garden, its wildlife,
+   the valley's ambience and its rain. Loops (waterfall, stream, wind, the rain's bed) are rendered long and
+   cross-faded into themselves. A name ending in a number is a take (hit_thorn_2 is the third take of hit_thorn), so
    repeated hits differ. Self-contained: it runs in the bank worker with only the DSP library L. */
 function MG_SFX(L) {
   const { TAU, LOOP_FADE, rnd, rr, n1, lerp, smooth, svf, seam, grains } = L;
@@ -17577,7 +18150,18 @@ function MG_SFX(L) {
     dew_0: [0.32, 32000], dew_1: [0.4, 32000], dew_2: [0.5, 32000], dew_chime: [0.9, 32000], dew_sparkle: [0.6, 32000], dew_shower: [1.1, 32000],
     uguisu: [1.45, 32000], chirp: [0.7, 32000], trill: [0.9, 32000], cricket: [1.4, 32000], frog: [0.8, 22050], leaves: [1.2, 22050],
     waterfall: [4.0, 22050, true], stream: [4.0, 22050, true], wind: [6.0, 22050, true],
+    // the rain (soundscape.js, Rain): three bed loops of different lengths ("eq": an equal-power seam), the drops
+    // on the bell jar's glass, the drips off the leaves after it and the puddle plinks
+    rain_wash: [8.3, 22050, "eq"], rain_patter: [6.7, 22050, "eq"], rain_glass: [7.4, 22050, "eq"],
+    tick_0: [0.3, 32000], tick_1: [0.3, 32000], tick_2: [0.3, 32000], tick_3: [0.3, 32000], tick_4: [0.3, 32000], tick_5: [0.3, 32000],
+    drip_0: [0.35, 32000], drip_1: [0.35, 32000],
+    plink_0: [0.45, 32000], plink_1: [0.45, 32000], plink_2: [0.5, 32000], plink_3: [0.5, 32000],
   };
+  // an equal-power seam for the rain's loops: noise faded against uncorrelated noise, where a plain cross-fade
+  // dips 3 dB once a loop, a pulse you would hear in a bed that has nothing else to hide it
+  const seamEq = (s, fade) => { const n = s.length - fade, out = s.slice(0, n); for (let i = 0; i < fade; i++) { const k = (i / fade) * PI * 0.5; out[i] = s[i] * sin(k) + s[n + i] * Math.cos(k); } return out; };
+  // a one-pole lowpass over the whole sound, in place (the rain's: soft above `hz`)
+  const soften = (s, sr, hz) => { const a = 1 - exp((-TAU * hz) / sr); let lp = 0; for (let i = 0; i < s.length; i++) { lp += a * (s[i] - lp); s[i] = lp; } return s; };
 
   // ------------------------------------------------------------------ sound effects
   const FX = {
@@ -17976,6 +18560,96 @@ function MG_SFX(L) {
       for (let i = 0; i < s.length; i++) { const t = i / sr, x = n1(); lp += (0.02 + 0.03 * (0.5 + 0.5 * sin((TAU * 2 * t) / dur))) * (x - lp); hp += 0.3 * (x - hp); const swell = 0.6 + 0.4 * sin((TAU * t) / dur + 1.3) * sin((TAU * 3 * t) / dur); s[i] = lp * 3 * swell + (x - hp) * 0.04 * swell; }
       return s;
     },
+    // ---- the rain. Soft first (the user, 2026-11-09: cozy lofi, never tiring over long play): every layer is
+    // rolled off above 2-4 kHz, and the rain bus's lowpass closes further in a drizzle (audio.js). A loop's
+    // slow swell is periodic in its own length (P), so the seam never steps.
+    // far rain, the bed's body: a soft "shhh" (noise between about 180 Hz and 2.2 kHz) with dense micro-drops in
+    // it (a few ms each, rung through two bands), so it reads as rain and not as a fan
+    rain_wash(s, sr) {
+      const n = s.length, P = n / sr - LOOP_FADE, d1 = new Float32Array(n), d2 = new Float32Array(n);
+      for (let g = 0, count = Math.floor((n / sr) * 900); g < count; g++) {
+        const at = Math.floor(rnd() * n), len = Math.floor(rr(0.001, 0.004) * sr), a = 0.1 + 0.9 * rnd() * rnd(), d = rnd() < 0.55 ? d1 : d2, k = 3 / len;
+        for (let j = 0; j < len && at + j < n; j++) d[at + j] += n1() * a * exp(-j * k);
+      }
+      const b1 = svf(sr), b2 = svf(sr), aL = 1 - exp((-TAU * 2200) / sr), aH = 1 - exp((-TAU * 180) / sr);
+      let l1 = 0, l2 = 0, h = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, x = n1(); l1 += aL * (x - l1); l2 += aL * (l1 - l2); h += aH * (l2 - h);
+        s[i] = ((l2 - h) * 2.2 + b1(d1[i], 1300, 0.9) * 0.5 + b2(d2[i], 2900, 1.1) * 0.35) * (1 + 0.07 * sin((TAU * t) / P + 0.6) + 0.05 * sin((TAU * 3 * t) / P + 2.1));
+      }
+      return s;
+    },
+    // near rain on leaves and moss: about 75 drops a second, each a few ms of noise rung through a band picked
+    // per drop (a leaf 1.4-3.6 kHz, ringing a little; moss or soil 450-1100 Hz, duller and softer), a soft attack,
+    // levels from a narrow spread so no drop stands out (one that did would mark the loop); a faint wash under them
+    rain_patter(s, sr) {
+      const n = s.length, P = n / sr - LOOP_FADE, aL = 1 - exp((-TAU * 1600) / sr), aH = 1 - exp((-TAU * 250) / sr), burst = Math.floor(0.002 * sr), att = 0.0004 * sr;
+      let l = 0, h = 0;
+      for (let i = 0; i < n; i++) { l += aL * (n1() - l); h += aH * (l - h); s[i] = (l - h) * 0.25; }
+      for (let g = 0, count = Math.floor((n / sr) * 75); g < count; g++) {
+        const leaf = rnd() < 0.6, f = leaf ? rr(1400, 3600) : rr(450, 1100), damp = leaf ? rr(0.25, 0.5) : rr(0.6, 1), b = svf(sr);
+        const at = Math.floor(rnd() * n), len = Math.floor(rr(0.012, 0.03) * sr), tau = rr(0.0015, 0.005) * sr, a = rr(0.45, 1) * (leaf ? 1 : 0.8) * damp * 2;
+        for (let j = 0; j < len && at + j < n; j++) s[at + j] += b(j < burst ? n1() : 0, f, damp) * a * min(j / att, 1) * exp(-j / tau);
+      }
+      for (let i = 0; i < n; i++) s[i] *= 1 + 0.06 * sin((TAU * 2 * i) / sr / P + 1.1);
+      return soften(s, sr, 4800);
+    },
+    // rain drumming on the bell jar's glass overhead, heard from inside: about 140 taps a second, each a muffled
+    // tap (a click through a band at 1.1 kHz) and a faint glassy ring (two inharmonic partials between 1.8 and
+    // 3.4 kHz, 10-25 ms), detuned per drop so no tone builds; under them the jar's hollow (noise about 260 Hz)
+    rain_glass(s, sr) {
+      const n = s.length, taps = new Float32Array(n), len = Math.floor(0.06 * sr);
+      for (let g = 0, count = Math.floor((n / sr) * 140); g < count; g++) {
+        const at = Math.floor(rnd() * n), a = rr(0.3, 1), w1 = (TAU * rr(1800, 3400)) / sr, w2 = w1 * rr(1.47, 1.62), dec = 1 / (rr(0.01, 0.025) * sr);
+        for (let j = 0; j < 12 && at + j < n; j++) taps[at + j] += n1() * a;
+        for (let j = 0; j < len && at + j < n; j++) s[at + j] += (sin(w1 * j) + 0.5 * sin(w2 * j)) * a * 0.08 * exp(-j * dec) * min(j / 6, 1);
+      }
+      const tap = svf(sr), hollow = svf(sr);
+      for (let i = 0; i < n; i++) s[i] += tap(taps[i], 1100, 0.8) * 0.9 + hollow(n1(), 260, 0.5) * 0.12;
+      return soften(s, sr, 3800);
+    },
+    // a drop on the jar's glass close by, the rain's signature: a soft click, a glassy ring (three inharmonic
+    // partials, a pitch per take, 15-45 ms) and the drop's tiny thud, rolled off above 6.5 kHz; takes 3 and 4
+    // are a drop and its bounce, take 5 a short trickle of three
+    tick(s, sr, take) {
+      const base = [2380, 2760, 3150, 2540, 2920, 2260][take], click = Math.floor(0.0006 * sr);
+      const hits = take === 5 ? [[0, 1], [0.045, 0.6], [0.083, 0.42]] : take >= 3 ? [[0, 1], [rr(0.035, 0.07), 0.38]] : [[0, 1]];
+      for (const [t0, a] of hits) {
+        const at = Math.floor(t0 * sr), f = base * (t0 ? rr(1.02, 1.12) : 1), w = [1, 1.593, 2.414].map((r) => (TAU * f * r * rr(0.99, 1.01)) / sr), dec = [45, 26, 15].map((ms) => 1 / (ms * 0.001 * sr));
+        for (let j = 0; at + j < s.length; j++) {
+          const t = j / sr, ring = sin(w[0] * j) * exp(-j * dec[0]) + 0.45 * sin(w[1] * j) * exp(-j * dec[1]) + 0.22 * sin(w[2] * j) * exp(-j * dec[2]);
+          s[at + j] += a * (ring * 0.55 * min(t / 0.0004, 1) + (j < click ? n1() * 0.5 : 0) + sin(TAU * 520 * t) * exp(-t * 160) * 0.3);
+        }
+      }
+      return soften(s, sr, 6500);
+    },
+    // after the rain, a fat drop off a leaf onto a leaf below: a damped "tup" dipping a little in pitch, the leaf's
+    // brief ring and a soft thud (the drops onto the glass are the ticks, played lower)
+    drip(s, sr, take) {
+      const f0 = [1150, 880][take], leaf = svf(sr), burst = Math.floor(0.0012 * sr); let ph = 0;
+      for (let i = 0; i < s.length; i++) {
+        const t = i / sr; ph += (f0 * (1 - 0.12 * min(t / 0.03, 1))) / sr;
+        s[i] = leaf(i < burst ? n1() : 0, f0 * 1.6, 0.3) * exp(-t * 60) * 0.5 + sin(TAU * ph) * min(t / 0.001, 1) * exp(-t * (take ? 34 : 45)) * 0.7 + sin(TAU * 240 * t) * exp(-t * 70) * 0.35;
+      }
+      return s;
+    },
+    // a drop into a puddle: the soft tap of the impact, then the bubble it traps ringing up onto its note (a sine
+    // gliding up from about two thirds of it as the bubble shrinks), rendered on F6 and played on the music's
+    // pentatonic (soundscape.js); take 2 adds the small drop that falls back, a fifth up and quieter, take 3 is a
+    // fat drop, a softer impact and a slower glide
+    plink(s, sr, take) {
+      const g = [0.33, 0.38, 0.3, 0.42][take], tg = [0.009, 0.012, 0.008, 0.017][take], dec = [26, 21, 30, 15][take], burst = Math.floor(0.0015 * sr);
+      const one = (t0, f, a, imp) => {
+        const at = Math.floor(t0 * sr); let ph = 0, l = 0;
+        for (let j = 0; at + j < s.length; j++) {
+          const t = j / sr; ph += (f * (1 - g * exp(-t / tg))) / sr; l += 0.35 * ((j < burst ? n1() : 0) - l);
+          s[at + j] += a * (sin(TAU * ph) * min(t / 0.0015, 1) * exp(-t * dec) + l * imp);
+        }
+      };
+      one(0, 1396.9, 1, take === 3 ? 0.5 : 0.9);
+      if (take === 2) one(0.11, 1396.9 * 1.5, 0.38, 0.4);
+      return soften(s, sr, 9000);
+    },
   };
 
   function render(name) {
@@ -17983,7 +18657,7 @@ function MG_SFX(L) {
     let s = new Float32Array(Math.floor(secs * sr));
     const m = /^(.*)_(\d)$/.exec(name);
     s = m ? FX[m[1]](s, sr, +m[2]) : FX[name](s, sr);
-    if (loops) s = seam(s, Math.floor(LOOP_FADE * sr));
+    if (loops) s = (loops === "eq" ? seamEq : seam)(s, Math.floor(LOOP_FADE * sr));
     return { data: s, sr, loop: !!loops };
   }
   return { salt: 4242, items: SOUNDS, render };
@@ -18062,6 +18736,13 @@ function MG_SFX(L) {
      low (and brings the music in with it).
    - Kills ring a kalimba note and weak-spot hits a glass one, in the current chord, on the grid, seconds
      apart at most.
+   - Rain (the weather's rain half; the soundscape's Rain is the rain itself, and G.Audio hands its level
+     here, setRain): the music leans lofi as it rains (RAIN below), its lowpass closing, more reverb and
+     crackle, a touch more tape wobble and a slower tempo; now and then a drop falls in it, a high note in the
+     chord and one or two lower ones splashing after; a shower's first drops are three falling notes; and
+     once it rains steadily the Ambient build cue turns to its rain arrangement (score.js, CUES.build.rain:
+     felt piano, the electric piano and a celesta over a wistful vi-ii-IV-I) at its next section, and back
+     when it dries.
 
    Music runs on real time, so the 2x game speed doesn't double the tempo. It reads the game through its
    events and the state's readings (intensity, corruption, field, heart). */
@@ -18110,23 +18791,32 @@ function MG_SFX(L) {
   // the gate's time constants (s) as the music comes in and goes out, and how long after it starts to go
   // out notes are still struck (music-clock seconds): the last ones ring out into the fade
   const GATE_IN = 1.6, GATE_OUT = 2.5, LAST_NOTES = 3;
+  // The rain's cues. The rain (0..1) is eased over `tau` s; at full rain the lowpass is `lp` x its own, the
+  // reverb send `wet` more, the crackle `vinyl` dB up, the tape's wow `wow` deeper and the tempo `bpm` slower
+  // (whole steps, so the delay times move rarely). drops: from rain `from`, a drop on a bar with odds up to
+  // `odds` (half that in the boss's cue), at `db`. onset: a shower starts above onset[0] (its first drops, at
+  // most every `again` s) and ends below onset[1]. rainy: the steady rain that turns the build cue to its rain
+  // arrangement, on above rainy[0] and off below rainy[1]
+  const RAIN = { tau: 6, lp: 0.78, wet: 0.05, vinyl: 3, wow: 0.0012, bpm: 3, drops: { odds: 0.45, from: 0.08, db: -25, at: [3, 5, 6, 7, 10, 11, 13] }, onset: [0.12, 0.04], again: 90, rainy: [0.3, 0.12] };
 
   // A deck plays one cue on its own sub-buses (gains: one per sub-bus, faded together) and keeps that
   // cue's song form: progression, section and the phrase's loops.
   class Deck {
     constructor(music, id, gains) {
-      this.m = music; this.gains = gains; this.Y = SC.STYLES.ambient; this.T = this.Y.cues; this.cue = ""; this.alt = false; this.D = null; this.live = false;
+      this.m = music; this.gains = gains; this.Y = SC.STYLES.ambient; this.T = this.Y.cues; this.cue = ""; this.alt = false; this.wet = false; this.D = null; this.live = false;
       this.bus = {}; for (const k of SUBS) this.bus[k] = "Music" + k + id;
       this.prog = SC.PROG_A; this.dark = []; this.sectionBar = 0; this.turn = 0; this.variant = ""; this.forceSection = true;
       this.loops = []; this.n = 0; this.padAge = 0; this.lastChord = null; this.lastNotes = null;
       this.chord = SC.FIRST_CHORD; this.chordNotes = this.chord.notes;
     }
-    // the cue's settings: its own, or its second arrangement's over them
+    // the cue's settings: its own, or its second arrangement's over them, and its rain arrangement's over those
     get def() { return this.D || this.T[this.cue]; }
-    // starts `cue` of the style `Y` (score.js, STYLES; its second arrangement when `alt`) on a fresh bar at ctx time `when`, swelling in from -12 dB
+    arrange() { const c = this.T[this.cue], A = this.alt && c.alt, W = this.wet && c.rain; this.D = A || W ? Object.assign({}, c, A || null, W || null) : null; }
+    // starts `cue` of the style `Y` (score.js, STYLES; its second arrangement when `alt`, its rain one while it
+    // rains steadily) on a fresh bar at ctx time `when`, swelling in from -12 dB
     start(cue, when, alt, Y) {
       this.silence(when);
-      const T = (this.T = Y.cues); this.Y = Y; this.cue = cue; this.alt = !!(alt && T[cue].alt); this.D = this.alt ? Object.assign({}, T[cue], T[cue].alt) : null;
+      const T = (this.T = Y.cues); this.Y = Y; this.cue = cue; this.alt = !!(alt && T[cue].alt); this.wet = !!(this.m.rainy && T[cue].rain); this.arrange();
       this.live = true; this.sectionBar = 0; this.turn = 0; this.variant = ""; this.forceSection = true;
       this.newPhrase();
       this.ramp(when, MA.dbToGain(-12), 1, this.def.fadeIn);
@@ -18155,6 +18845,9 @@ function MG_SFX(L) {
       this.chordNotes = this.dark[this.sectionBar] ? this.chord.dark : this.chord.notes;
     }
     newSection(variant, t) {
+      // (the rain arrangement comes and goes at a section, with a new phrase in it)
+      const wet = !!(this.m.rainy && this.T[this.cue].rain);
+      if (wet !== this.wet) { this.wet = wet; this.arrange(); this.newPhrase(); this.m.logCue(this.cue + (wet ? ":rain" : ":dry")); }
       const D = this.def;
       if (variant !== this.variant) this.m.logCue(this.cue + (this.alt ? ":alt" : "") + (variant ? "/" + variant : ""));
       this.forceSection = false; this.sectionBar = 0; this.variant = variant;
@@ -18431,6 +19124,9 @@ function MG_SFX(L) {
       this.style = "ambient"; this.restyle = false;
       // Mix: whether it is on, the style it is at (score.js, MIX) and whether it has turned in this rest
       this.mixed = false; this.mixAt = 0; this.mixTurned = false;
+      // the rain (setRain; eased) and its cues: steady rain, a shower on, when its first drops last fell, the
+      // drop struck in this bar (its 16th, -1 none) and the first drops waiting for the grid
+      this.rain = 0; this.rainTo = 0; this.rainy = false; this.showering = false; this.onsetAt = -1e9; this.dropAt = -1; this.firstDrops = false;
       for (const ev of ["spawn", "hit", "kill", "tower_placed", "tower_upgraded", "tower_sold", "wave_start", "wave_clear", "boss", "heart_hit", "boon", "game_over"]) G.on(ev, (d) => this.onEvent(ev, d));
       G.on("phase", (d) => this.onPhase(d.phase));
     }
@@ -18463,6 +19159,8 @@ function MG_SFX(L) {
       if (!SC.STYLES[s] || s === this.style) return;
       this.style = s; this.restyle = true; this.logCue("style:" + s);
     }
+    // the rain the soundscape plays (0..1), from G.Audio every frame
+    setRain(k) { this.rainTo = clamp(+k || 0, 0, 1); }
     get notes() { return this.seq ? this.seq.played : 0; }
     // the cue playing now ("wave/tense" when the wave's harmony has turned)
     get mood() { return this.live ? this.live.cue + (this.live.variant ? "/" + this.live.variant : "") : ""; }
@@ -18525,6 +19223,7 @@ function MG_SFX(L) {
       dt = Math.min(dt, 0.1);
       this.intensity += (S.intensity - this.intensity) * (1 - Math.exp(-dt * 1.5));
       const i = this.intensity, rot = S.corruption, q = this.seq, mx = this.mix, now = this.mixer.ctx.currentTime;
+      this.rainCues(dt, now);
       // tape: slow wow, quick flutter, a dip when the Heart Tree is hit, a wind-down when the run is lost
       this.tapeDip = Math.max(0, this.tapeDip - dt * 1.6);
       if (this.tapeState === 1) {
@@ -18544,7 +19243,7 @@ function MG_SFX(L) {
       const ctl = this.ctlT <= 0 || this.tapeDip > 0 || this.tapeState === 1;
       if (ctl) this.ctlT = 1 / CTL_HZ;
       if (ctl) {
-        const wow = Math.sin(q.clock * Math.PI * 2 * 0.55) * (0.0018 + rot * 0.009) + (LOW ? 0 : Math.sin(q.clock * Math.PI * 2 * 6.3) * 0.0006);
+        const wow = Math.sin(q.clock * Math.PI * 2 * 0.55) * (0.0018 + rot * 0.009 + RAIN.wow * this.rain) + (LOW ? 0 : Math.sin(q.clock * Math.PI * 2 * 6.3) * 0.0006);
         const rate = (1 + wow) * (1 - 0.14 * this.tapeDip) * Math.max(this.tapeSpeed, 0.25);
         if (Math.abs(rate - q.rate) > 2e-5) q.setRate(rate);
       }
@@ -18577,9 +19276,9 @@ function MG_SFX(L) {
       const D = this.live && this.live.cue === (this.gameOver ? "over" : this.cue) ? this.live.def : this.cues[this.gameOver ? "over" : this.cue || this.want];
       // (and, with a sweep, closing and opening again slowly: Drift's filter sweep over everything)
       const sweep = D.sweep ? 1 - D.sweep[1] * (0.5 - 0.5 * Math.cos((q.clock * 2 * Math.PI) / D.sweep[0])) : 1;
-      const cutoff = lerp(D.lp[0], D.lp[1], i) * sweep * (1 - 0.3 * rot) * (1 - 0.6 * this.tapeDip);
+      const cutoff = lerp(D.lp[0], D.lp[1], i) * sweep * (1 - 0.3 * rot) * (1 - 0.6 * this.tapeDip) * lerp(1, RAIN.lp, this.rain);
       mx.lp.frequency.setTargetAtTime(clamp(cutoff, 900, 16000), now, this.tapeDip > 0 ? 0.05 : 0.4);
-      mx.wet.gain.setTargetAtTime(lerp(D.wet[0], D.wet[1], i), now, 0.4);
+      mx.wet.gain.setTargetAtTime(lerp(D.wet[0], D.wet[1], i) + RAIN.wet * this.rain, now, 0.4);
       mx.keysPan.pan.setTargetAtTime(Math.sin(q.clock * 0.4) * (D.pan || 0.3), now, 0.1);
       // the delay times only when the tempo or the cue's taps change (a moving delay time costs more);
       // a low-end device has fewer taps (audio.js)
@@ -18602,7 +19301,7 @@ function MG_SFX(L) {
         mx.leadLp.frequency.setTargetAtTime(R[0] * Math.pow(R[1] / R[0], u) * wob, now, 0.2); mx.leadLp.Q.setTargetAtTime(lerp(R[3], R[4], v), now, 0.2);
       } else { mx.leadLp.frequency.setTargetAtTime(18000, now, 0.4); mx.leadLp.Q.setTargetAtTime(-3, now, 0.4); }
       if (!D.pump && this.pumping) { for (const g of [mx.pump.gain, mx.bassPump.gain]) { g.cancelScheduledValues(now); g.setValueAtTime(g.value, now); g.setTargetAtTime(1, now, 0.1); } this.pumping = false; }
-      if (!this.gameOver && this.vinyl) this.vinyl.g.gain.setTargetAtTime(MA.dbToGain(VINYL.calm + rot * VINYL.blight + (this.Y.vinyl || 0)), now, 0.3);
+      if (!this.gameOver && this.vinyl) this.vinyl.g.gain.setTargetAtTime(MA.dbToGain(VINYL.calm + rot * VINYL.blight + (this.Y.vinyl || 0) + RAIN.vinyl * this.rain), now, 0.3);
     }
 
     // --- cues
@@ -18621,7 +19320,7 @@ function MG_SFX(L) {
       // down, for the outro)
       if ((this.want !== this.cue || this.restyle) && q.clock >= this.holdUntil && this.tapeState !== 1) this.switchCue(t);
       const d = this.live, D = d ? d.def : this.cues[this.want];
-      q.bpm = D.bpm + D.drive * i + (this.swift && D.drive ? 3 : 0);
+      q.bpm = D.bpm + D.drive * i + (this.swift && D.drive ? 3 : 0) - Math.round(RAIN.bpm * this.rain);
       if (d) { d.barStart(t); this.chord = d.chord; this.chordNotes = d.chordNotes; }
       if (this.stinger && !this.gameOver) { this.announce(this.stinger, t); this.stinger = ""; }
     }
@@ -18646,6 +19345,38 @@ function MG_SFX(L) {
       const hr = S.heartRatio();
       if (S.phase !== G.Phase.GAME_OVER && hr < 0.5 && (s === 0 || (s === 8 && hr < 0.25))) this.play("heartbeat", 40, lerp(-20, -10, (0.5 - hr) / 0.5), "MusicPerc", t);
       if (S.phase === G.Phase.WAVE && this.live) this.motifs(s, t);
+      if (this.live && !this.gameOver) {
+        if (this.firstDrops && s % 4 === 2) { this.firstDrops = false; this.showerStarts(t); }
+        if (this.rain > RAIN.drops.from) this.drops(s, t);
+      }
+    }
+    // --- the rain's cues
+    // (every frame) the rain eased, and its turns: steady rain on and off, a shower starting (its first drops,
+    // on the grid, if the last ones fell long enough ago) and ending
+    rainCues(dt, now) {
+      this.rain += (this.rainTo - this.rain) * (1 - Math.exp(-dt / RAIN.tau));
+      const r = this.rain;
+      if (!this.rainy && r >= RAIN.rainy[0]) { this.rainy = true; this.logCue("rain"); }
+      else if (this.rainy && r <= RAIN.rainy[1]) { this.rainy = false; this.logCue("dry"); }
+      if (!this.showering && r >= RAIN.onset[0]) { this.showering = true; if (now - this.onsetAt > RAIN.again) { this.onsetAt = now; this.firstDrops = true; } }
+      else if (this.showering && r <= RAIN.onset[1]) { this.showering = false; this.firstDrops = false; }
+    }
+    // a drop in the music, on the bar's 16th picked at its first: a high note of the chord, then one or two of its
+    // notes an octave or so lower splashing a 16th or two after, softer each (in the style's own instruments: STYLES[].swap)
+    drops(s, t) {
+      const R = RAIN.drops, u = clamp((this.rain - R.from) / (1 - R.from), 0, 1);
+      if (s === 0) this.dropAt = rf() < R.odds * Math.sqrt(u) * (this.cue === "boss" ? 0.5 : 1) ? pick(R.at) : -1;
+      if (s !== this.dropAt) return;
+      const a = this.arp(), top = pick(a) + 12, sx = this.sixteenth();
+      this.play("glass", top, R.db + rr(-2, 0), "MusicLead", t);
+      let at = t;
+      for (let k = 1, n = rf() < 0.5 ? 1 : 2; k <= n; k++) { at += sx * ri(1, 2); this.play("kalimba", pick(a), R.db - 2 * k + rr(-1.5, 0), "MusicLead", at); }
+    }
+    // a shower's first drops: three notes falling down the chord, irregularly spaced, the last the softest
+    showerStarts(t) {
+      const a = this.arp().slice().sort((x, y) => y - x), sx = this.sixteenth();
+      [0, 3, 7].forEach((d, k) => this.play("glass", a[k % a.length] + 12, -22 - 2 * k, "MusicLead", t + d * sx));
+      this.logCue("drops");
     }
     // each kind of creature on the field adds a rare note, a few bars apart
     motifs(s, t) {
@@ -19161,6 +19892,8 @@ function MG_SFX(L) {
                 into the wash, and Liquid's dry Drum (glue + a short room) and Bass (ducked by the kick); two
                 decks of those seven (MusicPadsA ... MusicBassB) the director crossfades its cues on
      Sfx        short reverb       Ambience   longer reverb
+     Rain       the rain (soundscape.js, Rain): a lowpass its intensity opens and a duck under the music,
+                into Ambience's reverb (so the Ambience volume holds it)
    G.Audio is what the game talks to: it unlocks the context on the first tap and remembers the sound
    toggle. */
 (function () {
@@ -19171,7 +19904,8 @@ function MG_SFX(L) {
   // the game's buses on the mixer; returns the controls the music director moves. low (a phone, G.AUDIO_LOW):
   // shorter reverbs, no phaser and two lead taps, the audio thread's heaviest work.
   // dev: ?solo=1 the drums alone, ?solo=2 the drums and the bass (the wash and all in it, Sfx and Ambience
-  // never reach the output); ?record=1 also meters each bus (`meters`, for the takes' level table)
+  // never reach the output); ?solo=3 the rain alone (no music and no Sfx; Ambience carries the rain, and the
+  // soundscape starts no valley beds); ?record=1 also meters each bus (`meters`, for the takes' level table)
   function buildBuses(m, low) {
     const solo = G.devFlag ? G.devFlag("solo") : 0;
     // Music: lowpass -> a long, airy reverb -> compressor (+3 dB, less the ~3.8 dB the node adds by itself)
@@ -19181,7 +19915,7 @@ function MG_SFX(L) {
     // wash: what goes through the lowpass and the long reverb (every sub-bus but Liquid's drums and bass);
     // music: the settings' Music volume (menu.js), after the reverb, so the dry buses below obey it too
     const wash = m.gain(), music = m.gain();
-    wash.connect(lp); lp.connect(verb.input); if (!solo) verb.out.connect(music); music.connect(comp); comp.connect(makeup); makeup.connect(fade); fade.connect(gate); gate.connect(m.master);
+    wash.connect(lp); lp.connect(verb.input); if (!solo) verb.out.connect(music); music.connect(comp); comp.connect(makeup); makeup.connect(fade); fade.connect(gate); if (solo !== 3) gate.connect(m.master);
     // pads: through a gain Drift ducks on each beat, a sidechain's pumping (music.js; 1 otherwise), and a
     // phaser beside them (four allpasses swept by a slow LFO) whose share Drift sets (`phase`, 0 otherwise)
     const pads = m.gain(), pump = m.gain(1); pads.connect(pump); pump.connect(wash);
@@ -19224,16 +19958,21 @@ function MG_SFX(L) {
     // bass (Liquid's sub and reese): dry, no reverb to muddy it, ducked by the kick (bassPump, music.js)
     const bass = m.gain(), bassPump = m.gain(1); bass.connect(bassPump); if (solo !== 1) bassPump.connect(music);
     const sfx = m.verbBus(1.2, 2.5, 0.5, 0.12), amb = m.verbBus(low ? 1.8 : 2.6, 2, 0.8, 0.28);
-    if (!solo) { sfx.out.connect(m.master); amb.out.connect(m.master); }
-    // (the music's level before and after its compressor, `music` and `comp`, and each bus into it)
-    const meters = G.devFlag && G.devFlag("record") ? Object.entries({ drum: glueUp, bass: bassPump, wash: verb.out, music, comp: gate }).map(([name, node]) => {
+    if (!solo) sfx.out.connect(m.master);
+    if (!solo || solo === 3) amb.out.connect(m.master);
+    // rain: a lowpass whose cutoff the rain moves (a drizzle soft and dark, a downpour open but never harsh) and
+    // a duck the music's playing moves, into the ambience's reverb (soundscape.js, Rain)
+    const rain = m.gain(), rainLp = m.lowpass(1900, 0.5), rainDuck = m.gain(1);
+    rain.connect(rainLp); rainLp.connect(rainDuck); rainDuck.connect(amb.input);
+    // (the music's level before and after its compressor, `music` and `comp`, each bus into it, and the rain's)
+    const meters = G.devFlag && G.devFlag("record") ? Object.entries({ drum: glueUp, bass: bassPump, wash: verb.out, music, comp: gate, rain: rainDuck }).map(([name, node]) => {
       const an = c.createAnalyser(); an.fftSize = 2048; node.connect(an);
       return { name, an, buf: new Float32Array(2048), peak: 0, sum: 0, n: 0 };
     }) : null;
-    for (const [name, input] of [["Music", music], ["MusicWash", wash], ["MusicPads", pads], ["MusicKeys", keys], ["MusicLead", lead], ["MusicPerc", perc], ["MusicThrow", thr], ["Sfx", sfx.input], ["Ambience", amb.input]]) m.addBus(name, input);
+    for (const [name, input] of [["Music", music], ["MusicWash", wash], ["MusicPads", pads], ["MusicKeys", keys], ["MusicLead", lead], ["MusicPerc", perc], ["MusicThrow", thr], ["Sfx", sfx.input], ["Ambience", amb.input], ["Rain", rain]]) m.addBus(name, input);
     // two decks of the sub-buses, silent until a cue plays on one (music.js)
     const decks = ["A", "B"].map((d) => [["Pads", pads], ["Keys", keys], ["Lead", lead], ["Perc", perc], ["Throw", thr], ["Drum", drum], ["Bass", bass]].map(([k, bus]) => { const g = m.gain(0); g.connect(bus); m.addBus("Music" + k + d, g); return g; }));
-    return { fade, gate, lp, wet: verb.wet, pump, bassPump, phase, keysPan, leadLp, leadPan, taps, throw: [dl, dr], decks, meters };
+    return { fade, gate, lp, wet: verb.wet, pump, bassPump, phase, keysPan, leadLp, leadPan, taps, throw: [dl, dr], decks, meters, rain: { lp: rainLp, duck: rainDuck } };
   }
 
   class Audio {
@@ -19267,7 +20006,7 @@ function MG_SFX(L) {
       document.addEventListener("freeze", hide);
       this.hide = hide;
       for (const ev of ["pointerup", "touchend", "keydown"]) document.addEventListener(ev, () => { if (m.ctx.state !== "running" && !document.hidden) this.unlock(); }, { passive: true });
-      this.sound = new G.Soundscape(m, game, app);
+      this.sound = new G.Soundscape(m, game, app, { music: this.music, rain: buses.rain });
       m.load(banks || G.SOUND_BANKS).then(() => { this.readyAt = Math.round(performance.now()); this.music.start(m.banks[0].items); this.sound.start(); }).catch((e) => MA.err("AUDIO", e.stack || e.message));
       if (G.devFlag && G.devFlag("record")) m.startRecording();
     }
@@ -19289,6 +20028,8 @@ function MG_SFX(L) {
     // rdt: real seconds; listener: { vp, zoom, aspect } of the view
     update(rdt, listener) {
       if (!this.mixer || !this.mixer.ready) return;
+      // (the rain the soundscape plays, for the music's rain cues: last frame's, which it eases anyway)
+      if (this.sound.rain && this.music.setRain) this.music.setRain(this.sound.rain.k);
       this.music.update(rdt);
       this.sound.update(rdt, listener);
       this.mixer.meterFrame();
@@ -19304,6 +20045,7 @@ function MG_SFX(L) {
       const m = this.mixer;
       if (!m) return null;
       return Object.assign({ ready: m.ready, readyAt: this.readyAt, state: m.ctx.state, samples: Object.keys(m.samples).length, renderMs: m.renderMs, worker: m.worker, notes: this.music.notes, late: this.music.late, skipped: this.music.skipped, sfx: this.sound.played, sfxq: this.sound.queue, mood: this.music.mood, style: this.music.style, breath: this.music.on ? "in" : "out", bpm: Math.round(this.music.bpm), cues: this.music.cueLog.join(" "), low: !!G.AUDIO_LOW, latency: m.latency(), voices: m.live, peakVoices: m.livePeak, stolen: this.music.seq ? this.music.seq.stolen : 0, phr: this.music.phr, hits: this.music.hits, resumes: this.resumes,
+        rain: this.sound.rain ? Object.assign(this.sound.rain.stats(), { music: +(this.music.rain || 0).toFixed(2), rainy: !!this.music.rainy }) : undefined,
         levels: this.meters ? Object.fromEntries(this.meters.map((b) => [b.name, b.n ? [+(20 * Math.log10(b.peak + 1e-9)).toFixed(1), +(10 * Math.log10(b.sum / b.n + 1e-12)).toFixed(1)] : null])) : undefined }, m.meterStats());
     }
   }
@@ -19328,7 +20070,9 @@ function MG_SFX(L) {
      o.tab       a choice (the gifts, the run's end): it never closes, it minimises to a tab of that label
                  at the bottom that brings it back; the owner drops the tab with ME.Dismiss.untab(el)
    ME.Dismiss.drag(el, [{x, y, t}, ...]) runs a swipe from plain points, for the flows. The ✕ is .x and the
-   tab #dztab, styled by the game (Mossheart: game.css); a choice's ✕ is a – (it minimises). */
+   tab #dztab, styled by the game (Mossheart: game.css); a choice's ✕ is a – (it minimises). A wired panel gets the
+   class .dz, relative for its ✕ only where the game's CSS leaves it static: the rule is :where(.dz), so any
+   position of the game's wins, and none is written inline (#593: an inline relative beat the plant card's fixed). */
 (function () {
   const ME = window.ME;
   // (ME.Dismiss.scrollers: a selector of the inner lists that scroll, which keep a swipe while they can)
@@ -19390,11 +20134,20 @@ function MG_SFX(L) {
   };
   const close = (w) => { if (w.o.tab) minimise(w.el, w.o.tab); else w.o.close(); };
 
+  // the ✕'s frame: first in the head, so a game's rules of the same weight come after it
+  let styled = false;
+  const style = () => {
+    if (styled) return;
+    styled = true;
+    const s = document.createElement("style"); s.id = "dzstyle"; s.textContent = ":where(.dz) { position: relative; }";
+    document.head.prepend(s);
+  };
+
   function add(el, o) {
     if (!el) return;
     const panel = o.panel || el, w = { el, o, panel, sw: null };
     wired.set(el, w);
-    if (getComputedStyle(panel).position === "static") panel.style.position = "relative";
+    style(); panel.classList.add("dz");
     const x = document.createElement("button");
     x.className = "x"; x.type = "button"; x.textContent = o.tab ? "–" : "✕"; x.setAttribute("aria-label", o.tab ? "Minimise" : "Close");
     x.addEventListener("click", (e) => { e.stopPropagation(); close(w); });
@@ -20203,6 +20956,10 @@ function MG_SFX(L) {
       // fog tops out at 0.9: at wind 0.1 the rule allows 0.92, so the far side stays a silhouette, never blank
       fog: { name: "Fog", cloud: [0.3, 0.6], fog: [0.6, 0.9], fogLow: [1, 1], wind: [0, 0.1], gust: [0.2, 0.35] },
       drizzlemist: { name: "Drizzle in mist", cloud: [0.6, 0.85], fog: [0.3, 0.55], rain: [0.1, 0.3], wind: [0.05, 0.25], gust: [0.3, 0.5] },
+      // Corn Moon's resting weather: a clear night, a light breeze (the user: "slight wind") stirring the grass
+      moonlit: { name: "Clear night", cloud: [0, 0.1], wind: [0.15, 0.25], gust: [0.25, 0.45] },
+      // its boss front: the storm at its worst, lightning most of the time, leaves torn off the trees
+      thunder: { name: "Thunderstorm", heavy: true, cloud: [0.92, 1], rain: [0.8, 1], wind: [0.65, 0.9], gust: [0.7, 1], flash: [0.8, 1], leaves: [0.2, 0.5] },
       gale: { name: "Gale", heavy: true, cloud: [0.4, 0.7], wind: [0.8, 1], gust: [0.7, 1], leaves: [0.5, 0.9] },
       // snow stops at 0.6 in light wind (rule 7), so the plain snow front tops out there; heavier is a blizzard
       snow: { name: "Snow", cloud: [0.75, 0.95], snow: [0.35, 0.6], wind: [0.15, 0.4], gust: [0.3, 0.5] },
@@ -20217,8 +20974,10 @@ function MG_SFX(L) {
     },
 
     // Momiji is the maple garden: a bit of everything, wind with leaves a touch more often, snow rare.
-    // Fernglass leans to mist, drizzle and showers. Corn Moon is a windy autumn night on a farm: wind, gales
-    // and clear nights, fog now and then for Halloween, a cold autumn rain, no blossom (so no petal storm).
+    // Fernglass leans to mist, drizzle and showers. Corn Moon (the user: "default nighttime with moon shafts
+    // and slight wind, going into thunderstorms based on action") opens on a clear moonlit night with a breeze
+    // (calm, so newRun and every build phase drift back to it) and builds with the waves: the heavy share the
+    // escalation raises is mostly storm, and a boss wave brings the thunderstorm. No snow, fog or blossom there.
     climates: {
       momiji: {
         weights: { clear: 3, overcast: 2, wind: 2, showers: 2, rain: 1.5, storm: 0.6, mistmorn: 1, fog: 0.6, gale: 0.4, snow: 0.5, blizzard: 0.15, petals: 1.5 },
@@ -20232,10 +20991,10 @@ function MG_SFX(L) {
         rare: { thundersnow: 0 }, // (a mild, wet glasshouse garden: it never snows, so no thundersnow)
       },
       cornmoon: {
-        weights: { clear: 2.5, wind: 3, gale: 1.2, overcast: 1, showers: 1, rain: 0.5, storm: 0.6, mistmorn: 0.8, fog: 0.5, snow: 0.3, blizzard: 0.2 },
-        calm: ["clear", "wind", "mistmorn"],
-        boss: "gale",
-        rare: { petalstorm: 0 },
+        weights: { moonlit: 2.5, wind: 2, overcast: 1.5, showers: 1.5, rain: 1, storm: 3, gale: 0.5 },
+        calm: ["moonlit"],
+        boss: "thunder",
+        rare: { petalstorm: 0, thundersnow: 0, sleet: 0, goldenhaze: 0, sunshower: 0 }, // (none suits an autumn night)
       },
     },
 
@@ -20277,13 +21036,13 @@ function MG_SFX(L) {
    camera's turn buttons). It moved to the engine (ME.Sky: MossheartEngine/src/sky.js, the sky hook's part 2);
    this is Mossheart's host for it: the run it follows is the game's (its seed, the garden, the build phase,
    game over and the Heart Tree's life, all only while a game is on), its waves start and clear the fronts,
-   Momiji opens on the Morning mood, and the choice is kept under "mossheart.atmos". G.Atmos is new Atmos(app)
+   Momiji opens on the Morning mood and Corn Moon on Night (the user, 2026-11-09), and the choice is kept under "mossheart.atmos". G.Atmos is new Atmos(app)
    as before; G.MOODS is the engine's. Since Weather 1 (#450) the sky drives R.weather by mix(), so
    R.weather.state.kind always reads "mix": the front on show is app.atmos.state().weatherNow (front is the
    model's, even with Weather off; weather is the panel's choice). */
 (function () {
   const G = window.MG, ME = window.ME;
-  const LEVEL_MOOD = { momiji: "morning" };
+  const LEVEL_MOOD = { momiji: "morning", cornmoon: "night" };
   // the run, one object rewritten each frame (the sky reads it every frame)
   const host = (app) => {
     const run = { id: null, level: "", build: false, over: false, life: 1 };
@@ -21617,9 +22376,10 @@ function MG_SFX(L) {
      DC.pieces.CUES[id]           { hue, rarity, idx }   (idx 1..12, a gem's hue in HUES)
      DC.pieces.tierOf(ids), gemOf(ids)
      DC.pieces.RAMPS, MATS        the parts' materials, for the board's style
-     DC.pieces.bindParts(MB, traits)  -> { layout(color, type, ids, silOk) -> { tier, gem, list: [{ f, off, sc, hue }],
+     DC.pieces.bindParts(MB, traits)  -> { layout(color, type, ids, s5) -> { tier, gem, list: [{ f, off, sc, hue }],
                                      sil? } }: sil { f, fine } the tier 5 silhouette, drawn in place of the base
-                                     (none with silOk false: a themed set's figurine keeps its own). traits: the
+                                     (s5 left out: the Staunton one; a themed set passes its own, DC.sets, or null
+                                     to keep its figurine with the lower tiers' parts). traits: the
                                      rules' list ([{ id, rarity }]), whose rarities CUES, tierOf and gemOf use */
 (function () {
   const C = (window.DC = window.DC || {});
@@ -21998,13 +22758,14 @@ function MG_SFX(L) {
       for (let c = 0; c < 2; c++) for (let t = 1; t <= 6; t++) if (SIL[t]) out[skey(c, t)] = [SIL[t], { scale: 1, fine, c, type: t }, 1];
       return out;
     },
-    // the parts bound to the bake: layout(c, t, ids, silOk) -> { tier, gem, list: [{ f, off: [x, y, z], sc: [x, y, z],
+    // the parts bound to the bake: layout(c, t, ids, s5) -> { tier, gem, list: [{ f, off: [x, y, z], sc: [x, y, z],
     // hue }] }: each part's model id, its offset from the piece's anchor (model units, before the piece's facing
     // and its fit) and its scale (at 1 / fine), hue the gem's index (0 for the other parts). Kings get none.
     // A tier 5 knight, bishop or rook also gets sil: { f, fine }, the silhouette drawn in place of its base (at
-    // the base's fit), and its list leaves out the collar, crest and inlay the silhouette carries. With silOk
-    // false (a themed set's figurine, DC.sets: the silhouettes are Staunton shapes) it keeps its base and the
-    // collar, crest and inlay instead.
+    // the base's fit), and its list leaves out the collar, crest and inlay the silhouette carries. s5 picks it:
+    // left out, the Staunton silhouette; a themed set's figurine (DC.sets) passes its own tier-5 figurine
+    // { f, fine, top?, head? } (top and head: where the finials stack and the head cues sit on it), or null to
+    // keep its base and the collar, crest and inlay instead.
     bindParts(MB, traits) {
       for (const t of traits) { if (CUE[t.id]) CUE[t.id].rarity = t.rarity; }
       const id = {};
@@ -22022,14 +22783,14 @@ function MG_SFX(L) {
       return {
         count: Object.keys(id).length,
         sils: SIL.filter(Boolean).length * 2,
-        layout(c, t, ids, silOk = true) {
+        layout(c, t, ids, s5) {
           const out = { tier: 0, gem: 0, list: [] };
           let sl = SLOT[t];
           if (!sl || !ids.length) return out;
           const tier = tierOf(ids), L = out.list, R0 = AUTH_R, has = (n) => ids.includes(n);
           out.tier = tier;
-          const five = silOk && tier === 5 && !!sil[c][t];
-          if (five) { out.sil = sil[c][t]; sl = Object.assign({}, sl, { top: sl.top5 || sl.top, head: sl.head5 || sl.head }); }
+          const S5 = s5 === undefined ? sil[c][t] : s5, five = tier === 5 && !!S5;
+          if (five) { out.sil = S5; sl = Object.assign({}, sl, { top: S5.top || sl.top5 || sl.top, head: S5.head || sl.head5 || sl.head }); }
           const [cx, cz, cr] = sl.collar, [bx, bz, br] = sl.body, fr = sl.foot;
           let topZ = sl.top[1];
           if (!five) {
@@ -22080,8 +22841,11 @@ function MG_SFX(L) {
    ?sets=all or ?sets=grove,brass bakes more, ?set=<id> plays both sides with one.
      DC.sets.LIST                  [{ id, name, blurb }]
      DC.sets.use(st, ids)          adds the chosen sets' materials to the board's style (before its Palette)
-     DC.sets.bakeList(fine, ids)   -> { key: [model, o, 1] } for ME.bakeModels(..., { models })
-     DC.sets.bind(MB, ids)         -> { id: models[color][type] }, as DC.pieces.bind, each model's set its id
+     DC.sets.bakeList(fine, ids)   -> { key: [model, o, 1] } for ME.bakeModels(..., { models }), the tier-5 figurines too
+     DC.sets.bind(MB, ids)         -> { id: models[color][type] }, as DC.pieces.bind, each model's set its id; a knight,
+                                      bishop or rook's five is its tier-5 figurine { f, fine, top, head } for DC.pieces.layout
+   A set's tier-5 knight, bishop and rook (dcs5_*) are its figurines with regalia added: a studded ring at the part
+   kit's collar, a band round the body and a lit crown of the set's own, so a five reads apart from tiers 1-4.
    Each figurine is authored at its type's height (DC.pieces.HEIGHT), facing +X, its base's top at z 0.1. */
 (function () {
   const C = (window.DC = window.DC || {});
@@ -22517,14 +23281,142 @@ function MG_SFX(L) {
       model(name, 1, (o) => D[s.id](ROLE_OF(s.id, o.c ? 1 : 0))[TYPES[t]]());
       ME.ASSET_BY[name] += '"dcs_src"'; ME.ASSET_SRC += '"dcs_src"';
     }
+
+    // ---- tier 5 (dcs5_*): each set's knight, bishop and rook with its regalia, drawn in place of the figurine at
+    // its fit (DC.pieces' layout leaves out the collar, crest and inlay parts at tier 5, as for the Staunton
+    // silhouettes). The regalia: a ring at the part kit's collar (SLOT; the tier 4 gems sit on its rim, its studs
+    // between them), a studded band round the body, and a crown of the set's own, lit, as wide as the tile allows
+    // (it's the play camera's view from above that has to tell a five apart). top: where the finials stack.
+    const ring5 = ([x, z, r], mat, stud) => [Y([x, 0, z], r, 0.022, mat, { round: 0.01 }), ...around(6, (c, s) => S([x + c * r, s * r, z], 0.017, stud))];
+    const band5 = (x, z, r, mat, dot) => [Y([x, 0, z], r, 0.018, mat, { round: 0.006 }),
+      ...around(8, (c, s) => B([x + c * (r + 0.004), s * (r + 0.004), z], [0.011, 0.011, 0.008], 0, dot, { R: orient([c, s, 0], [-s, c, 1]) }))];
+    // n points along an arc in the y-z plane round [x, 0, z], radius r, angles a0..a1: f([x, y, z], a, i)
+    const arc = (n, [x, z], r, a0, a1, f) => [...Array(n)].flatMap((_, i) => { const a = a0 + ((a1 - a0) * i) / (n - 1); return [].concat(f([x, Math.cos(a) * r, z + Math.sin(a) * r], a, i)); });
+    // a box on such an arc, its local z pointing out from the arc's centre
+    const onArc = (p, a, h, mat, o) => B(p, h, 0.003, mat, Object.assign({ R: orient([0, Math.cos(a), Math.sin(a)], [1, 0, 0]) }, o));
+    // a halo, flat round [x, 0, z] at radius r: n links of mat, and bead(p, c, s, i) at each joint, the set's own.
+    // From the play camera it rings the figure wider than its body, which no lower tier's parts do.
+    const halo = (n, [x, z], r, mat, bead) => around(n, (c, s, a, i) => {
+      const b = a + TAU / n, p = [x + c * r, s * r, z];
+      return [Cap(p, [x + Math.cos(b) * r, Math.sin(b) * r, z], 0.013, 0.013, mat), ...[].concat(bead(p, c, s, i))];
+    });
+    const COL = C.pieces.SLOT, deg = Math.PI / 180;
+    const X = {};
+    // Tessellate: a stair that climbs over the head and steps down again, lamps at its ends and top
+    X.tess = (m) => {
+      const stair = (n, ctr, r, a0, a1, w) => arc(n, ctr, r, a0, a1, (p, a, i) => { const k = Math.min(i, n - 1 - i); return onArc(p, a, [w, 0.022, 0.014 + k * 0.006], i % 2 ? m.Stone : m.Line); });
+      // the halo: twelve tiles in four flights of three steps, a lamp at each flight's foot
+      const tiles = (ctr, r) => halo(12, ctr, r, m.Line, (p, c, s, i) => [B([p[0], p[1], p[2] + (i % 3) * 0.014], [0.026, 0.026, 0.01], 0.003, i % 2 ? m.Stone : m.Body),
+        ...(i % 3 ? [] : [S([p[0], p[1], p[2] - 0.018], 0.02, m.Glow)])]);
+      return {
+        knight: () => ({ top: [-0.07, 0.69], prims: [...ring5(COL[2].collar, m.Stone, m.Line), ...band5(-0.016, 0.218, 0.118, m.Stone, m.Glow),
+          ...stair(7, [-0.07, 0.47], 0.17, 15 * deg, 165 * deg, 0.02),
+          S([-0.07, 0, 0.665], 0.026, m.Glow), ...pair((sd) => S([-0.07, sd * 0.175, 0.5], 0.02, m.Glow)),
+          ...tiles([-0.04, 0.4], 0.21),
+        ] }),
+        bishop: () => ({ top: [0, 0.85], prims: [...ring5(COL[3].collar, m.Stone, m.Line), ...band5(0, 0.3, 0.132, m.Stone, m.Glow),
+          ...stair(9, [0, 0.62], 0.22, 0, 180 * deg, 0.022),
+          S([0, 0, 0.865], 0.028, m.Glow), ...pair((sd) => S([0, sd * 0.235, 0.6], 0.022, m.Glow)),
+          ...tiles([0, 0.45], 0.2),
+        ] }),
+        rook: () => ({ top: [0, 0.74], prims: [...ring5(COL[4].collar, m.Stone, m.Line), ...tiles([0, 0.47], 0.24),
+          Y([0, 0, 0.6], 0.075, 0.06, m.Stone, { round: 0.008 }), Y([0, 0, 0.664], 0.085, 0.008, m.Line),
+          S([0, 0, 0.7], 0.034, m.Glow),
+          ...pair((sd) => [Cap([-0.02, sd * 0.15, 0.5], [-0.02, sd * 0.15, 0.72], 0.012, 0.01, m.Line),
+            B([0.015, sd * 0.15, 0.685], [0.03, 0.004, 0.02], 0.002, m.Stone), S([-0.02, sd * 0.15, 0.74], 0.024, m.Glow)]),
+        ] }),
+      };
+    };
+    // Wispling Grove: antlers grown into blossoming branches, a crown of spores, a sapling from the stump
+    X.grove = (m) => {
+      const bloom = (p, r) => [...around(5, (c, s) => S([p[0] + c * r * 0.6, p[1] + s * r * 0.6, p[2]], r * 0.6, m.Petal)), S([p[0], p[1], p[2] + r * 0.3], r * 0.45, m.Glow)];
+      // the halo: a wreath of leaves on a vine, a blossom at every third joint
+      const wreath = (ctr, r) => halo(12, ctr, r, m.Bark, (p, c, s, i) => (i % 3 ? E(p, [0.034, 0.034, 0.012], m.Leaf) : bloom(p, 0.034)));
+      return {
+        knight: () => ({ top: [-0.05, 0.8], prims: [...ring5(COL[2].collar, m.Wood, m.Petal), ...band5(-0.008, 0.3, 0.11, m.Leaf, m.Petal), ...wreath([-0.04, 0.42], 0.2),
+          ...pair((sd) => [
+            Cap([-0.02, sd * 0.12, 0.59], [-0.05, sd * 0.24, 0.7], 0.015, 0.01, m.Bark), ...bloom([-0.05, sd * 0.25, 0.71], 0.04),
+            Cap([-0.06, sd * 0.17, 0.66], [-0.1, sd * 0.2, 0.78], 0.012, 0.008, m.Bark), S([-0.1, sd * 0.2, 0.79], 0.02, m.Glow),
+          ]),
+          E([-0.04, 0, 0.6], [0.035, 0.09, 0.016], m.Leaf), S([-0.04, 0, 0.635], 0.024, m.Glow),
+        ] }),
+        bishop: () => ({ top: [0, 0.83], prims: [...ring5(COL[3].collar, m.Wood, m.Petal), ...band5(0, 0.3, 0.128, m.Leaf, m.Petal), ...wreath([0, 0.45], 0.2),
+          ...around(6, (c, s, a, i) => S([c * 0.19, s * 0.19, 0.6 + (i % 2) * 0.07], 0.024, m.Glow), TAU / 12),
+          E([0, 0, 0.765], [0.07, 0.07, 0.018], m.Leaf), ...bloom([0, 0, 0.79], 0.05),
+        ] }),
+        rook: () => ({ top: [0, 0.76], prims: [...ring5(COL[4].collar, m.Wood, m.Petal), ...band5(0, 0.468, 0.212, m.Leaf, m.Petal), ...wreath([0, 0.38], 0.25),
+          Cap([0, 0, 0.52], [0, 0, 0.66], 0.035, 0.022, m.Wood),
+          E([0, 0, 0.68], [0.1, 0.16, 0.04], m.Leaf, { disp: 0.015, df: 40 }),
+          ...pair((sd) => bloom([0, sd * 0.15, 0.71], 0.04)), ...bloom([0.06, 0, 0.72], 0.032),
+          S([0.13, 0.2, 0.62], 0.016, m.Glow), S([-0.12, -0.21, 0.66], 0.016, m.Glow), S([-0.15, 0.16, 0.56], 0.014, m.Glow),
+        ] }),
+      };
+    };
+    // Clockwork Court: a gear halo, twin cogs, smokestacks
+    X.brass = (m) => {
+      // a gear standing in the y-z plane round p (its axis along x), radius r, n teeth, a lit hub
+      const gear = (p, r, n, th = 0.012) => [Y(p, r, th, m.Trim, { R: AX, round: 0.004 }),
+        ...arc(n + 1, [p[0], p[2]], r + 0.012, 0, TAU, (q, a, i) => (i < n ? onArc([q[0], q[1] + p[1], q[2]], a, [th, 0.012, 0.014], m.Trim) : [])),
+        Y([p[0] + 0.004, p[1], p[2]], r * 0.55, th + 0.004, m.Enamel, { R: AX, round: 0.003 }), S([p[0] + 0.012, p[1], p[2]], r * 0.3, m.Glow)];
+      // the halo: a flat toothed rim, a lamp at every fourth tooth
+      const rim = (ctr, r) => halo(16, ctr, r, m.Trim, (p, c, s, i) => [Cap(p, [p[0] + c * 0.034, p[1] + s * 0.034, p[2]], 0.014, 0.01, m.Trim),
+        ...(i % 4 ? [] : [S(p, 0.022, m.Glow)])]);
+      return {
+        knight: () => ({ top: [-0.16, 0.7], prims: [...ring5(COL[2].collar, m.Trim, m.Enamel), ...band5(-0.01, 0.32, 0.11, m.Enamel, m.Glow),
+          ...gear([-0.17, 0, 0.53], 0.15, 12), ...rim([-0.03, 0.42], 0.2),
+        ] }),
+        bishop: () => ({ top: [0, 0.85], prims: [...ring5(COL[3].collar, m.Trim, m.Enamel), ...band5(0, 0.31, 0.15, m.Enamel, m.Glow), ...rim([0, 0.47], 0.19),
+          ...pair((sd) => gear([0, sd * 0.17, 0.62], 0.07, 8, 0.01)),
+          Cap([0, 0, 0.72], [0, 0, 0.8], 0.016, 0.008, m.Metal), S([0, 0, 0.83], 0.03, m.Glow),
+        ] }),
+        rook: () => ({ top: [0, 0.68], prims: [...ring5(COL[4].collar, m.Trim, m.Enamel), ...band5(0, 0.3, 0.214, m.Enamel, m.Glow), ...rim([0, 0.5], 0.24),
+          ...pair((sd) => [Cap([-0.04, sd * 0.15, 0.45], [-0.04, sd * 0.15, 0.72], 0.032, 0.036, m.Dark),
+            Y([-0.04, sd * 0.15, 0.72], 0.042, 0.01, m.Trim, { round: 0.004 }), Y([-0.04, sd * 0.15, 0.725], 0.03, 0.01, m.Glow),
+            S([-0.07, sd * 0.19, 0.78], 0.026, m.Trim), S([-0.1, sd * 0.22, 0.82], 0.02, m.Trim)]),
+        ] }),
+      };
+    };
+    // Coral Court: a scallop fan, a mage's raised tentacles, the lighthouse's lit lantern
+    // the halo: a string of pearls, a lit bubble rising off every third
+    const pearls = (m, ctr, r) => halo(12, ctr, r, m.Shell, (p, c, s, i) => [S(p, 0.024, m.Pearl), ...(i % 3 ? [] : [S([p[0], p[1], p[2] + 0.04], 0.018, m.Glow)])]);
+    X.reef = (m) => ({
+      knight: () => ({ top: [-0.05, 0.76], prims: [...ring5(COL[2].collar, m.Shell, m.Pearl), ...band5(0.011, 0.22, 0.08, m.Pearl, m.Glow), ...pearls(m, [-0.04, 0.42], 0.2),
+        ...arc(7, [-0.05, 0.56], 0.14, 20 * deg, 160 * deg, (p, a) => [Cap([-0.05, 0, 0.56], p, 0.012, 0.02, m.Shell), S(p, 0.02, m.Pearl)]),
+        S([-0.05, 0, 0.72], 0.026, m.Glow),
+      ] }),
+      bishop: () => ({ top: [-0.04, 0.84], prims: [...ring5(COL[3].collar, m.Shell, m.Pearl), ...band5(0, 0.56, 0.127, m.Pearl, m.Glow), ...pearls(m, [0, 0.4], 0.21),
+        ...pair((sd) => [Cap([0, sd * 0.1, 0.48], [0, sd * 0.19, 0.58], 0.026, 0.018, m.Coral), Cap([0, sd * 0.19, 0.58], [0, sd * 0.2, 0.7], 0.018, 0.01, m.Coral),
+          S([0, sd * 0.2, 0.73], 0.032, m.Pearl), S([0.02, sd * 0.2, 0.74], 0.016, m.Glow)]),
+        S([-0.04, 0, 0.8], 0.03, m.Glow),
+      ] }),
+      rook: () => ({ top: [0, 0.73], prims: [...ring5(COL[4].collar, m.Shell, m.Pearl), ...band5(0, 0.25, 0.145, m.Shell, m.Glow), ...pearls(m, [0, 0.46], 0.22),
+        Y([0, 0, 0.58], 0.075, 0.012, m.Shell, { round: 0.005 }), S([0, 0, 0.63], 0.045, m.Glow),
+        ...around(4, (c, s) => Cap([c * 0.06, s * 0.06, 0.58], [c * 0.06, s * 0.06, 0.66], 0.008, 0.008, m.Shell), TAU / 8),
+        Cap([0, 0, 0.66], [0, 0, 0.72], 0.08, 0.01, m.Coral),
+        ...pair((sd) => Cap([0, sd * 0.05, 0.63], [0, sd * 0.22, 0.63], 0.012, 0.03, m.Glow)),
+      ] }),
+    });
+    for (const s of LIST) for (let t = 2; t <= 4; t++) {
+      const name = "dcs5_" + s.id + "_" + TYPES[t];
+      model(name, 1, (o) => {
+        const m = ROLE_OF(s.id, o.c ? 1 : 0), b = D[s.id](m)[TYPES[t]](), x = X[s.id](m)[TYPES[t]]();
+        let h = b.h; // the crown's top, roughly (the bake's bound is generous: sdf.js tightBox)
+        for (const p of x.prims) h = Math.max(h, p.z + Math.max(0, p.bz || 0) + Math.max(p.r || 0, p.rz || 0, p.rb || 0, p.ra || 0, p.hh || 0, p.hz || 0));
+        return { r: b.r, h: +h.toFixed(3), prims: [...b.prims, ...x.prims] };
+      });
+      ME.ASSET_BY[name] += '"dcs_src"'; ME.ASSET_SRC += '"dcs_src"';
+      (TOP5[s.id] = TOP5[s.id] || [])[t] = X[s.id](ROLE_OF(s.id, 0))[TYPES[t]]().top;
+    }
   };
+  // where a five's finials stack (its crown's top), per set and type
+  const TOP5 = {};
   {
-    const ME = window.ME, src = String(build) + JSON.stringify(ROLES);
+    const ME = window.ME, src = String(build) + JSON.stringify(ROLES) + JSON.stringify(C.pieces.SLOT);
     ME.ASSET_BY.dcs_src = src; ME.ASSET_SRC += src;
     build();
   }
 
-  const key = (id, c, t) => "s_" + id + "_" + "wb"[c] + t;
+  const key = (id, c, t) => "s_" + id + "_" + "wb"[c] + t, key5 = (id, c, t) => "s5_" + id + "_" + "wb"[c] + t;
   C.sets = {
     LIST, RAMPS, MATS,
     use(st, ids) {
@@ -22532,7 +23424,10 @@ function MG_SFX(L) {
     },
     bakeList(fine, ids) {
       const out = {};
-      for (const id of pick(ids)) for (let c = 0; c < 2; c++) for (let t = 1; t <= 6; t++) out[key(id, c, t)] = ["dcs_" + id + "_" + TYPES[t], { scale: 1, fine, c }, 1];
+      for (const id of pick(ids)) for (let c = 0; c < 2; c++) for (let t = 1; t <= 6; t++) {
+        out[key(id, c, t)] = ["dcs_" + id + "_" + TYPES[t], { scale: 1, fine, c }, 1];
+        if (TOP5[id] && TOP5[id][t]) out[key5(id, c, t)] = ["dcs5_" + id + "_" + TYPES[t], { scale: 1, fine, c }, 1];
+      }
       return out;
     },
     bind(MB, ids) {
@@ -22545,6 +23440,9 @@ function MG_SFX(L) {
           const m = MB.models[frames[0]], h = m.h || 1, r = m.r || 0.4;
           const fit = Math.max(0.5, Math.min(1.8, P.HEIGHT[t] / h, 0.42 / r));
           models[c][t] = { frames, h, r, fine: m.fine || 1, fit, height: +(h * fit).toFixed(3), name: "dcs_" + id + "_" + TYPES[t], set: id };
+          // its tier-5 figurine, for DC.pieces' layout (drawn at this model's fit; finials on its crown)
+          const f5 = MB.extraFrames[key5(id, c, t)];
+          if (f5) models[c][t].five = { f: f5[0], fine: MB.models[f5[0]].fine || 1, top: TOP5[id][t], head: P.SLOT[t].head };
         }
         out[id] = models;
       }
@@ -23521,7 +24419,8 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
    With parts (DC.pieces.bindParts) each piece with traits (game.tr) also draws its tier's and its traits'
    parts, offset from its anchor and turned with it; a gem's mark carries its hue (G.MARK.HUE_SHIFT). A tier 5
    Staunton knight, bishop or rook draws its silhouette (the layout's sil) in place of its base; a themed set's
-   figurine (its model's set, DC.sets) keeps its own with the lower tiers' parts.
+   (its model's set, DC.sets) draws that set's tier-5 figurine (the model's five), or keeps its own figurine with
+   the lower tiers' parts if the set has none.
    The input sets selected (a square or -1), hover (a square or -1) and check (the king's square or -1).
    drawn[i] is the piece this layer drew as its i-th instance last frame (R.pick's index). */
 (function () {
@@ -23563,7 +24462,8 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
       if (!l) {
         const ids = [];
         for (let i = 0; i < G.TRAITS.length; i++) if (p.tr & (1 << i)) ids.push(G.TRAITS[i].id);
-        l = this.parts.layout(p.c, p.t, ids, !this.models[p.c][p.t].set);
+        const md = this.models[p.c][p.t];
+        l = this.parts.layout(p.c, p.t, ids, md.set ? md.five || null : undefined);
         this.layouts.set(k, l);
       }
       return l;
@@ -24214,7 +25114,7 @@ ${litho ? `  // the print: the checker bent into interlocking tiles, every tile 
    run from a checkout says "dev". DG.VERSION.label: "v0.1.0 · 89f8d05". */
 (function () {
   const G = (window.DG = window.DG || {});
-  G.VERSION = { v: "0.35.0", name: "DeckChess", commit: "db90cc2d" };
+  G.VERSION = { v: "0.36.0", name: "DeckChess", commit: "4be5e35b" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
