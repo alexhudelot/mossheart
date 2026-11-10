@@ -1005,6 +1005,99 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   #tray #inspector.docked:not(.open) #inspact { flex: 1 1 100%; }
   #tray #inspector.docked:not(.open) #inspact > .btn { flex: 1 1 0; padding: 0 3px; font-size: calc(12px * var(--ts)); }
 }
+
+/* the seed pouch (view/pouch.js, G1b): a paper box over the void, the garden and the pouch on the left, the
+   roster on the right, the picked card's sheet in a third column on a wide screen and a dock at the bottom
+   below 1060 px. Its own light paper and dark ink (the Overgrown skin's bark is for .panel) */
+#pouch.show { display: block; overflow-y: auto; padding: max(12px, var(--st)) max(12px, var(--sr)) max(12px, var(--sb)) max(12px, var(--sl)); }
+.pz-box { --warn: #b5462f; --warnbg: #f6dccf; --ok: #4d7a38; --okbg: #e1ecd2; --syn: #8a5a9e; --synbg: #ece0ef; --ink2: #6a7357; --line: #cfc4a2;
+  margin: 0 auto; max-width: 1280px; background: #fbf4e0; color: #38452e; border: 3px solid #6b9952; border-radius: 16px; padding: 14px; box-shadow: 0 6px 24px #000a; }
+.pz-cols { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr) minmax(280px, 340px); gap: 16px; align-items: start; }
+.pz-lab { font-size: calc(11px * var(--ts)); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink2); margin: 10px 0 6px; }
+.pz-garden { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.veil .pz-garden h2 { margin: 0; color: #38452e; text-shadow: none; text-align: left; font-size: calc(26px * var(--ts)); }
+.pz-garden small { color: var(--ink2); }
+.pz-traits { display: grid; gap: 6px; margin-top: 8px; }
+.pz-trait { display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; border-radius: 10px; background: #fffaf0; border: 2px solid var(--line); font-size: calc(13px * var(--ts)); font-weight: 500; }
+.pz-trait.bad { border-color: var(--warn); background: var(--warnbg); }
+.pz-trait.bad b { color: var(--warn); }
+.pz-trait i { color: var(--ink2); font-style: normal; }
+.pz-trait.none { color: var(--ink2); }
+.pz-box .ctb { flex: none; display: inline-flex; width: 1.3em; height: 1.3em; vertical-align: -0.25em; }
+.pz-box .ctb svg { width: 100%; height: 100%; }
+.pz-slots { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.pz-slot { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 64px; padding: 4px 2px;
+  border-radius: 10px; border: 2px dashed var(--line); background: #fffaf0; color: var(--ink2); font: inherit; font-size: calc(11px * var(--ts)); }
+.pz-slot.full { border: 2px solid var(--el); color: #38452e; cursor: pointer; }
+.pz-slot.util { border-style: double; border-width: 4px; }
+.pz-slot .nm { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pz-slot .n { position: absolute; top: 1px; left: 5px; font-size: calc(10px * var(--ts)); color: var(--ink2); }
+.pz-seed { flex: none; display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 3px var(--c); font-weight: 800; }
+.pz-seed svg { width: 24px; height: 24px; }
+.pz-tips { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 5px; }
+.pz-tip { display: flex; gap: 7px; padding: 6px 8px; border-radius: 9px; font-size: calc(13px * var(--ts)); font-weight: 500; }
+.pz-tip .ic { flex: none; font-weight: 800; }
+.pz-tip.w { background: var(--warnbg); color: #6e2a1a; }
+.pz-tip.w .ic { color: var(--warn); }
+.pz-tip.ok { background: var(--okbg); }
+.pz-tip.ok .ic { color: var(--ok); }
+.pz-tip.syn { background: var(--synbg); }
+.pz-tip.syn .ic { color: var(--syn); }
+.pz-row { display: flex; gap: 6px; margin-top: 10px; }
+.pz-box .btn.pz-sm { width: auto; flex: 1 1 0; height: 42px; padding: 0 8px; font-size: calc(15px * var(--ts)); }
+.pz-box .btn.pz-begin { width: 100%; height: 60px; margin-top: 8px; font-size: calc(24px * var(--ts)); }
+.pz-pair { margin-bottom: 10px; }
+.pz-el { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-weight: 800; color: var(--el); margin-bottom: 5px; }
+.pz-el .dot, .pz-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--el); }
+.pz-beats { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 99px; background: #fffaf0; border: 1px solid var(--line); font-size: calc(12px * var(--ts)); }
+.pz-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+.pz-card { position: relative; display: flex; align-items: center; gap: 9px; padding: 7px 9px; border-radius: 11px; border: 2px solid var(--line); background: #fffaf0; color: #38452e;
+  font: inherit; text-align: left; cursor: pointer; }
+.pz-card.in { border-color: var(--el); background: #fff; }
+.pz-card.sel { box-shadow: 0 0 0 3px var(--el); }
+.pz-meta { display: flex; flex-direction: column; min-width: 0; }
+.pz-meta small { color: var(--ink2); font-weight: 500; font-size: calc(12px * var(--ts)); }
+.pz-tick { position: absolute; top: 3px; right: 7px; color: var(--el); font-weight: 900; }
+.pz-sheet { background: #fffaf0; border: 2px solid var(--line); border-radius: 12px; padding: 12px; font-size: calc(13px * var(--ts)); font-weight: 500; }
+.pz-sheet:not(.open) { visibility: hidden; }
+.pz-head { display: flex; align-items: center; gap: 10px; }
+.pz-head > div { flex: 1; min-width: 0; }
+.pz-head h3 { margin: 0; font-size: calc(19px * var(--ts)); }
+.pz-head small { display: inline-flex; align-items: center; gap: 5px; color: var(--ink2); }
+.pz-x { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--line); background: #fff; color: #38452e; font-weight: 800; font-size: 20px; line-height: 1; cursor: pointer; }
+.pz-desc { margin: 8px 0; }
+.pz-stats { display: flex; gap: 6px; }
+.pz-stats span { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 4px; border-radius: 8px; background: #f3ead0; color: var(--ink2); font-size: calc(11px * var(--ts)); }
+.pz-stats b { color: #38452e; font-size: calc(17px * var(--ts)); }
+.pz-path { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.pz-path li { display: flex; gap: 7px; }
+.pz-path .lv { flex: none; width: 28px; text-align: center; border-radius: 6px; background: #38452e; color: #fffaf0; font-weight: 800; font-size: calc(11px * var(--ts)); padding: 2px 0; height: fit-content; }
+.pz-path .price { color: var(--ink2); white-space: nowrap; }
+.pz-fork { display: grid; gap: 4px; margin-top: 4px; }
+.pz-fork > span { padding: 4px 6px; border-radius: 7px; border: 1px dashed var(--line); }
+.pz-vs { display: grid; gap: 4px; }
+.pz-vs > div { display: flex; gap: 6px; align-items: flex-start; }
+.pz-vs .up { flex: none; color: var(--ok); font-weight: 800; }
+.pz-vs .down { flex: none; color: var(--warn); font-weight: 800; }
+.pz-links { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.pz-links li.off { color: var(--ink2); }
+.pz-links i { font-style: normal; color: var(--ink2); }
+.pz-links .graft { display: block; color: var(--syn); }
+.pz-box .btn.pz-act { width: 100%; height: 46px; margin-top: 10px; font-size: calc(17px * var(--ts)); }
+@media (max-width: 1059px) {
+  .pz-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); }
+  .pz-sheet { position: fixed; left: 8px; right: 8px; bottom: max(8px, var(--sb)); max-height: 58vh; overflow-y: auto; z-index: 5; box-shadow: 0 -6px 24px #0008; }
+  .pz-sheet:not(.open) { display: none; }
+}
+@media (max-width: 699px) {
+  .pz-cols { grid-template-columns: minmax(0, 1fr); }
+  .pz-box { padding: 10px; }
+  .pz-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pz-card { padding: 6px; gap: 6px; }
+  .pz-seed { width: 28px; height: 28px; }
+  .pz-seed svg { width: 20px; height: 20px; }
+  .pz-slot { min-height: 56px; }
+}
 </style>
 </head>
 <body>
@@ -19287,7 +19380,14 @@ fn boxOf(V: Vox) -> Box {
       }
       return null;
     }
-    anyMoss(R = this.rnd) { const c = this.cells.m[Math.floor(R() * this.cells.m.length)]; return [c[0] + 0.15 + R() * 0.7, c[1] + 0.15 + R() * 0.7]; }
+    // a random point on a moss cell; on a map with no moss, on a lane; with neither, null (no ground to stand on:
+    // the callers then retire the critter, as one without water or trees)
+    anyMoss(R = this.rnd) {
+      const cs = this.cells.m.length ? this.cells.m : this.cells.u;
+      if (!cs.length) return null;
+      const c = cs[Math.floor(R() * cs.length)];
+      return [c[0] + 0.15 + R() * 0.7, c[1] + 0.15 + R() * 0.7];
+    }
     // sun pool i where the shaft pass draws it at t (R.beamAt: the pools drift); its fixed foot without a renderer
     sunAt(i, t) { if (this.beamAt) return this.beamAt(i, t); const R = ME.app && ME.app.R, b = this.T.beams[i]; return R && R.beamAt ? R.beamAt(i, t) : [b.x, b.y]; }
     wetPoint(w) { return [w.x + 0.15 + this.rnd() * 0.7, w.y + 0.15 + this.rnd() * 0.7]; }
@@ -19307,27 +19407,29 @@ fn boxOf(V: Vox) -> Box {
       if (a.kind === "wisp") return this.wispInit(a, t);
       const R = this.rnd;
       a.yaw = R() * TAU; a.pitch = 0; a.hide = false;
-      const place = (p) => { a.x = p[0]; a.y = p[1]; a.z = this.gz(p[0], p[1]); };
+      // place at p; no p (anyMoss on a map with no ground cells): the critter is retired, false
+      const place = (p) => { if (!p) { a.dead = a.hide = true; return false; } a.x = p[0]; a.y = p[1]; a.z = this.gz(p[0], p[1]); return true; };
       switch (a.kind) {
         case "butterfly": {
           // every other one keeps to a sun pool (a.sun, its beam) and follows it as it drifts
           const nb = this.T.beams.length;
           if (nb && a.k % 2 === 0) a.sun = a.k % nb;
           const s = a.sun !== undefined ? this.sunAt(a.sun, t) : this.anyMoss();
-          a.home = this.spot(s[0], s[1], 0, 1.2) || (a.sun !== undefined && this.ringMoss(s[0], s[1])) || [...this.anyMoss()];
-          place(a.home); a.fr = this.F[["butterflyOrange", "butterflyBlue", "butterflyYellow"][a.k % 3]];
+          a.home = (s && (this.spot(s[0], s[1], 0, 1.2) || (a.sun !== undefined && this.ringMoss(s[0], s[1])))) || this.anyMoss();
+          if (!place(a.home)) break;
+          a.fr = this.F[["butterflyOrange", "butterflyBlue", "butterflyYellow"][a.k % 3]];
           this.go(a, "fly", null, t, 0);
           break;
         }
         case "dragonfly": { if (!this.wet.length) { a.dead = a.hide = true; break; } const w = this.wet[Math.floor(R() * this.wet.length)], p = this.wetPoint(w); a.x = p[0]; a.y = p[1]; a.z = w.z + 0.3; this.wait(a, "hover", t, R()); break; }
-        case "bee": { const f = MB_FERNS(this) || this.anyMoss(); a.h0 = a.h1 = [f[0], f[1]]; a.t0 = t; a.trav = 1; a.end = t + 6 + R() * 8; a.x = f[0]; a.y = f[1]; a.z = this.gz(f[0], f[1]) + 0.3; a.state = "buzz"; break; }
+        case "bee": { const f = MB_FERNS(this) || this.anyMoss(); if (!f) { a.dead = a.hide = true; break; } a.h0 = a.h1 = [f[0], f[1]]; a.t0 = t; a.trav = 1; a.end = t + 6 + R() * 8; a.x = f[0]; a.y = f[1]; a.z = this.gz(f[0], f[1]) + 0.3; a.state = "buzz"; break; }
         case "bird": {
           a.col = a.k % 3 === 2 ? "tit" : "robin";
           if (a.k % 3 === 1 && this.perches.length) { const p = this.perches[Math.floor(R() * this.perches.length)]; a.perch = p; a.x = p.x; a.y = p.y; a.z = p.z; this.wait(a, "perch", t, 2 + R() * 6); }
-          else { place(this.anyMoss()); this.wait(a, "stand", t, R() * 1.5); }
+          else if (place(this.anyMoss())) this.wait(a, "stand", t, R() * 1.5);
           break;
         }
-        case "squirrel": { if (!this.trees.length) { a.dead = a.hide = true; break; } a.tree = this.trees[a.k % this.trees.length]; place(this.spot(a.tree.X, a.tree.Y, 0.5, 1.6) || this.anyMoss()); this.wait(a, "sit", t, 0.5 + R() * 2); break; }
+        case "squirrel": { if (!this.trees.length) { a.dead = a.hide = true; break; } a.tree = this.trees[a.k % this.trees.length]; if (place(this.spot(a.tree.X, a.tree.Y, 0.5, 1.6) || this.anyMoss())) this.wait(a, "sit", t, 0.5 + R() * 2); break; }
         case "frog": {
           // the first frog sits on a lily pad if the map has one
           if (a.k === 0 && this.pads.length) { a.pad = this.pads[0]; a.x = a.pad.x; a.y = a.pad.y; a.z = a.pad.z; this.wait(a, "sit", t, 1 + R() * 4); break; }
@@ -19355,9 +19457,9 @@ fn boxOf(V: Vox) -> Box {
           a.z = this.minnowZ(a); a.state = "school"; a.end = Infinity;
           break;
         }
-        case "bunny": place(this.anyMoss()); this.wait(a, "sit", t, R() * 3); break;
-        case "snail": { const b = this.banks.length && a.k < 2 ? this.banks[Math.floor(R() * this.banks.length)] : null; place(b ? [b.x, b.y] : this.anyMoss()); this.wait(a, "pause", t, R() * 3); break; }
-        case "beetle": place(this.anyMoss()); this.wait(a, "pause", t, R() * 2); break;
+        case "bunny": if (place(this.anyMoss())) this.wait(a, "sit", t, R() * 3); break;
+        case "snail": { const b = this.banks.length && a.k < 2 ? this.banks[Math.floor(R() * this.banks.length)] : null; if (place(b ? [b.x, b.y] : this.anyMoss())) this.wait(a, "pause", t, R() * 3); break; }
+        case "beetle": if (place(this.anyMoss())) this.wait(a, "pause", t, R() * 2); break;
         case "moth": a.lamp = this.lamps.length ? this.lamps[a.k % this.lamps.length] : null; if (!a.lamp) a.dead = a.hide = true; a.state = "orbit"; a.end = Infinity; break;
       }
     }
@@ -19450,7 +19552,9 @@ fn boxOf(V: Vox) -> Box {
       if (a.state === "perch") {
         if (R() < 0.35) { a.yaw += (R() - 0.5) * 2.2; this.wait(a, "perch", t, 1 + R() * 3); return; }
         if (R() < 0.3 && toPerch()) return;
-        const g = this.spot(a.x, a.y, 0.5, 3.5) || [...this.anyMoss(), 0]; g[2] = this.gz(g[0], g[1]);
+        const g = this.spot(a.x, a.y, 0.5, 3.5) || this.anyMoss();
+        if (!g) { this.wait(a, "perch", t, 2 + R() * 4); return; } // nowhere to land: stays up
+        g[2] = this.gz(g[0], g[1]);
         this.flyTo(a, g, t, null); return;
       }
       const r = R();
@@ -20009,12 +20113,12 @@ fn boxOf(V: Vox) -> Box {
 /* Mossheart asset set (the user's pick from the mockups): Koke Garden Heart Tree, Sunpetal and Puffcap,
    the Shrine Craft Thornbloom lantern, the Hotaru Spirit Willow Wisp and blighted enemies.
      towers   ms_thorn ms_sun ms_puff ms_wisp, ms_briar ms_toad ms_moon ms_lily   o.lv 1..3 (upgrade level), 4-frame idle over o.t
-     base     ms_heart                               o.hurt 0..2 (healthy, wounded, critical), 4-frame idle
+     base     ms_heart                               o.hurt 0..2 (healthy, wounded, critical), o.grow 0..3 (the living map's acts), 4-frame idle
      enemies  ms_grub ms_beetle ms_moth ms_golem ms_spirit (boss), and the mould creatures ms_snail ms_bloat
               ms_mite ms_mender ms_midge ms_mole ms_lichen ms_mother (second boss), and the blight creatures
               of the bestiary: ms_crow   4-frame walk / fly cycles
      props    ms_rift (blight spawn) ms_glowcap ms_lamp ms_stone ms_kodama
-   Showrooms: ?gallery=set-towers | set-towers2 | set-heart | set-enemies | set-enemies2 | set-bestiary | set-world (a mini level: enemies walk the path,
+   Showrooms: ?gallery=set-towers | set-towers2 | set-heart | set-heart-grow | set-enemies | set-enemies2 | set-bestiary | set-world (a mini level: enemies walk the path,
    add &units=10; &set=cycle:60 loops day and dusk). Built on assets/asset-kit.js. */
 (function () {
   const ME = window.ME, { S, E, C, B, Y, TAU, add, mul, lerp3, norm, cross, rx, rz, orient, near, nz3, cface, mossPad, stoneMoss, larva, lantern, kodamaFace, model } = ME.assetKit;
@@ -20269,13 +20373,61 @@ fn boxOf(V: Vox) -> Box {
   // shide flutter (4 frames); the knot holds still (the game makes it beat when hit, a swell and a glow,
   // Mossheart view/scene.js). o.hurt spreads the blight: veined bark from the roots up, sick leaves, a
   // thinner crown, a smaller knot.
+  // o.grow 0..3, the living map's acts (docs/designs/2026-11-10-living-map.md, 6.1): each stage adds 2 crown
+  // spheres and scales the crown about the fork (z 0.85) by 1 + 0.08 grow. 1 opens five-petal blossoms on the
+  // crown's top, 2 hangs 5 dew lanterns on cords under its rim (kgOrb, lit), 3 lifts it to 2.5 high and spreads
+  // 6 surface roots in arcs and a moss halo. Hurt still takes 2 spheres a stage, now from the 8 + 2 grow; a grown
+  // tree drops its blossoms first (hurt 1), then its lanterns go dark (hurt 2, unlit glass).
+  const HEART_CROWN = [[0, 0, 1.62, 0.48], [0.48, 0.18, 1.42, 0.36], [-0.46, 0.26, 1.4, 0.36], [0.08, -0.5, 1.42, 0.34], [-0.22, -0.28, 1.76, 0.3], [0.3, 0.3, 1.78, 0.3], [0.42, -0.3, 1.6, 0.28], [-0.4, -0.1, 1.62, 0.3],
+    // the grown stages' spheres, 2 a stage, each overlapping the crown it joins
+    [0.62, -0.05, 1.5, 0.3], [-0.58, -0.36, 1.52, 0.29], [0.18, 0.6, 1.56, 0.3], [-0.05, 0.05, 1.86, 0.28], [0.38, -0.12, 1.92, 0.26], [-0.52, 0.5, 1.7, 0.27]];
   model("ms_heart", 1.45, (o) => {
-    const hurt = Math.max(0, Math.min(2, o.hurt || 0)), w = ph(o);
+    const hurt = Math.max(0, Math.min(2, o.hurt || 0)), grow = Math.max(0, Math.min(3, Math.round(o.grow || 0))), w = ph(o);
+    const g = 1 + 0.08 * grow, up = grow ? (x, y, z) => [x * g, y * g, 0.85 + (z - 0.85) * g] : (x, y, z) => [x, y, z]; // (grow 0 exactly as before)
     const p = [C([0, 0, -0.05], [0.04, 0.02, 0.95], 0.27, 0.15, "kgBark", { k2: 0.1 })];
     ring(6, (a) => p.push(C([Math.cos(a + 0.3) * 0.12, Math.sin(a + 0.3) * 0.12, 0.2], [Math.cos(a + 0.3) * 0.5, Math.sin(a + 0.3) * 0.5, -0.02], 0.1, 0.035, "kgBark", { k2: 0.06 })));
-    for (const l of [[0.5, 0.15, 1.35], [-0.45, 0.25, 1.3], [0.05, -0.5, 1.32], [-0.1, 0.1, 1.55]]) p.push(C([0.03, 0.02, 0.85], l, 0.11, 0.05, "kgBark", { k2: 0.05 }));
-    const crown = [[0, 0, 1.62, 0.48], [0.48, 0.18, 1.42, 0.36], [-0.46, 0.26, 1.4, 0.36], [0.08, -0.5, 1.42, 0.34], [-0.22, -0.28, 1.76, 0.3], [0.3, 0.3, 1.78, 0.3], [0.42, -0.3, 1.6, 0.28], [-0.4, -0.1, 1.62, 0.3]];
-    crown.slice(0, 8 - hurt * 2).forEach(([x, y, z, r], i) => p.push(S([x + 0.02 * Math.sin(w + i), y + 0.02 * Math.cos(w + i * 1.3), z], r * (1 - 0.06 * hurt), "kgLeaf", { k2: 0.12 })));
+    for (const l of [[0.5, 0.15, 1.35], [-0.45, 0.25, 1.3], [0.05, -0.5, 1.32], [-0.1, 0.1, 1.55]]) p.push(C([0.03, 0.02, 0.85], up(...l), 0.11, 0.05, "kgBark", { k2: 0.05 }));
+    // the crown, swayed: [x, y, z, r] as placed
+    const crown = HEART_CROWN.slice(0, 8 + 2 * grow - 2 * hurt).map(([x, y, z, r], i) => {
+      const c = up(x, y, z);
+      return [c[0] + 0.02 * Math.sin(w + i), c[1] + 0.02 * Math.cos(w + i * 1.3), c[2], r * g * (1 - 0.06 * hurt)];
+    });
+    for (const [x, y, z, r] of crown) p.push(S([x, y, z], r, "kgLeaf", { k2: 0.12 }));
+    // where a vertical through (x, y) meets the crown's top (dir 1) or its underside (dir -1), or null
+    const meet = (x, y, dir) => {
+      let best = null;
+      for (const [cx, cy, cz, r] of crown) { const q = r * r - (x - cx) ** 2 - (y - cy) ** 2; if (q <= 0) continue; const z = cz + dir * Math.sqrt(q); if (best === null || (dir > 0 ? z > best : z < best)) best = z; }
+      return best;
+    };
+    // grow 1+: blossoms, 9 + 3 a stage after, on a golden-angle spiral over the crown's top (gone once hurt)
+    if (grow >= 1 && hurt === 0) {
+      const n = 6 + 3 * grow;
+      for (let i = 0; i < n; i++) {
+        const a = i * 2.39996, rr = 0.68 * g * Math.sqrt((i + 0.5) / n), x = Math.cos(a) * rr, y = Math.sin(a) * rr, zt = meet(x, y, 1);
+        if (zt === null) continue;
+        const c = [x, y, zt + 0.004], s = 0.85 + 0.3 * ((i * 0.618) % 1);
+        for (let k = 0; k < 5; k++) { const b = a + (k * TAU) / 5; p.push(E(add(c, [Math.cos(b) * 0.03 * s, Math.sin(b) * 0.03 * s, 0]), [0.028 * s, 0.017 * s, 0.008], i % 3 ? "kgLily" : "kgLilyPink", { R: rz(b) })); }
+        p.push(S(add(c, [0, 0, 0.006]), 0.013 * s, "kgPetal"));
+      }
+    }
+    // grow 2+: 5 dew lanterns, a drop on a cord under the crown's rim, swinging a little (dark at hurt 2)
+    if (grow >= 2) for (let i = 0; i < 5; i++) {
+      const a = 0.5 + (i * TAU) / 5, rr = 0.6 * g, x = Math.cos(a) * rr, y = Math.sin(a) * rr, zb = meet(x, y, -1);
+      if (zb === null) continue;
+      const L = 0.13 + 0.04 * (i % 2), sw = 0.018 * Math.sin(w + i * 1.7), d = [x + sw * Math.cos(a + 1.57), y + sw * Math.sin(a + 1.57), zb - L];
+      p.push(C([x, y, zb + 0.03], d, 0.008, 0.007, "kgRope"));
+      p.push(S(add(d, [0, 0, 0.012]), 0.018, "kgRope", { k2: 0.01 }));
+      p.push(E(add(d, [0, 0, -0.035]), [0.036, 0.036, 0.05], hurt >= 2 ? "kgMoonPetal" : "kgOrb", { k2: 0.012 }));
+    }
+    // grow 3: 6 surface roots arcing out between today's, and a moss halo on the ground round them
+    if (grow >= 3) {
+      ring(6, (a0) => {
+        const a = a0 + 0.3 + Math.PI / 6, at = (r, da, z) => [Math.cos(a + da) * r, Math.sin(a + da) * r, z];
+        p.push(C(at(0.16, 0, 0.16), at(0.5, 0.12, 0.08), 0.085, 0.05, "kgBark", { k2: 0.05 }));
+        p.push(C(at(0.5, 0.12, 0.08), at(0.88, 0.3, -0.02), 0.05, 0.026, "kgBark", { k2: 0.04 }));
+      });
+      ring(16, (a, i) => p.push(E([Math.cos(a) * 0.66, Math.sin(a) * 0.66, 0.0], [0.13, 0.085, 0.03 + 0.008 * (i % 3)], "moss", { k2: 0.03, R: rz(a) })));
+    }
     ring(16, (a) => p.push(S([Math.cos(a) * 0.235, Math.sin(a) * 0.235, 0.52 + Math.sin(a * 3) * 0.008], 0.042, "kgRope", { k2: 0.015 })));
     for (const a of [0.35, 0.8, 1.25]) for (let j = 0; j < 3; j++) { const c = [Math.cos(a) * 0.27, Math.sin(a) * 0.27, 0.45 - j * 0.045]; p.push(B(add(c, [Math.cos(a + 1.57) * (j % 2 ? 0.015 : -0.015), Math.sin(a + 1.57) * (j % 2 ? 0.015 : -0.015), 0.004 * Math.sin(w + a)]), [0.008, 0.03, 0.022], 0.003, "kgPaper", { R: rz(a) })); }
     const knot = 1 - 0.22 * hurt;
@@ -20283,7 +20435,7 @@ fn boxOf(V: Vox) -> Box {
     // fallen leaves at the roots once the tree is hurt
     for (let i = 0; i < hurt * 4; i++) { const a = i * 2.39, r = 0.45 + 0.2 * ((i * 0.618) % 1); p.push(E([Math.cos(a) * r, Math.sin(a) * r, 0.01], [0.04, 0.02, 0.006], "kgLeafSick", { R: rz(a * 1.7) })); }
     return {
-      prims: p, r: 0.95, h: 2.1, k: 1,
+      prims: p, r: 0.95 * g, h: [2.1, 2.2, 2.35, 2.5][grow], k: 1,
       detail: (x, y, z, m, nx, ny, nz) => {
         if (m === "kgBark" && hurt) {
           const reach = 0.3 + 0.4 * hurt, v = nz3(x, y, z, 6, 5);
@@ -20635,6 +20787,11 @@ fn boxOf(V: Vox) -> Box {
     "set-heart": {
       label: "Heart Tree and props",
       rows: [[[0, 1, 2].map((h) => ["ms_heart", { hurt: h }, "heart" + h]), -1.2, [-3.8, 0, 3.8]], [["rift", "glowcap", "lamp", "stone", "kodama"].map((n) => ["ms_" + n, {}, n]), 2.6, [-3.6, -1.8, 0, 1.8, 3.6]]],
+    },
+    // the living map's growth stages (o.grow 0..3) healthy, then a grown tree hurt: its blossoms gone, its lanterns dark
+    "set-heart-grow": {
+      label: "Heart Tree, growth stages",
+      rows: [[[0, 1, 2, 3].map((g) => ["ms_heart", { grow: g }, "grow" + g]), -1.4, [-5.4, -1.8, 1.8, 5.4]], [[[3, 1], [3, 2], [2, 2]].map(([g, h]) => ["ms_heart", { grow: g, hurt: h }, "g" + g + "h" + h]), 2.8, [-3.8, 0, 3.8]]],
     },
     "set-enemies": { label: "Enemies", rows: [[["grub", "beetle", "moth", "golem", "spirit"].map((n) => ["ms_" + n, {}, n]), 0.4, [-4.2, -2.2, -0.2, 1.8, 4.2]]], zoom: { spirit: 3.4 } },
     "set-enemies2": { label: "The mould creatures", rows: [[["snail", "bloat", "mite", "mender"].map((n) => ["ms_" + n, {}, n]), 1.6, [-3.6, -1.2, 1.2, 3.6]], [["midge", "mole", "lichen", "mother"].map((n) => ["ms_" + n, {}, n]), -1.4, [-3.6, -1.2, 1.2, 3.8]]], zoom: { mother: 3.4 } },
@@ -21144,7 +21301,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.110.0", name: "Mossheart", commit: "5771ba4b" };
+  G.VERSION = { v: "0.111.0", name: "Mossheart", commit: "07f8eb2b" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -21558,6 +21715,9 @@ function MA_DSP() {
   // garden still stands and grows where a save has it. tools/sim.html ?plants= tries another set (all: every plant).
   D.LEVEL_PLANTS = { momiji: ["thorn", "puff", "sun", "wisp", "briar"], fernglass: ["thorn", "puff", "moon", "toad", "lily"], cornmoon: ["sun", "wisp", "briar", "toad", "lily"], everstair: ["thorn", "moon", "toad", "wisp", "sun"] };
   D.plantsOf = (level) => D.LEVEL_PLANTS[level] || D.TOWER_ORDER;
+  // what each plant is for, read by the seed pouch's tips (view/pouch.js): single (focuses one creature), area (hits a
+  // crowd), slow, support
+  D.ROLES = { thorn: ["single"], sun: ["single"], puff: ["area", "slow"], wisp: ["area"], briar: ["area", "slow"], toad: ["area"], moon: ["support"], lily: ["single"] };
   // The living map (docs/designs/2026-11-10-living-map.md): a garden's acts, one per ten waves, the first as
   // the garden loads (null). An act turns at the build phase after the boss that closes the act before it
   // (Game.actTurn) and can open ground (open: cells; freeze: boxes whose water freezes into ground), wake a
@@ -25259,8 +25419,8 @@ function MA_DSP() {
     const anchor = ([X, Y]) => { const x = Math.floor(X), y = Math.floor(Y), dx = r3(X - x - 0.5), dy = r3(Y - y - 0.5); return dx || dy ? [x, y, { dx, dy }] : [x, y]; };
     const big = (d) => d && (d[0] === "niwaki" || d[0] === "maple") && d[1] && d[1].H >= 3;
     const hi = deco.findIndex((d) => big(d) && (!game.heart || (d[2] === Math.floor(game.heart[0]) && d[3] === Math.floor(game.heart[1]))));
-    if (hi >= 0) { const d = deco[hi]; deco[hi] = [G.HEART_MODEL.name, heartO(0), d[2], d[3], d[4]]; }
-    else if (game.heart) deco.push([G.HEART_MODEL.name, heartO(0), ...anchor(game.heart)]);
+    if (hi >= 0) { const d = deco[hi]; deco[hi] = [G.HEART_MODEL.name, heartO(0, HEART_GROW0), d[2], d[3], d[4]]; }
+    else if (game.heart) deco.push([G.HEART_MODEL.name, heartO(0, HEART_GROW0), ...anchor(game.heart)]);
     const rift = ["ms_rift", riftO()];
     deco.push(game.spawn ? [...rift, ...anchor(game.spawn)] : [...rift, path[0][0], path[0][1]]);
     if (game.spawn2) deco.push([...rift, ...anchor(game.spawn2)]); // a second entrance (Corn Moon's east gate)
@@ -25298,7 +25458,10 @@ function MA_DSP() {
       if (side) deco.push(["ms_glowcap", { scale: k0("ms_glowcap") * 0.7 }, x, y, { dx: side[0] * 0.38, dy: side[1] * 0.38 }]);
     }
   };
-  const heartO = (hurt) => ({ hurt, scale: k0(G.HEART_MODEL.name) * G.HEART_MODEL.size, fine: G.heroFine() });
+  // (grow only when set: a grow 0 tree bakes exactly as before the living map)
+  const heartO = (hurt, grow = 0) => Object.assign({ hurt, scale: k0(G.HEART_MODEL.name) * G.HEART_MODEL.size, fine: G.heroFine() }, grow ? { grow } : {});
+  // ?heartgrow=N (1..3), for checks: boot bakes and places grow N's three stages in place of grow 0's
+  const HEART_GROW0 = (() => { try { const v = Math.round(+new URLSearchParams(location.search).get("heartgrow")); return v >= 1 && v <= 3 ? v : 0; } catch (e) { return 0; } })();
   const riftO = () => ({ scale: k0("ms_rift") * 0.75 });
 
   // Sand drawn as sand, after the bank tiles are retyped (main.js calls it after G.sandBanks). Each sand tile
@@ -25345,8 +25508,17 @@ function MA_DSP() {
     // (only the plants the rules have, and the grafts' models, G.GRAFT_ART: a model may land before its plant)
     const grafts = new Set(Object.values(G.GRAFT_ART || {}).map((a) => a.model));
     for (const k in G.TOWER_MODELS) { if (!G.Defs.TOWERS[k] && !(G.Defs.UTILITY && G.Defs.UTILITY[k]) && !grafts.has(k)) continue; const c = G.TOWER_MODELS[k]; for (const lv of c.lvs || [1, 2, 3]) out["t_" + k + lv] = [c.name, { lv, scale: k0(c.name) * c.size, fine: G.heroFine(lv === 3) }, c.frames || FRAMES]; }
-    for (const h of [1, 2]) out["heart" + h] = [G.HEART_MODEL.name, heartO(h), FRAMES]; // its crown's sway, as stage 0's
+    for (const h of [1, 2]) out["heart" + h] = [G.HEART_MODEL.name, heartO(h, HEART_GROW0), FRAMES]; // its crown's sway, as stage 0's
     out.rift0 = ["ms_rift", Object.assign(riftO(), { dim: true }), 1]; // a rift asleep (G.models.riftAt)
+    return out;
+  };
+  // The living map's Heart Tree (docs/designs/2026-11-10-living-map.md, 6.2): grow g's three hurt stages,
+  // heart_g{g}_h{0,1,2}, for ME.bakeModels. Too many bricks to bake all at boot (~10.8k extra at 29 vox/unit,
+  // far more at hero density), so boot bakes grow 0 (G.bakeList) and the game bakes grow g during the wave
+  // before the act turns (waves 10, 20, 30), then G.models.addHeartGrow(g, its extraFrames).
+  G.heartBakeList = (g) => {
+    const out = {};
+    for (const h of [0, 1, 2]) out["heart_g" + g + "_h" + h] = [G.HEART_MODEL.name, heartO(h, g), FRAMES];
     return out;
   };
 
@@ -25367,7 +25539,10 @@ function MA_DSP() {
       // kind the trait doesn't fit)
       traitFrames: (kind, trait) => gf["e_" + kind + "_" + (trait === "regrowing" ? "regrow" : trait)] || null,
       // the Heart Tree's flipbook per hurt stage (0 is the baked static's own)
-      heartFrames: (s0) => [s0.frames, gf.heart1, gf.heart2],
+      // grow > 0 (the living map's acts): that stage's three once added (addHeartGrow), else grow 0's
+      heartFrames: (s0, grow = 0) => (grow && gf["heart_g" + grow + "_h0"] ? [0, 1, 2].map((h) => gf["heart_g" + grow + "_h" + h]) : [s0.frames, gf.heart1, gf.heart2]),
+      // a grow stage baked mid-run (frames: its bake's extraFrames, keyed as G.heartBakeList gives them)
+      addHeartGrow: (g, frames) => { for (const h of [0, 1, 2]) { const k = "heart_g" + g + "_h" + h; if (frames[k]) gf[k] = frames[k]; } },
       // the rift standing at P (in tiles: map.game.spawn or spawn2), or null: { s, frames, lights }. s is its
       // baked static and frames [dim, lit] (lit is s's own). As with the Heart Tree, the view hides s and draws
       // frames[lit ? 1 : 0] from its own record. lights are s's point lights in MB.lights (its pool's glow),
@@ -25707,7 +25882,18 @@ function MA_DSP() {
               leaves are two colours, half the leaves each.
      sky.js caches layers until the object changes, so to tune it live, assign a new one
      (G.WEATHER_LOOKS.layers = { ... }), not a change in place.
-   G.WEATHER_LOOKS.rainbow: the bow's colours and strength for sky.js, and a pale moonbow in a night garden. */
+   G.WEATHER_LOOKS.rainbow: the bow's colours and strength for sky.js, and a pale moonbow in a night garden.
+   G.WEATHER_LOOKS.acts[level] = [act 1, act 2, ...]: a living level's look per act (the living map, design
+     docs/designs/2026-11-10-living-map.md sections 3 and 4), read by ME.Sky (host.acts, by default this
+     table). Each act { mood, set, pal, grassH, freeze }, every member optional: mood a MOODS key (sky.js),
+     shown while the player's pick is Auto or the level's own; set, light settings over the mood's; pal,
+     { <palette material>: "#rrggbb" }, the colour that material is lit at (a factor over its table colour,
+     capped at x6; terrain, grass and models, never the water); grassH the grass height (1); freeze the
+     water's ice, 0 to 1. Acts blend over 4 s; ?act=N pins one. The palette moves one named material at a
+     time (leaf, moss, grass, maple), never a hue shift over a whole ramp: a ramp-wide shift is what turned
+     the shaded sand banks crimson (the red band). The grass blades are leaf2 over moss2 (content/momiji.js,
+     C.grass); mound and mound2 follow moss and moss2. The Heart Tree's kgLeaf and the water stay their own:
+     the tree changes by its growth stages (ms_heart o.grow), not by tint. */
 (function () {
   const G = (window.MG = window.MG || {});
 
@@ -25782,6 +25968,36 @@ function MA_DSP() {
       width: 1.2, // band width x atmos.js's default (h x 0.011, at least 3 px), so it reads on a phone
       night: ["cornmoon"], // the gardens that get the moonbow
       moon: { bands: ["#e8dcd8", "#ece2d4", "#eeeacc", "#dceadc", "#d4e2ee", "#d8d8ee", "#e0d6ec"], alpha: 0.12 },
+    },
+
+    // The living map's acts (A-L1). Momiji's year in four acts, one per stretch of waves (Game: world.js,
+    // D.LEVEL_ACTS). The maples carry the story: young green in the thaw, deep green under the canopy, crimson
+    // and amber at golden hour, and still red under the first frost. The moss goes pale, deep, olive and then
+    // frosted. Targets are colours, not factors, so they hold whichever palette table the garden loads. Under
+    // the x6 cap the frost on the darkest moss stops a little short of white, a pale sage, which the snow front
+    // tops up.
+    // The weather of each act (design L2: thaw rain, sun showers, gusts with falling leaves, a snow front) waits on
+    // per-act climate weights in the engine's weather.js. Until then the climate below runs all year.
+    acts: {
+      momiji: [
+        // I · Thaw: a morning after rain, young greens, pale moss, the grass still short
+        { mood: "morning", grassH: 0.85,
+          pal: { moss: "#8db35a", moss2: "#a9c46c", mound: "#8db35a", mound2: "#a9c46c", sphag: "#b8b072",
+                 leaf: "#5e9a48", leaf2: "#8cc05e", maple: "#9cbc5a", gingko: "#b8d070", leafDry: "#9cb060" } },
+        // II · Green Canopy: clear noon, deep greens, the grass tall
+        { mood: "clear", grassH: 1.2,
+          pal: { moss: "#3c7f2e", moss2: "#5f9636", mound: "#3c7f2e", mound2: "#5f9636",
+                 leaf: "#2c6030", leaf2: "#4a8c36", maple: "#3f7a34", gingko: "#7aa83a", leafDry: "#6a8e3a" } },
+        // III · Ember Leaves: golden hour, the maples crimson, the other leaves amber, the moss olive
+        { mood: "golden", grassH: 1,
+          pal: { moss: "#6e7c32", moss2: "#8e8a40", mound: "#6e7c32", mound2: "#8e8a40", sphag: "#a88a4c",
+                 leaf: "#c4862c", leaf2: "#a49a42", maple: "#cc3424", gingko: "#f0bc2c", leafDry: "#b07c36" } },
+        // IV · Lantern Night: dusk with the night's shafts, frost on the moss and grass, the red leaves kept,
+        // the pond frozen
+        { mood: "dusk", set: { shaftK: 0.3, bloomK: 1.25 }, grassH: 0.7, freeze: 1,
+          pal: { moss: "#9fb0a2", moss2: "#c4d0c8", mound: "#9fb0a2", mound2: "#c4d0c8", sphag: "#bcc0b0",
+                 leaf: "#4c6458", leaf2: "#b4c4ba", maple: "#a82c26", gingko: "#c8a450", leafDry: "#a8a898" } },
+      ],
     },
   };
 })();
@@ -30051,6 +30267,208 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 })();
 
 </script>
+<script>/* src/view/pouch.js */
+/* The seed pouch (G1b, docs/designs/2026-11-10-loadout-and-traits/mockup.html): before a run begins in a
+   garden, the player picks the 5 plants on the seed bar (keys 1-5) and the helper in slot 6. Opened by
+   Menu.go for a run that begins (not one that resumes): the garden's card with its counter traits (red while
+   nothing picked answers one), the pouch's 6 slots, a few tips, Suggested / Last, Begin; on the right the
+   roster by element (each pair "beats" its trait) and the helpers, and a sheet for the picked card (a column
+   on a wide screen, a dock at the bottom of a phone).
+     a card            shows its sheet; a double click puts it in (or takes it out of) the pouch
+     a filled slot     takes that plant out and shows its sheet
+     the sheet button  Add to pouch / Take out of pouch / In slot 6
+     Begin             remembers the pouch for the garden (state.js rememberPouch, "Last") and plays
+   Reads only D and G.LEVELS, so it opens for any garden before the reload into it. ?pouch=0 skips it.
+   (Inner pieces take pz- names: the Overgrown skin dresses .seed, .card and .boon.) */
+(() => {
+  const G = window.MG, D = G.Defs;
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const hex = (c) => "#" + c.map((v) => Math.round(Math.min(1, v) * 255).toString(16).padStart(2, "0")).join("");
+  const ink = (c) => { const l = 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2], k = Math.min(1, 0.6 / Math.max(l, 1e-3)); return hex(c.map((v) => Math.min(1, v) * k)); };
+  const icon = (table, key) => (G[table] && G[table][key]) || "";
+  const EL_NAME = { pierce: "Pierce", light: "Light", spore: "Spore", spirit: "Spirit" };
+  const T = (k) => D.TOWERS[k];
+  const roles = (k) => (D.ROLES && D.ROLES[k]) || [];
+  const upCost = (cost, lv) => Math.floor(cost * 0.8 * lv);
+  const roman = (i) => ["I", "II", "III"][i];
+  // the roster: each element's plants (in the seed bar's order) and the trait it beats
+  const order = () => D.ELEMENTS.map((el, i) => ({ el, kinds: D.TOWER_ORDER.filter((k) => T(k) && !T(k).util && T(k).element === el),
+    trait: (D.CTRAITS.find((t) => t.counter === i) || {}).id }));
+  const elInk = (el) => ink(T(D.ELEMENT_TOWER[D.ELEMENTS.indexOf(el)]).color);
+  const kInk = (k) => T(k).util ? "#7a6a4a" : elInk(T(k).element);
+  const traitOf = (id) => D.CTRAITS.find((t) => t.id === id);
+  const words = (id) => (G.ctWords ? G.ctWords(id) : { name: traitOf(id).name, line: traitOf(id).desc, inked: "" });
+  const gardenName = (id) => (G.LEVELS && G.LEVELS[id] && G.LEVELS[id].name) || id;
+
+  class Pouch {
+    constructor(menu, el) {
+      this.menu = menu; this.el = el; this.id = ""; this.mode = ""; this.pick = []; this.util = "cistern"; this.sel = "";
+      this.phone = window.matchMedia("(max-width: 699px)");
+      el.addEventListener("click", (e) => this.click(e));
+      el.addEventListener("dblclick", (e) => { const c = e.target.closest("[data-card]"); if (c) this.toggle(c.dataset.card); });
+    }
+    open(id, mode) {
+      this.id = id; this.mode = mode;
+      const p = G.state.pouchOf(id);
+      this.set(p.plants, p.util || "cistern");
+      this.sel = this.phone.matches ? "" : this.pick[0] || "";
+      this.render();
+      setTimeout(() => { const b = this.el.querySelector("[data-begin]"); if (b && !this.phone.matches) b.focus({ preventScroll: true }); }, 0);
+    }
+    set(plants, util) { this.pick = plants.filter((k) => T(k) && !T(k).util).slice(0, 5); this.util = util && T(util) && T(util).util ? util : "cistern"; }
+    has(el) { return this.pick.some((k) => T(k).element === el); }
+    answered(id) { const t = traitOf(id); return this.has(D.ELEMENTS[t.counter]) || (id === "veiled" && this.util === "glowcap"); }
+    traits() { return (D.LEVEL_TRAITS && D.LEVEL_TRAITS[this.id]) || []; }
+    counters(id) { const o = order().find((r) => r.trait === id); return o ? o.kinds.map((k) => T(k).name) : []; }
+    stored() { try { return JSON.parse(localStorage.getItem("mossheart.pouch." + this.id) || "null"); } catch (e) { return null; } }
+
+    tips() {
+      const out = [], tr = this.traits();
+      for (const t of tr) if (!this.answered(t)) out.push(["w", "⚠", `Nothing here harms <b>${traitOf(t).name}</b> creatures. Add ${this.counters(t).join(" or ")}${t === "veiled" ? ", or take a Glowcap" : ""}.`]);
+      if (this.pick.length === 5) {
+        if (!this.pick.some((k) => roles(k).includes("area"))) out.push(["w", "⚠", "Nothing hits a crowd: Midge Swarms will slip through."]);
+        const cheap = Math.min(...this.pick.map((k) => T(k).cost));
+        if (cheap > 75) out.push(["w", "⚠", `Your cheapest seed is ${cheap} dew (you start with ${G.state.START_DEW}): a slow first wave.`]);
+        if (!this.pick.some((k) => roles(k).includes("single"))) out.push(["w", "⚠", "Nothing focuses one creature: bosses will be long fights."]);
+      } else out.push(["w", "⚠", `${5 - this.pick.length} more plant${this.pick.length === 4 ? "" : "s"} to pick.`]);
+      if (!out.length) out.push(["ok", "✓", "A balanced pouch."]);
+      if (D.ELEMENTS.every((e) => this.has(e))) out.push(["ok", "✓", "All four elements: every creature's weak spot is yours."]);
+      const graft = (l) => D.GRAFTS.find((g) => g.link === l.id);
+      const links = D.LINKS.filter((l) => this.pick.includes(l.kinds[0]) && this.pick.includes(l.kinds[1])).sort((x, y) => !!graft(y) - !!graft(x));
+      for (const l of links.slice(0, 2)) {
+        const [a, b] = l.kinds, pair = a === b ? `Two ${T(a).name}s` : `${T(a).name} + ${T(b).name}`, g = graft(l);
+        out.push(["syn", "✦", `${pair}: <b>${l.name}</b>. ${l.desc}${g ? `; at III they graft into the ${g.name}` : ""}.`]);
+      }
+      const veiled = tr.includes("veiled"), slow = this.pick.some((k) => roles(k).includes("slow"));
+      const uf = {
+        cistern: "Dew Cistern: a bigger bank for the interest gifts (Golden Harvest pays its full 110 only from 1,830 dew).",
+        sundew: slow ? "Sundew beside your slow plants: creatures die in its reach." : "The Sundew wants kills in its reach: a slow plant (Puffcap, Briar Vine) holds them there.",
+        glowcap: veiled ? "Glowcap by the road: Veiled creatures in its light take every element." : "No Veiled creatures here: the Glowcap has little to light.",
+        stump: "Nurse Stump in the middle of a cluster: up to 8 neighbours fire faster.",
+      }[this.util];
+      if (uf) out.push(this.util === "glowcap" && !veiled ? ["w", "⚠", uf] : ["syn", "✦", uf]);
+      const rank = { w: 0, ok: 1, syn: 2 };
+      return out.sort((a, b) => rank[a[0]] - rank[b[0]]).slice(0, 4);
+    }
+
+    seed(k) {
+      const ic = icon("PLANT_ICONS", k);
+      return `<span class="pz-seed" style="--c:${hex(T(k).color)};color:${ink(T(k).color)}">${ic || esc(T(k).name[0])}</span>`;
+    }
+    card(k) {
+      const d = T(k), isU = !!d.util, inP = isU ? this.util === k : this.pick.includes(k);
+      const sub = isU ? `${d.cost} dew · helper` : `${d.cost} dew · reach ${d.range} · ${Math.round(d.damage * d.rate)}/s`;
+      return `<button class="pz-card${this.sel === k ? " sel" : ""}${inP ? " in" : ""}" style="--el:${kInk(k)}" data-card="${k}" aria-pressed="${inP}">${this.seed(k)}
+        <span class="pz-meta"><b>${esc(d.name)}</b><small>${sub}</small></span>${inP ? '<span class="pz-tick">✓</span>' : ""}</button>`;
+    }
+    render() {
+      const tr = this.traits();
+      const traits = tr.length ? tr.map((t) => {
+        const w = words(t), ok = this.answered(t), who = this.counters(t).join(", ") + (t === "veiled" ? ", or a Glowcap" : "");
+        return `<div class="pz-trait${ok ? "" : " bad"}">${w.inked || ""}<span><b>${esc(w.name)}</b> ${esc(traitOf(t).desc)}. <i>Counter: ${esc(who)}.</i></span></div>`;
+      }).join("") : `<div class="pz-trait none">No counter traits in this garden.</div>`;
+      let slots = "";
+      for (let i = 0; i < 5; i++) {
+        const k = this.pick[i];
+        slots += k ? `<button class="pz-slot full" style="--el:${kInk(k)}" data-out="${k}" title="Take ${esc(T(k).name)} out">${this.seed(k)}<span class="nm">${esc(T(k).name.split(" ")[0])}</span><span class="n">${i + 1}</span></button>`
+          : `<div class="pz-slot"><span class="n">${i + 1}</span><span class="nm">empty</span></div>`;
+      }
+      slots += `<button class="pz-slot full util" style="--el:${kInk(this.util)}" data-show="${this.util}" title="${esc(T(this.util).name)}">${this.seed(this.util)}<span class="nm">${esc(T(this.util).name.split(" ").pop())}</span><span class="n">6</span></button>`;
+      const tips = this.tips().map(([c, i, t]) => `<li class="pz-tip ${c}"><span class="ic">${i}</span><span>${t}</span></li>`).join("");
+      let roster = "";
+      for (const o of order()) {
+        const w = o.trait ? words(o.trait) : null;
+        roster += `<div class="pz-pair"><div class="pz-el" style="--el:${elInk(o.el)}"><span class="dot"></span>${EL_NAME[o.el] || o.el}${w ? `<span class="pz-beats">${w.inked || ""}beats ${esc(w.name)}</span>` : ""}</div>
+          <div class="pz-cards">${o.kinds.map((k) => this.card(k)).join("")}</div></div>`;
+      }
+      roster += `<div class="pz-pair"><div class="pz-el" style="--el:#7a6a4a"><span class="dot"></span>Helpers · pick 1 (slot 6)</div><div class="pz-cards">${D.UTILITY.map((k) => this.card(k)).join("")}</div></div>`;
+      const last = this.stored();
+      this.el.innerHTML = `<div class="pz-box"><div class="pz-cols">
+        <div class="pz-l">
+          <div class="pz-garden"><h2>${esc(gardenName(this.id))}</h2><small>${tr.length ? "traits from wave 4" : ""}</small></div>
+          <div class="pz-traits">${traits}</div>
+          <div class="pz-lab">Your pouch</div><div class="pz-slots">${slots}</div>
+          <ul class="pz-tips">${tips}</ul>
+          <div class="pz-row"><button class="btn small pz-sm" data-sugg>Suggested</button>${last ? '<button class="btn small pz-sm" data-last>Last</button>' : ""}<button class="btn small pz-sm" data-back>Back</button></div>
+          <button class="btn pink big pz-begin" data-begin ${this.pick.length < 5 ? "disabled" : ""}>Begin</button>
+        </div>
+        <div class="pz-r"><div class="pz-lab">Plants · pick 5</div>${roster}</div>
+        <div class="pz-sheet${this.sel ? " open" : ""}">${this.sheet(this.sel)}</div>
+      </div></div>`;
+    }
+    sheet(k) {
+      if (!k) return "";
+      const d = T(k), close = `<button class="pz-x" data-close aria-label="Close">×</button>`;
+      const head = (sub) => `<div class="pz-head" style="--el:${kInk(k)}">${this.seed(k)}<div><h3>${esc(d.name)}</h3><small>${sub}</small></div>${close}</div>`;
+      const step = (t, i, price) => `<li><span class="lv">${roman(i)}</span><span>${t} <span class="price">${price}</span></span></li>`;
+      const price = (i) => `${i ? upCost(d.cost, i) : d.cost} dew`;
+      if (d.util) {
+        const inP = this.util === k;
+        return `${head("Helper · no damage")}<p class="pz-desc">${esc(d.desc)}</p>
+          <div class="pz-lab">Growth</div><ol class="pz-path">${d.levels.map((t, i) => step(esc(t), i, price(i))).join("")}</ol>
+          ${k === "cistern" ? `<p class="pz-hint">Dew over the cap is spilt and shown. Uprooting it lowers the cap, but never takes dew you hold.</p>` : ""}
+          <button class="btn pz-act" data-util="${k}" ${inP ? "disabled" : ""}>${inP ? "In slot 6" : "Put in slot 6"}</button>`;
+      }
+      const el = d.element, ei = D.ELEMENTS.indexOf(el), inP = this.pick.includes(k), f = D.FORKS && D.FORKS[k];
+      const path = d.levels.map((t, i) => {
+        if (i === 2 && f) return `<li><span class="lv">III</span><span><span class="price">${price(i)}</span> · choose one<span class="pz-fork">
+          <span><b>${esc(f.a.name)}</b> ${esc(t)}</span><span><b>${esc(f.b.name)}</b> ${esc(f.b.text)}</span></span></span></li>`;
+        return step(esc(t), i, price(i));
+      }).join("");
+      const strong = [], weak = [];
+      for (const c in D.ENEMIES) { const a = (D.ENEMIES[c].affinity || {})[el]; if (a >= 1.5) strong.push(D.ENEMIES[c].name); else if (a !== undefined && a <= 0.6) weak.push(D.ENEMIES[c].name); }
+      const tid = (D.CTRAITS.find((t) => t.counter === ei) || {}).id, w = tid ? words(tid) : null;
+      const links = D.LINKS.filter((l) => l.kinds.includes(k)).map((l) => {
+        const other = l.kinds[0] === k ? l.kinds[1] : l.kinds[0], on = this.pick.includes(other) && (other !== k || inP);
+        const g = D.GRAFTS.find((x) => x.link === l.id);
+        return `<li class="${on ? "" : "off"}"><b>${esc(l.name)}</b> with ${other === k ? "a second one" : esc(T(other).name)}${on ? "" : ` <i>(add ${esc(T(other).name)})</i>`}: ${esc(l.desc)}.${g ? ` <span class="graft">Both at III, side by side → <b>${esc(g.name)}</b>: ${esc(g.desc)}.</span>` : ""}</li>`;
+      }).join("");
+      const full = !inP && this.pick.length >= 5;
+      return `${head(`<span class="pz-dot" style="--el:${elInk(el)}"></span>${EL_NAME[el] || el}`)}<p class="pz-desc">${esc(d.desc)}</p>
+        <div class="pz-stats"><span><b>${d.cost}</b>dew</span><span><b>${d.range}</b>reach</span><span><b>${Math.round(d.damage * d.rate)}</b>dmg / s</span></div>
+        <div class="pz-lab">Growth path</div><ol class="pz-path">${path}</ol>
+        <div class="pz-lab">Counters</div><div class="pz-vs">
+          ${w ? `<div>${w.inked || ""}<span><b>${esc(w.name)}</b>: ${esc(traitOf(tid).desc)}.</span></div>` : ""}
+          <div><span class="up">▲ strong</span><span>${esc(strong.join(", ") || "-")}</span></div>
+          <div><span class="down">▼ weak</span><span>${esc(weak.join(", ") || "-")}</span></div></div>
+        ${links ? `<div class="pz-lab">Links · plant side by side</div><ul class="pz-links">${links}</ul>` : ""}
+        <button class="btn pz-act" data-toggle="${k}" ${full ? "disabled" : ""}>${inP ? "Take out of pouch" : full ? "Pouch full: take one out first" : "Add to pouch"}</button>`;
+    }
+    toggle(k) {
+      if (T(k).util) this.util = k;
+      else if (this.pick.includes(k)) this.pick = this.pick.filter((x) => x !== k);
+      else if (this.pick.length < 5) this.pick = [...this.pick, k];
+      this.render();
+    }
+    click(e) {
+      const b = e.target.closest("button"); if (!b || b.disabled) return;
+      const ds = b.dataset;
+      if (ds.card) { this.sel = ds.card; this.render(); }
+      else if (ds.out) { this.pick = this.pick.filter((x) => x !== ds.out); this.sel = ds.out; this.render(); }
+      else if (ds.show) { this.sel = ds.show; this.render(); }
+      else if (ds.toggle) this.toggle(ds.toggle);
+      else if (ds.util) this.toggle(ds.util);
+      else if ("close" in ds) { this.sel = ""; this.render(); }
+      else if ("sugg" in ds) { const p = G.state.suggestedPouch(this.id); this.set(p.plants, p.util); this.render(); }
+      else if ("last" in ds) { const p = G.state.pouchOf(this.id); this.set(p.plants, p.util); this.render(); }
+      else if ("back" in ds) this.back();
+      else if ("begin" in ds) this.begin();
+    }
+    back() { this.menu.show("jars", "title"); }
+    begin() {
+      if (this.pick.length < 5) return;
+      G.state.rememberPouch(this.id, { plants: this.pick, util: this.util });
+      this.menu.go(this.id, this.mode + "!");
+    }
+    key(e) {
+      if (e.key === "Escape") { e.preventDefault(); if (this.sel && this.phone.matches) { this.sel = ""; this.render(); } else this.back(); }
+      else if (e.key === "Enter" && e.target === document.body) { e.preventDefault(); this.begin(); }
+    }
+  }
+  G.Pouch = Pouch;
+})();
+
+</script>
 <script>/* src/view/wisplings.js */
 /* Mossheart's menu wisplings (Game): Art's sprite sheets (MG.WISPLINGS, art/wisplings-sprites.js) as DOM sprites
    along the bottom of the title and terrarium screens. They peek up out of the ground, idle and blink, hop about,
@@ -30459,6 +30877,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
           <button class="btn big" data-a="howto">How to play</button>
         </div></div>
         <div id="jars" class="veil menu void" tabindex="-1" aria-label="Choose a terrarium"></div>
+        <div id="pouch" class="veil menu void" tabindex="-1" aria-label="Choose your seeds"></div>
         <div id="pause" class="veil menu"><div class="panel card">
           <h2>Paused</h2>
           <div id="pquick"></div>
@@ -30477,6 +30896,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
           <button class="btn pink big" data-a="back">Back</button></div></div>`;
       document.body.appendChild(root);
       this.terr = new G.Terrariums(this, $("jars"));
+      this.pouch = new G.Pouch(this, $("pouch"));
       this.wisps = G.Wisplings ? new G.Wisplings() : null; // (the wisplings along the title's and the terrariums' ground)
       ME.keys.onChange(() => { root.querySelector(".howto").innerHTML = HOWTO(); });
       root.addEventListener("click", (e) => { const b = e.target.closest("[data-a]"); if (b) this.action(b.dataset.a); });
@@ -30493,6 +30913,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         // (with a seed or a plant picked, Esc first lets go of it: the game's own key)
         if (e.key === "Escape" && !this.open && (app.hud.selected || app.scene.selected)) return;
         if (this.open === "jars") { e.stopImmediatePropagation(); this.terr.key(e); return; }
+        if (this.open === "pouch") { e.stopImmediatePropagation(); this.pouch.key(e); return; }
         if (e.key === "Escape") { e.stopImmediatePropagation(); if (this.open) this.action(this.open === "title" ? "cont" : this.open === "pause" ? "resume" : "back"); else this.show("pause"); }
         else if (this.open) e.stopImmediatePropagation();
       }, true);
@@ -30515,7 +30936,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // whether there is a title screen: only with a run somewhere (the one in play, or a garden's save)
     hasTitle() { return this.inRun() || !!this.terr.latest(); }
     show(name, from) {
-      for (const id of ["title", "jars", "pause", "settings", "howto", "board"]) $(id).classList.toggle("show", id === name);
+      for (const id of ["title", "jars", "pouch", "pause", "settings", "howto", "board"]) $(id).classList.toggle("show", id === name);
       if (name === "settings" || name === "howto" || name === "jars" || name === "board") this.back = from || this.open || "pause";
       // the Leaderboard buttons only in a build with a board (src/leaderboard.config.js)
       const lb = !!(G.Leaderboard && G.Leaderboard.on());
@@ -30564,9 +30985,21 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // a garden picked on the terrarium screen, mode "resume" (its run), "new" (a fresh run in place of its
     // save) or "begin" (a first run): the garden that is up plays at once; another one is kept as the choice
     // and the page reloads into it, straight into play (GO_KEY)
+    // a run that begins goes through the seed pouch first (view/pouch.js; ?pouch=0 skips it): its Begin comes back
+    // with the mode marked chosen ("!"), the pouch remembered for the garden (state.js pouchOf, read as it loads)
     go(id, mode) {
+      const chosen = mode.endsWith("!");
+      mode = mode.replace("!", "");
+      if (!chosen && mode !== "resume" && ME.qn("pouch", 1) && this.pouch) { this.pouch.open(id, mode); this.show("pouch"); return; }
       if (id === G.levelId) {
         if (mode === "resume") { this.action("start"); return; }
+        // (another pouch than the garden's seed bar holds: a reload into it, the bar is built once)
+        const p = G.state.pouch(), q = G.state.pouchOf(id);
+        if (chosen && (p.plants.join() !== q.plants.join() || p.util !== q.util)) {
+          if (G.Save) G.Save.clear();
+          try { sessionStorage.setItem(GO_KEY, id + "|" + mode + "!"); } catch (e) { /* storage blocked: it opens on the menu */ }
+          location.reload(); return;
+        }
         // (a fresh garden, as a page opens on, plays as it is; a run in play or over starts anew)
         if (G.Save) G.Save.clear();
         if (mode === "new" || this.inRun() || G.state.phase === G.Phase.GAME_OVER) this.act.restart();
@@ -30574,7 +31007,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         return;
       }
       this.set("level", id);
-      try { sessionStorage.setItem(GO_KEY, id + "|" + mode); } catch (e) { /* storage blocked: it opens on the menu */ }
+      try { sessionStorage.setItem(GO_KEY, id + "|" + mode + (chosen ? "!" : "")); } catch (e) { /* storage blocked: it opens on the menu */ }
       const u = new URL(location.href); u.searchParams.delete("level"); location.href = u.toString();
     }
 
@@ -31235,6 +31668,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   };
   // Mix (the settings' last style, music.js setStyle): these by turns, the next each time the music has gone out
   SC.MIX = ["ambient", "drift", "liquid"];
+  // The living map's acts (docs/designs/2026-11-10-living-map.md, 3.5): from act II on, Mix stops turning by
+  // breaths and plays the act's style, one swap per act on the next bar line. Act I is the run's start, Mix as
+  // ever; II the green canopy goes to Drift's moving floor, III the golden afternoon to Liquid, its liveliest,
+  // IV dusk and frost back to Drift's D minor. A style the player picked (not Mix) stays theirs.
+  SC.ACTS = [null, "drift", "liquid", "drift"];
 })();
 
 </script>
@@ -32685,11 +33123,14 @@ function MG_SFX(L) {
       this.style = "ambient"; this.restyle = false;
       // Mix: whether it is on, the style it is at (score.js, MIX) and whether it has turned in this rest
       this.mixed = false; this.mixAt = 0; this.mixTurned = false;
+      // the living map's act (setAct; score.js, ACTS): the style Mix holds in it, null while Mix turns by breaths
+      this.actStyle = null;
       // the rain (setRain; eased) and its cues: steady rain, a shower on, when its first drops last fell, the
       // drop struck in this bar (its 16th, -1 none) and the first drops waiting for the grid
       this.rain = 0; this.rainTo = 0; this.rainy = false; this.showering = false; this.onsetAt = -1e9; this.dropAt = -1; this.firstDrops = false;
       for (const ev of ["spawn", "hit", "kill", "tower_placed", "tower_upgraded", "tower_sold", "tower_moved", "wave_start", "wave_clear", "boss", "heart_hit", "boon", "game_over"]) G.on(ev, (d) => this.onEvent(ev, d));
       G.on("phase", (d) => this.onPhase(d.phase));
+      G.on("act", (d) => this.setAct(d.act));
     }
     // instruments: the instrument bank's items (name -> [base note, ...])
     start(instruments) {
@@ -32715,10 +33156,17 @@ function MG_SFX(L) {
       if (s === "mix") {
         if (this.mixed) return;
         this.mixed = true; this.mixAt = Math.max(0, SC.MIX.indexOf(this.style)); this.mixTurned = !this.on; this.logCue("mix");
-        s = SC.MIX[this.mixAt];
+        s = this.actStyle || SC.MIX[this.mixAt]; // (an act's style, while one holds)
       } else if (SC.STYLES[s]) this.mixed = false;
       if (!SC.STYLES[s] || s === this.style) return;
       this.style = s; this.restyle = true; this.logCue("style:" + s);
+    }
+    // the living map's act n (the rules' "act" event, or a restore): under Mix, the act's style (score.js, ACTS)
+    // on the next bar line, held through the act; an act without one gives Mix back its turns
+    setAct(n) {
+      const s = (SC.ACTS && SC.ACTS[n - 1]) || null;
+      this.actStyle = s && SC.STYLES[s] ? s : null; this.logCue("act" + n);
+      if (this.mixed && this.actStyle && this.actStyle !== this.style) { this.style = this.actStyle; this.restyle = true; this.logCue("style:" + this.actStyle); }
     }
     // the rain the soundscape plays (0..1), from G.Audio every frame
     setRain(k) { this.rainTo = clamp(+k || 0, 0, 1); }
@@ -32871,8 +33319,8 @@ function MG_SFX(L) {
       if (!this.tense && i > 0.6) this.tense = true;
       else if (this.tense && i < 0.42) this.tense = false;
       // Mix: the next style on the first bar line after the music has gone out and struck its last notes,
-      // so the change happens unheard and the next passage comes in in it
-      if (this.mixed && !this.mixTurned && !this.on && q.clock >= this.quietAt) {
+      // so the change happens unheard and the next passage comes in in it (not while an act holds one, setAct)
+      if (this.mixed && !this.actStyle && !this.mixTurned && !this.on && q.clock >= this.quietAt) {
         this.mixTurned = true; this.mixAt = (this.mixAt + 1) % SC.MIX.length;
         const s = SC.MIX[this.mixAt];
         if (s !== this.style) { this.style = s; this.restyle = true; this.logCue("style:" + s); }
@@ -32997,7 +33445,7 @@ function MG_SFX(L) {
         if (this.vinyl) this.vinyl.g.gain.setTargetAtTime(MA.dbToGain(VINYL.start), this.mixer.ctx.currentTime, 0.3);
       }
       this.gameOver = false; this.tense = false; this.swift = false; this.want = "build";
-      this.tapeSpeed = 1; this.tapeState = 0; this.seen.clear(); this.stinger = "";
+      this.tapeSpeed = 1; this.tapeState = 0; this.seen.clear(); this.stinger = ""; this.actStyle = null;
     }
     // a cleared wave: the wave stops, a low F, three glass notes up the F chord with space between them
     // and a bell (the style's own sting: Drift's on D minor, in its synths, Liquid's on F minor, on the sub
