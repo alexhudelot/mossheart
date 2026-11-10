@@ -966,7 +966,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   <div id="tray">
     <div id="dewgauge"><div id="dew" role="status" aria-label="Dew 0"><svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 .6C4.4 3.4 1 7.2 1 10.6a5 5 0 0 0 10 0C11 7.2 7.6 3.4 6 .6z"/><path class="glint" d="M3.6 10.2a2.6 2.6 0 0 0 1.9 3.1"/></svg><b id="dewn">0</b></div><div id="dewbar" role="meter" aria-label="Dew bank" aria-valuemin="0" aria-valuenow="0"><i class="tick" style="--at: 0.3"></i><i class="tick" style="--at: 0.55"></i><i class="tick" style="--at: 0.8"></i><i class="fill"><i class="bub"></i><i class="bub"></i><i class="bub"></i></i><b class="luck"></b></div></div>
     <div id="ritepanel" class="panel"><div class="rhead"><b>✦ Rites</b><span class="dim">once each, on the whole garden; dearer each time this run</span><button id="riteclose" class="btn small" title="close">✕</button></div><div id="ritebody"></div></div>
-    <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspact"><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="deepen" class="btn"><span class="lb">Deepen</span></button><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div><div id="grafts"></div><div id="inspbody"></div></div>
+    <div id="inspector" class="panel"><div id="insptitle"></div><div id="inspact"><button id="grow" class="btn"><span class="lb">Grow</span></button><button id="deepen" class="btn"><span class="lb">Deepen</span></button><button id="move" class="btn"><span class="lb">Move</span></button><button id="uproot" class="btn pink"><span class="lb">Uproot</span></button></div><div id="grafts"></div><div id="inspbody"></div></div>
     <div id="seedcap"></div>
     <div id="trayrow"><div id="seeds"></div><button id="rites" class="btn" title="Rites: once each, on the whole garden"><span class="lb">✦</span><small>Rites</small></button><button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button></div>
   </div>
@@ -20090,7 +20090,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.95.0", name: "Mossheart", commit: "4fd307a2" };
+  G.VERSION = { v: "0.96.0", name: "Mossheart", commit: "f4b6c150" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -21020,13 +21020,15 @@ function MA_DSP() {
       let sum = 0;
       for (const i of this.pathTexels) sum += this.level[i];
       S.corruption = sum / Math.max(1, this.pathTexels.length);
-      this.dirty = true;
+      // (dirty only where heal or stamp changed a byte: PERF-G12, the view uploads the field only then)
     }
     // (the views bytes come from the stored floats, as a restore rebuilds them: core/save.js)
     heal(amount) {
       for (const i of this.active) {
         const v = Math.max(this.scar[i], this.level[i] - amount);
-        this.level[i] = v; this.bytes[i] = (this.level[i] * 255) | 0;
+        this.level[i] = v;
+        const by = (this.level[i] * 255) | 0; // (from the stored float, as before)
+        if (this.bytes[i] !== by) { this.bytes[i] = by; this.dirty = true; }
         if (v <= this.scar[i] + 0.001) this.active.delete(i);
       }
     }
@@ -21036,7 +21038,9 @@ function MA_DSP() {
         const x = cx + k.o[j * 2], y = cy + k.o[j * 2 + 1];
         if (x < 0 || y < 0 || x >= this.w || y >= this.h) continue;
         const i = y * this.w + x, v = Math.min(1, this.level[i] + amount * k.w[j]);
-        this.level[i] = v; this.scar[i] = Math.max(this.scar[i], v * SCAR); this.bytes[i] = (this.level[i] * 255) | 0;
+        this.level[i] = v; this.scar[i] = Math.max(this.scar[i], v * SCAR);
+        const by = (this.level[i] * 255) | 0;
+        if (this.bytes[i] !== by) { this.bytes[i] = by; this.dirty = true; }
         this.active.add(i);
       }
     }
@@ -21797,6 +21801,8 @@ function MA_DSP() {
   G.SINKS = { reroll: 1.5, pick: 1.5 };
   const DEEPEN_COST = G.DEEPEN_COST = 150; // (a link deepened: Game.deepen)
   G.EARLY = { pay: 2, pow: 1.5 };
+  // a plant moved (Game.move): this share of the dew in it, +0.5% a wave up to the max, never under the min
+  G.MOVE = { share: 0.2, max: 0.35, min: 10 };
 
   class Game {
     // level: the level description (world.js); body: the sizes the rules need from the art, as data
@@ -21833,7 +21839,7 @@ function MA_DSP() {
         leakedBy: {}, lastLeak: "", grownBy: {}, soldBy: {}, spent: 0, peakDew: 0, frames: 0, frameT: 0,
         // the dew sinks (rerolls, extra picks, links deepened, grafts, rites by id and waves skipped, the dew they
         // took: Game.reroll, Game.buyPick, Game.deepen, Game.graft, Game.rite, Game.skipWave)
-        rerolls: 0, picks: 0, deepened: 0, sunk: 0, forked: 0, grafted: 0, rites: {}, skipped: 0 };
+        rerolls: 0, picks: 0, deepened: 0, sunk: 0, forked: 0, grafted: 0, rites: {}, skipped: 0, moved: 0 };
       const st = this.stats, add = (o, k) => { o[k] = (o[k] || 0) + 1; };
       this.unsub = [
         G.on("leaked", (e) => { this.chalFail("untouched"); this.heartShock = Math.min(0.5, this.heartShock + 0.25); st.leaked++; add(st.leakedBy, e.kind); st.lastLeak = e.kind; }),
@@ -21890,6 +21896,40 @@ function MA_DSP() {
       this.relink();
       G.emit("tower_sold", { pos: [t.X, t.Y, t.VZ], tower: t });
     }
+    // Move a plant (the user 2026-11-09): between waves only, to a free plot it could be planted on, for a
+    // share of the dew in it (G.MOVE), cheaper than an uproot (40% lost) and a replant. It keeps its level,
+    // branch, dew put in, stats, graft and twin (the two move as one). A deepened pair stays deepened while the
+    // two still touch; one they no longer share is dropped, as an uproot drops it. The fee is sunk dew
+    // (stats.sunk, stats.moved), not put into the plant. The bot never moves one.
+    moveCost(t) { const M = G.MOVE; return Math.max(M.min, Math.round(t.invested * Math.min(M.max, M.share + 0.005 * S.wave))); }
+    // why plant t can't move to (cx, cy) now, "" if it can; without a cell, why it can't move at all
+    moveBlocked(t, cx, cy) {
+      if (S.phase !== G.Phase.BUILD) return "Only between waves";
+      if (!t || !this.towers.includes(t)) return "No such plant";
+      if (S.dew < this.moveCost(t)) return "Not enough dew";
+      if (cx === undefined) return "";
+      if (cx === t.cx && cy === t.cy) return "Already there";
+      if (!this.world.isBuildable(cx, cy)) return "Not a free plot";
+      for (const k of t.twin ? [t.kind, t.twin.kind] : [t.kind])
+        if (k === "briar" && !G.Tower.patchesFor(this.world, cx + 0.5, cy + 0.5, D.TOWERS.briar.range, 1).length) return "No road in reach";
+      return "";
+    }
+    move(t, cx, cy) {
+      if (this.moveBlocked(t, cx, cy)) return false;
+      const W = this.world, cost = this.moveCost(t), from = [t.X, t.Y, t.VZ], fromCell = [t.cx, t.cy], i = String(W.idx(t.cx, t.cy));
+      // its deepened pairs, by partner (pairKey is by cell, so they are keyed again from the new cell)
+      const keys = this.deepAt(t), partners = keys.map((k) => W.occupied.get(+k.split(":").find((x) => x !== i))).filter(Boolean);
+      for (const k of keys) this.deep.delete(k);
+      W.occupied.delete(W.idx(t.cx, t.cy));
+      for (const p of t.twin ? [t, t.twin] : [t]) { p.cx = cx; p.cy = cy; [p.X, p.Y, p.Z] = W.cellCentre(cx, cy); p.VZ = W.viewZ(p.X, p.Y); p.refresh(); }
+      W.occupied.set(W.idx(cx, cy), t);
+      for (const o of partners) if (Math.max(Math.abs(o.cx - cx), Math.abs(o.cy - cy)) <= 1) this.deep.add(this.pairKey(t, o));
+      this.relink();
+      this.stats.moved++;
+      G.emit("tower_moved", { kind: t.kind, from, fromCell, pos: [t.X, t.Y, t.VZ], tower: t, cost });
+      this.sink("move", cost); // last: its "sunk" saves the game (Save.watch)
+      return true;
+    }
     towerAt(cx, cy) { return this.world.towerAt(cx, cy); }
     // Links (Defs.LINKS): the plants a plant of `kind` at a cell would link with, as { link, other } (a graft
     // links as both its kinds)
@@ -21935,6 +21975,7 @@ function MA_DSP() {
     startWave() {
       if (S.phase === G.Phase.WAVE) return this.callEarly();
       if (S.phase !== G.Phase.BUILD) return false;
+      G.emit("wave_starting"); // (still in the build phase: the autosave writes what it has pending, Save.watch)
       this.enemies.shield = Math.round(S.mod("shield")) * (S.mod("evergreen") > 0 ? 2 : 1); this.pulseT = 6; this.flyT = 0; this.brambleT = 0; this.cloudT = 0; this.fireT = 0;
       this.restPlants();
       this.running = 0;
@@ -22354,8 +22395,8 @@ function MA_DSP() {
      G.Save.restore(game, data) -> true if restored: a fresh Game takes on the saved run (state, plants,
        blight, stats, the gifts on offer) and the usual state events go out, then "restored"; the run then
        goes on exactly as it would have without the save (tools/sim.html ?save=1 plays every seed both ways)
-     G.Save.watch(getGame) -> autosave from now on (the app calls it; the bot, the self-test and the
-       rules-only sim leave it off) */
+     G.Save.watch(getGame) -> autosave from now on, some of it ~0.5 s late; G.Save.flush() writes it now (the app
+       calls watch; the bot, the self-test and the rules-only sim leave it off) */
 (function () {
   const G = window.MG, D = G.Defs, S = G.state, P = G.Phase;
   // 2: boons with levels (the modifiers are rebuilt from them). A v1 save is migrated as it is read
@@ -22366,6 +22407,10 @@ function MA_DSP() {
   // names its other parent's kind and branch, a 7th and 8th field (Game.graft), and the exact block its
   // cooldown; a v4 save has no grafts.
   const KEY = "mossheart.run", VERSION = 5;
+  // the autosave's pending timer and its save (Save.watch, Save.flush)
+  const SAVE_DELAY_MS = 500;
+  let pending = 0, flushFn = null;
+  const drop = () => { clearTimeout(pending); pending = 0; };
   const RENAMED_V1 = { thorn_split: "twin_seeds", wisp_chain: "kindred_wisps" };
   const migrate = (d) => {
     d = migrate1(d);
@@ -22446,18 +22491,22 @@ function MA_DSP() {
         },
       };
     },
-    read(level = S.level) { try { const d = migrate(JSON.parse(localStorage.getItem(S.levelKey(KEY, level)) || "null")); return d && d.v === VERSION ? d : null; } catch (e) { return null; } },
+    read(level = S.level) {
+      if (level === S.level) Save.flush();
+      try { const d = migrate(JSON.parse(localStorage.getItem(S.levelKey(KEY, level)) || "null")); return d && d.v === VERSION ? d : null; } catch (e) { return null; }
+    },
     migrate,
     // (storage full, as on file:// where Voxel Live's models share it: the save without its exact block,
     // which restores close, else none, so Continue never goes back to an older save than the last)
     write(d) {
+      drop();
       const key = S.levelKey(KEY);
       for (const v of d.exact ? [d, Object.assign({}, d, { exact: undefined })] : [d]) {
         try { localStorage.setItem(key, JSON.stringify(v)); return; } catch (e) { /* full: try smaller */ }
       }
       try { localStorage.removeItem(key); } catch (e) { /* storage blocked */ }
     },
-    clear() { try { localStorage.removeItem(S.levelKey(KEY)); } catch (e) { /* storage blocked */ } },
+    clear() { drop(); try { localStorage.removeItem(S.levelKey(KEY)); } catch (e) { /* storage blocked */ } },
 
     // (a malformed save, or one whose exact block has another shape, does not fit rather than throw)
     fits(game, d) { try { return fitsOrThrow(game, d); } catch (e) { return false; } },
@@ -22510,17 +22559,29 @@ function MA_DSP() {
       return true;
     },
 
+    // Autosave (PERF-G11): a phase change, a new offer or a restore saves at once; a plant placed, grown or
+    // uprooted, or dew sunk, saves ~0.5 s after the last of a burst, since a save is 120-170 KB of JSON. The
+    // pending save goes out before a wave starts (Game.startWave's "wave_starting": mid-wave there is none),
+    // when the page hides or closes (main.js), and before a read of this garden's save (Save.read), so nothing reads
+    // an older save than the run. A write or clear drops it.
     watch(getGame) {
       const save = () => {
+        drop();
         const g = getGame();
         if (Save.busy || !g) return;
         if (S.phase === P.GAME_OVER || (S.wave === 0 && !g.towers.length)) { Save.clear(); return; }
         const d = Save.capture(g);
         if (d) Save.write(d);
       };
-      for (const ev of ["phase", "offer", "tower_placed", "tower_upgraded", "tower_sold", "restored", "sunk"]) G.on(ev, save);
+      const later = () => { drop(); pending = setTimeout(save, SAVE_DELAY_MS); };
+      flushFn = save;
+      for (const ev of ["phase", "offer", "restored"]) G.on(ev, save);
+      for (const ev of ["tower_placed", "tower_upgraded", "tower_sold", "sunk"]) G.on(ev, later);
+      G.on("wave_starting", () => Save.flush());
       G.on("game_over", () => Save.clear());
     },
+    // the pending autosave written now, if there is one (Save.watch)
+    flush() { if (pending && flushFn) flushFn(); },
   });
 })();
 
@@ -24996,6 +25057,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       on("tower_placed", (e) => this.burst("plant", [e.pos[0], e.pos[1], e.pos[2] + 0.15]));
       on("tower_upgraded", (e) => this.burst("plant", [e.pos[0], e.pos[1], e.pos[2] + 0.25]));
       on("tower_sold", (e) => this.burst("plant", [e.pos[0], e.pos[1], e.pos[2] + 0.15]));
+      on("tower_moved", (e) => { this.burst("plant", [e.from[0], e.from[1], e.from[2] + 0.15]); this.burst("plant", [e.pos[0], e.pos[1], e.pos[2] + 0.15]); });
       on("tower_grafted", (e) => { this.burst("plant", [e.other.X, e.other.Y, e.other.VZ + 0.15]); this.burst("plant", [e.pos[0], e.pos[1], e.pos[2] + 0.15]); });
       // (a rite: a wide ring round the Heart Tree in its colour, and its name over it; under reduced motion the
       // rings stay their size and glow up and fade, rather than sweep out across the board)
@@ -25465,8 +25527,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       on("bramble_patch", (e) => {
         for (let k = 0; k < 3; k++) { const a = Math.random() * TAU, r = Math.random() * 0.45; this.add(e.pos[0] + Math.cos(a) * r, e.pos[1] + Math.sin(a) * r, e.pos[2] + 0.02, 0, 0, 1.2, 0.25, 0.025, col("briar"), K.STREAK, -3); }
       });
-      // a plant planted: each new link bursts at its middle and says its name
-      on("tower_placed", (e) => {
+      // a plant planted or moved (Game.move): each link it has there bursts at its middle and says its name
+      for (const ev of ["tower_placed", "tower_moved"]) on(ev, (e) => {
         const t = e.tower, named = new Set();
         for (const l of t.links) {
           const m = [(t.X + l.other.X) / 2, (t.Y + l.other.Y) / 2, (t.VZ + l.other.VZ) / 2 + 0.3];
@@ -25789,6 +25851,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       on("tower_placed", (e) => { this.anim.set(e.tower, this.newAnim()); this.updateCells(); this.updateLights(); });
       on("tower_upgraded", (e) => { const a = this.anim.get(e.tower); if (a) a.bounce = 0; this.updateLights(); });
       on("tower_sold", (e) => { this.crumble(e.tower); this.anim.delete(e.tower); if (this.selected === e.tower) this.selected = null; this.updateCells(); this.updateLights(); });
+      // (a plant moved, Game.move: it crumbles where it stood, as uprooted, and grows in again on its new plot)
+      on("tower_moved", (e) => { const t = e.tower; this.crumble({ kind: t.kind, level: t.level, graft: t.graft, X: e.from[0], Y: e.from[1], VZ: e.from[2] }); this.anim.set(t, this.newAnim()); this.updateCells(); this.updateLights(); });
       // (a graft: the other parent goes from its plot, crumbling as if uprooted, Game.graft)
       on("tower_grafted", (e) => { this.crumble(e.other); this.anim.delete(e.other); if (this.selected === e.other) this.selected = e.tower; this.updateCells(); this.updateLights(); });
       on("kill", (e) => this.burst(e.kind, e.pos));
@@ -26610,6 +26674,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (!b || b.disabled) return;
         this.game.rite(b.dataset.rite); this.rites(false);
       });
+      // (Move, between waves: a tap arms it, the card says so and the next tap on a free plot moves the plant
+      // there, main.js; Move again, Esc or any other plant cancels; Game.move)
+      this.moving = null;
+      $("move").addEventListener("click", () => {
+        const t = this.inspected;
+        if (!settled() || !t) return;
+        this.moving = this.moving === t ? null : t;
+        if (this.moving) this.toast("Tap a free plot to move it there");
+        this.inspect(t);
+      });
       $("uproot").addEventListener("click", () => {
         if (!settled() || !this.inspected) return;
         if (this.armed !== this.inspected) { this.arm(this.inspected); return; }
@@ -26845,7 +26919,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         const c = hex(D.TOWERS[D.ELEMENT_TOWER[el]].color), n = st.byElement[el];
         return `<div class="sbar"><span class="sl" style="color:${ink(D.TOWERS[D.ELEMENT_TOWER[el]].color)}">${icon("ELEMENT_ICONS", D.ELEMENTS[el])}${D.ELEMENT_NAMES[el]}</span><span class="st"><i style="width:${((100 * n) / top).toFixed(1)}%;background:${c}"></i></span><b>${n}</b></div>`;
       }).join("");
-      return `<div class="srow"><b class="sh">Plants</b> ${planted} planted · ${st.grown} grown${st.uprooted ? ` · ${st.uprooted} uprooted` : ""}<div class="sd">${plants || `<span class="dim">none</span>`}</div></div>` +
+      return `<div class="srow"><b class="sh">Plants</b> ${planted} planted · ${st.grown} grown${st.uprooted ? ` · ${st.uprooted} uprooted` : ""}${st.moved ? ` · ${st.moved} moved` : ""}<div class="sd">${plants || `<span class="dim">none</span>`}</div></div>` +
         `<div class="srow"><b class="sh">Gifts</b><div class="sd">${gifts}</div></div>` +
         (st.challenges ? `<div class="srow"><b class="sh">Challenges</b> ${st.challenges} met</div>` : "") +
         `<div class="srow"><b class="sh">Creatures</b> ${stopped} stopped${st.leaked ? ` · ${st.leaked} reached the Heart Tree` : ""}<div class="sd">${bars}</div></div>`;
@@ -26908,6 +26982,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     inspect(t) {
       const box = $("inspector");
       if (this.forking && (this.forking !== t || !this.forkable(t))) this.forking = null;
+      if (this.moving && (this.moving !== t || this.game.moveBlocked(t))) this.moving = null;
       if (!t) {
         box.classList.remove("show", "anchored"); this.inspected = null; this.foe = null; this.gift = "";
         this.arm(null); this.almOver = false; this.showAlmanac(); this.seedInfo(); return;
@@ -26952,12 +27027,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, `${ROMAN[t.level]} ▸ ${ROMAN[t.level + 1]}`, "step"), [],
           [`<div class="forks">${tile("a")}${tile("b")}</div>`, `<span class="dim">${can ? `Choose a branch: ${cost} dew, for good` : "Not enough dew"}</span>`], "");
         label($("grow"), "Back"); $("grow").disabled = false;
-        $("deepen").style.display = "none"; $("grafts").innerHTML = "";
+        $("deepen").style.display = $("move").style.display = "none"; $("grafts").innerHTML = "";
         this.uprootLabel(t);
         box.classList.add("show"); this.showAlmanac();
         return;
       }
-      $("grow").style.display = $("uproot").style.display = "";
+      $("grow").style.display = $("uproot").style.display = $("move").style.display = "";
       this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, `Lv ${ROMAN[t.level]}`),
         [["Damage", t.damage().toFixed(0)], ["Reach", t.range().toFixed(1)], ["Rate", `${t.rate().toFixed(2)}/s`], ["Aims", AIMS[t.kind] || "nearest"]],
         tips, `${now}${next}${links ? "<br>" + links : ""}${zone ? "<br>" + zone : ""}<br>Aims at ${esc(TARGETS[t.kind] || "the creature nearest the Heart Tree")}<br><span class="dim">${esc(this.matchupsOf(t.kind))}</span>`);
@@ -26978,6 +27053,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         const text = armed ? `Tap again: ${p.graft.name}  (${p.cost} dew)` : `Graft ✦ ${D.TOWERS[p.other.kind].name}  (${why && why !== "Not enough dew" ? why : p.cost + " dew"})`;
         return `<button class="btn${armed ? " armed" : ""}" data-graft="${i}"${why ? " disabled" : ""}><span class="lb">${esc(text)}</span></button>`;
       }).join("");
+      // (Move: its price, or why not, as Deepen; armed, it asks for the plot and cancels on a tap)
+      const mv = $("move"), mwhy = this.game.moveBlocked(t), mc = this.game.moveCost(t);
+      label(mv, this.moving === t ? `Tap a free plot  (${mc} dew) · cancel` : `Move  (${mwhy && mwhy !== "Not enough dew" ? mwhy : mc + " dew"})`);
+      mv.disabled = !!mwhy && this.moving !== t; mv.classList.toggle("armed", this.moving === t);
       this.uprootLabel(t);
       box.classList.add("show");
       this.showAlmanac();
@@ -27358,8 +27437,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
    The run log: every run that ends (end: death, a quit for a new run, or alive when the page is left) sends
    one anonymous line to the proxy's /api/run (kills, time and fps in play, dew earned and spent, plants
    placed, grown and sold, the boons in order, the waves skipped (a run off the board: 0 when none), the seed,
-   density, mobile, the GPU's vendor): the device id goes with it only to be hashed to the tag there, no
-   nickname. Not from a page driven by a script (navigator.webdriver) or headless (the checks: their Edge
+   density, mobile, the GPU's vendor): the device id goes with it only to be hashed there to a run tag, which
+   is not the board's tag, so a line never leads to a nickname; no nickname is sent. Not from a page driven by a script (navigator.webdriver) or headless (the checks: their Edge
    has no webdriver flag) unless ?runlog=1, nor with ?runlog=0; main.js leaves out the bot, self-test and
    bench.
    The device id (mossheart.device) is a random secret kept on the device; the board shows its tag, a short
@@ -27826,15 +27905,17 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // smoothly), its edge masked soft by CSS. Reduced motion holds frame 0, the view the garden opens on. A
   // one-frame sheet is a still, drawn once per canvas size. No sheet: a dark round with the garden's name.
   // The canvas has the device's pixels for its size on screen (W5: a 256 px canvas stretched over a 640 px
-  // jar was blurry), in steps of 32 so the ring's turning does not resize it every frame.
+  // jar was blurry), in steps of 32. It is not resized while the ring turns (`held`, Terrariums.ease): reading
+  // its size after the ring wrote its styles forced a layout each frame (PERF-G5). A turn ends sharp.
   const imgs = {};
+  let held = false;
   const sheetImg = (sh) => { let im = imgs[sh.src]; if (!im) { im = imgs[sh.src] = new Image(); im.src = sh.src; } return im; };
   const fit = (cv) => {
     const W = Math.ceil((cv.clientWidth * Math.min(3, devicePixelRatio || 1)) / 32) * 32, H = Math.round(W * 0.75);
     if (W && (cv.width !== W || cv.height !== H)) { cv.width = W; cv.height = H; delete cv.dataset.drawn; }
   };
   const drawJar = (cv, id, t, ph) => {
-    fit(cv);
+    if (!held) fit(cv);
     const c = cv.getContext("2d"), sh = (G.TURNTABLE || {})[id], W = cv.width, H = cv.height;
     if (!sh) {
       if (cv.dataset.drawn) return;
@@ -27884,6 +27965,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // menu: the Menu (its inRun, set, go, action and the app's act); el: the screen's element (#jars)
     constructor(menu, el) {
       this.menu = menu; this.el = el; this.confirm = null; this.rot = 0; this.rotTo = 0; this.last = 0; this.said = 0;
+      this.infos = {}; this.list = null; this.jars = {};
       el.innerHTML = `<canvas class="stars"></canvas>
         <div class="jtop"><button class="btn jback" data-j="back">‹ Title</button><h2>Choose a terrarium</h2>
           <span class="jgap"></span><button class="btn jlink" data-a="board">Leaderboard</button><button class="btn jlink" data-a="settings">Settings</button><button class="btn jlink" data-a="howto">How to play</button></div>
@@ -27912,7 +27994,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const play = Object.keys(G.LEVELS).filter(G.hasLevel);
       return play.concat(soon.filter((id, i) => !play.includes(id) && soon.indexOf(id) === i));
     }
-    info(id) {
+    // a garden's name, blurb, best wave and run, kept from open() to the next (PERF-G5: the ring's Start new
+    // asked for it every frame of a turn, and a run's save is a 100-170 KB JSON read)
+    info(id) { return (this.infos[id] = this.infos[id] || this.look(id)); }
+    look(id) {
       const L = G.LEVELS[id] || (G.LEVELS_SOON || {})[id] || {}, look = ((G.TURNTABLE_LOOK || {}).levels || {})[id] || {};
       const soon = !G.hasLevel(id) || !!look.soon;
       return { id, name: L.name || look.name || id, blurb: look.blurb || L.blurb || "", soon, best: soon ? 0 : S.bestOf(id), run: soon ? null : this.runOf(id) };
@@ -27935,9 +28020,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
 
     open() {
-      const ids = this.ids();
+      const ids = (this.list = this.ids());
+      this.infos = {}; this.jars = {};
       for (const j of this.el.querySelectorAll(".jar")) j.remove();
-      ids.forEach((id, k) => this.el.insertBefore(jarEl(id, k * 0.31), this.el.querySelector(".jarrow")));
+      ids.forEach((id, k) => this.el.insertBefore((this.jars[id] = jarEl(id, k * 0.31)), this.el.querySelector(".jarrow")));
       for (const cv of this.el.querySelectorAll(".jar canvas")) cv.dataset.name = this.info(cv.dataset.id).name;
       this.confirm = null;
       // the ring opens on the garden of the last run, else the one that is up
@@ -27957,7 +28043,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         j.setAttribute("aria-label", g.name + (g.soon ? ", in the works" : g.run ? `, resume at wave ${g.run.wave}${g.run.skipped ? ", off the leaderboard" : ""}` : ", begin a run"));
       }
     }
-    front() { const ids = this.ids(), n = ids.length; return ids[((Math.round(this.rotTo) % n) + n) % n]; }
+    front() { const ids = this.list || this.ids(), n = ids.length; return ids[((Math.round(this.rotTo) % n) + n) % n]; }
     turn(d) { this.rotTo += d; }
     turning() { return Math.abs(this.rotTo - this.rot) > 0.01; }
     // the ring turned the short way round until that jar is in front
@@ -27998,11 +28084,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
     // where each jar sits on the ring: x, y and width in % of the screen, its opacity and stacking
     place() {
-      const ids = this.ids(), n = ids.length, phone = innerWidth < 760 || innerHeight > innerWidth * 1.25;
+      const ids = this.list || this.ids(), n = ids.length, phone = innerWidth < 760 || innerHeight > innerWidth * 1.25, fr = this.front();
       const cx = 50, cy = phone ? 44 : 50;
       ids.forEach((id, i) => {
-        const j = this.el.querySelector(`.jar[data-id="${id}"]`), a = ((i - this.rot) * 2 * Math.PI) / n, c = Math.cos(a), k = (1 + c) / 2, s = 0.5 + 0.5 * k;
-        const soon = j.classList.contains("soon"), front = this.front() === id;
+        const j = this.jars[id] || this.el.querySelector(`.jar[data-id="${id}"]`), a = ((i - this.rot) * 2 * Math.PI) / n, c = Math.cos(a), k = (1 + c) / 2, s = 0.5 + 0.5 * k;
+        const soon = j.classList.contains("soon"), front = fr === id;
         j.style.left = cx + (phone ? 30 : 27) * Math.sin(a) + "%";
         j.style.top = cy - (phone ? 7 : 9) * (1 - c) + (phone ? 3 : 4) * c + "%";
         j.style.width = (phone ? 84 : 40) * s + "%";
@@ -28015,9 +28101,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
     ease(t) {
       const dt = Math.min(0.1, t - (this.last || t)); this.last = t;
-      if (!this.el.classList.contains("show") || Math.abs(this.rotTo - this.rot) < 0.001) return;
+      if (!this.el.classList.contains("show") || Math.abs(this.rotTo - this.rot) < 0.001) { held = false; return; }
       this.rot += (this.rotTo - this.rot) * Math.min(1, dt * (calm() ? 60 : 5));
       if (Math.abs(this.rotTo - this.rot) < 0.002) this.rot = this.rotTo;
+      held = this.rot !== this.rotTo; // (the jar canvases keep their size while it turns: fit)
       this.place();
     }
 
@@ -30672,7 +30759,7 @@ function MG_SFX(L) {
       // the rain (setRain; eased) and its cues: steady rain, a shower on, when its first drops last fell, the
       // drop struck in this bar (its 16th, -1 none) and the first drops waiting for the grid
       this.rain = 0; this.rainTo = 0; this.rainy = false; this.showering = false; this.onsetAt = -1e9; this.dropAt = -1; this.firstDrops = false;
-      for (const ev of ["spawn", "hit", "kill", "tower_placed", "tower_upgraded", "tower_sold", "wave_start", "wave_clear", "boss", "heart_hit", "boon", "game_over"]) G.on(ev, (d) => this.onEvent(ev, d));
+      for (const ev of ["spawn", "hit", "kill", "tower_placed", "tower_upgraded", "tower_sold", "tower_moved", "wave_start", "wave_clear", "boss", "heart_hit", "boon", "game_over"]) G.on(ev, (d) => this.onEvent(ev, d));
       G.on("phase", (d) => this.onPhase(d.phase));
     }
     // instruments: the instrument bank's items (name -> [base note, ...])
@@ -30941,7 +31028,7 @@ function MG_SFX(L) {
       if (!this.ready || this.gameOver) return;
       const q = this.seq, clock = q.clock, g = clock + q.toGrid(), arp = () => this.arp(), now = this.mixer.ctx.currentTime;
       // (plants sown, grown or uprooted in one burst, the bot's warm-up or a quick hand, ring once)
-      if (name === "tower_placed" || name === "tower_upgraded" || name === "tower_sold") {
+      if (name === "tower_placed" || name === "tower_upgraded" || name === "tower_sold" || name === "tower_moved") {
         if (clock - this.lastStrum < 0.4) return;
         this.lastStrum = clock;
       }
@@ -30954,7 +31041,7 @@ function MG_SFX(L) {
           if (data.kind === "spirit") this.triumph();
           else if (clock - this.lastSparkle > 1.6) { this.lastSparkle = clock; this.play("kalimba", pick(arp()), -22, "MusicLead", g); }
           break;
-        case "tower_placed": this.play("kalimba", arp()[0], -18, "MusicLead", g); break;
+        case "tower_placed": case "tower_moved": this.play("kalimba", arp()[0], -18, "MusicLead", g); break;
         case "tower_upgraded": this.play("glass", arp()[1] + 12, -20, "MusicLead", g); break;
         case "tower_sold": { const a = arp(); this.play("kalimba", a[a.length - 1] - 12, -19, "MusicLead", g); break; }
         case "wave_start":
@@ -31347,7 +31434,7 @@ function MG_SFX(L) {
       this.t = { vocal: 1, bird: 2, cricket: 1, frog: 4, leaves: 5, boss: 6 };
       this.life = { on: false, u: rr(...LIFE.first), who: {}, clusters: 0 };
       this.q = []; this.frame = 0; this.merged = 0; this.deferred = 0; this.dropped = 0; this.quiet = 0;
-      for (const ev of ["fire", "hit", "kill", "spawn", "heart_hit", "tower_placed", "tower_upgraded", "tower_sold"]) G.on(ev, (d) => this.onEvent(ev, d));
+      for (const ev of ["fire", "hit", "kill", "spawn", "heart_hit", "tower_placed", "tower_upgraded", "tower_sold", "tower_moved"]) G.on(ev, (d) => this.onEvent(ev, d));
       this.dew = { acc: 0, since: 0, pos: null, own: 0, at: 0, last: -1e5, step: 0, hot: 0, spark: -1e5, shower: -1e5, voices: [], drops: 0, merged: 0, stolen: 0 };
       G.on("dew_gain", (d) => this.dewGain(d));
     }
@@ -31451,6 +31538,7 @@ function MG_SFX(L) {
         case "tower_placed": this.play("plant", d.pos); break;
         case "tower_upgraded": this.play("grow", d.pos); break;
         case "tower_sold": this.play("uproot", d.pos); break;
+        case "tower_moved": this.play("uproot", d.from); this.play("plant", d.pos); break;
       }
     }
 
@@ -32327,6 +32415,8 @@ function MG_SFX(L) {
     // save and continue (core/save.js): the bot, the self-test and the benchmark neither load a saved run nor save theirs
     const keepRuns = !ME.qn("autoplay", 0) && !ME.qn("selftest", 0) && !ME.qn("bench", 0);
     if (keepRuns) G.Save.watch(() => game);
+    // its pending autosave (PERF-G11) is written when the page hides or closes
+    if (keepRuns) { addEventListener("pagehide", () => G.Save.flush()); document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") G.Save.flush(); }); }
     const saved = () => (keepRuns ? G.Save.read() : null);
     const continueRun = () => { const d = saved(); if (d && newGame(d)) return true; G.Save.clear(); return false; };
     // the run log (the online board's, view/leaderboard.js): a run's end, death or quit, and how far it got
@@ -32364,7 +32454,7 @@ function MG_SFX(L) {
     // unless a seed is held: see byLeaves): R.pick runs on the CPU, so once a frame at most, on the last move
     // (with a seed held a press is the ground tile under the pointer: a tall plant's shaft or leaves over the
     // spot behind or beside it took the press, selected that plant and dropped the seed)
-    const byLeaves = () => !hud.selected;
+    const byLeaves = () => !hud.selected && !hud.moving; // (and a plant being moved takes the ground too)
     let hoverEv = null, lastHover = null; // (lastHover: the move the hover shows, picked again when a seed is picked or dropped)
     const hoverNow = () => { if (!hoverEv) return; const c = cellAt(hoverEv, { plants: byLeaves() }); lastHover = hoverEv; hoverEv = null; scene.hover = c && !c.wall ? { cell: c } : null; mouseHover = !!c && !c.wall; };
     canvas.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse" && !e.buttons) { if (!hoverEv) requestAnimationFrame(hoverNow); hoverEv = e; } });
@@ -32394,6 +32484,16 @@ function MG_SFX(L) {
       if (c.wall) { pending = null; deselect(); if (hud.selected) hud.toast("Can't plant on a wall"); return; } // (a garden with faces: no wall plots yet)
       if (e.pointerType !== "mouse") { scene.hover = { cell: c }; mouseHover = false; }
       const t = game.towerAt(c[0], c[1]);
+      // (a plant's Move armed, hud.moving: a tap on a free plot moves it there, a touch's in two taps as a
+      // seed's; a tap on a plant, this one too, cancels; Game.move says why a plot won't do)
+      const mv = hud.moving;
+      if (mv && !t) {
+        const again = pending && pending.move === mv && pending.x === c[0] && pending.y === c[1], why = game.moveBlocked(mv, c[0], c[1]);
+        if (why) { pending = null; hud.toast(why === "Not enough dew" ? why : `Can't move it there: ${why.toLowerCase()}`); return; }
+        if (e.pointerType !== "mouse" && !again) { pending = { move: mv, x: c[0], y: c[1] }; return; }
+        pending = null; hud.moving = null; game.move(mv, c[0], c[1]); select(mv); return;
+      }
+      if (mv) hud.moving = null;
       if (t) { pending = null; hud.clearSeed(); scene.seed = ""; select(t); return; }
       const kind = hud.selected, block = kind ? game.placeBlock(kind, c[0], c[1]) : "spot";
       // a spot it could take but too dear: say so at once, a touch's first tap too (the ghost there is tinted)
