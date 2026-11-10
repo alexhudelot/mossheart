@@ -184,6 +184,13 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 #almbody .btn.skip { display: block; margin: 5px 0 2px 16px; padding: 3px 10px; border-width: 2px; border-radius: 10px; box-shadow: none; font-size: calc(13px * var(--ts)); text-align: left; }
 #almbody .btn.skip small { display: block; font-weight: 500; opacity: 0.8; font-size: calc(11.5px * var(--ts)); }
 #almbody .btn.skip.armed { outline: 3px solid #e2405a; outline-offset: 1px; }
+/* the two waves' heads-up (view/hud.js showWaves): the creatures and the elements best and worst against them; the
+   rest (each creature's weak spots, the trait's words, the garden, gifts, fusions, legend) under Details, .dx */
+#almbody .ba { margin-left: 16px; font-size: calc(12.5px * var(--ts)); color: #d8cfba; }
+#almbody .ba b { color: #f6dca0; font-weight: 600; }
+#almbody .fx .sw { cursor: pointer; margin-right: 1px; }
+#almbody:not(.detail) .dx { display: none; }
+#almbody .almdet { display: block; margin: 6px 0 0; padding: 0; background: none; border: 0; color: #b5aa92; font: inherit; font-size: calc(12px * var(--ts)); cursor: pointer; }
 .hide { display: none !important; }
 
 /* the weather overlay (view/atmos.js): over the scene, under the HUD */
@@ -612,7 +619,7 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   #chal .ci { width: 18px; font-size: calc(14px * var(--ts)); }
   .bchip .bicon { font-size: calc(15px * var(--ts)); }
   .bchip .bicon svg { width: 15px; height: 15px; }
-  body.alm-open #giftbox { display: none; } /* the open almanac lists the gifts */
+  body.alm-open #giftbox { display: none; } /* (gifts sit under the open almanac on a phone; its Details list them) */
   #musicbtn { width: 44px; }
   #musicbtn .lb { font-size: calc(14px * var(--ts)); }
   #musicbtn small { font-size: calc(8.5px * var(--ts)); letter-spacing: 0; }
@@ -20683,7 +20690,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.104.0", name: "Mossheart", commit: "a81e4d47" };
+  G.VERSION = { v: "0.105.0", name: "Mossheart", commit: "0bff291d" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -27816,14 +27823,18 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("speed").addEventListener("click", () => this.act.speed());
       $("sound").addEventListener("click", () => { const on = this.act.sound(); label("sound", on ? "♪" : "♪̸"); $("sound").classList.toggle("off", !on); });
       // the almanac: folded unless the player left it open
-      try { this.almOpen = !!JSON.parse(localStorage.getItem(HUD_KEY) || "{}").almanac; } catch (e) { this.almOpen = false; }
+      // the almanac: folded unless the player left it open; its Details (each creature's weak spots, the wave trait's
+      // words, the gifts, the fusions) shut unless opened on this device
+      let hs = {}; try { hs = JSON.parse(localStorage.getItem(HUD_KEY) || "{}") || {}; } catch (e) { /* storage blocked */ }
+      this.almOpen = !!hs.almanac; this.almDetail = !!hs.details;
+      this.saveHud = () => { try { localStorage.setItem(HUD_KEY, JSON.stringify({ almanac: this.almOpen, details: this.almDetail })); } catch (e) { /* storage blocked */ } };
       this.almSummary = "";
       // (its fold, or the wave count up top: HUD A's way in to it on a phone)
       const almToggle = () => {
         // (folded only for the inspector: a tap opens it over the inspector, as asked)
         if (this.almFolded()) { this.almOver = true; this.showAlmanac(); return; }
         this.almOpen = !this.almOpen; this.showAlmanac();
-        try { localStorage.setItem(HUD_KEY, JSON.stringify({ almanac: this.almOpen })); } catch (e) { /* storage blocked */ }
+        this.saveHud();
       };
       $("almtog").addEventListener("click", almToggle);
       $("wave").addEventListener("click", almToggle);
@@ -27832,7 +27843,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       // easy close (dismiss.js): the almanac on a phone closes on a tap outside it; the card by its ✕ or a swipe
       // down (not by a tap outside: a meadow tap places or picks); the gifts and the run's end minimise to a tab
       G.Dismiss.add($("almanac"), { outside: true, dir: "any", open: () => NARROW.matches && this.almOpen && !this.almFolded(), skip: (t) => !!t.closest("#almtog, #wave"),
-        close: () => { if (this.almOver) this.almOver = false; else { this.almOpen = false; try { localStorage.setItem(HUD_KEY, JSON.stringify({ almanac: false })); } catch (e) { /* storage blocked */ } } this.showAlmanac(); } });
+        close: () => { if (this.almOver) this.almOver = false; else { this.almOpen = false; this.saveHud(); } this.showAlmanac(); } });
       G.Dismiss.add($("inspector"), { close: () => this.act.closeCard() });
       G.Dismiss.add($("boons"), { veil: true, panel: $("boons").querySelector(".col"), hit: ".boon", dir: "any", tab: "Choose a gift" });
       G.Dismiss.add($("over"), { veil: true, panel: $("over").querySelector(".card"), dir: "any", tab: "The Heart Tree sleeps" });
@@ -27845,6 +27856,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("boonbar").addEventListener("click", (e) => { const c = e.target.closest("[data-boon]"); if (c) this.inspectGift(c.dataset.boon === this.gift ? "" : c.dataset.boon); });
       $("almbody").addEventListener("click", (e) => {
         const c = e.target.closest("[data-foe]"), k = e.target.closest("[data-skip]"), ct = e.target.closest("[data-ct]");
+        // (Details ▸: the full almanac under the two waves' heads-up, kept for this device)
+        if (e.target.closest("[data-det]")) { this.almDetail = !this.almDetail; this.saveHud(); this.showDetail(); return; }
         // (a trait badge of the preview: what answers it, as a toast; its title says the same on a hover)
         if (ct) this.toast(G.ctWords(ct.dataset.ct).line);
         else if (c) this.inspectFoe(-1, c.dataset.foe);
@@ -28041,13 +28054,22 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
     // On a phone the open almanac folds while a plant is inspected (the two would overlap) and opens again
     // when the inspector closes; the player's choice (almOpen, kept on the device) stays as it was.
-    almFolded() { return this.almOpen && !this.almOver && NARROW.matches && $("inspector").classList.contains("show"); }
+    // folded to its tab for a card: on a phone for any card (the tray has room for one), on a desktop for a
+    // creature's (it docks in the same right margin, the user 2026-11-10 "fold"); a tap on the tab opens it over
+    // the card, and the card's close brings it back (inspect, closeCard), unless the player folded it
+    almFolded() { const box = $("inspector"); return this.almOpen && !this.almOver && box.classList.contains("show") && (NARROW.matches || box.classList.contains("foe")); }
+    showDetail() {
+      $("almbody").classList.toggle("detail", this.almDetail);
+      const b = $("almbody").querySelector("[data-det]");
+      if (b) b.textContent = this.almDetail ? "Details ▾" : "Details ▸";
+    }
     showAlmanac() {
       const open = this.almOpen && !this.almFolded();
       $("almbody").classList.toggle("hide", !open);
       $("almanac").classList.toggle("closed", !open);
       document.body.classList.toggle("alm-open", open); // (phones: the open almanac stands in for the chips)
-      $("almtog").textContent = open ? "Almanac ▾" : `Almanac${this.almSummary ? " · " + this.almSummary : ""} ▸`;
+      const t = open ? "Almanac ▾" : `Almanac${this.almSummary ? " · " + this.almSummary : ""} ▸`;
+      if ($("almtog").textContent !== t) $("almtog").textContent = t;
     }
     // the gifts in play, as chips: the boon's icon (Art's, or its glyph) and level, framed by rarity
     // (S.boons only grows within a run and is a new list on a new or loaded run, so its length and identity
@@ -28178,6 +28200,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         (tips.length ? `<div class="tips">${tips.map((t) => `<div>${t}</div>`).join("")}</div>` : "") +
         (more ? `<div class="more">${more}</div><span class="tomore" role="button">More</span>` : "");
       queueMicrotask(() => { this.fitCard(); this.placeCard(); }); // (once the caller has shown it)
+      this.showAlmanac(); // (a desktop's almanac folds for a creature's card only: a card that takes its place unfolds it)
     }
     // the card zoomed to fit at a big UI scale on a narrow screen, rather than scroll (menu.js G.fitUi): its
     // parts as one (head, text, buttons, graft rows; not its own box, whose size is the screen's), while it
@@ -28196,7 +28219,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     closeCard() {
       this.foe = null; this.gift = "";
       $("inspector").classList.remove("show", "foe", "gift", "docked");
-      this.showAlmanac(); this.seedInfo();
+      this.almOver = false; this.showAlmanac(); this.seedInfo();
     }
     // a creature's element chips under the wave trait (D.affinity): what it is weak to and what it resists
     affChips(kind, trait) {
@@ -28483,21 +28506,25 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
 
     // Two waves' plans: `first` is the running wave (with `left` its creatures still to come or on the
-    // field) or, between waves, the coming one; `second` the one after. Seed cards rate against `first`.
+    // field) or, between waves, the coming one; `second` the one after. Seed cards rate against `first`. Each wave
+    // is a heads-up of at most three short lines (the user 2026-11-10: "a streamlined almanac that gives key heads
+    // up for upcoming 2 waves"): its number, size, trait and boss; its counter traits and what answers them; its
+    // creatures and the elements that hit them best and worst. Details ▸ (kept per device) adds each creature's
+    // weak spots, the trait's words, the garden's line, the gifts, the fusions and the legend (.dx, game.css).
     showWaves(first, left, second) {
       const running = Object.keys(left).length > 0;
-      let tag = "coming";
-      if (running) tag = `now · ${Object.values(left).reduce((a, b) => a + b, 0)} left`;
       const skip = S.phase === G.Phase.BUILD ? `<button class="btn skip" data-skip></button>` : "";
       // the counter traits of the coming wave, for the first-meeting tips (hints.js)
       this.nextCts = running ? second.cts || {} : first.cts || {};
-      const html = this.gardenHtml() + this.waveHtml(first, tag, running ? left : null) + skip + this.waveHtml(second, running ? "next" : "after", null) +
-        this.giftsHtml() + `<div class="legend">halo = resists · pulsing veins = weak spot</div>`;
-      if (html !== this.almHtml) { this.almHtml = html; $("almbody").innerHTML = html; this.skipBtn(); }
+      const html = this.waveHtml(first, running ? left : null) + skip + this.waveHtml(second, null) +
+        `<button class="almdet" data-det></button><div class="dx">${this.gardenHtml()}${this.giftsHtml()}<div class="legend">halo = resists · pulsing veins = weak spot</div></div>`;
+      if (html !== this.almHtml) { this.almHtml = html; $("almbody").innerHTML = html; this.skipBtn(); this.showDetail(); }
       this.matchup = this.matchups(first, running ? left : null);
-      // the folded tab's line: the wave on the field (or coming) and how many creatures it still holds
+      // the folded tab's line: the wave on the field (or coming), how many creatures it still holds, and the first
+      // of its counter traits no seed of the pouch answers
       const n = running ? Object.values(left).reduce((a, b) => a + b, 0) : first.groups.reduce((a, g) => a + g.count, 0);
-      this.almSummary = `Wave ${first.wave} · ${n}`;
+      const bare = Object.keys(first.cts || {}).find((id) => !G.ctAnswered(id));
+      this.almSummary = `Wave ${first.wave} · ${n}${bare ? " · ⚠ " + G.ctWords(bare).name : ""}`;
       this.showAlmanac();
       if (this.hold) this.stale = true; else this.refresh();
     }
@@ -28545,28 +28572,46 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const a = G.TRAIT_ART && G.TRAIT_ART[wt.id];
       return a ? `<span class="ti" style="color:${hex(a.color)}">${a.icon}</span>` : "· ";
     }
-    waveHtml(p, tag, left) {
-      const wt = p.trait;
-      let t = `<div class="wv"><b class="wn">Wave ${p.wave}</b> <span class="wt">${tag}</span>${wt ? ` <span class="tr">${this.traitIcon(wt)}${esc(wt.name)}</span>` : ""}${p.boss ? ` <span class="tr">· boss</span>` : ""}</div>`;
-      // its counter traits with their counts ("3 Winged"); a tap or a hover says what answers one, and one no seed
-      // of the pouch answers is tinted as a warning
+    // one wave's heads-up (`left`: the running wave's creatures still to come or on the field)
+    waveHtml(p, left) {
+      const wt = p.trait, count = (g) => (left ? left[g.kind] || 0 : g.count), n = p.groups.reduce((a, g) => a + count(g), 0);
+      let t = `<div class="wv"><b class="wn">Wave ${p.wave}</b> <span class="wt">· ${left ? `now · ${n} left` : `${n} creatures`}</span>${wt ? ` <span class="tr">${this.traitIcon(wt)}${esc(wt.name)}</span>` : ""}${p.boss ? ` <span class="tr">· boss</span>` : ""}</div>`;
+      // its counter traits with their counts and answers ("3 Winged: bring light"); a tap or a hover says the
+      // whole line, and one no seed of the pouch answers is tinted as a warning
       const cts = Object.entries(p.cts || {});
-      if (cts.length) t += `<div class="cts">` + cts.map(([id, n]) => {
+      if (cts.length) t += `<div class="cts">` + cts.map(([id, k]) => {
         const w = G.ctWords(id), warn = !G.ctAnswered(id);
-        return `<span class="ctc${warn ? " warn" : ""}" data-ct="${id}" title="${esc(w.line)}${warn ? " No seed of yours answers it." : ""}">${w.badge}${n} ${esc(w.name)}</span>`;
+        return `<span class="ctc${warn ? " warn" : ""}" data-ct="${id}" title="${esc(w.line)}${warn ? " No seed of yours answers it." : ""}">${w.badge}${k} ${esc(w.name)}: bring ${esc(w.el)}</span>`;
       }).join(" ") + `</div>`;
+      // its creatures as icons (a tap opens the card), then the elements its creatures, by count, are weakest and
+      // strongest against (the matchups' sums, in words)
+      const icons = p.groups.filter((g) => count(g) > 0).map((g) => { const e = D.ENEMIES[g.kind]; return `<span class="sw" data-foe="${g.kind}" style="color:${hex(e.color)}" title="${esc(e.name)} ×${count(g)}">${icon("ENEMY_ICONS", g.kind) || "●"}</span>`; }).join("");
+      const avg = this.elAvg(p, left), by = D.ELEMENTS.map((_, el) => el);
+      const best = by.filter((el) => avg[el] > 0.2).sort((a, b) => avg[b] - avg[a]).slice(0, 2).map((el) => D.ELEMENT_NAMES[el]);
+      const avoid = by.filter((el) => avg[el] < -0.15).sort((a, b) => avg[a] - avg[b]).slice(0, 2).map((el) => D.ELEMENT_NAMES[el]);
+      const ba = [best.length ? `<b>Best:</b> ${best.join(", ")}` : "", avoid.length ? `<b>Avoid:</b> ${avoid.join(", ")}` : ""].filter(Boolean).join(" · ") || `<span class="wt">any element</span>`;
+      t += `<div class="ba">${icons ? `<span class="fx">${icons}</span> ` : ""}${ba}</div>`;
+      // Details: each creature with its weak spots and resists, then the trait's words
       for (const g of p.groups) {
-        const e = D.ENEMIES[g.kind], count = left ? left[g.kind] || 0 : g.count, aff = D.affinity(g.kind, wt), weak = [], resist = [];
+        const e = D.ENEMIES[g.kind], c = count(g), aff = D.affinity(g.kind, wt), weak = [], resist = [];
         D.ELEMENTS.forEach((_, el) => {
           const tw = D.TOWERS[D.ELEMENT_TOWER[el]], chip = `<span class="ei" style="color:${hex(tw.color)}">${icon("ELEMENT_ICONS", D.ELEMENTS[el])}${D.ELEMENT_NAMES[el]} ×${aff[el].toFixed(1)}</span>`;
           if (aff[el] > D.WEAK_ABOVE) weak.push(chip); else if (aff[el] < D.RESIST_BELOW) resist.push(chip);
         });
-        const line = `<span class="sw" style="color:${hex(e.color)}">${icon("ENEMY_ICONS", g.kind) || "●"}</span> ${e.name} ×${count}`;
-        if (left && count === 0) t += `<div class="ln gone" data-foe="${g.kind}">${line}</div>`;
-        else t += `<div class="ln" data-foe="${g.kind}">${line}<div class="det">${weak.length ? "weak " + weak.join(", ") : ""}${weak.length && resist.length ? " &nbsp; " : ""}${resist.length ? "resists " + resist.join(", ") : ""}</div></div>`;
+        const line = `<span class="sw" style="color:${hex(e.color)}">${icon("ENEMY_ICONS", g.kind) || "●"}</span> ${e.name} ×${c}`;
+        if (left && c === 0) t += `<div class="ln dx gone" data-foe="${g.kind}">${line}</div>`;
+        else t += `<div class="ln dx" data-foe="${g.kind}">${line}<div class="det">${weak.length ? "weak " + weak.join(", ") : ""}${weak.length && resist.length ? " &nbsp; " : ""}${resist.length ? "resists " + resist.join(", ") : ""}</div></div>`;
       }
-      if (wt) t += `<div class="det tr">${esc(wt.desc)}</div>`;
+      if (wt) t += `<div class="det tr dx">${esc(wt.desc)}</div>`;
       return t;
+    }
+    // per element: how much more (or less) than plain it hurts a wave's creatures, weighted by their count
+    elAvg(p, left) {
+      return D.ELEMENTS.map((_, el) => {
+        let score = 0, total = 0;
+        for (const g of p.groups) { const n = left ? left[g.kind] || 0 : g.count; score += n * (D.affinity(g.kind, p.trait)[el] - 1); total += n; }
+        return score / Math.max(total, 1);
+      });
     }
     // per plant: +1 if the creatures of a wave are mostly weak to its element, -1 if mostly resistant
     matchups(p, left) {
