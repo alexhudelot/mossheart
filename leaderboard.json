@@ -57,34 +57,37 @@
   "fernglass": [
    {
     "nickname": "alexh",
-    "wave": 19,
+    "wave": 25,
     "tag": "3f46b1074900",
-    "at": "2026-10-29T21:05:12.371Z",
-    "seed": 2640799388,
-    "density": 40,
-    "version": "0.31.0 c45b13c",
-    "maxDew": 881,
+    "at": "2026-11-10T00:17:16.784Z",
+    "seed": 3691828822,
+    "density": 64,
+    "version": "0.95.0 4fd307a2",
+    "maxDew": 1651,
     "boons": {
-     "bramble_hedge": 1,
-     "spore_cloud": 2,
+     "spore_cloud": 3,
      "overgrowth": 2,
-     "crit_bloom": 2,
-     "dew_collector": 1,
+     "ripe_spores": 3,
+     "deep_roots": 3,
      "verdant_pulse": 1,
-     "bloom": 1,
-     "quick_sap": 2,
-     "rot_bloom": 1,
-     "ripe_spores": 1,
-     "deep_roots": 2
+     "lingering": 1,
+     "puffball": 1,
+     "spring_rain": 3,
+     "firefly_court": 1,
+     "firefly_lanterns": 1,
+     "dew_collector": 2,
+     "crit_bloom": 1,
+     "spirit_lantern": 1,
+     "moonshadow": 1
     },
     "towers": {
-     "thorn": 3,
-     "puff": 5,
-     "toad": 3,
-     "moon": 7,
-     "lily": 5
+     "thorn": 2,
+     "puff": 14,
+     "toad": 17,
+     "moon": 2,
+     "lily": 4
     },
-    "diedTo": "crow"
+    "diedTo": "spirit"
    }
   ],
   "cornmoon": [
