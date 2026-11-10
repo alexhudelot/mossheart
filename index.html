@@ -304,6 +304,10 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 #insptitle .picon { display: inline-flex; flex: none; font-size: 1.05em; }
 #insptitle .picon svg { width: 1.1em; height: 1.1em; }
 #insptitle .cname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* (a creature's name wraps to a second line rather than "Du…", the title row top-aligned; plant and tower cards keep the one line) */
+#inspector.foe #insptitle { align-items: flex-start; }
+#inspector.foe #insptitle .cname { flex: 1 1 0; min-width: min-content; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: break-word; line-height: 1.1; } /* (wraps between words: the longest word is its least width, else "Shellbac / k" at 1280) */
+#inspector.foe #insptitle .cfig { flex: 0 1 auto; min-width: min-content; white-space: normal; text-align: right; line-height: 1.1; } /* (the HP gives way instead, "HP / 40" on a narrow card) */
 #insptitle .cfig { margin-left: auto; flex: none; font-size: 0.7em; font-weight: 800; color: #6a8a3a; white-space: nowrap; }
 #insptitle .cfig.short { color: #b0402a; }
 #insptitle .cfig.tier { text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.6em; }
@@ -715,6 +719,7 @@ body.calm #rites.pick { animation: none; }
   #tray #inspector, #tray #ritepanel { position: fixed; top: calc(84px + var(--st)); bottom: auto; width: calc(min(280px, var(--vw) * 0.17) - 20px); box-sizing: border-box;
     max-height: calc(var(--vh) - 84px - 150px * var(--ts) - var(--st) - var(--sb)); }
   #tray #inspector { right: calc(12px + var(--sr)); left: auto; }
+  #tray #inspector.foe { width: calc(min(280px, var(--vw) * 0.2) - 20px); } /* (the creature card a little wider, ~236 px at 1280: freeRect keeps 0.2 of the width clear on this side) */
   #tray #ritepanel { left: calc(12px + var(--sl)); right: auto; }
   #tray #inspector #inspbody { min-height: 0; overflow-y: auto; }
   #ritepanel .forks.rites { grid-template-columns: 1fr; }
@@ -20678,7 +20683,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.103.0", name: "Mossheart", commit: "6f34e23b" };
+  G.VERSION = { v: "0.104.0", name: "Mossheart", commit: "a81e4d47" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -28446,7 +28451,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       // just as the player aimed; it covers only the garden's foot)
       const tr = $("tray"), ins = $("inspector"), seedFold = ins.classList.contains("seedinfo") && !ins.classList.contains("open") && ins.offsetHeight > 0 && !this.riting; // (not while Rites hide the card on a phone or sit above it on desktop)
       if (tr && tr.offsetWidth) bottom = Math.min(bottom, seedFold ? ins.getBoundingClientRect().bottom : tr.getBoundingClientRect().top);
-      if (!NARROW.matches) { const m = Math.min(280, 0.17 * innerWidth); left = m; right = innerWidth - m; }
+      if (!NARROW.matches) { left = Math.min(280, 0.17 * innerWidth); right = innerWidth - Math.min(280, 0.2 * innerWidth); } // (the Rites dock left, the card right: the creature card is the wider, game.css)
       return { x: left, y: top, w: Math.max(1, right - left), h: Math.max(1, bottom - top) };
     }
     // trait tags (★ ◆ » ˄ ✚ ⋔ ▾ ↻) beside the HP bars of the hurt creatures and of the one on the card,
