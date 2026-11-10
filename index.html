@@ -10432,6 +10432,501 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 })();
 
 </script>
+<script>/* ../MossheartEngine/src/bodies.js */
+/* Rigid voxel bodies (roadmap phase C3): a baked model that moves as one solid, with a position, a turn,
+   and linear and angular velocity, colliding with the terrain's voxels through a sample of its own surface
+   voxels. For falling props and thrown objects; a body is drawn as one volume instance.
+
+   A sim layer (sim.layers.push(B)), stepped on the CPU: a body tests up to set.points (64) points against
+   T.grid each substep. tools\bodies-check.js measures a step and ASSESSMENT.md section 4 has the numbers;
+   a sleeping body costs nothing. The terrain is T.grid as it is now: what ME.VoxelPhysics dug or heaped
+   is there. Bodies do not collide with each other, with the props or with the loose voxels of
+   ME.VoxelPhysics, and cast no sun shadow (a prop's baked shadow stays behind, as for a shattered one).
+
+     const B = new ME.Bodies(T, MB, { phys }); sim.layers.push(B);
+     B.add(mi, [x, y, z], { v, w, yaw, flip, scale, mark, markV, flags })
+                                  a body of model mi with its anchor (the point Sim.put places) there
+     B.fromStatic(s, { v, w })    a static prop comes loose where it stands, drawn as it was (the prop is
+                                  hidden, as ME.VoxelPhysics.shatter hides it)
+     B.kick(body, [jx, jy, jz], at)   an impulse (a change of velocity, tiles/s), at a world point if given
+     B.wake(p, r)                 the sleeping bodies within r of p wake (the ground changed under them)
+     B.remove(body), B.clear()    one body, or every body, goes; the props they came from are shown again
+     B.dissolve(body, o)          a body bursts into loose voxels where it is, with its velocity and spin
+                                  (opts.phys; the prop it came from stays hidden); B.rowOf(body): its affine
+     B.step(dt)                   called by writeInstances with the frame's time step
+     B.set                        { gravity, restitution, friction, roll, drag, sleepV, sleepS, substeps,
+                                    points, buoyancy }
+     B.bodies, B.awake            the list, and how many are not asleep
+     B.onGone                     fn(body), called when a body falls out of the world
+     B.stats                      { steps, splashes, woken, gone }
+     body: { mi, x (its centre of mass), v, w, q, R, asleep, hits, from, gone }, body.anchor(out)
+   A body that falls out of the world (under the grid by 4 tiles, or its state not a number) leaves B.bodies
+   at the end of that step, with body.gone set; the prop it came from stays hidden.
+   A body sleeps once it has been slow and in contact for set.sleepS seconds; a kick wakes it, and so does
+   losing or gaining a support (checked twice a second). With opts.phys (an ME.VoxelPhysics) a body that
+   falls into the water splashes and sinks slowly. */
+(function () {
+  const ME = window.ME;
+  const cross = (a, b, o) => { const x = a[1] * b[2] - a[2] * b[1], y = a[2] * b[0] - a[0] * b[2], z = a[0] * b[1] - a[1] * b[0]; o[0] = x; o[1] = y; o[2] = z; return o; };
+  // a symmetric 3x3 (row-major 9) inverted
+  const inv3 = (a) => {
+    const c0 = a[4] * a[8] - a[5] * a[7], c1 = a[5] * a[6] - a[3] * a[8], c2 = a[3] * a[7] - a[4] * a[6], id = 1 / (a[0] * c0 + a[1] * c1 + a[2] * c2);
+    return [c0 * id, (a[2] * a[7] - a[1] * a[8]) * id, (a[1] * a[5] - a[2] * a[4]) * id, c1 * id, (a[0] * a[8] - a[2] * a[6]) * id, (a[2] * a[3] - a[0] * a[5]) * id, c2 * id, (a[1] * a[6] - a[0] * a[7]) * id, (a[0] * a[4] - a[1] * a[3]) * id];
+  };
+  // the turn of the unit quaternion q = [x, y, z, w], row-major into R
+  const rotOf = (q, R) => {
+    const x = q[0], y = q[1], z = q[2], w = q[3];
+    R[0] = 1 - 2 * (y * y + z * z); R[1] = 2 * (x * y - z * w); R[2] = 2 * (x * z + y * w);
+    R[3] = 2 * (x * y + z * w); R[4] = 1 - 2 * (x * x + z * z); R[5] = 2 * (y * z - x * w);
+    R[6] = 2 * (x * z - y * w); R[7] = 2 * (y * z + x * w); R[8] = 1 - 2 * (x * x + y * y);
+    return R;
+  };
+  const ZERO2 = [0, 0];
+
+  class Bodies {
+    constructor(T, MB, opts = {}) {
+      this.T = T; this.MB = MB; this.phys = opts.phys || null;
+      // gravity: tiles/s2 (ME.VoxelPhysics's); restitution: of a hit faster than 0.6 tiles/s; roll: the spin lost
+      // per second in contact; drag: the speed lost per second in the air; buoyancy: the share of gravity the
+      // water takes
+      this.set = Object.assign({ gravity: 6, restitution: 0.25, friction: 0.5, roll: 1.5, drag: 0.05, sleepV: 0.06, sleepS: 0.5, substeps: 4, points: 64, buoyancy: 0.7 }, opts.set);
+      this.bodies = []; this.awake = 0; this.shapes = new Map(); this.lastT = null; this.clock = 0; this.stats = { steps: 0, splashes: 0, woken: 0, gone: 0 }; this.onGone = null;
+      this.seed = opts.seed ?? 11; // a model's sample is drawn from this and its index: the same shape every run
+      this.t3 = [0, 0, 0]; this.u3 = [0, 0, 0]; this.n3 = [0, 0, 0]; this.d3 = [0, 0, 0]; this.j3 = [0, 0, 0];
+    }
+    setTerrain(T) { this.T = T; for (const b of this.bodies) this.rouse(b); }
+
+    // A model's shape for the solver, once per model (and per mirror): its contact points about its centre of
+    // mass (tiles, at scale 1), the centre's offset from the anchor, the inverse inertia of unit mass, a
+    // bounding radius. The mass is the solid voxels' (a uniform sample of up to 4096); the contact points are
+    // surface voxels spread by farthest-point sampling, each moved out to the face, edge or corner it shows.
+    shape(mi, flip = false) {
+      const MB = this.MB, m = MB.models[mi], kf = m.kf || 1, key = mi * 2 + (flip ? 1 : 0);
+      let S = this.shapes.get(key);
+      if (S && S.kf === kf) return S;
+      let sd = (this.seed ^ Math.imul(key + 1, 0x9e3779b1)) | 0;
+      const rnd = () => { let t = (sd = (sd + 0x6d2b79f5) | 0); t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+      const s = 1 / ME.VS, sk = s * kf, all = ME.sampleVoxels(MB, mi, 4096, s, rnd), n = Math.max(1, all.length), c = [0, 0, 0];
+      const voxel = MB.voxel || ME.brickVoxel(MB), [nx, ny, nz] = m.dims, [ox, oy, oz] = m.box;
+      const at = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < nx && y < ny && z < nz && voxel(mi, x, y, z) !== 0;
+      // the surface ones, moved half a voxel toward their open sides (before the mirror: the model's own axes)
+      const surf = [];
+      for (const p of all) {
+        const x = Math.round(p[0] / sk - ox - 0.5), y = Math.round(p[1] / sk - oy - 0.5), z = Math.round(p[2] / sk - oz - 0.5);
+        const ex = (at(x + 1, y, z) ? 0 : 1) - (at(x - 1, y, z) ? 0 : 1), ey = (at(x, y + 1, z) ? 0 : 1) - (at(x, y - 1, z) ? 0 : 1), ez = (at(x, y, z + 1) ? 0 : 1) - (at(x, y, z - 1) ? 0 : 1);
+        const open = !(at(x + 1, y, z) && at(x - 1, y, z) && at(x, y + 1, z) && at(x, y - 1, z) && at(x, y, z + 1) && at(x, y, z - 1));
+        if (open) surf.push(flip ? [p[1] + ey * 0.5 * sk, p[0] + ex * 0.5 * sk, p[2] + ez * 0.5 * sk] : [p[0] + ex * 0.5 * sk, p[1] + ey * 0.5 * sk, p[2] + ez * 0.5 * sk]);
+        if (flip) { const t = p[0]; p[0] = p[1]; p[1] = t; }
+        c[0] += p[0] / n; c[1] += p[1] / n; c[2] += p[2] / n;
+      }
+      const I = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+      let rad = sk;
+      for (const p of all) {
+        const x = p[0] - c[0], y = p[1] - c[1], z = p[2] - c[2];
+        I[0] += (y * y + z * z) / n; I[4] += (x * x + z * z) / n; I[8] += (x * x + y * y) / n;
+        I[1] -= (x * y) / n; I[2] -= (x * z) / n; I[5] -= (y * z) / n;
+      }
+      I[3] = I[1]; I[6] = I[2]; I[7] = I[5];
+      // farthest-point sampling over the surface, from the point farthest from the centre
+      const K = Math.min(this.set.points | 0, surf.length), P = new Float32Array(K * 3), d = new Float32Array(surf.length).fill(Infinity);
+      let far = 0, fd = -1;
+      surf.forEach((p, i) => { const q = Math.hypot(p[0] - c[0], p[1] - c[1], p[2] - c[2]); if (q > fd) { fd = q; far = i; } });
+      rad = Math.max(rad, fd);
+      for (let k = 0; k < K; k++) {
+        const p = surf[far];
+        P[k * 3] = p[0] - c[0]; P[k * 3 + 1] = p[1] - c[1]; P[k * 3 + 2] = p[2] - c[2];
+        let nd = -1;
+        for (let i = 0; i < surf.length; i++) {
+          const q = surf[i], dx = q[0] - p[0], dy = q[1] - p[1], dz = q[2] - p[2], dd = dx * dx + dy * dy + dz * dz;
+          if (dd < d[i]) d[i] = dd;
+          if (d[i] > nd) { nd = d[i]; far = i; }
+        }
+      }
+      const e = 0.08 * rad * rad + 1e-6; I[0] += e; I[4] += e; I[8] += e; // (a thin or tiny model keeps a usable inertia)
+      this.shapes.set(key, (S = { mi, flip, kf, pts: P, n: K, c, Iinv: inv3(I), rad, voxels: all.length, surface: surf.length }));
+      return S;
+    }
+    // A body of model mi whose anchor (the point Sim.put places) starts at p. o.v, o.w: its velocity (tiles/s)
+    // and spin (rad/s, world axes); o.yaw; o.flip (the model mirrored, as a place's flip); o.scale (uniform,
+    // times the model's own 1 / fine); o.mark, o.markV; o.flags (0: shaded as a prop, the default; 1: as a unit).
+    add(mi, p, o = {}) {
+      const S = this.shape(mi, !!o.flip), sc = (o.scale || 1) / (this.MB.models[mi].fine || 1), yaw = o.yaw || 0, q = [0, 0, Math.sin(yaw / 2), Math.cos(yaw / 2)], R = rotOf(q, new Float64Array(9));
+      const c = S.c, b = {
+        mi, S, sc, q, R, flip: !!o.flip, s3: [sc, sc, sc],
+        x: [p[0] + (R[0] * c[0] + R[1] * c[1] + R[2] * c[2]) * sc, p[1] + (R[3] * c[0] + R[4] * c[1] + R[5] * c[2]) * sc, p[2] + (R[6] * c[0] + R[7] * c[1] + R[8] * c[2]) * sc],
+        v: (o.v || [0, 0, 0]).slice(), w: (o.w || [0, 0, 0]).slice(), asleep: false, still: 0, hits: 0, rest: -1, look: 0, wet: false, gone: false, from: o.from || null,
+        mark: o.mark || 0, markV: o.markV || 0, flags: o.flags ?? 0,
+        anchor(out = [0, 0, 0]) { const R = this.R, c = this.S.c, k = this.sc, x = this.x; out[0] = x[0] - (R[0] * c[0] + R[1] * c[1] + R[2] * c[2]) * k; out[1] = x[1] - (R[3] * c[0] + R[4] * c[1] + R[5] * c[2]) * k; out[2] = x[2] - (R[6] * c[0] + R[7] * c[1] + R[8] * c[2]) * k; return out; },
+      };
+      this.bodies.push(b);
+      return b;
+    }
+    // a static prop (MB.statics[k]) as a body where it stands (its first frame); the prop is hidden until the
+    // body is removed
+    fromStatic(s, o = {}) {
+      const p = s.place, b = this.add(s.frames[0], [p.X, p.Y, p.Z], Object.assign({ yaw: ((p.rot | 0) * Math.PI) / 2, flip: !!p.flip, from: s }, o));
+      s.hidden = true;
+      return b;
+    }
+    rouse(b) { if (b.asleep) this.stats.woken++; b.asleep = false; b.still = 0; b.rest = -1; }
+    kick(b, j, at = null) {
+      b.v[0] += j[0]; b.v[1] += j[1]; b.v[2] += j[2];
+      if (at) { const r = this.u3; r[0] = at[0] - b.x[0]; r[1] = at[1] - b.x[1]; r[2] = at[2] - b.x[2]; this.spin(b, r, j); }
+      this.rouse(b);
+    }
+    wake(p, r = 1) { for (const b of this.bodies) if (b.asleep && Math.hypot(b.x[0] - p[0], b.x[1] - p[1], b.x[2] - p[2]) < r + b.S.rad * b.sc) this.rouse(b); }
+    remove(b) { const i = this.bodies.indexOf(b); if (i >= 0) this.bodies.splice(i, 1); if (b.from) b.from.hidden = false; }
+    clear() { for (const b of this.bodies) if (b.from) b.from.hidden = false; this.bodies.length = 0; this.awake = 0; }
+
+    // w += Iinv_world (r x j), Iinv_world = R Iinv R^T over the scale squared (unit mass)
+    spin(b, r, j) {
+      const t = cross(r, j, this.t3), R = b.R, I = b.S.Iinv, k = 1 / (b.sc * b.sc);
+      const lx = R[0] * t[0] + R[3] * t[1] + R[6] * t[2], ly = R[1] * t[0] + R[4] * t[1] + R[7] * t[2], lz = R[2] * t[0] + R[5] * t[1] + R[8] * t[2];
+      const mx = (I[0] * lx + I[1] * ly + I[2] * lz) * k, my = (I[3] * lx + I[4] * ly + I[5] * lz) * k, mz = (I[6] * lx + I[7] * ly + I[8] * lz) * k;
+      b.w[0] += R[0] * mx + R[1] * my + R[2] * mz; b.w[1] += R[3] * mx + R[4] * my + R[5] * mz; b.w[2] += R[6] * mx + R[7] * my + R[8] * mz;
+    }
+    // is the terrain solid at world point (x, y, z)? Open outside the grid, under it too: what falls off the
+    // island falls out of the world (body.gone)
+    solid(x, y, z) {
+      const T = this.T, VS = T.VS, i = Math.floor((x - T.O[0]) * VS), j = Math.floor((y - T.O[1]) * VS), k = Math.floor((z - T.O[2]) * VS);
+      if (i < 0 || j < 0 || k < 0 || i >= T.NX || j >= T.NY || k >= T.NZ) return false;
+      return T.grid.get(i, j, k) !== 0;
+    }
+    // how many of a body's contact points stand on the terrain (a solid cell at the point or just under it)
+    supports(b) {
+      const R = b.R, P = b.S.pts, sc = b.sc, x = b.x, cell = 1 / this.T.VS;
+      let n = 0;
+      for (let i = 0; i < b.S.n; i++) {
+        const lx = P[i * 3] * sc, ly = P[i * 3 + 1] * sc, lz = P[i * 3 + 2] * sc;
+        const wx = x[0] + R[0] * lx + R[1] * ly + R[2] * lz, wy = x[1] + R[3] * lx + R[4] * ly + R[5] * lz, wz = x[2] + R[6] * lx + R[7] * ly + R[8] * lz;
+        if (this.solid(wx, wy, wz) || this.solid(wx, wy, wz - cell)) n++;
+      }
+      return n;
+    }
+
+    step(dt) {
+      const s = this.set, n = Math.max(1, s.substeps | 0), h = Math.min(1 / 30, Math.max(0, dt)) / n, T = this.T, cell = 1 / T.VS;
+      let awake = 0, out = 0;
+      this.clock += dt; this.stats.steps++;
+      for (const b of this.bodies) {
+        if (b.gone) { out++; continue; }
+        if (b.asleep) {
+          // asleep: twice a second, the supports it fell asleep on are counted again
+          if (this.clock >= b.look) { b.look = this.clock + 0.5; if (this.supports(b) !== b.rest) this.rouse(b); }
+          if (b.asleep) continue;
+        }
+        awake++;
+        for (let it = 0; it < n; it++) this.sub(b, h, cell);
+        const sp = Math.hypot(b.v[0], b.v[1], b.v[2]) + Math.hypot(b.w[0], b.w[1], b.w[2]) * b.S.rad * b.sc;
+        b.still = sp < s.sleepV && b.hits ? b.still + dt : 0;
+        if (b.still > s.sleepS) { b.asleep = true; b.v[0] = b.v[1] = b.v[2] = 0; b.w[0] = b.w[1] = b.w[2] = 0; b.rest = this.supports(b); b.look = this.clock + 0.5; }
+        if (!(b.x[2] > T.O[2] - 4)) { b.asleep = true; b.gone = true; awake--; out++; } // fell out of the world (or its state is not a number)
+      }
+      this.awake = awake;
+      // the bodies that fell out of the world leave the list (in place, the others keep their order)
+      if (out) {
+        let k = 0;
+        const gone = [];
+        for (const b of this.bodies) if (b.gone) gone.push(b); else this.bodies[k++] = b;
+        this.bodies.length = k; this.stats.gone += gone.length;
+        if (this.onGone) for (const b of gone) this.onGone(b);
+      }
+    }
+    // one substep of one body: gravity and drag, the move and the turn, then its contact points against the
+    // terrain: each one inside a solid cell is a contact along the way out of that cell that is shortest and
+    // open, with an impulse there (restitution, Coulomb friction) and a share of the push back out
+    sub(b, h, cell) {
+      const s = this.set, v = b.v, w = b.w, x = b.x, q = b.q, R = b.R, S = b.S, P = S.pts, sc = b.sc, r = this.u3, nrm = this.n3, tdir = this.d3;
+      // the water (opts.phys): a splash on the way in, then most of the weight carried and a thick drag
+      let g = s.gravity, dk = Math.max(0, 1 - s.drag * h), wk = dk;
+      if (this.phys) {
+        const wet = x[2] < this.phys.waterLevel(x[0], x[1]);
+        if (wet && !b.wet) { const sp = Math.hypot(v[0], v[1], v[2]); if (sp > 0.5) { this.phys.splash(x, Math.min(3, sp * 0.6 * (0.5 + S.rad * sc))); this.stats.splashes++; } }
+        b.wet = wet;
+        if (wet) { g *= 1 - s.buoyancy; dk = Math.max(0, 1 - 3 * h); wk = dk; }
+      }
+      if (b.hits) wk *= Math.max(0, 1 - s.roll * h);
+      v[2] -= g * h;
+      v[0] *= dk; v[1] *= dk; v[2] *= dk; w[0] *= wk; w[1] *= wk; w[2] *= wk;
+      x[0] += v[0] * h; x[1] += v[1] * h; x[2] += v[2] * h;
+      // q += 0.5 h (w, 0) q, then unit length again
+      const qx = q[0], qy = q[1], qz = q[2], qw = q[3], hx = 0.5 * h * w[0], hy = 0.5 * h * w[1], hz = 0.5 * h * w[2];
+      q[0] = qx + hx * qw + hy * qz - hz * qy; q[1] = qy - hx * qz + hy * qw + hz * qx; q[2] = qz + hx * qy - hy * qx + hz * qw; q[3] = qw - hx * qx - hy * qy - hz * qz;
+      const ql = Math.hypot(q[0], q[1], q[2], q[3]) || 1; q[0] /= ql; q[1] /= ql; q[2] /= ql; q[3] /= ql;
+      rotOf(q, R);
+      const T = this.T, VS = T.VS, O = T.O, ox = O[0], oy = O[1], oz = O[2], NX = T.NX, NY = T.NY, NZ = T.NZ, G = T.grid;
+      // the turn times the scale: a point in the air costs nine products and one cell read
+      const r0 = R[0] * sc, r1 = R[1] * sc, r2 = R[2] * sc, r3 = R[3] * sc, r4 = R[4] * sc, r5 = R[5] * sc, r6 = R[6] * sc, r7 = R[7] * sc, r8 = R[8] * sc;
+      let hits = 0, px = 0, py = 0, pz = 0;
+      for (let i = 0, n3 = S.n * 3; i < n3; i += 3) {
+        const lx = P[i], ly = P[i + 1], lz = P[i + 2], rx = r0 * lx + r1 * ly + r2 * lz, ry = r3 * lx + r4 * ly + r5 * lz, rz = r6 * lx + r7 * ly + r8 * lz;
+        // (this.solid written out: most points of most bodies are in the air, and this test is the step's cost)
+        const wx = x[0] + rx, wy = x[1] + ry, wz = x[2] + rz, fx = (wx - ox) * VS, fy = (wy - oy) * VS, fz = (wz - oz) * VS, ci = Math.floor(fx), cj = Math.floor(fy), ck = Math.floor(fz);
+        if (ci < 0 || cj < 0 || ck < 0 || ci >= NX || cj >= NY || ck >= NZ || G.get(ci, cj, ck) === 0) continue;
+        r[0] = rx; r[1] = ry; r[2] = rz;
+        // the way out: the nearest face of this cell whose neighbour is open (up when none is)
+        const ux = fx - ci, uy = fy - cj, uz = fz - ck;
+        let depth = 1 - uz, open = !this.solid(wx, wy, wz + cell);
+        nrm[0] = 0; nrm[1] = 0; nrm[2] = 1;
+        if (!open) depth = Infinity;
+        if (ux < depth && !this.solid(wx - cell, wy, wz)) { depth = ux; nrm[0] = -1; nrm[1] = 0; nrm[2] = 0; }
+        if (1 - ux < depth && !this.solid(wx + cell, wy, wz)) { depth = 1 - ux; nrm[0] = 1; nrm[1] = 0; nrm[2] = 0; }
+        if (uy < depth && !this.solid(wx, wy - cell, wz)) { depth = uy; nrm[0] = 0; nrm[1] = -1; nrm[2] = 0; }
+        if (1 - uy < depth && !this.solid(wx, wy + cell, wz)) { depth = 1 - uy; nrm[0] = 0; nrm[1] = 1; nrm[2] = 0; }
+        if (uz < depth && !this.solid(wx, wy, wz - cell)) { depth = uz; nrm[0] = 0; nrm[1] = 0; nrm[2] = -1; }
+        if (depth === Infinity) { depth = 2 - uz; nrm[0] = 0; nrm[1] = 0; nrm[2] = 1; } // buried: up, past the cell above
+        depth *= cell; hits++;
+        px += nrm[0] * depth; py += nrm[1] * depth; pz += nrm[2] * depth;
+        // the point's velocity, and the impulse along the normal if it moves into the cell
+        const cx = v[0] + w[1] * r[2] - w[2] * r[1], cy = v[1] + w[2] * r[0] - w[0] * r[2], cz = v[2] + w[0] * r[1] - w[1] * r[0];
+        const un = cx * nrm[0] + cy * nrm[1] + cz * nrm[2];
+        if (un >= 0) continue;
+        const jn = (-(1 + (un < -0.6 ? s.restitution : 0)) * un) / this.kOf(b, r, nrm);
+        this.push(b, r, nrm[0] * jn, nrm[1] * jn, nrm[2] * jn);
+        // friction: against the sliding left at the point, up to friction x the normal impulse
+        const tx = cx - un * nrm[0], ty = cy - un * nrm[1], tz = cz - un * nrm[2], tl = Math.hypot(tx, ty, tz);
+        if (tl > 1e-6) {
+          tdir[0] = tx / tl; tdir[1] = ty / tl; tdir[2] = tz / tl;
+          const jt = Math.min(s.friction * jn, tl / this.kOf(b, r, tdir));
+          this.push(b, r, -tdir[0] * jt, -tdir[1] * jt, -tdir[2] * jt);
+        }
+      }
+      b.hits = hits;
+      if (hits) { const k = 0.8 / hits; x[0] += px * k; x[1] += py * k; x[2] += pz * k; }
+    }
+    // 1 / m + n . ((Iinv (r x n)) x r), for unit mass: how much an impulse along n at r changes the point's speed along n
+    kOf(b, r, n) {
+      const t = cross(r, n, this.t3), R = b.R, I = b.S.Iinv, k = 1 / (b.sc * b.sc);
+      const lx = R[0] * t[0] + R[3] * t[1] + R[6] * t[2], ly = R[1] * t[0] + R[4] * t[1] + R[7] * t[2], lz = R[2] * t[0] + R[5] * t[1] + R[8] * t[2];
+      const mx = (I[0] * lx + I[1] * ly + I[2] * lz) * k, my = (I[3] * lx + I[4] * ly + I[5] * lz) * k, mz = (I[6] * lx + I[7] * ly + I[8] * lz) * k;
+      const ax = R[0] * mx + R[1] * my + R[2] * mz, ay = R[3] * mx + R[4] * my + R[5] * mz, az = R[6] * mx + R[7] * my + R[8] * mz;
+      return 1 + (ay * r[2] - az * r[1]) * n[0] + (az * r[0] - ax * r[2]) * n[1] + (ax * r[1] - ay * r[0]) * n[2];
+    }
+    push(b, r, jx, jy, jz) {
+      b.v[0] += jx; b.v[1] += jy; b.v[2] += jz;
+      const j = this.j3; j[0] = jx; j[1] = jy; j[2] = jz;
+      this.spin(b, r, j);
+    }
+
+    // a body's affine (12 floats: its model's voxel coordinates to the world), as its instance row has it
+    rowOf(b, out = new Float32Array(12)) {
+      const m = this.MB.models[b.mi], k = b.sc / (ME.VS / (m.kf || 1)), R = b.R, f = b.flip, a = b.anchor(this.t3), bx = m.box;
+      for (let r = 0; r < 3; r++) {
+        const c0 = (f ? R[r * 3 + 1] : R[r * 3]) * k, c1 = (f ? R[r * 3] : R[r * 3 + 1]) * k, c2 = R[r * 3 + 2] * k;
+        out[r * 4] = c0; out[r * 4 + 1] = c1; out[r * 4 + 2] = c2; out[r * 4 + 3] = c0 * bx[0] + c1 * bx[1] + c2 * bx[2] + a[r];
+      }
+      return out;
+    }
+    // A body bursts into loose voxels where it is, with its velocity and its spin (opts.phys does it:
+    // ME.VoxelPhysics.dissolve, whose o this passes on). The body goes; the prop it came from stays hidden.
+    dissolve(b, o = {}) {
+      if (!this.phys) return 0;
+      const n = this.phys.dissolve(this.MB, b.mi, this.rowOf(b), Object.assign({ v: b.v, w: b.w, about: b.x }, o)), i = this.bodies.indexOf(b);
+      if (i >= 0) this.bodies.splice(i, 1);
+      return n;
+    }
+    // the sim layer: step, then one instance a body (its anchor = the centre less the turned offset; the turn
+    // goes in as put's frame, the mirror as put's flip)
+    writeInstances(time, sim, i) {
+      const dt = this.lastT == null || time < this.lastT ? 0 : time - this.lastT;
+      this.lastT = time;
+      if (dt > 0 && this.bodies.length) this.step(dt);
+      for (const b of this.bodies) {
+        if (b.gone) continue;
+        if ((i + 1) * ME.INST_FLOATS > sim.inst.length) break; // no room left (Sim's capacity)
+        const R = b.R, c = b.S.c, sc = b.sc;
+        sim.put(i++, b.mi, b.x[0] - (R[0] * c[0] + R[1] * c[1] + R[2] * c[2]) * sc, b.x[1] - (R[3] * c[0] + R[4] * c[1] + R[5] * c[2]) * sc, b.x[2] - (R[6] * c[0] + R[7] * c[1] + R[8] * c[2]) * sc,
+          0, b.flip, b.s3, ZERO2, b.flags, 0, b.mark, b.markV, R);
+      }
+      return i;
+    }
+  }
+  ME.Bodies = Bodies;
+})();
+
+</script>
+<script>/* ../MossheartEngine/src/voxfx.js */
+/* Voxel effects (roadmap phase C5): a model that assembles from flying voxels, or grows voxel by voxel.
+
+   A renderer layer (R.addLayer(new ME.VoxelFx())). A job is the model's surface voxels as cubes, each with
+   a start, the place it belongs (its voxel under the instance's affine), the time it sets off and the time
+   it goes. Nothing is simulated: the vertex shader places every cube from the layer's clock
+   (src/shaders/voxfx.js), so a job costs its draw and nothing else, and an idle layer costs nothing.
+   When the last cube is in place the job calls o.done (the app then shows the model itself) and its cubes
+   stay a moment longer, so no frame shows neither.
+
+     const fx = R.addLayer(new ME.VoxelFx({ capacity }));
+     fx.assemble(MB, mi, row, o)   the voxels fly in from around the model (o.from: from one world point),
+                                   in random order, tumbling, and slow into place
+     fx.grow(MB, mi, row, o)       the voxels appear where they belong, from the lowest up, each swelling
+                                   from nothing
+     row: the instance's affine, 12 floats (the first 12 of its Sim row; ME.affineOf builds one)
+     o: { secs (the whole effect, 1.6), travel (one voxel's, 0.5), max (cubes at most, 8192), radius
+          (assemble: how far out they start, tiles, 1.2), lift (assemble: the arc's height, 0.3), done,
+          at (start it this far in, 0..1: a frozen shot) }
+     Both return the job { n, t0, end, voxels (the model's surface voxels), shown (how many are cubes) }
+     or null (no room, or no voxel).
+     fx.at(job, k, time)           cube k of a job at a time: { p: [x, y, z], size, on } (the shader's arithmetic)
+     fx.clear(), fx.active, fx.used, fx.jobs, fx.stats { jobs, cubes, done, compactions }
+   The cube table: a job takes the rows from fx.used on. A job that has ended leaves the table wherever it is
+   (its rows draw nothing: their time is past), and fx.used falls back to the end of the last job still on.
+   A job that finds too little room past fx.used first packs the jobs still on down from row 0 (fx.compact():
+   their job.first moves, one buffer write), so jobs that keep overlapping (deaths, one after another) do not
+   run out of room while the table can hold them all.
+   Dissolve is the other way and goes through the loose voxels: ME.VoxelPhysics.dissolve, ME.Bodies.dissolve.
+   ME.affineOf(MB, mi, X, Y, Z, yaw, flip, scale) is the affine Sim.put gives an instance without shear,
+   pitch or frame; ME.surfaceVoxels(MB, mi, max) lists a model's surface voxels. */
+(function () {
+  const ME = window.ME, BU = window.GPUBufferUsage || {}, F = 12, HOLD = 0.15;
+
+  // the affine of an instance of model mi as Sim.put builds it (no shear, pitch or frame): model voxel
+  // coordinates to the world, 12 floats in rows of 4 (the first 12 of an instance row)
+  ME.affineOf = (MB, mi, X, Y, Z, yaw = 0, flip = false, scale = 1, out = new Float32Array(12)) => {
+    const m = MB.models[mi], k = scale / (ME.VS / (m.kf || 1)), c = Math.cos(yaw) * k, s = Math.sin(yaw) * k, b = m.box;
+    // L = Rz(yaw) F S / vs (F swaps x and y); t = L box + the anchor
+    const a0 = flip ? -s : c, a1 = flip ? c : -s, a3 = flip ? c : s, a4 = flip ? s : c;
+    out[0] = a0; out[1] = a1; out[2] = 0; out[3] = a0 * b[0] + a1 * b[1] + X;
+    out[4] = a3; out[5] = a4; out[6] = 0; out[7] = a3 * b[0] + a4 * b[1] + Y;
+    out[8] = 0; out[9] = 0; out[10] = k; out[11] = k * b[2] + Z;
+    return out;
+  };
+  // Model mi's surface voxels (one of the six neighbours empty): [x, y, z, material] in its own voxel
+  // coordinates (integers), at most max of them (a uniform sample past that). scanned: how many solid voxels
+  // were looked at (a model over 4 max voxels is sampled, so some of its surface may be missing).
+  ME.surfaceVoxels = (MB, mi, max = 8192, rnd = Math.random) => {
+    const m = MB.models[mi], kf = m.kf || 1, [nx, ny, nz] = m.dims, [ox, oy, oz] = m.box, voxel = MB.voxel || ME.brickVoxel(MB);
+    const at = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < nx && y < ny && z < nz && voxel(mi, x, y, z) !== 0;
+    const all = ME.sampleVoxels(MB, mi, max * 4, 1, rnd), out = [];
+    for (const p of all) {
+      const x = Math.round(p[0] / kf - ox - 0.5), y = Math.round(p[1] / kf - oy - 0.5), z = Math.round(p[2] / kf - oz - 0.5);
+      if (!(at(x + 1, y, z) && at(x - 1, y, z) && at(x, y + 1, z) && at(x, y - 1, z) && at(x, y, z + 1) && at(x, y, z - 1))) out.push([x, y, z, p[3]]);
+    }
+    // (sampleVoxels gives a random order: the first max are a uniform sample)
+    const total = out.length;
+    if (out.length > max) out.length = max;
+    out.scanned = all.length; out.surface = total;
+    return out;
+  };
+
+  class VoxelFx {
+    constructor(opts = {}) {
+      this.capacity = opts.capacity ?? 16384;
+      this.data = new Float32Array(this.capacity * F); this.dataU = new Uint32Array(this.data.buffer);
+      this.used = 0; this.jobs = []; this.clock = 0; this.dirty = [Infinity, -1];
+      this.seed = opts.seed ?? 7; this.stats = { jobs: 0, cubes: 0, done: 0, compactions: 0 };
+      this.fp = new Float32Array(4);
+    }
+    rng() { let t = (this.seed = (this.seed + 0x6d2b79f5) | 0); t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }
+    get active() { return this.jobs.length > 0; }
+    init(R) {
+      this.R = R;
+      const d = (this.dev = R.dev), mod = ME.shader(d, "voxFx", ME.wgsl.voxFx), B = (b) => ({ buffer: b });
+      this.buf = d.createBuffer({ label: "voxel effects", size: this.data.byteLength, usage: BU.STORAGE | BU.COPY_DST });
+      this.fpBuf = d.createBuffer({ label: "voxel effects clock", size: 16, usage: BU.UNIFORM | BU.COPY_DST });
+      this.pl = d.createRenderPipeline({ label: "voxFx", layout: "auto", primitive: { topology: "triangle-list", cullMode: "none" },
+        vertex: { module: mod, entryPoint: "vs" }, fragment: { module: mod, entryPoint: "fs", targets: R.gTargets }, depthStencil: R.gDepth });
+      this.g0 = R.bg(this.pl, 0, [B(R.ubuf)]);
+      this.g1 = R.bg(this.pl, 1, [B(this.buf), B(R.matBuf), B(this.fpBuf)]);
+    }
+
+    assemble(MB, mi, row, o = {}) { return this.job(MB, mi, row, o, true); }
+    grow(MB, mi, row, o = {}) { return this.job(MB, mi, row, o, false); }
+    // one job: the model's surface voxels as cubes from this.used on (the jobs still on packed down first, if
+    // the room past this.used is short of what it asks for and packing frees some)
+    job(MB, mi, row, o, fly) {
+      const want = Math.min(o.max ?? 8192, this.capacity);
+      if (this.capacity - this.used < want && this.live() < this.used) this.compact();
+      const vox = ME.surfaceVoxels(MB, mi, Math.min(want, this.capacity - this.used), () => this.rng()), n = vox.length;
+      if (!n) return null;
+      const secs = o.secs ?? 1.6, travel = Math.min(secs, o.travel ?? 0.5), span = Math.max(0, secs - travel), radius = o.radius ?? 1.2, lift = fly ? o.lift ?? 0.3 : 0;
+      const t0 = this.clock - (o.at ? o.at * secs : 0), end = t0 + secs, D = this.data, U = this.dataU, first = this.used;
+      // the cube's full size: the model voxel's size under the affine (its x column's length)
+      const size = Math.hypot(row[0], row[4], row[8]);
+      let zlo = Infinity, zhi = -Infinity;
+      const P = new Float32Array(n * 3);
+      for (let k = 0; k < n; k++) {
+        const v = vox[k], x = v[0] + 0.5, y = v[1] + 0.5, z = v[2] + 0.5;
+        P[k * 3] = row[0] * x + row[1] * y + row[2] * z + row[3]; P[k * 3 + 1] = row[4] * x + row[5] * y + row[6] * z + row[7]; P[k * 3 + 2] = row[8] * x + row[9] * y + row[10] * z + row[11];
+        zlo = Math.min(zlo, P[k * 3 + 2]); zhi = Math.max(zhi, P[k * 3 + 2]);
+      }
+      const cx = o.from ? o.from[0] : 0, cy = o.from ? o.from[1] : 0, cz = o.from ? o.from[2] : 0;
+      for (let k = 0; k < n; k++) {
+        const q = (first + k) * F, tx = P[k * 3], ty = P[k * 3 + 1], tz = P[k * 3 + 2];
+        let sx, sy, sz, delay;
+        if (fly) {
+          // from one point, or from a ring around its own place, a little above it; any order
+          if (o.from) { sx = cx + (this.rng() - 0.5) * 0.1; sy = cy + (this.rng() - 0.5) * 0.1; sz = cz + (this.rng() - 0.5) * 0.1; }
+          else { const a = this.rng() * 6.2831853, r = radius * (0.6 + 0.4 * this.rng()); sx = tx + Math.cos(a) * r; sy = ty + Math.sin(a) * r; sz = tz + 0.2 + 0.5 * this.rng(); }
+          delay = span * this.rng();
+        } else {
+          // where it belongs, from the lowest up (a little out of turn, so a layer does not pop in at once)
+          sx = tx; sy = ty; sz = tz;
+          delay = span * Math.min(1, Math.max(0, (tz - zlo) / Math.max(1e-6, zhi - zlo) * 0.9 + 0.1 * this.rng()));
+        }
+        D[q] = tx; D[q + 1] = ty; D[q + 2] = tz; D[q + 3] = t0 + delay;
+        D[q + 4] = sx; D[q + 5] = sy; D[q + 6] = sz; D[q + 7] = end + HOLD;
+        U[q + 8] = (vox[k][3] & 255) | ((fly ? 150 : 0) << 8) | (fly ? 1 << 16 : 0); D[q + 9] = travel; D[q + 10] = size; D[q + 11] = lift;
+      }
+      this.used += n; this.dirty[0] = Math.min(this.dirty[0], first); this.dirty[1] = Math.max(this.dirty[1], this.used);
+      const job = { mi, first, n, t0, end, voxels: vox.surface, shown: n, fly, done: o.done || null, called: false };
+      this.jobs.push(job); this.stats.jobs++; this.stats.cubes += n;
+      return job;
+    }
+    // cube k of a job at a time, as the vertex shader places it: { p, size, on }
+    at(job, k, time) {
+      const q = (job.first + k) * F, D = this.data, U = this.dataU, on = time >= D[q + 3] && time < D[q + 7];
+      const s = Math.min(1, Math.max(0, (time - D[q + 3]) / Math.max(D[q + 9], 1e-4))), e = 1 - (1 - s) ** 3, s0 = ((U[q + 8] >>> 8) & 255) / 255;
+      return { p: [D[q + 4] + (D[q] - D[q + 4]) * e, D[q + 5] + (D[q + 1] - D[q + 5]) * e, D[q + 6] + (D[q + 2] - D[q + 6]) * e + Math.sin(Math.PI * s) * D[q + 11]], size: D[q + 10] * (s0 + (1 - s0) * e), on };
+    }
+    clear() { this.jobs.length = 0; this.used = 0; this.dirty = [Infinity, -1]; }
+    // the cubes of the jobs still on
+    live() { let n = 0; for (const j of this.jobs) n += j.n; return n; }
+    // the jobs still on, packed down from row 0 in their order (jobs take rows in the order they come, so each
+    // moves down or stays); their job.first moves, and the rows that moved go up with the next frame
+    compact() {
+      let to = 0, lo = Infinity;
+      for (const j of this.jobs) {
+        if (j.first !== to) { this.data.copyWithin(to * F, j.first * F, (j.first + j.n) * F); if (lo === Infinity) lo = to; j.first = to; }
+        to += j.n;
+      }
+      this.used = to; this.stats.compactions++;
+      if (this.dirty[1] > to) this.dirty[1] = to;
+      if (lo < to) { this.dirty[0] = Math.min(this.dirty[0], lo); this.dirty[1] = Math.max(this.dirty[1], to); }
+      return to;
+    }
+
+    prepare(time, dt) {
+      if (!this.jobs.length) return;
+      this.clock += Math.max(0, dt);
+      // a job whose cubes are all in place tells the app (it shows the model); HOLD later its cubes are gone
+      for (const j of this.jobs) if (!j.called && this.clock >= j.end) { j.called = true; this.stats.done++; if (j.done) j.done(j); }
+      // HOLD after its end a job leaves, wherever it is in the list (the cubes of ended jobs draw nothing: their
+      // time is past); the table's end falls back to the end of the last job still on
+      let k = 0;
+      for (const j of this.jobs) if (!(this.clock >= j.end + HOLD && j.called)) this.jobs[k++] = j;
+      this.jobs.length = k;
+      if (!k) { this.used = 0; this.dirty = [Infinity, -1]; return; }
+      const last = this.jobs[k - 1];
+      this.used = last.first + last.n;
+      if (this.dirty[1] > this.used) this.dirty[1] = this.used;
+      if (this.dirty[1] > this.dirty[0]) {
+        this.dev.queue.writeBuffer(this.buf, this.dirty[0] * F * 4, this.data, this.dirty[0] * F, (this.dirty[1] - this.dirty[0]) * F);
+        this.dirty = [Infinity, -1];
+      }
+      this.fp[0] = this.clock;
+      this.dev.queue.writeBuffer(this.fpBuf, 0, this.fp);
+    }
+    compute() {}
+    gbuffer(r) {
+      if (!this.jobs.length || !this.used) return;
+      r.setPipeline(this.pl); r.setBindGroup(0, this.g0); r.setBindGroup(1, this.g1);
+      r.draw(36, this.used);
+    }
+  }
+  ME.VoxelFx = VoxelFx;
+})();
+
+</script>
 <script>/* ../MossheartEngine/src/shaders/common.js */
 /* Shared WGSL: the per-frame uniform block (mirrored by ME.UOFF), hashing/noise, octahedral normals,
    sun-volume addressing, the wind field and the canopy light: the sun reaches the jar through an
@@ -21301,7 +21796,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.111.0", name: "Mossheart", commit: "07f8eb2b" };
+  G.VERSION = { v: "0.112.0", name: "Mossheart", commit: "dddd6c95" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -22636,7 +23131,7 @@ function MA_DSP() {
       // a Sundew pays a share of the kill dew for a creature that dies in its reach (the best one only)
       let sd = 0; for (const [x, y, r, fig] of G.state.sundews || []) if ((p[0] - x) ** 2 + (p[1] - y) ** 2 <= r * r) sd = Math.max(sd, fig);
       if (sd > 0) G.state.earn(Math.round(reward * sd), "sundew", p);
-      G.emit("kill", { kind, pos: p, reward, element, boss: !!def.boss });
+      G.emit("kill", { kind, pos: p, reward, element, boss: !!def.boss, idx: i }); // (idx: its slot, read by the view before a split refills it)
       if (def.split) { for (let k = 0; k < def.split; k++) this.spawn(def.into, hpK, this.trait, { dist: Math.max(0, dist - 0.12 * k), lat, road }); G.emit("split", { kind, pos: p, count: def.split }); }
     }
     // Ember Seeds: the creature smoulders for `dps` (no element) over `secs`; a new spark keeps the hotter fire
@@ -27725,6 +28220,97 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 })();
 
 </script>
+<script>/* src/view/deaths.js */
+/* How a creature dies (phase C, the user 2026-11-10): each death picks one of its kind's ways at random, so a
+   wave does not fall apart the same way twice.
+   - burst:    a handful of its voxels thrown out (the old death; the cheapest, and every phone's)
+   - dissolve: its own voxels where it stood, crumbling down and out (ME.VoxelPhysics.dissolve)
+   - debris:   a Plated or a big one (size >= 1.3, the bosses) breaks hard: its voxels flung far, chips off the ground
+   - topple:   a walker keels over as one solid (ME.Bodies), lies a moment, then crumbles where it fell
+   - fall:     a flier (Winged, or a kind that flies) drops out of the air tumbling, and breaks where it lands
+   At most BODIES_MAX solids at once and DISSOLVE_BUDGET dissolved voxels a second; past either a death bursts.
+   ?death=burst|dissolve|debris|topple|fall pins one way (shots); ?death=0 is the old burst only. */
+(function () {
+  const G = window.MG, D = G.Defs, ME = window.ME, TAU = Math.PI * 2;
+  const WAYS = ["burst", "dissolve", "debris", "topple", "fall"];
+  const BODIES_MAX = 4, DISSOLVE_BUDGET = 1600;
+  // dissolved voxels a kind gives at most (a creature at vs24 is 300 to 2,000; the pool holds 12,288 for everything)
+  const DIS_MAX = (def) => (def.boss ? 1400 : def.size >= 1.3 ? 420 : def.size <= 0.7 ? 90 : 220);
+  // a toppled walker lies TOPPLE_LIE s before it crumbles; a faller breaks on its first touch, or after FALL_MAX s
+  const TOPPLE_LIE = [0.55, 0.9], FALL_MAX = 2.5;
+
+  class Deaths {
+    constructor(view) {
+      this.view = view; this.app = view.app; this.B = view.app.bodies || null;
+      this.phone = ME.phoneLike();
+      const pin = ME.params.get("death");
+      this.pin = pin === "0" ? "burst" : WAYS.includes(pin) ? pin : null;
+      this.live = []; this.spent = 0; this.stats = { burst: 0, dissolve: 0, debris: 0, topple: 0, fall: 0 };
+    }
+    reset() { if (this.B) for (const d of this.live) this.B.remove(d.b); this.live.length = 0; this.spent = 0; }
+    // the ways open to this death: e = { kind, def, flier, plated, wall }
+    ways(e) {
+      const out = ["burst", "dissolve"];
+      if (e.plated || e.def.size >= 1.3 || e.def.boss) out.push("debris");
+      if (this.B && !e.wall && !e.def.boss) out.push(e.flier ? "fall" : "topple");
+      return out;
+    }
+    pick(e) {
+      // (one on a wall is drawn in its own frame, not a yaw: it bursts)
+      if ((this.phone && !this.pin) || e.wall) return "burst";
+      let way = this.pin || null;
+      if (!way) { const w = this.ways(e); way = w[Math.floor(Math.random() * w.length)]; }
+      if ((way === "topple" || way === "fall") && (!this.B || e.wall || this.live.length >= BODIES_MAX)) way = "dissolve";
+      if ((way === "dissolve" || way === "debris") && this.spent + DIS_MAX(e.def) > DISSOLVE_BUDGET) way = "burst";
+      return way;
+    }
+    // A creature dies at p (its anchor as drawn), turned yaw, model mi at scale sc (cm.scale), drawn with mark.
+    // Returns the way it went; "burst" leaves the throw to the caller (scene.burst: its water and sand).
+    die(e, mi, p, yaw, sc, mark) {
+      const way = this.pick(e), P = this.view.phys, MB = this.view.MB;
+      this.stats[way]++;
+      if (way === "dissolve" || way === "debris") {
+        const hard = way === "debris", max = DIS_MAX(e.def) * (hard ? 1.3 : 1);
+        const row = ME.affineOf(MB, mi, p[0], p[1], p[2], yaw, false, sc);
+        const n = P.dissolve(MB, mi, row, hard ? { max, speed: 1.7, v: [0, 0, 0.6], life: 3.2 } : { max, speed: 0.35, life: 2.6 });
+        this.spent += n;
+        if (hard) P.explode([p[0], p[1], p[2]], 0.18, 24, { speed: 1.2, life: 2.2 });
+      } else if (way === "topple" || way === "fall") {
+        const fine = MB.models[mi].fine || 1, c = Math.cos(yaw), s = Math.sin(yaw);
+        let v, w;
+        if (way === "topple") {
+          // keel over sideways (a spin about the heading), a little back along it
+          const side = Math.random() < 0.5 ? -1 : 1, spin = 4 + Math.random() * 2;
+          v = [-c * 0.4, -s * 0.4, 0.9]; w = [c * spin * side, s * spin * side, (Math.random() - 0.5) * 1.5];
+        } else {
+          // carried on along its way, tumbling
+          v = [c * 1.2, s * 1.2, 0.3]; w = [(Math.random() - 0.5) * 7, (Math.random() - 0.5) * 7, (Math.random() - 0.5) * 3];
+        }
+        const b = this.B.add(mi, p, { yaw, scale: sc * fine, flags: 1, mark, v, w });
+        this.live.push({ b, way, t: 0, lie: way === "topple" ? TOPPLE_LIE[0] + Math.random() * (TOPPLE_LIE[1] - TOPPLE_LIE[0]) : 0, def: e.def, landed: -1 });
+      }
+      return way;
+    }
+    // each frame: the solids that are done crumble; the dissolve budget drains
+    update(dt) {
+      this.spent = Math.max(0, this.spent - DISSOLVE_BUDGET * dt);
+      for (let k = this.live.length - 1; k >= 0; k--) {
+        const d = this.live[k], b = d.b;
+        d.t += dt;
+        if (b.gone) { this.B.remove(b); this.live.splice(k, 1); continue; }
+        if (d.landed < 0 && b.hits > 0 && d.t > 0.12) d.landed = d.t;
+        const done = d.way === "fall" ? d.landed >= 0 || d.t > FALL_MAX : (d.landed >= 0 && d.t - d.landed > d.lie) || d.t > 2.4;
+        if (!done) continue;
+        const n = this.B.dissolve(b, { max: DIS_MAX(d.def), speed: d.way === "fall" ? 1.1 : 0.4, life: 2.6 });
+        this.spent += n;
+        this.live.splice(k, 1);
+      }
+    }
+  }
+  G.Deaths = Deaths;
+})();
+
+</script>
 <script>/* src/view/scene.js */
 /* GameView: how a run looks, through the engine's generic extension points (and nothing else):
      an instance layer (sim.layers)  the plants (the asset set's, one model per level), the placement
@@ -27798,6 +28384,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.fx = new G.Fx();
       this.boonFx = new G.BoonFx(this); // the boons' looks (boonfx.js)
       this.plantFx = new G.PlantFx(this); // the plants' looks beyond their models (plantfx.js)
+      this.deaths = new G.Deaths(this); // how each one dies (deaths.js)
       this.creatureFx = new G.CreatureFx(this); // the deeper creatures' looks (creaturefx.js)
       this.game = null; this.anim = new Map();
       this.heartKick = 0; this.heartStatic = null; this.heartFrames = null; this.heartStage = 0;
@@ -27826,7 +28413,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       on("tower_moved", (e) => { const t = e.tower; this.crumble({ kind: t.kind, level: t.level, graft: t.graft, X: e.from[0], Y: e.from[1], VZ: e.from[2] }); this.anim.set(t, this.newAnim()); this.updateCells(); this.updateLights(); });
       // (a graft: the other parent goes from its plot, crumbling as if uprooted, Game.graft)
       on("tower_grafted", (e) => { this.crumble(e.other); this.anim.delete(e.other); if (this.selected === e.other) this.selected = e.tower; this.updateCells(); this.updateLights(); });
-      on("kill", (e) => this.burst(e.kind, e.pos));
+      on("kill", (e) => this.burst(e.kind, e.pos, e.idx));
       // (a Plated one's plate breaks: it is drawn bare from now on, traitLook, and the plate crumbles off it as an
       // uprooted plant does, slowly)
       on("shell_broken", (e) => { const fr = e.plated && G.models.traitFrames(e.kind, "plated"); if (fr) this.emitModel(fr[0], e.pos, Math.random() * TAU, { n: 36, speed: 0.7, life: 3 }); });
@@ -27861,7 +28448,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.heartStatic = hs ? { place: hs.place, frames: this.heartFrames[0], phase: hs.phase, hidden: false } : null;
       this.heartStage = 0; this.bossWave = false; this.beat.t = -1e9; this.beat.hit = false;
       // every loose voxel goes, and the sand banks are as they were baked (dug sand stays within a run)
-      this.phys.clear(); this.phys.resetTerrain();
+      this.deaths.reset(); this.phys.clear(); this.phys.resetTerrain();
       this.later = []; this.footfall.clear(); this.burrow.clear();
       for (const p of this.pots) p.hidden = false; // (the pots stand again)
       this.potsFlying = []; this.potWaves = []; this.potStep.clear();
@@ -27925,7 +28512,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         a.leanTo[0] *= Math.exp(-dt * 1.5); a.leanTo[1] *= Math.exp(-dt * 1.5);
       }
       this.fx.update(dt, this.game && this.game.enemies); this.boonFx.update(dt); this.plantFx.update(dt); this.creatureFx.update(dt);
-      this.updateSand(dt); this.breakPots(dt);
+      this.updateSand(dt); this.breakPots(dt); this.deaths.update(dt);
       this.heartKick = Math.max(0, this.heartKick - dt * 1.6);
       // dusk falls while a wave runs, deeper as the run goes on and deepest for the boss; day to build in
       const P = G.Phase, ph = S.phase;
@@ -27972,16 +28559,25 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // beside the water, what it throws in lives long enough to sink to the bed, and a splash follows; on or
     // by a sand bank its fall kicks a crater. The boss also blasts the ground it fell on, and the banks
     // around give way.
-    burst(kind, p) {
+    // (i: its slot in the enemies, still as it was drawn: deaths.js picks the way; over open water always this burst)
+    burst(kind, p, i = -1) {
       const k = D.ENEMY_ORDER.indexOf(kind), cm = G.models.creature[k];
       let [n, speed, life] = BURST[kind] || BURST.grub;
       const over = this.waterAt(p[0], p[1]), wet = over !== null ? [p[0], p[1], over] : this.waterNear(p[0], p[1], 1.2);
       if (over !== null) { speed *= 0.35; life = 9; } else if (wet) life *= 3;
-      this.emitModel(cm.frames[0], p, Math.random() * TAU, { n, speed, life });
+      if (over !== null || i < 0 || this.dieAs(kind, p, i, cm) === "burst") this.emitModel(cm.frames[0], p, Math.random() * TAU, { n, speed, life });
       if (wet) this.later.push([over !== null ? 0.05 : 0.35, wet, (SPLASH[kind] || 0.5) * (over !== null ? 1 : 0.5)]);
       const s = this.sandNear(p[0], p[1], 0.8);
       if (s) this.phys.dig(s, DIG[kind] || 0.1, { speed: 0.6 });
       if (D.ENEMIES[kind].boss) { this.phys.explode(p, 0.8, 260, { speed: 2.4, life: 6 }); this.slam(p[0], p[1], 3, 0); }
+    }
+    // a death's way (deaths.js), from the creature as drawn this frame: its trait's look, turn, scale and marks
+    dieAs(kind, p, i, cm) {
+      const E = this.game.enemies, def = D.ENEMIES[kind], c = E.ct[i], id = c >= 0 ? D.CTRAITS[c].id : null;
+      const fr = this.traitLook(E, i, G.models, cm.frames), mark = G.creatureMark(E.kind[i]) | fr.mark;
+      const flier = (def.fly > 0 || id === "winged") && !(E.groundT[i] > 0);
+      const e = { kind, def, wall: !!E.face[i], plated: id === "plated", flier };
+      return this.deaths.die(e, fr.frames[0], p, E.yaw[i] - cm.fwd, cm.scale, mark);
     }
 
     // --- water and sand
@@ -34665,15 +35261,16 @@ function MG_SFX(L) {
     // loose voxels: creatures burst into theirs, uprooted plants crumble, the fallen Heart Tree falls apart;
     // splashes on the water, digs and collapses in the sand banks
     const phys = R.addLayer(new ME.VoxelPhysics(T, { capacity: 12288, sliceMs: 4 })); // (sliceMs: a slam's loosen spread over frames, about 4 ms each)
+    const bodies = new ME.Bodies(T, MB, { phys }); // (phase C: a toppled or falling creature as one solid; view/deaths.js)
     // dynamic resolution (the engine's), unless ?scale= pins the render scale; self-tests are fixed too
     if (ME.params.has("scale")) R.set.scale = ME.qn("scale", 1);
     R.set.autoScale = ME.qn("auto", ME.params.has("scale") || ME.qn("selftest", 0) ? 0 : 1) === 1;
     const dyn = new ME.DynRes(R);
 
-    const app = { gpu, st, pal, T, mesh, MB, sim, R, critters, phys };
+    const app = { gpu, st, pal, T, mesh, MB, sim, R, critters, phys, bodies };
     const level = G.levelFrom(app, rules);
     const scene = (app.scene = new G.GameView(app));
-    sim.layers.push(scene, critters);
+    sim.layers.push(scene, bodies, critters);
     sim.wiltAt = (x, y) => scene.wiltAt(x, y);
     const seed = ME.params.has("seed") ? ME.qn("seed", 1) >>> 0 : (Date.now() ^ (Math.random() * 1e9)) >>> 0;
     S.newRun(seed);
