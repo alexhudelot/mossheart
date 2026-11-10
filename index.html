@@ -9852,7 +9852,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   const ME = window.ME;
   const INST_FLOATS = 28; // 6 x vec4 matrices + vec4u info
   // put()'s flags: bits 0..7 mark a unit (any of them: lit as a unit, light.js), INST_FLY a flier with a blob shadow
-  // (E1b), bits 8..15 the veil (E1a): 0 opaque, else 255 - alpha * 255, dithered away in the volume pass
+  // (E1b), bits 8..15 the veil (E1a): 0 opaque, else 255 - alpha * 255, drawn as an outline in the volume pass
   const INST_FLY = 2, BLOB_MAX = (ME.BLOB_MAX = ME.BLOB_MAX || 16);
   const content = () => ME.content || {}, NONE = {};
   // 3x3 products into a scratch matrix (row-major, the same sums in the same order as before E9)
@@ -10333,7 +10333,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   ME.FACE_FRAMES = { "+x": [0, 0, 1, 1, 0, 0, 0, 1, 0], "+y": [0, 1, 0, 0, 0, 1, 1, 0, 0] };
   ME.INST_FLOATS = INST_FLOATS;
   ME.INST_UNIT = 1; ME.INST_FLY = INST_FLY;
-  // the flag bits that draw an instance at alpha a (0..1) on a 4x4 ordered dither (Veiled): ME.INST_UNIT | ME.veilBits(0.5)
+  // the flag bits that draw an instance Veiled, as the outline of its silhouette (w = 1 + 1.5 a px; a 0..1,
+  // and 1 draws it whole): ME.INST_UNIT | ME.veilBits(0.4)
   ME.veilBits = (a) => (255 - Math.round(Math.min(1, Math.max(0, a)) * 255)) << 8;
 })();
 
@@ -10756,6 +10757,61 @@ fn lodOf(I: Inst) -> vec2u {
 
 fn loOf(M: Model) -> vec3f { return vec3f(f32(M.base.w & 1023u), f32((M.base.w >> 10u) & 1023u), f32(M.base.w >> 20u)); }
 
+// where a ray from ro along rd first meets a voxel of M (1e30: it misses): fs's march below without the hit's
+// details, for a Veiled instance's outline taps (a separate copy keeps fs's own march as it was for the rest)
+fn hitT(M: Model, ro: vec3f, rd: vec3f) -> f32 {
+  let idims = vec3i(M.dims.xyz);
+  let zax = abs(rd) < vec3f(1e-6);
+  let inv = 1.0 / select(rd, select(vec3f(-1e-6), vec3f(1e-6), rd > vec3f(0.0)), zax);
+  let ta = (loOf(M) - ro) * inv; let tb = (vec3f(M.dims.xyz) - ro) * inv;
+  let tmin = min(ta, tb); let tmax = max(ta, tb);
+  let tExit = min(min(tmax.x, tmax.y), tmax.z);
+  let pos = rd > vec3f(0.0); let isg = vec3i(select(vec3f(-1.0), vec3f(1.0), pos)); let tDelta = abs(inv);
+  let bbase = vec3i(M.base.xyz / 8u);
+  let psh = countTrailingZeros(textureDimensions(pool, 0).x) - 3u; let pmsk = (1u << psh) - 1u;
+  var t = max(max(max(tmin.x, tmin.y), tmin.z), 0.0) + 1e-3;
+  var steps = 0u;
+  loop {
+    if (t >= tExit || steps > 200u) { break; }
+    let p = ro + rd * t;
+    let br = vec3i(floor(p / 8.0));
+    let slot = textureLoad(bricks, bbase + br, 0).r;
+    if ((slot >> 24u) == 0u) {
+      let tb2 = select((vec3f(br) * 8.0 + select(vec3f(0.0), vec3f(8.0), pos) - ro) * inv, vec3f(1e30), zax);
+      t = min(min(tb2.x, tb2.y), tb2.z) + 1e-3; steps += 1u;
+      continue;
+    }
+    let k = (slot & 0xFFFFFFu) - 1u; let om = slot >> 24u;
+    let pb = vec3i(vec3u(k & pmsk, (k >> psh) & pmsk, k >> (2u * psh)) * 8u);
+    var cell = vec3i(floor(p));
+    var tMax = select((vec3f(cell) + select(vec3f(0.0), vec3f(1.0), pos) - ro) * inv, vec3f(1e30), zax);
+    var oc = vec3i(-1);
+    loop {
+      if (any(cell < vec3i(0)) || any(cell >= idims)) { return 1e30; }
+      steps += 1u;
+      let co = cell >> vec3u(2u);
+      if (any(co != oc)) {
+        oc = co; let ob = co & vec3i(1);
+        if (((om >> u32(ob.x + ob.y * 2 + ob.z * 4)) & 1u) == 0u) {
+          let te = select((vec3f(co) * 4.0 + select(vec3f(0.0), vec3f(4.0), pos) - ro) * inv, vec3f(1e30), zax);
+          t = min(min(te.x, te.y), te.z) + 1e-3;
+          if (t >= tExit || steps > 200u) { return 1e30; }
+          cell = vec3i(floor(ro + rd * t));
+          if (any((cell >> vec3u(3u)) != br)) { break; }
+          tMax = select((vec3f(cell) + select(vec3f(0.0), vec3f(1.0), pos) - ro) * inv, vec3f(1e30), zax);
+          continue;
+        }
+      }
+      if (textureLoad(pool, pb + (cell & vec3i(7)), 0).a > 0.0) { return t; }
+      if (tMax.x < tMax.y && tMax.x < tMax.z) { t = tMax.x; cell.x += isg.x; tMax.x += tDelta.x; }
+      else if (tMax.y < tMax.z) { t = tMax.y; cell.y += isg.y; tMax.y += tDelta.y; }
+      else { t = tMax.z; cell.z += isg.z; tMax.z += tDelta.z; }
+      if (any((cell >> vec3u(3u)) != br) || steps > 200u) { t += 1e-3; break; }
+    }
+  }
+  return 1e30;
+}
+
 @vertex fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VO {
   let I = insts[ii];
   var o: VO;
@@ -10776,14 +10832,10 @@ fn loOf(M: Model) -> vec3f { return vec3f(f32(M.base.w & 1023u), f32((M.base.w >
 
 @fragment fn fs(i: VO) -> GO {
   let I = insts[i.ii]; var M = models[i.mk.x]; let kf = f32(i.mk.y); // (kf: one voxel in the instance's model voxels)
-  // a Veiled instance (E1a, ME.veilBits: info.y bits 8..15 = 255 - alpha * 255) keeps alpha of its pixels on a 4x4
-  // ordered dither, offset per instance so two veils overlap without one pattern; at 0.5 a checkerboard
+  // a Veiled instance (E1a, ME.veilBits: info.y bits 8..15 = 255 - alpha * 255) draws only the outline of its
+  // silhouette (after the march below). One pixel's step in the ray origins i.l: taken here, in uniform control flow
   let veil = (I.info.y >> 8u) & 255u;
-  if (veil != 0u) {
-    let q = vec2u(i.pos.xy) + vec2u(i.ii, i.ii >> 2u); let a = q.x ^ q.y; let b = q.y;
-    let d = ((a & 1u) << 3u) | ((b & 1u) << 2u) | (((a >> 1u) & 1u) << 1u) | ((b >> 1u) & 1u);
-    if ((f32(d) + 0.5) / 16.0 >= 1.0 - f32(veil) / 255.0) { discard; }
-  }
+  let ddx = dpdx(i.l); let ddy = dpdy(i.l);
   // a swap's dissolve (R.swapModel): the pixels past the fade on a fixed dither still march the old entry,
   // in its own voxels (ro), mapped back (om) for the hit's position
   var ro = i.l; var om = vec4f(0.0, 0.0, 0.0, 1.0); var old = false;
@@ -10856,6 +10908,20 @@ fn loOf(M: Model) -> vec3f { return vec3f(f32(M.base.w & 1023u), f32((M.base.w >
     if (hit) { break; }
   }
   if (!hit) { discard; }
+  // Veiled: a hit pixel stays only on the silhouette's edge, where a ray w px away (4 taps, w = 1 + 1.5 alpha: 1.6
+  // at Game's 0.4) misses the model or meets it well behind this hit (a leg over the body); the rest is discarded,
+  // so the scene shows through. The rays are parallel (orthographic) and the taps start on i.l's plane, so the
+  // t's compare as depths. A leaving voxel model's entry (old) has its own voxels: the step scales by 1 / om.w
+  if (veil != 0u) {
+    let w = 1.0 + 1.5 * (1.0 - f32(veil) / 255.0);
+    let kd = max(3.0, 3.0 * w * length(ddx) / om.w); // (the depth jump that counts as an edge, in voxels)
+    var edge = false;
+    for (var k = 0u; k < 4u && !edge; k += 1u) {
+      let d = select(ddy, ddx, k < 2u) * select(-w, w, (k & 1u) == 1u) / om.w;
+      edge = hitT(M, ro + d, rd) > t + kd;
+    }
+    if (!edge) { discard; }
+  }
   let v = textureLoad(pool, pb + (cell & vec3i(7)), 0);
   var lp = ro + rd * t; if (old) { lp = (lp + om.xyz) * om.w; }
   let hw = xf(I, lp * kf);
@@ -20697,7 +20763,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.107.0", name: "Mossheart", commit: "2370ddb8" };
+  G.VERSION = { v: "0.108.0", name: "Mossheart", commit: "31605dd7" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
