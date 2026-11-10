@@ -10235,12 +10235,12 @@ struct U {
   canopy3: vec4f, // canopy plane height, shaft haze height, haze base z, moon (0 day .. 1 night)
   water2: vec4f,  // ripple count, caustics strength, water-level grid size, -
   lgrid: vec4f,   // light grid origin xy, size wh
-  field: vec4f,   // app ground maps: map size wh (tiles), field texels per tile, -
+  field: vec4f,   // app ground maps: map size wh (tiles), field texels per tile, the act's freeze (water ice 0..1)
   weather: vec4f, // R.weather: rain, snow, fog, flash (0 without weather)
   weather2: vec4f, // wet, cover, cloud, fog height
   weather3: vec4f, // fog base z, low fog, petals, wind channel
   wclear: array<vec4f, 4>, // fog clearings: x, y, radius, softness (radius 0 = unused)
-  weather4: vec4f, // rain streak layers (R.rainLayers: 3; 2 on compat, 1 on a phone), -, -, -
+  weather4: vec4f, // rain streak layers (R.rainLayers: 3; 2 on compat, 1 on a phone), the act's grass height (1), -, -
   key: vec4f,     // the key light's colour (look.sunCol, linear), w = 1 when the level tints its light
   key2: vec4f,    // the ambient's colour (look.ambCol, linear; the key colour without), w = the backdrop: 0 forest, 1 night, 2 void
   sky: vec4f,     // night and void backdrops: zenith colour (linear); w = star density (night), cloud amount (void)
@@ -10718,6 +10718,7 @@ fn loOf(M: Model) -> vec3f { return vec3f(f32(M.base.w & 1023u), f32((M.base.w >
 @group(1) @binding(2) var fieldT: texture_2d<f32>;
 @group(1) @binding(3) var lin: sampler;
 fn fieldAt(xy: vec2f) -> f32 { return textureSampleLevel(fieldT, lin, xy / u.field.xy, 0.0).r; }
+fn growthAt(xy: vec2f) -> f32 { return textureSampleLevel(fieldT, lin, xy / u.field.xy, 0.0).g; }
 //#hooks wilt
 struct VO { @builtin(position) pos: vec4f, @location(0) n: vec3f, @location(1) zf: f32, @location(2) @interpolate(flat) ms: vec2u };
 struct GO { @location(0) a: vec4f, @location(1) n: vec4f };
@@ -10746,7 +10747,8 @@ const FN = array<vec3f, 5>(vec3f(1,0,0), vec3f(-1,0,0), vec3f(0,1,0), vec3f(0,-1
   // the hook ignores it
   _ = fieldT; _ = lin;
   let bl = clamp(hookWilt(B.xy), 0.0, 1.0);
-  let vsz = 1.0 / u.grid.w; let Hh = hv * vsz * (1.0 - 0.45 * bl); let t = u.vdir.w;
+  // the act's grass height (weather4.y, 1 without an act) where its growth has spread
+  let vsz = 1.0 / u.grid.w; let Hh = hv * vsz * (1.0 - 0.45 * bl) * mix(1.0, u.weather4.y, growthAt(B.xy)); let t = u.vdir.w;
   let zf = (f32(seg) + c.z) / 3.0;
   let wd = u.wind.xy; let wp = vec2f(-wd.y, wd.x);
   let g = gust(B.xy, t);
@@ -10904,6 +10906,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 @group(1) @binding(13) var cellT: texture_2d<f32>;               // the app's rgba per map tile (Renderer.setCells)
 fn fieldAt(xy: vec2f) -> f32 { return textureSampleLevel(fieldT, lin, xy / u.field.xy, 0.0).r; }
 fn cellAt(c: vec2i) -> vec4f { if (any(c < vec2i(0)) || any(c >= vec2i(u.field.xy))) { return vec4f(0.0); } return textureLoad(cellT, c, 0); }
+fn growthAt(xy: vec2f) -> f32 { return textureSampleLevel(fieldT, lin, xy / u.field.xy, 0.0).g; } // how far the act's look has spread (Renderer.setGrowth)
 //#hooks shade overlay
 // sunlight focused by the moving surface: bright threads where two drifting noise layers cross
 fn caustic(q0: vec2f, t: f32) -> f32 {
@@ -11047,6 +11050,12 @@ fn voidSky(fc: vec2f, uv: vec2f) -> vec3f {
     col = rampC(mat, s) * (A.rgb / max(m0.rgb, vec3f(0.003)));
   } else {
     col = A.rgb * (vec3f(1.0, 0.85, 0.6) * 2.4 * (lam * vis * (0.15 + 0.85 * cook) + trans) + vec3f(0.18, 0.3, 0.2) * ao * 0.8);
+  }
+  // the act's palette (Renderer.setAct): terrain, grass, leaves and models, not units or emitters, as far as
+  // its growth has spread (zeros in the table: no act, the frame unchanged)
+  if (aux < 1000.0 && cls != 3u) {
+    let at = mats[512u + mat];
+    if (at.w > 0.0) { col *= mix(vec3f(1.0), at.rgb, at.w * growthAt(p.xy)); }
   }
   col *= 1.0 + max(0.0, s - 0.9) * 1.8;
   // a level's key light (look.sunCol, look.ambCol): the key's colour where it reaches, the ambient's in its shade
@@ -11270,6 +11279,18 @@ fn waves(p: vec2f, fl: vec2f, st: f32, t: f32, rough: f32) -> Wv {
   let rr = rainRings(p, t); w.h += rr.x; w.foam += rr.y;
   return w;
 }
+// the act's freeze (u.field.w, Renderer.setAct): ice creeping in from the shallows, the whole surface at 1; flat,
+// pale (the foam ramp, a touch blue), faint cracks, nearly opaque. 0 returns the water as it was.
+fn ice(c: vec4f, w: vec3f, thick: f32, sv: f32, cook: f32) -> vec4f {
+  let fz = u.field.w;
+  if (fz <= 0.0) { return c; }
+  let edge = thick + (vnoise(w.xy * 3.0) - 0.5) * 0.08;
+  let cov = select(sstep(fz * 0.9 + 0.03, fz * 0.9 - 0.05, edge) * sstep(0.0, 0.15, fz), 1.0, fz >= 0.999);
+  let crack = sstep(0.035, 0.0, abs(vnoise(w.xy * 2.6 + 7.0) - 0.5)) * 0.22 + sstep(0.02, 0.0, abs(vnoise(w.xy * 6.1 + 2.0) - 0.5)) * 0.12;
+  let k = sv * (0.6 + 0.4 * cook);
+  let ic = rampC(u32(u.ids.z), 0.7 + 0.22 * cook * sv) * vec3f(0.9, 0.97, 1.06) * keyTint(k) * (1.0 - crack);
+  return vec4f(mix(c.rgb, ic, cov), mix(c.a, 0.93, cov));
+}
 @fragment fn fs(i: VO) -> @location(0) vec4f {
   let ds = textureLoad(gD, vec2i(i.pos.xy), 0);
   let thick = max(0.0, i.pos.z - ds) * u.psrc.w / 1.732;
@@ -11298,7 +11319,7 @@ fn waves(p: vec2f, fl: vec2f, st: f32, t: f32, rough: f32) -> Wv {
   let foam = clamp(shore + lines + W0.foam, 0.0, 1.0);
   col = mix(col, rampC(u32(u.ids.z), 0.86 + 0.14 * cook * sv) * (1.0 + cook * sv * 0.4) * keyTint(sv * (0.6 + 0.4 * cook)), foam);
   let alpha = clamp(0.3 + 0.55 * (1.0 - exp(-thick * 2.2)) + fres * 0.3, 0.0, 0.9);
-  return vec4f(col, max(alpha, foam));
+  return ice(vec4f(col, max(alpha, foam)), i.w, thick, sv, cook);
 }
 `;
 
@@ -11366,7 +11387,7 @@ fn lake(i: VO, li: u32) -> vec4f {
   let a = clamp(body * (1.0 - fres) + fres * 0.9, 0.0, 0.98);
   var col = (deep * body * (1.0 - fres) + sky * fres * 0.9 + spec) / max(a, 1e-3);
   col = mix(col, rampC(u32(u.ids.z), 0.86 + 0.14 * cook * sv) * (1.0 + cook * sv * 0.4) * keyTint(sv * (0.6 + 0.4 * cook)), foam);
-  return vec4f(col, max(a, foam));
+  return ice(vec4f(col, max(a, foam)), i.w, thick, sv, cook);
 }
 @fragment fn fs(i: VO) -> @location(0) vec4f {
   let li = u32(i.f.w + 0.5);
@@ -12364,6 +12385,7 @@ fn boxOf(V: Vox) -> Box {
      opts.hooks      WGSL for the shader hooks (ME.SHADER_HOOKS: marked volumes, re-shading, overlays, wilt)
      user            Float32Array of ME.USER_SLOTS vec4s the hooks read as u.user[k], uploaded every frame
      setField(r8)    a scalar field over the map at opts.fieldRes texels per tile (hooks: fieldAt)
+     setGrowth(r8)   a second field, how far the act's look has spread (growthAt); setAct(o) the act's look (ME.Sky acts)
      setCells(rgba8) one rgba texel per map tile (hooks: cellAt)
      setLights(list) point lights on top of the scene's own
      sprites         an ME.SpriteBatch drawn in the forward pass (orbs, beams, rings, gauge bars)
@@ -12859,7 +12881,9 @@ fn boxOf(V: Vox) -> Box {
       const d = this.dev, S = this.S, T = S.T, MB = S.MB;
       // ---------------- static resources
       this.ubuf = d.createBuffer({ label: "uniforms", size: ME.USIZE * 4, usage: BU.UNIFORM | BU.COPY_DST });
-      this.matBuf = ME.buffer(d, S.tables.mats, BU.STORAGE, "mats");
+      // the 256 materials (2 vec4 each), then 256 act tints (setAct: rgb multiplier, w on; zeros = none)
+      const mt = new Float32Array(256 * 12); mt.set(S.tables.mats.subarray(0, 256 * 8));
+      this.matBuf = ME.buffer(d, mt, BU.STORAGE, "mats");
       this.rampTex = d.createTexture({ label: "ramps", size: [16, 256], format: "rgba8unorm-srgb", usage: GU.TEXTURE_BINDING | GU.COPY_DST });
       d.queue.writeTexture({ texture: this.rampTex }, S.tables.ramps, { bytesPerRow: 64 }, [16, 256]);
       this.densTex = ME.tex3d(d, "density", "r8unorm", [T.NX >> 1, T.NY >> 1, T.NZ >> 1], T.mips, 1); // half-res base: terrain shading never needed full res
@@ -12894,7 +12918,11 @@ fn boxOf(V: Vox) -> Box {
       this.grassBuf = ME.buffer(d, S.grass.blades, BU.STORAGE, "grass blades");
       const map = S.st.map;
       this.fieldDims = [map.W * this.fieldRes, map.H * this.fieldRes];
-      this.fieldTex = d.createTexture({ label: "app field", size: this.fieldDims, format: "r8unorm", usage: GU.TEXTURE_BINDING | GU.COPY_DST });
+      // r: the app's field (setField), g: the growth (setGrowth, full until the app writes one)
+      this.fieldTex = d.createTexture({ label: "app field", size: this.fieldDims, format: "rg8unorm", usage: GU.TEXTURE_BINDING | GU.COPY_DST });
+      this.fieldBytes = new Uint8Array(this.fieldDims[0] * this.fieldDims[1] * 2);
+      for (let i = 1; i < this.fieldBytes.length; i += 2) this.fieldBytes[i] = 255;
+      d.queue.writeTexture({ texture: this.fieldTex }, this.fieldBytes, { bytesPerRow: this.fieldDims[0] * 2 }, this.fieldDims);
       this.cellTex = d.createTexture({ label: "app cells", size: [map.W, map.H], format: "rgba8unorm", usage: GU.TEXTURE_BINDING | GU.COPY_DST });
       this.spriteBuf = d.createBuffer({ label: "sprites", size: this.sprites.max * 48, usage: BU.STORAGE | BU.COPY_DST });
       this.bubbleBuf = d.createBuffer({ label: "bubbles", size: BUBBLE_MAX * 48, usage: BU.STORAGE | BU.COPY_DST });
@@ -13504,9 +13532,22 @@ fn boxOf(V: Vox) -> Box {
       } else this.sunQ.push(box);
     }
 
-    // The app's ground maps for the shader hooks: a scalar field (fieldRes texels per tile, r8) and one
-    // rgba8 texel per tile.
-    setField(bytes) { this.dev.queue.writeTexture({ texture: this.fieldTex }, bytes, { bytesPerRow: this.fieldDims[0] }, this.fieldDims); }
+    // The app's ground maps for the shader hooks: a scalar field (fieldRes texels per tile, one byte each)
+    // and one rgba8 texel per tile. setGrowth fills the field texture's second channel (same layout): how
+    // far the act's palette (setAct) has reached each spot, 255 everywhere until the app writes one.
+    setField(bytes) { this.fieldChannel(bytes, 0); }
+    setGrowth(bytes) { this.fieldChannel(bytes, 1); }
+    fieldChannel(bytes, c) {
+      const F = this.fieldBytes, n = Math.min(bytes.length, F.length >> 1);
+      for (let i = 0; i < n; i++) F[2 * i + c] = bytes[i];
+      this.dev.queue.writeTexture({ texture: this.fieldTex }, F, { bytesPerRow: this.fieldDims[0] * 2 }, this.fieldDims);
+    }
+    // The act's look (a living map's season, ME.Sky's acts): o.mats a Float32Array(256 * 4) of rgb multipliers per
+    // material id with w 1 where one applies (null: none), o.freeze 0..1 (the water's ice), o.grassH (blade height).
+    setAct(o) {
+      this.dev.queue.writeBuffer(this.matBuf, 256 * 8 * 4, o.mats || (this.actZero || (this.actZero = new Float32Array(256 * 4))));
+      this.actFreeze = o.freeze || 0; this.actGrassH = o.grassH ?? 1;
+    }
     setCells(bytes) { const m = this.S.st.map; this.dev.queue.writeTexture({ texture: this.cellTex }, bytes, { bytesPerRow: m.W * 4 }, [m.W, m.H]); }
 
     // the bell jar's glass (none in a box frame)
@@ -13676,7 +13717,7 @@ fn boxOf(V: Vox) -> Box {
       set4(u, O.geo, E.c[0], E.c[1], E.jar ? E.R : E.half[0], E.top); // (a box: its half x here, minus its half y in look2.z)
       set4(u, O.misc2, fno % 64, 18, E.base, BLOOM_THRESHOLD);
       set4(u, O.look4, st.light.spriteK ?? 1, s.mottle, this.pcount.spray, this.sprayAt);
-      set4(u, O.field, st.map.W, st.map.H, this.fieldRes, 0);
+      set4(u, O.field, st.map.W, st.map.H, this.fieldRes, this.actFreeze || 0);
       // the weather (zeros without one): the channels, wet and cover, the fog's floor and the clearings
       const wv = Wx.cur, on = Wx.active;
       set4(u, O.weather, on ? wv.rain : 0, on ? wv.snow : 0, on ? wv.fog : 0, Wx.flashV);
@@ -13684,7 +13725,7 @@ fn boxOf(V: Vox) -> Box {
       set4(u, O.weather3, on ? Wx.base() : 0, on ? wv.fogLow : 0, on ? wv.petals : 0, on ? wv.wind : 0);
       u.set(Wx.clear, O.wclear);
       if (this.rainLayers == null) this.rainLayers = ME.phone && ME.phone() ? 1 : ME.compat ? 2 : 3; // (read once; a probe may set it)
-      set4(u, O.weather4, this.rainLayers, 0, 0, 0);
+      set4(u, O.weather4, this.rainLayers, this.actGrassH ?? 1, 0, 0);
       u.set(this.key, O.key); u.set(this.key2, O.key2); u.set(this.sky, O.sky); u.set(this.sky2, O.sky2); u.set(this.sky3, O.sky3);
       u.set(this.user, O.user);
       this.dev.queue.writeBuffer(this.ubuf, 0, u);
@@ -15163,8 +15204,8 @@ fn boxOf(V: Vox) -> Box {
    Looks only: the model never reads a game's rng. Its own stream is seeded from the run's seed with a salt
    (?wxseed= pins it, ?wxfront= pins a front), so a replay gets the same sky.
    The game's looks: ME.WX.use(looks, fallback), looks() returning { fronts (merged over FRONTS), climates
-   (replacing CLIMATES), ... } or null, fallback the climate a level without one of its own takes (then
-   CLIMATES.default). A page loads this file after the engine. */
+   (replacing CLIMATES), acts (a living level's acts by level id: ME.Sky's host.acts), ... } or null,
+   fallback the climate a level without one of its own takes (then CLIMATES.default). A page loads this file after the engine. */
 (function () {
   const ME = window.ME;
   const LAYERS = ["cloud", "rain", "snow", "fog", "fogLow", "wind", "gust", "petals", "leaves", "flash"];
@@ -15409,12 +15450,21 @@ fn boxOf(V: Vox) -> Box {
    calls apply(s) at its end). host is the game's, every member optional:
      key          the device storage key ("me.sky")
      seed()       the run's seed (1)
-     run()        this frame's { id, level, build, over, life }: id the run's identity (a new one starts the
+     run()        this frame's { id, level, build, over, life, act }: id the run's identity (a new one starts the
                   model on seed() and the level's calm front), level the climate's id (ME.WX.climate), build
-                  true between waves, over at game over, life 0 to 1 (below a third, the hurt rain). Called
-                  every frame: return one object rewritten in place
+                  true between waves, over at game over, life 0 to 1 (below a third, the hurt rain), act the
+                  living level's act (1 = its first; 0 or none: the level's own look). Called every frame:
+                  return one object rewritten in place
      on(ev, f)    the run's events: f({ n, boss }) on "start" (a wave's), f() on "clear" (its end)
      mood(level)  a level's own mood until the player picks one (else Auto)
+     acts(level)  a living level's acts, [act 1, act 2, ...] (null: none; by default the weather looks' table,
+                  ME.WX.looks().acts[level]), each one's look, every member optional: { mood, set, pal, grassH,
+                  freeze }. mood is a MOODS key, shown while the player's pick is Auto or the level's own mood
+                  (any other pick, or a ?mood= pin, keeps its own); set, light settings over the base; pal,
+                  { <palette material>: "#rrggbb" or [r, g, b] (0-255) }, the colour each one is lit at
+                  (R.setAct: a factor on its own, where the growth field has spread, R.setGrowth); grassH, the
+                  grass height (1); freeze, the water's ice (0 to 1). A new act blends over ACT_BLEND s (a new
+                  run or level snaps); ?act=N pins one (screenshots)
      uiScale()    the UI's zoom, for placing the panel (1)
    The page may have #wx (the overlay canvas), #sky holding #moodseg and #wxseg (the panel) and #skybtn.
 
@@ -15516,7 +15566,11 @@ fn boxOf(V: Vox) -> Box {
     return {};
   };
   const NO_RUN = { id: null, level: "", build: false, over: false, life: 1 }, none = () => {};
-  const HOST = { key: "me.sky", seed: () => 1, run: () => NO_RUN, on: none, mood: none, uiScale: () => 1 };
+  const HOST = { key: "me.sky", seed: () => 1, run: () => NO_RUN, on: none, mood: none, acts: (level) => (ME.WX.looks().acts || NO_KEYS)[level] || null, uiScale: () => 1 };
+  // the acts (host.acts): the blend's length (s), and a material's factor cap (a dark material lit at a pale colour)
+  const ACT_BLEND = 4, ACT_MAX = 6;
+  const ss = (x) => x * x * (3 - 2 * x);
+  const rgb255 = (c) => (Array.isArray(c) ? c : String(rgbOf(c)).split(",").map(Number));
 
   class Sky {
     constructor(app, host) {
@@ -15530,6 +15584,8 @@ fn boxOf(V: Vox) -> Box {
       // (ME.safeKey: ?mood=constructor or ?weather=toString is no mood or front)
       const first = (table, ...vs) => vs.find((v) => (ME.safeKey(v) && table[v]) || v === "random");
       this.mood = first(MOODS, ME.q("mood", ""), saved.mood, fixed ? "" : this.host.mood(this.host.run().level)) || "auto";
+      // the acts' state (actShown): a ?mood= pin keeps its mood over theirs; ?act=N pins one
+      this.moodPin = !!first(MOODS, ME.q("mood", "")); this.actPin = ME.qn("act", 0); this.actAt = null;
       const pin = ME.q("weather", "");
       this.weather = (ME.safeKey(pin) && F[pin]) || pin === "random" || pin === "dynamic" ? pin
         : PANEL.includes(saved.weather) || saved.weather === "random" || saved.weather === "dynamic" ? saved.weather
@@ -15600,9 +15656,64 @@ fn boxOf(V: Vox) -> Box {
     setLook(name) { this.look = ME.safeKey(name) && ME.PRESETS[name] ? name : "cosy"; }
     // the settings the view's mood() blends from: the style's defaults, the mood's look preset, the level's
     // own look values over it (R.lookSet: a preset doesn't undo a night level's base), the mood's overrides
-    base() {
-      const m = MOODS[this.moodNow] || MOODS.auto;
+    base(mk = this.moodNow) {
+      const m = MOODS[mk] || MOODS.auto;
       return Object.assign({}, this.R.set0, ME.PRESETS[m.look || this.look] || {}, this.R.lookSet || {}, m.set || {});
+    }
+
+    // ------------------------------------------------------------------ the acts (host.acts)
+    // this frame's mood and base with the run's act: the act's mood (if the player's pick lets it) and its set
+    // over that mood's base, blended from what showed when the act changed (ACT_BLEND s, smoothstep; numbers
+    // blend, the rest switch at once; a new run or level snaps); the renderer gets the tints, the grass height
+    // and the ice while they change (never without an act). Returns { mk, base }
+    actShown(run, dt) {
+      const n = this.actPin || run.act | 0, list = n > 0 ? this.host.acts(run.level) : null, a = (list && list[n - 1]) || null;
+      const own = this.mood === "auto" || this.mood === this.host.mood(run.level);
+      const mk = a && MOODS[a.mood] && own && !this.moodPin ? a.mood : this.moodNow;
+      const to = { base: a && a.set ? Object.assign(this.base(mk), a.set) : this.base(mk), mats: a ? this.actMats(a) : null, grassH: (a && a.grassH) ?? 1, freeze: (a && a.freeze) || 0 };
+      const key = a ? n : 0, B = this.actAt, sh = this.actNow;
+      if (!B || B.id !== run.id || B.level !== run.level) this.actAt = { id: run.id, level: run.level, key, t: ACT_BLEND };
+      else if (B.key !== key) this.actAt = { id: run.id, level: run.level, key, t: 0, from: { base: sh.base, mats: sh.mats && sh.mats.slice(), grassH: sh.grassH, freeze: sh.freeze } };
+      const A = this.actAt; A.t += dt;
+      let now = to;
+      if (A.t < ACT_BLEND && A.from) {
+        const k = ss(A.t / ACT_BLEND), f = A.from, lerp = (x, y) => x + (y - x) * k, base = {};
+        for (const p in to.base) { const x = f.base[p], y = to.base[p]; base[p] = typeof x === "number" && typeof y === "number" ? lerp(x, y) : y; }
+        let mats = null;
+        if (f.mats || to.mats) {
+          mats = this.actBuf || (this.actBuf = new Float32Array(256 * 4));
+          for (let i = 0; i < 1024; i += 4) {
+            const fw = f.mats && f.mats[i + 3] > 0, tw = to.mats && to.mats[i + 3] > 0;
+            if (!fw && !tw) { mats[i] = mats[i + 1] = mats[i + 2] = mats[i + 3] = 0; continue; }
+            for (let c = 0; c < 3; c++) mats[i + c] = lerp(fw ? f.mats[i + c] : 1, tw ? to.mats[i + c] : 1);
+            mats[i + 3] = 1;
+          }
+        }
+        now = { base, mats, grassH: lerp(f.grassH, to.grassH), freeze: lerp(f.freeze, to.freeze), blending: true };
+      }
+      this.actNow = now;
+      // (the renderer: every frame of a blend, then once as it settles or when the target's tints change)
+      const R = this.R, S = this.actSent || (this.actSent = { mats: null, grassH: 1, freeze: 0 });
+      if (R.setAct && (now.blending || now.mats !== S.mats || now.grassH !== S.grassH || now.freeze !== S.freeze)) {
+        R.setAct(now); S.mats = now.mats; S.grassH = now.grassH; S.freeze = now.freeze;
+      }
+      return { mk, base: now.base };
+    }
+    // an act's tints for R.setAct: each pal material's factor, the act's colour over the material's own (its
+    // table colour, linear), capped at ACT_MAX; kept until the act or the palette's table changes
+    actMats(a) {
+      const S = this.R.S, T = S && S.tables, P = S && S.pal;
+      if (!a.pal || !T || !P) return null;
+      if (this.matsOf === a && this.matsT === T) return this.matsV;
+      const o = new Float32Array(256 * 4);
+      for (const name in a.pal) {
+        const id = P.ids[name], c = rgb255(a.pal[name]);
+        if (id === undefined || id > 255 || !c || c.length < 3) continue;
+        for (let k = 0; k < 3; k++) o[id * 4 + k] = Math.min(ACT_MAX, ME.lin(c[k]) / Math.max(1e-4, T.mats[id * 8 + k]));
+        o[id * 4 + 3] = 1;
+      }
+      this.matsOf = a; this.matsT = T; this.matsV = o;
+      return o;
     }
 
     // ------------------------------------------------------------------ every frame
@@ -15612,8 +15723,10 @@ fn boxOf(V: Vox) -> Box {
     update(dt) {
       const run = this.host.run(), dyn = this.weather === "dynamic", over = !!run.over;
       this.follow(run); this.at = run.level;
-      const md = this.model, m = MOODS[this.moodNow] || MOODS.auto, scene = this.scene;
-      scene.base = this.base();
+      // (the mood showing: the player's, or the run's act's; the scene eases toward its dusk itself)
+      const shown = this.actShown(run, dt);
+      const md = this.model, m = MOODS[shown.mk] || MOODS.auto, scene = this.scene;
+      scene.base = shown.base;
       scene.moodDusk = m.dusk;
       md.walk(dt, this.steady);
       if (!dyn) { md.sun = 0; md.hurt = false; }
@@ -15825,7 +15938,8 @@ fn boxOf(V: Vox) -> Box {
     state() {
       const v = {};
       for (const l of ME.WX.LAYERS) v[l] = +this.v[l].toFixed(3);
-      return { mood: this.mood, moodNow: this.moodNow, weather: this.weather, weatherNow: this.shownFront(), front: this.model.front, steady: this.steady, intensity: this.levelName, particles: this.parts.length, v, sun: this.sun, hurt: this.model.hurt, rainbow: +this.model.rainbow.toFixed(1), left: this.model.left };
+      return { mood: this.mood, moodNow: this.moodNow, weather: this.weather, weatherNow: this.shownFront(), front: this.model.front, steady: this.steady, intensity: this.levelName, particles: this.parts.length, v, sun: this.sun, hurt: this.model.hurt, rainbow: +this.model.rainbow.toFixed(1), left: this.model.left,
+        act: this.actAt ? this.actAt.key : 0, actBlend: this.actAt ? +Math.min(1, this.actAt.t / ACT_BLEND).toFixed(2) : 1 };
     }
   }
   Sky.MOODS = MOODS;
@@ -17152,12 +17266,13 @@ fn boxOf(V: Vox) -> Box {
   });
 
   // Tall grass, ripe and gold: o.w 2 a 2×2-tile sweep of nine tufts (the anchor on the shared corner), o.w
-  // 1 four tufts in one tile; five thin blades a tuft, 0.66-0.95 tall (0.82 of the first cut, "wheat stalks a bit smaller"), all leaning downwind (ME.WIND_DIR, so
+  // 1 four tufts in one tile; six thin blades a tuft, 0.66-0.95 tall (0.82 of the first cut, "wheat stalks a bit smaller"), all leaning downwind (ME.WIND_DIR, so
   // set it unturned), pale at the tips and many with a seed head. It sways (CT.sway), harder than the corn,
-  // and one tile at a time, so the gusts ripple across it. The blade count is the phone's frame cost: each
+  // and one tile at a time, so the gusts ripple across it. Three short leafy blades 0.3-0.46 tall splay at each
+  // tuft's foot (the fields pass: "more bushy, grassy"). The blade count is the phone's frame cost: each
   // tuft is ray-marched over its box, so fewer blades in tufts set close and leaning less (the Corn Moon perf pass)
   model("cm_tallgrass", (o = {}) => {
-    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), w = o.w || 1, p = [], n = w > 1 ? 9 : 4, nb = 5, nx = -WIND[1], ny = WIND[0];
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), w = o.w || 1, p = [], n = w > 1 ? 9 : 4, nb = 6, nx = -WIND[1], ny = WIND[0];
     const one = [[-0.15, -0.14], [0.16, -0.15], [-0.14, 0.16], [0.16, 0.14]];
     for (let t = 0; t < n; t++) {
       const cx = w > 1 ? ((t % 3) - 1) * 0.45 + (h(t, 1) - 0.5) * 0.14 : one[t][0] + (h(t, 1) - 0.5) * 0.1, cy = w > 1 ? (Math.floor(t / 3) - 1) * 0.45 + (h(t, 2) - 0.5) * 0.14 : one[t][1] + (h(t, 2) - 0.5) * 0.1;
@@ -17171,17 +17286,25 @@ fn boxOf(V: Vox) -> Box {
         }
         if (h(i, 8) < 0.5) p.push(E([q[0] + WIND[0] * 0.03, q[1] + WIND[1] * 0.03, q[2] + 0.04], [0.03, 0.03, 0.07], "cmSeed"));
       }
+      // three short leafy blades splayed at the tuft's foot (the fields pass: "more bushy, grassy")
+      for (let b = 0; b < 3; b++) {
+        const i = t * 10 + 7 + b, a = TAU * (b / 3 + 0.3 * h(i, 3)), r0 = 0.07 + 0.05 * h(i, 4), Hb = 0.3 + 0.16 * h(i, 5), out = 0.14 + 0.08 * h(i, 6), m = b === 1 ? "cmGrassTan" : "cmGrass";
+        const q = [cx + Math.cos(a) * r0, cy + Math.sin(a) * r0, 0];
+        const mid = [cx + Math.cos(a) * (r0 + out * 0.5) + WIND[0] * 0.03, cy + Math.sin(a) * (r0 + out * 0.5) + WIND[1] * 0.03, Hb * 0.6];
+        const e = [cx + Math.cos(a) * (r0 + out) + WIND[0] * 0.08, cy + Math.sin(a) * (r0 + out) + WIND[1] * 0.08, Hb];
+        p.push(C(q, mid, 0.04, 0.034, m), C(mid, e, 0.034, 0.022, m));
+      }
     }
     return { prims: p, r: w > 1 ? 1.25 : 0.65, h: 1.1, k: 1 };
   });
 
-  // Thin grass, one tile: o.tall a clump of eight fine blades 0.6-1.0 tall with pale tips, or else a low tuft
-  // of ten 0.2-0.38 tall; gold, tan and rust mixed, all leaning downwind like the tall grass (so set it
+  // Thin grass, one tile: o.tall a clump of twelve fine blades 0.6-1.0 tall with pale tips, or else a low tuft
+  // of fourteen 0.2-0.38 tall (eight and ten until the fields pass); gold, tan and rust mixed, all leaning downwind like the tall grass (so set it
   // unturned). It sways (CT.sway).
   model("cm_thingrass", (o = {}) => {
-    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), tall = !!o.tall, n = tall ? 8 : 10, p = [], nx = -WIND[1], ny = WIND[0], mix = ["cmGrass", "cmGrassTan", "cmGrassRust"];
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), tall = !!o.tall, n = tall ? 12 : 14, p = [], nx = -WIND[1], ny = WIND[0], mix = ["cmGrass", "cmGrassTan", "cmGrassRust"];
     for (let b = 0; b < n; b++) {
-      const a = TAU * h(b, 1), r0 = 0.34 * Math.sqrt(h(b, 2)), cx = Math.cos(a) * r0, cy = Math.sin(a) * r0, m = mix[Math.floor(h(b, 6) * 3)];
+      const a = TAU * h(b, 1), r0 = 0.38 * Math.sqrt(h(b, 2)), cx = Math.cos(a) * r0, cy = Math.sin(a) * r0, m = mix[Math.floor(h(b, 6) * 3)];
       const Hb = tall ? 0.6 + 0.4 * h(b, 3) : 0.2 + 0.18 * h(b, 3), lean = (tall ? 0.14 : 0.06) + 0.12 * h(b, 4), side = (h(b, 5) - 0.5) * 0.12;
       let q = [cx, cy, 0];
       for (let k = 1; k <= 3; k++) {
@@ -17193,17 +17316,23 @@ fn boxOf(V: Vox) -> Box {
   });
 
   // A shrub in its autumn leaves, one tile: a lumpy low bush 0.45-0.6 tall of o.leaf (cmAppleLeaf rust, cmAmber,
-  // cmScarlet) flecked with a second autumn colour, on a few bare twigs. It sways a little (CT.sway). Anchored
-  // on the ground.
+  // cmScarlet) flecked with a second autumn colour, on a few bare twigs; o.big (the fields pass) a quarter
+  // bigger, 0.75 tall, with four low lumps round it, about a tile and a third across. It sways a little
+  // (CT.sway). Anchored on the ground.
   model("cm_shrub", (o = {}) => {
-    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), leaf = o.leaf || "cmAppleLeaf", leaf2 = leaf === "cmAmber" ? "cmAppleLeaf" : "cmAmber", p = [];
-    for (let k = 0; k < 3; k++) { const a = TAU * (k / 3 + 0.1 * h(k, 1)); p.push(C([0, 0, 0], [Math.cos(a) * 0.16, Math.sin(a) * 0.16, 0.22], 0.03, 0.02, "bark")); }
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), leaf = o.leaf || "cmAppleLeaf", leaf2 = leaf === "cmAmber" ? "cmAppleLeaf" : "cmAmber", p = [], S = o.big ? 1.25 : 1;
+    for (let k = 0; k < 3; k++) { const a = TAU * (k / 3 + 0.1 * h(k, 1)); p.push(C([0, 0, 0], [Math.cos(a) * 0.16 * S, Math.sin(a) * 0.16 * S, 0.22 * S], 0.03, 0.02, "bark")); }
     for (let k = 0; k < 6; k++) {
-      const a = TAU * (k / 6 + 0.12 * h(k, 2)), r = k === 0 ? 0 : 0.17 + 0.08 * h(k, 3), z = (k === 0 ? 0.34 : 0.24) + 0.1 * h(k, 4) + 0.08 * h(9, 5);
-      p.push(E([Math.cos(a) * r, Math.sin(a) * r, z], [0.2 + 0.05 * h(k, 6), 0.2 + 0.05 * h(k, 7), 0.17], leaf));
+      const a = TAU * (k / 6 + 0.12 * h(k, 2)), r = k === 0 ? 0 : (0.17 + 0.08 * h(k, 3)) * S, z = ((k === 0 ? 0.34 : 0.24) + 0.1 * h(k, 4) + 0.08 * h(9, 5)) * S;
+      p.push(E([Math.cos(a) * r, Math.sin(a) * r, z], [(0.2 + 0.05 * h(k, 6)) * S, (0.2 + 0.05 * h(k, 7)) * S, 0.17 * S], leaf));
+    }
+    // o.big (the fields pass): a broad bush, four low lumps round the crown
+    if (o.big) for (let k = 0; k < 4; k++) {
+      const a = TAU * (k / 4 + 0.125 + 0.1 * h(k, 9)), r = 0.44 + 0.06 * h(k, 10);
+      p.push(E([Math.cos(a) * r, Math.sin(a) * r, 0.14 + 0.06 * h(k, 11)], [0.17, 0.16, 0.14], leaf));
     }
     return {
-      prims: p, r: 0.5, h: 0.62, k: 1,
+      prims: p, r: o.big ? 0.68 : 0.5, h: 0.62 * S, k: 1,
       detail: (x, y, z, m) => (m === leaf && P.hash(Math.floor(x * 14), Math.floor(y * 14), Math.floor(z * 14), 8) < 0.3 ? leaf2 : m),
     };
   });
@@ -17383,24 +17512,35 @@ fn boxOf(V: Vox) -> Box {
     return { prims: p, r: 0.6, h: 0.08, k: 1 };
   });
 
-  // A mound of autumn leaves raked or blown together, one tile: a low dome of litter 0.17-0.2 high under
-  // o.n (30) flat leaves in rust, amber, scarlet, orange and brown heaped over it; o.w 2 two heaps run
-  // together. A stamp like cm_leaves (no volume, no frame cost), scattered at the trees' feet, on the tall
+  // A mound of autumn leaves raked or blown together, one tile: a dome of litter 0.27-0.32 high under
+  // o.n (34) flat leaves in rust, amber, scarlet, orange and brown heaped over it; o.w 2 two heaps run
+  // together (46 leaves), o.w 3 three, 0.38 high and about 1.6 tiles across (70). A stamp like cm_leaves (no volume, no frame cost), scattered at the trees' feet, on the tall
   // grass, the pen, the patch, the garden and the wall tops by the field, never on the path or a build tile
   // (below the map). Anchored on the ground.
   model("cm_leafpile", (o = {}) => {
-    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), p = [], n = o.n || 30, L = ["cmAppleLeaf", "cmAmber", "cmScarlet", "cmPumpkin", "cmLitter", "cmAppleLeaf", "cmAmber"];
-    const heaps = (o.w || 1) > 1 ? [[-0.16, 0.06, 0.28, 0.17], [0.2, -0.1, 0.22, 0.14]] : [[0, 0, 0.32, 0.2]];
+    const h = (i, s) => P.hash(o.seed || 1, i, 0, s), p = [], w = Math.min(3, o.w || 1), n = o.n || [34, 46, 70][w - 1], L = ["cmAppleLeaf", "cmAmber", "cmScarlet", "cmPumpkin", "cmLitter", "cmAppleLeaf", "cmAmber"];
+    // the fields pass ("big piles of leaves"): a third wider and taller, and o.w 3 three heaps nearly a tile and a half across
+    const heaps = [[[0, 0, 0.4, 0.32]], [[-0.18, 0.07, 0.38, 0.32], [0.24, -0.12, 0.3, 0.25]], [[-0.22, 0.1, 0.48, 0.38], [0.3, -0.06, 0.38, 0.3], [0.02, -0.36, 0.32, 0.24]]][w - 1];
     heaps.forEach(([hx, hy, R, H], j) => {
       p.push(E([hx, hy, 0], [R, R * (0.8 + 0.2 * h(j, 1)), H * (0.85 + 0.15 * h(j, 2))], "cmLitter"));
       for (let i = 0; i < n / heaps.length; i++) {
         const k = j * 100 + i, a = TAU * h(k, 3), d = R * Math.sqrt(h(k, 4)), x = hx + Math.cos(a) * d, y = hy + Math.sin(a) * d * 0.9;
-        const z = H * 0.9 * Math.sqrt(Math.max(0, 1 - (d / R) * (d / R))), l = 0.06 + 0.04 * h(k, 5);
+        const z = H * 0.9 * Math.sqrt(Math.max(0, 1 - (d / R) * (d / R))), l = 0.065 + 0.045 * h(k, 5);
         p.push(E([x, y, z], [l, l * (0.55 + 0.3 * h(k, 6)), 0.04], L[Math.floor(h(k, 7) * L.length)]));
       }
     });
-    return { prims: p, r: 0.6, h: 0.3, k: 1 };
+    return { prims: p, r: [0.45, 0.62, 0.82][w - 1], h: 0.45, k: 1 };
   });
+
+  // The soft rise on the west shelf (the user: "maybe a soft hill"): a grassy knoll 0.7 high at its crown and
+  // about 2.6 by 3.4 tiles, two sunk ellipsoids (a crown on a broad skirt) of the meadow's ground, mottled and
+  // flecked with litter. A stamp, so no frame cost; placed after every other prop, which it lifts onto its slope.
+  // KNOLL: [dx, dy, z, rx, ry, rz] of each ellipsoid
+  const KNOLL = [[0, 0, -0.3, 1.1, 1.45, 1.0], [0, 0, -0.2, 1.3, 1.7, 0.5]];
+  model("cm_knoll", () => ({
+    prims: KNOLL.map(([a, b, c, rx, ry, rz]) => E([a, b, c], [rx, ry, rz], "cmMeadow2")), r: 1.4, h: 0.75, k: 1,
+    detail: (x, y, z, m) => { const q = P.hash(Math.floor(x * 9), Math.floor(y * 9), Math.floor(z * 9), 5); return q < 0.3 ? "cmMeadow" : q < 0.38 ? "cmLitter" : m; },
+  }));
 
   CT.volumeDeco = (CT.volumeDeco || []).concat(["cm_corn", "cm_tallgrass", "cm_thingrass", "cm_shrub", "cm_scarecrow", "cm_lantern", "cm_pumpkin", "cm_apple", "cm_sheep", "cm_trough", "cm_coop", "cm_hen", "cm_cabbage", "cm_sunflower"]);
   // a windy night: the sway 1.4 times the calm farm's
@@ -17462,7 +17602,7 @@ fn boxOf(V: Vox) -> Box {
       ["cm_corn", { seed: 1, w: 2 }, 10, 9, { dx: 0.5, dy: 0.5, rot: 2 }], ["cm_corn", { seed: 2, w: 2 }, 12, 9, { dx: 0.5, dy: 0.5 }], ["cm_corn", { seed: 1, w: 2 }, 20, 9, { dx: 0.5, dy: 0.5, rot: 2 }],
       ["cm_corn", { seed: 2, w: 1 }, 22, 9, { rot: 2 }],
       // the tall gold grass, unturned so it all leans downwind (more along the wall's foot, below)
-      ["cm_tallgrass", { seed: 1, w: 2 }, 2, 7, { dx: 0.5, dy: 0.5 }], ["cm_tallgrass", { seed: 2, w: 1 }, 1, 8],
+      ["cm_tallgrass", { seed: 1, w: 1 }, 2, 7], ["cm_tallgrass", { seed: 3, w: 1 }, 3, 7], ["cm_tallgrass", { seed: 4, w: 1 }, 3, 8], ["cm_tallgrass", { seed: 2, w: 1 }, 1, 8],
       ["cm_tallgrass", { seed: 3, w: 1 }, 3, 9], ["cm_tallgrass", { seed: 3, w: 1 }, 3, 10], ["cm_tallgrass", { seed: 4, w: 2 }, 20, 13, { dx: 0.5, dy: 0.5 }],
       ["cm_tallgrass", { seed: 3, w: 2 }, 20, 15, { dx: 0.5, dy: 0.5 }], ["cm_tallgrass", { seed: 4, w: 1 }, 22, 15],
       ["cm_tallgrass", { seed: 1, w: 1 }, 1, 9], ["cm_tallgrass", { seed: 2, w: 1 }, 2, 9], ["cm_tallgrass", { seed: 4, w: 1 }, 1, 10], ["cm_tallgrass", { seed: 1, w: 1 }, 2, 10],
@@ -17583,7 +17723,7 @@ fn boxOf(V: Vox) -> Box {
   // the undergrowth (the user: "thin high and low grass ... more trees and bushes/shrubs"): seven more autumn
   // trees on the corner banks and the west grass (the option sets of the ones above, so no new bricks), shrubs
   // in rust, amber and scarlet on the corner wall tops, in the tall grass and at the trees' feet, and thin
-  // grass, a tall clump on each tall-grass tile that has no tall grass yet (the tall grass's own ground and the
+  // grass, a tall clump or, on two in five (the fields pass), a big shrub on each tall-grass tile that has no tall grass yet (the tall grass's own ground and the
   // wall tops have the map's blades, CT.mapGrass), a low tuft at each tree's foot and on some of the
   // path's verges that have no tall tuft: one grass prop a tile at most, as each is ray-marched on its own (the
   // Corn Moon perf pass). Only on tiles that already take no plant (not a build kind, or a prop's tile), so the
@@ -17607,7 +17747,8 @@ fn boxOf(V: Vox) -> Box {
       const k = at(x, y), hs = P.hash(x, y, 14, 3), s = 1 + (P.hash(x, y, 15, 3) < 0.5 ? 0 : 1), off = (i) => ({ dx: (P.hash(x, y, 16, i) - 0.5) * 0.6, dy: (P.hash(x, y, 17, i) - 0.5) * 0.6 });
       if (Math.hypot(x + 0.5 - 12, y + 0.5 - 12) > 11.2 || gate(x, y) || used.has(x + "," + y)) continue;
       if (k === "g") {
-        put(["cm_thingrass", { seed: s, tall: true }, x, y, off(1)]);
+        if (P.hash(x, y, 18, 3) < 0.4) put(["cm_shrub", Object.assign({ big: true }, SH[(x * 2 + y) % 3]), x, y, off(1)]);
+        else put(["cm_thingrass", { seed: s, tall: true }, x, y, off(1)]);
       } else if (k === ":" && hs < 0.3) {
         const side = N4.find(([dx, dy]) => V.includes(at(x + dx, y + dy)) && Hh[y + dy][x + dx] === Hh[y][x]);
         if (side) put(["cm_thingrass", { seed: s }, x, y, { dx: side[0] * 0.44 - side[1] * 0.2, dy: side[1] * 0.44 + side[0] * 0.2 }]);
@@ -17629,23 +17770,53 @@ fn boxOf(V: Vox) -> Box {
     }
   })();
 
-  // mounds of autumn leaves (the user: "mounds of autumn leaves as part of decor"): one at the foot of each
-  // tree, downwind of the trunk, and on about a quarter of the tall grass, the pen, the patch and the garden and
-  // about a sixth of the wall tops by the field; never on the path, a build tile or the ditch, nor on a tile
+  // mounds of autumn leaves (the user: "mounds of autumn leaves as part of decor", then "big piles of leaves"):
+  // one at the foot of each tree, downwind of the trunk, and on two in five of the tall grass, the pen, the patch
+  // and the garden tiles (a quarter until the fields pass; three in four where a big pile has room) and about a sixth of the wall tops by the field; never on the path, a build tile or the ditch, nor on a tile
   // that holds a volume prop (a tree's own tile aside), and clear of the gates, the stairs and the jar's glass
   (function () {
     const m = CT.maps.cornmoon, K = m.kind, at = (x, y) => (K[y] && K[y][x]) || "_", stairs = ["6,6", "7,6", "17,11", "18,11"], vol = CT.volumeDeco;
     const B = chars(m.game.build), cell = (d) => Math.floor(d[2] + 0.5 + ((d[4] && d[4].dx) || 0)) + "," + Math.floor(d[3] + 0.5 + ((d[4] && d[4].dy) || 0));
     const low = ["cm_thingrass", "cm_tallgrass", "cm_apple"], used = new Set(m.props.filter((d) => vol.includes(d[0]) && !low.includes(d[0])).map(cell)), piled = new Set();
     const ok = (x, y) => { const k = at(x, y); return k !== ":" && k !== "~" && k !== "_" && !B.includes(k) && Math.hypot(x + 0.5 - 12, y + 0.5 - 12) <= 11 && !stairs.includes(x + "," + y) && !((y <= 2 && Math.abs(x - 11.5) <= 2.5) || (x >= 21 && Math.abs(y - 11.5) <= 2.5)); };
-    const pile = (x, y, dx, dy, i) => { if (piled.has(x + "," + y)) return; piled.add(x + "," + y); m.props.push(["cm_leafpile", { seed: 1 + Math.floor(P.hash(x, y, 20, i) * 6), w: P.hash(x, y, 21, i) < 0.35 ? 2 : 1 }, x, y, { dx, dy }]); };
-    m.props.filter((d) => d[0] === "cm_apple").forEach((d) => { const [x, y] = cell(d).split(",").map(Number); if (ok(x, y)) pile(x, y, ((d[4] && d[4].dx) || 0) + WIND[0] * 0.42, ((d[4] && d[4].dy) || 0) + WIND[1] * 0.42, 1); });
+    // a big pile (o.w 3) only on a field tile whose four neighbours are field or path at its height (no build tile,
+    // wall, ditch or stairs), so its edge may brush the path but never a build tile or a step; pulled halfway to
+    // the tile's middle (the fields pass)
+    const hAt = (x, y) => (m.h[y] || "")[x];
+    const roomy = (x, y) => at(x, y) !== "#" && [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([a, b]) => { const k = at(x + a, y + b); return (ok(x + a, y + b) || k === ":") && k !== "#" && !stairs.includes(x + a + "," + (y + b)) && hAt(x + a, y + b) === hAt(x, y); });
+    const pile = (x, y, dx, dy, i) => {
+      if (piled.has(x + "," + y)) return; piled.add(x + "," + y);
+      const r = P.hash(x, y, 21, i), w = roomy(x, y) && r < 0.6 ? 3 : r < 0.7 ? 2 : 1;
+      m.props.push(["cm_leafpile", { seed: 1 + Math.floor(P.hash(x, y, 20, i) * 6), w }, x, y, w === 3 ? { dx: dx * 0.5, dy: dy * 0.5 } : { dx, dy }]);
+    };
+    // a pile downwind of its apple, but on the apple's own tile: the wind push (~0.36) on top of the apple's own
+    // offset used to carry it past the half tile, onto the plot beside it at (7,2), (3,6) and (4,18) (Game, #630)
+    const cl = (v) => Math.max(-0.45, Math.min(0.45, v));
+    m.props.filter((d) => d[0] === "cm_apple").forEach((d) => { const [x, y] = cell(d).split(",").map(Number), e = d[4] || {}; if (ok(x, y)) pile(x, y, cl(d[2] + (e.dx || 0) - x + WIND[0] * 0.42), cl(d[3] + (e.dy || 0) - y + WIND[1] * 0.42), 1); });
     for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
       const k = at(x, y), hs = P.hash(x, y, 22, 3);
       if (!ok(x, y) || used.has(x + "," + y)) continue;
       const wallByField = k === "#" && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !"#_".includes(at(x + dx, y + dy)));
-      if (("gnpk".includes(k) && hs < 0.25) || (wallByField && hs < 0.16)) pile(x, y, (P.hash(x, y, 23, 3) - 0.5) * 0.3, (P.hash(x, y, 24, 3) - 0.5) * 0.3, 2);
+      if (("gnpk".includes(k) && (hs < 0.4 || (hs < 0.75 && roomy(x, y)))) || (wallByField && hs < 0.16)) pile(x, y, (P.hash(x, y, 23, 3) - 0.5) * 0.3, (P.hash(x, y, 24, 3) - 0.5) * 0.3, 2);
     }
+  })();
+
+  // the soft rise on the west shelf (cm_knoll; the user: "maybe a soft hill"), centred on the shelf's tall grass
+  // at (2.5, 9.15), its skirt a quarter tile clear of the s plots at x=4 and the a row at y=11 and of the drop
+  // round the shelf: looks only, the height map,
+  // the routes and the placement zones are as they were. Whatever stands on it is lifted onto its
+  // slope, to the lowest of its middle and four points a fifth of a tile out (a tree to its middle), sunk 0.03;
+  // a tall tuft on its crown becomes a low clump, so the rise shows between the trees
+  (function () {
+    const m = CT.maps.cornmoon, X0 = 2.5, Y0 = 9.15;
+    const kz = (X, Y) => KNOLL.reduce((z, [a, b, c, rx, ry, rz]) => { const u = 1 - ((X - X0 - a) / rx) ** 2 - ((Y - Y0 - b) / ry) ** 2; return u > 0 ? Math.max(z, c + rz * Math.sqrt(u)) : z; }, 0);
+    m.props.forEach((d) => {
+      const ex = d[4] || {}, X = d[2] + 0.5 + (ex.dx || 0), Y = d[3] + 0.5 + (ex.dy || 0), r = d[0] === "cm_apple" ? 0 : 0.2;
+      if (d[0] === "cm_tallgrass" && kz(X, Y) > 0.5) { d[0] = "cm_thingrass"; d[1] = { seed: 1 + ((d[1].seed || 1) % 2) }; }
+      const z = Math.min(...[[0, 0], [r, r], [r, -r], [-r, r], [-r, -r]].map(([u, v]) => kz(X + u, Y + v)));
+      if (z > 0.01) d[4] = Object.assign({}, ex, { dz: (ex.dz || 0) + z - 0.03 });
+    });
+    m.props.push(["cm_knoll", {}, 2, 9, { dx: X0 - 2.5, dy: Y0 - 9.5 }]);
   })();
 
   // The light: a low harvest moon in the south-east (shadows long across the rows), a few broad moon shafts
@@ -20209,7 +20380,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.97.0", name: "Mossheart", commit: "0f4d35b7" };
+  G.VERSION = { v: "0.98.0", name: "Mossheart", commit: "d3595494" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -22730,6 +22901,7 @@ function MA_DSP() {
     Object.assign(st.mats, AK.MATS);
     Object.assign(st.ramps, TOWERS.RAMPS); // the plants' own (stumpsAndStones, below)
     Object.assign(st.mats, TOWERS.MATS);
+    Object.assign(st.ramps, CTRAIT_RAMPS); Object.assign(st.mats, CTRAIT_MATS); veilSt = st; VEIL_BY.clear(); // the creatures' traits (below)
     // the garden wisplings, six to a garden on Momiji, Fernglass, Corn Moon and the Ever Stair (critters.js, kind wisp): eight
     // designs of five frames at size 1.5 (a body ~0.5 tiles tall, ~15 px at the fit zoom: the user's pick), ~9.6
     // voxels across the body at the heroes' density (G.heroFine). ME.content outlives the level, so another map
@@ -22813,6 +22985,14 @@ function MA_DSP() {
       // their glow twins, the garden wisplings' bodies (critter, below): the same ramps, lit softly from within
       wGlow: [["#eef2e8", 4, 0.7, 0.97], { em: 0.3 }], wMintGlow: [["#e0f2da", 4, 0.66, 0.96], { em: 0.3 }], wPeachGlow: [["#f8e6d6", 4, 0.68, 0.97], { em: 0.3 }],
       wDewGlow: [["#d8ecfa", 4, 0.66, 0.97], { em: 0.3 }], wLilacGlow: [["#eee0f8", 4, 0.66, 0.97], { em: 0.3 }],
+      // the helpers (the seed pouch, A1): the Dew Cistern's pitchers, green, veined and lipped red, dark inside, and the
+      // dew in them; the Sundew's red spoon leaves, their hairs and glowing drops; the Glowcap's cream bells and gold
+      // lamps; the Nurse Stump's shoots and shelf fungus
+      twPitcher: [["#5e9a3a", 5, 0.2, 0.72, 0.12]], twPitcherRed: [["#b4303c", 5, 0.2, 0.7, 0.06]], twPitcherDk: [["#2a3a1c", 3, 0.06, 0.3]],
+      twDew: [["#5ab4ec", "#78c8f2", "#9cdaf8", "#c0eafc"], { em: 1, flat: 1 }], twDewDrop: [["#d8f0fc", "#eef8ff"], { em: 1, flat: 1 }],
+      twSundew: [["#c43a44", 5, 0.2, 0.7, 0.06]], twSundewLt: [["#ec7a64", 4, 0.36, 0.86, 0.06]],
+      twLampCap: [["#efe2a4", 5, 0.4, 0.92, 0]], twLampCapDk: [["#b89a5a", 4, 0.24, 0.66, 0.06]], twLamp: [["#f6d860", "#fae47c", "#fdee9c", "#fff6c0"], { em: 1, flat: 1 }],
+      twShoot: [["#8ad04a", 4, 0.34, 0.86, 0.1]], twShootDk: [["#3e7a2a", 4, 0.16, 0.58, 0.12]], twShelf: [["#d0a464", 4, 0.3, 0.8, 0.08]], twShelfDk: [["#8a6440", 4, 0.16, 0.56, 0.08]],
     };
     const RAMPS = {}, MATS = {};
     for (const k in MAT) { RAMPS[k] = MAT[k][0]; if (MAT[k][1]) MATS[k] = MAT[k][1]; }
@@ -23104,6 +23284,94 @@ function MA_DSP() {
         return z + hb + 0.2;
       },
 
+      // ---- the helpers (the seed pouch, design 2026-11-10 §6): no attack to show, so each wears its use
+      cistern(L, p, z, D) { // the Dew Cistern: pitcher plants in the stone basin (one a level), green cups veined red, a red hood leaning over each mouth from behind; the dew in them rises with the level (a third, two thirds, brimming at 3, drops running over the main lip)
+        const g = G3[L - 1], fill = [0.4, 0.68, 0.94][L - 1], BKW = pol(FR + Math.PI, 1, 0), tops = [], H = [0.32, 0.38, 0.44][L - 1], rp = [0.075, 0.085, 0.092][L - 1];
+        const pitcher = (b, h, r, lean) => {
+          const d = norm(add([0, 0, 1], mul(lean, 0.35))), q1 = add(b, mul(d, h * 0.42)), q2 = add(b, mul(d, h)), R = orient(d), u = R.slice(0, 3), v = R.slice(3, 6);
+          p.push(C(b, q1, r * 0.5, r, "twPitcher", { k2: 0.02 }), C(q1, q2, r, r * 0.82, "twPitcher", { k2: 0.01 }));
+          p.push(C(add(b, mul(d, h * 0.3)), add(q2, mul(d, 0.06)), r * 0.6, r * 0.56, "twPitcher", { sub: 1, subm: "twPitcherDk" })); // the cup
+          p.push(Y(add(b, mul(d, h * (0.3 + 0.7 * fill) - 0.006)), r * 0.62, 0.012, "twDew", { R }));
+          ring(HI > 1 ? 14 : 10, (a) => p.push(S(add(q2, add(mul(u, Math.cos(a) * r * 0.72), mul(v, Math.sin(a) * r * 0.72))), r * 0.2, "twPitcherRed"))); // the lip
+          const hb = norm(add(BKW, mul(d, 0.2)));
+          p.push(E(add(add(q2, mul(hb, r * 0.6)), mul(d, r * 0.9)), [r * 0.95, r * 0.8, Math.max(0.012, r * 0.16)], "twPitcherRed", { R: orient(norm(add(d, mul(hb, -0.9))), cross(d, hb)), k2: 0.006 }));
+          tops.push(q2);
+        };
+        [[FR + Math.PI, 0.03, 1, 1], [FR + Math.PI + 1.7, 0.1, 0.72, 0.8], [FR + Math.PI - 1.6, 0.1, 0.62, 0.74]].slice(0, L).forEach(([a, rr, hs, rs], i) => pitcher(pol(a, rr * g, z - 0.03), H * hs, rp * rs, pol(a, i ? 1 : 0.3, 0)));
+        for (const [a, k] of [[FR + 2.2, 1], [FR - 2.3, 0.9], [FR + Math.PI + 0.8, 0.8]]) p.push(E(pol(a, 0.12, z + 0.03), [0.08 * k, 0.028 * k, 0.01], "twPitcher", { R: orient(norm(pol(a, 0.5, 1)), pol(a, 1, 0.25)) }));
+        const q = tops[0];
+        if (L === 3) for (let k = 0; k < 3; k++) p.push(S(add(q, pol(FR + 0.4 * (k - 1), rp * 0.85, -0.03 - 0.035 * k)), 0.016 - 0.002 * k, "twDew"));
+        for (let k = 0; k < L - 1; k++) p.push(S(add(q, [0.03 * Math.sin(k * 2.3), 0.03 * Math.cos(k * 2.3), 0.12 + 0.08 * k]), 0.014, "twDew"));
+        D.push((x, y, zz, m) => (m === "twPitcher" && zz > z + 0.08 && nz3(x, y, zz, 26, 21) > 0.6 ? "twPitcherRed" : null)); // red veins up the cups
+        return Math.max(...tops.map((t) => t[2])) + rp + 0.08 + 0.08 * (L - 1);
+      },
+      sundew(L, p, z) { // the Sundew: a rosette of red spoon leaves over the stump (5, 7, 9), each rimmed with hairs tipped in glowing dew; a gold mote stuck on a leaf a level (its catch); from 2 a curled flower stalk, white buds, at 3 one open
+        const n = [5, 7, 9][L - 1], nt = HI > 1 ? 9 : HI ? 7 : 5, dr = HI ? 0.011 : 0.016, UP = [0, 0, 1], pads = [];
+        p.push(E([0, 0, z + 0.005], [0.05, 0.05, 0.03], "twSundew", { k2: 0.02 }));
+        ring(n, (a, i) => {
+          const o = [Math.cos(a), Math.sin(a), 0], ln = 0.15 + (0.03 * ((i * 3) % 4)) / 3 + 0.02 * (L - 1), lift = 0.05 + 0.03 * (i % 2), c = pol(a, ln, z + lift);
+          p.push(C(pol(a, 0.03, z + 0.01), pol(a, ln - 0.05, z + lift - 0.012), 0.012, 0.009, "twSundew", { k2: 0.006 }));
+          const nn = norm(add(UP, mul(o, -0.45))), w = norm(cross(nn, o)), uu = cross(w, nn);
+          p.push(E(c, [0.05, 0.038, 0.011], "twSundew", { R: orient(nn, uu), k2: 0.004 }));
+          for (let t = 0; t < nt; t++) {
+            const b = (t / nt) * TAU, cb = Math.cos(b);
+            if (cb < -0.7) continue; // none at the stalk
+            const rd = add(mul(uu, cb), mul(w, Math.sin(b))), rim = add(c, add(mul(uu, cb * 0.046), mul(w, Math.sin(b) * 0.034))), tip = add(rim, mul(norm(add(rd, mul(nn, 0.9))), 0.028));
+            p.push(C(rim, tip, wth(0.005), wth(0.004), "twSundewLt"), S(tip, dr, "twDewDrop"));
+          }
+          pads.push([c, nn]);
+        }, FR + Math.PI / n);
+        for (let k = 0; k < L; k++) { const [c, nn] = pads[(k * 2 + 1) % n]; p.push(S(add(c, mul(nn, 0.024)), 0.017, "hsGlowGold")); }
+        if (L === 1) return z + 0.16;
+        const bz = (a, b, c, d, t) => { const s = 1 - t; return add(add(mul(a, s * s * s), mul(b, 3 * s * s * t)), add(mul(c, 3 * s * t * t), mul(d, t * t * t))); };
+        const hz = z + 0.3 + 0.06 * (L - 2), P0 = [0, 0, z], P3 = pol(FR + Math.PI, 0.02, hz);
+        let prev = P0;
+        for (let k = 1; k <= 7; k++) { const q = bz(P0, [0, 0, z + 0.15], add(pol(FR + Math.PI, 0.09, 0), [0, 0, hz + 0.02]), P3, k / 7); p.push(C(prev, q, 0.011 - 0.0006 * k, 0.011 - 0.0006 * (k + 1), "twSundew", { k2: 0.004 })); prev = q; }
+        const buds = [pol(FR + Math.PI, 0.02, hz + 0.02), pol(FR + 0.6, 0.035, hz - 0.01), pol(FR - 1.2, 0.04, hz - 0.03)].slice(0, L);
+        buds.forEach((bp, i) => {
+          if (i) p.push(C(lerp3(P0, P3, 0.9), bp, 0.006, 0.005, "twSundew"));
+          if (L === 3 && i === 1) { ring(5, (a) => p.push(E(add(bp, pol(a, 0.016, 0.004)), [0.018, 0.011, 0.005], "twLily", { R: rz(a) }))); p.push(S(add(bp, [0, 0, 0.006]), 0.008, "twAmber")); }
+          else p.push(E(bp, [0.014, 0.014, 0.018], "twLily"));
+        });
+        return hz + 0.08;
+      },
+      glowcap(L, p, z) { // the Glowcap: lantern mushrooms on tall crook stalks (one a level), each cream bell hung from its hook and lit gold from inside, its glow the helper's reach; gold motes drifting under them
+        const H = [0.36, 0.42, 0.48][L - 1], cr = [0.072, 0.08, 0.088][L - 1];
+        const bz = (a, b, c, d, t) => { const s = 1 - t; return add(add(mul(a, s * s * s), mul(b, 3 * s * s * t)), add(mul(c, 3 * s * t * t), mul(d, t * t * t))); };
+        let top = z, c0 = null;
+        for (const [a, hs, cs] of [[FR + 1.0, 1, 1], [FR - 1.3, 0.76, 0.84], [FR + Math.PI + 0.4, 0.9, 0.8]].slice(0, L)) {
+          const h = H * hs, r = cr * cs, b = pol(a + Math.PI, 0.05, z - 0.02), P1 = add(b, [0, 0, h * 0.9]), P2 = pol(a, 0.03, z + h + 0.08), P3 = pol(a, 0.14 * hs, z + h);
+          let prev = b;
+          for (let k = 1; k <= 8; k++) { const q = bz(b, P1, P2, P3, k / 8); p.push(C(prev, q, 0.022 - 0.001 * k, 0.022 - 0.001 * (k + 1), "kgStalk", { k2: 0.006 })); top = Math.max(top, q[2]); prev = q; }
+          const cc = add(P3, [0, 0, -r * 0.55]);
+          p.push(E(cc, [r * 0.78, r * 0.78, r * 1.05], "twLampCap", { k2: 0.02 }), E(add(cc, [0, 0, -r * 0.6]), [r * 0.66, r * 0.66, r * 0.7], "twLampCap", { sub: 1, subm: "twLamp" })); // a tall bell, hollow underneath
+          p.push(S(add(cc, [0, 0, -r * 0.78]), r * 0.5, "twLamp"), S(P3, 0.016, "twLampCapDk"));
+          ring(6, (q) => p.push(S(add(cc, pol(q, r * 0.74, -r * 0.82)), r * 0.16, "twLampCapDk"))); // the lit heart shows under a dark scalloped rim
+          if (HI) ring(HI > 1 ? 8 : 6, (q) => p.push(C(add(cc, pol(q, r * 0.35, r * 0.78)), add(cc, pol(q, r * 0.98, r * 0.05)), 0.008, 0.006, "twLampCapDk"))); // ribs down the bell
+          if (!c0) c0 = cc;
+        }
+        for (let k = 0; k < L - 1; k++) p.push(S(add(c0, [0.04 * Math.sin(k * 2.3), 0.04 * Math.cos(k * 2.3), -0.14 - 0.05 * k]), 0.013, "twLamp"));
+        return top + 0.06;
+      },
+      stump(L, p, z) { // the Nurse Stump: shoots out of the old stump's moss (2, 3, 5), taller each level, slim stems with paired leaves and a bud; a shelf fungus on its side from 2 (two at 3); mint motes, its mending
+        const hs = [0.2, 0.26, 0.32][L - 1];
+        let top = z;
+        for (const [a, rr, k] of [[FR + Math.PI, 0.06, 1], [FR + Math.PI + 1.2, 0.1, 0.7], [FR + Math.PI - 1.1, 0.09, 0.8], [FR + 1.6, 0.12, 0.55], [FR - 1.7, 0.12, 0.6]].slice(0, [2, 3, 5][L - 1])) {
+          const b = pol(a, rr, z - 0.01), t = add(add(b, pol(a, 0.05 * k, 0)), [0, 0, hs * k]), np = k > 0.75 ? 3 : 2;
+          p.push(C(b, t, 0.014, 0.008, "twShootDk", { k2: 0.004 }));
+          for (let j = 0; j < np; j++) {
+            const q = lerp3(b, t, 0.45 + 0.27 * j), sz = 1 - 0.18 * j;
+            for (const sd of [1, -1]) { const d = norm(add(pol(a + sd * 1.4 + j * 0.8, 1, 0), [0, 0, 0.5])); p.push(E(add(q, mul(d, 0.04 * sz)), [0.045 * sz, 0.02 * sz, 0.008], j === np - 1 ? "twShoot" : "kgLeaf", { R: orient(norm(add([0, 0, 1], mul(d, -0.6))), d) })); }
+          }
+          p.push(E(add(t, [0, 0, 0.012]), [0.014, 0.014, 0.024], "twShoot")); // the bud
+          top = Math.max(top, t[2]);
+        }
+        const g = G3[L - 1];
+        for (const [dz, s, da] of [[0.55, 1, 0], [0.36, 0.75, 0.5]].slice(0, L - 1)) { const a = FR - 1.15 - da, c = pol(a, 0.21 * g, z * dz); p.push(E(c, [0.07 * s, 0.05 * s, 0.016], "twShelf", { R: rz(a), k2: 0.01 }), E(add(c, [0, 0, -0.008]), [0.062 * s, 0.044 * s, 0.01], "twShelfDk", { R: rz(a) })); }
+        for (let k = 0; k < L - 1; k++) p.push(S(pol(1.2 + k * 2.4, 0.16, top + 0.04 + 0.06 * k), 0.015, "hsGlowMint"));
+        return top + 0.06 + 0.06 * (L - 1);
+      },
+
       // ---- the grafts (two level-3 plants grown into one): one parent's silhouette, the other's accents and glow
       warden(L, p, z, D) { // Bramble Warden (thorn + briar): the thorn's vines up the stone lantern, its roses shut to plum buds and its firebox lit the lure's amber; a Snapbud on a plum stalk out of the roof, held open over the wisplings, teal leaves at its foot
         const h = TOP.thorn(L, p, z), H = [0.2, 0.22, 0.24][L - 1], UP = [0, 0, 1];
@@ -23288,6 +23556,26 @@ function MA_DSP() {
         cap(p, [0, 0, zt], r - 0.02); tufts(p, 0.27 * g, 4, FR + Math.PI / 4);
         drape(p, 0.17 * g, 0.31 * g, [FR + Math.PI - 0.3, FR + Math.PI + 0.9]);
         return { z, r: 0.34 * g, sp: [pol(FR, r * 0.6, z), pol(FR - 0.95, r * 0.62, z), pol(FR, 0.19 * g, 0)] };
+      },
+      // the helpers' vessels
+      cistern(L, p) { // a round stone basin, dark inside over a pool of dew, moss on its rim, roots over the back; the wisplings on the rim
+        const g = G3[L - 1], r = 0.21 * g, h = 0.13 * g;
+        drum(p, r, 0, h); crackY(p, FR + 0.5, r, h - 0.01, 0.08 * g);
+        p.push(Y([0, 0, h], r - 0.035, 0.045, SN, { sub: 1, subm: SD }), Y([0, 0, h - 0.04], r - 0.04, 0.008, "twDew"));
+        ring(4, (a) => p.push(E(pol(a, r - 0.015, h + 0.004), [0.045, 0.026, 0.018], "moss", Object.assign({ R: rz(a + 1.57) }, MO()))), FR + Math.PI / 4);
+        tufts(p, 0.3 * g, 4); drape(p, r, h, DR.slice(0, 2));
+        return { z: h, r: 0.34 * g, sp: [pol(FR, r - 0.02, h + 0.01), pol(FR - 1.2, r - 0.02, h + 0.01), pol(FR + 1.2, r - 0.02, h + 0.01)] };
+      },
+      sundew(L, p) { // a low stump, the rosette over its moss and rim; the wisplings at its foot to the viewer
+        const g = G3[L - 1], r = 0.17 * g, z = stump(p, r, 0.07 * g, 0, 5, FR + Math.PI / 5);
+        return { z, r: r * 1.6, sp: [pol(FR, r * 1.55, 0.01), pol(FR + 1.25, r * 1.6, 0.01), pol(FR - 1.25, r * 1.6, 0.01)] };
+      },
+      glowcap(L, p) { const g = G3[L - 1], r = 0.22 * g, z = stump(p, r, 0.08 * g, 0, 6, 0.1); return { z, r: r * 1.5, sp: spots(r * 0.72, z) }; }, // a low wide stump, the stalks out of its moss
+      stump(L, p) { // the Nurse Stump itself: an old broken stump, tall, shards round the back of its rim, a dark knot hole to the viewer
+        const g = G3[L - 1], r = 0.21 * g, z = stump(p, r, 0.2 * g, 0, 6, FR + Math.PI / 6);
+        jag(p, [0, 0, 0], r, z, BACK, 0.12 * g);
+        p.push(E(pol(FR, r * 0.95, z * 0.42), [0.05 * g, 0.045 * g, 0.07 * g], BK, { R: rz(FR), sub: 1, subm: "twBarkDk" }));
+        return { z, r: r * 1.5, sp: [pol(FR, r * 0.55, z), pol(FR + 0.95, r * 0.6, z), pol(FR, r * 1.45, 0.01)] };
       },
       // the grafts keep their silhouette parent's vessel
       warden: (L, p, D) => VES.thorn(L, p, D), eclipse: (L, p, D) => VES.sun(L, p, D), mire: (L, p, D) => VES.toad(L, p, D), lantern: (L, p, D) => VES.lily(L, p, D),
@@ -23681,7 +23969,7 @@ function MA_DSP() {
     return { RAMPS, MATS, KINDS, build, check, critter };
   }
   const TOWERS = stumpsAndStones(), TOWERS_SRC = String(stumpsAndStones);
-  Object.assign(ME.LIGHT_COL, { twLure: [1.0, 0.74, 0.32, 0.45], twStinkGlow: [1.0, 0.6, 0.25, 0.6], twMoon: [0.45, 0.62, 1.0, 0.8], twJadeGlow: [0.5, 1.0, 0.78, 0.8] });
+  Object.assign(ME.LIGHT_COL, { twLure: [1.0, 0.74, 0.32, 0.45], twStinkGlow: [1.0, 0.6, 0.25, 0.6], twMoon: [0.45, 0.62, 1.0, 0.8], twJadeGlow: [0.5, 1.0, 0.78, 0.8], twDew: [0.5, 0.8, 1.0, 0.5], twLamp: [1.0, 0.92, 0.55, 0.9] });
   for (const k of TOWERS.KINDS) {
     const name = "ms_tw_" + k;
     ME.assetKit.model(name, 1.9, (o) => TOWERS.build(k, o), 1);
@@ -23692,6 +23980,100 @@ function MA_DSP() {
   M.wispling = (o) => TOWERS.critter(o);
   ME.ASSET_BY.wispling = "wispling" + TOWERS_SRC; ME.ASSET_SRC += "wispling" + TOWERS_SRC;
 
+  // ---- the creatures' traits (Defs.CTRAITS, the seed pouch design 3.4, A1). Winged is the kind's own model (E1b
+  // lifts it). The other three are each kind's model with a look on top, baked as their own flipbooks (G.bakeList:
+  // e_<kind>_veiled, _plated, _regrow) once the rules have the traits, read by G.models.traitFrames:
+  // - Veiled: the kind's model in a ghost ramp of its palette (o.remap, no new model; the engine dithers it, E1a):
+  //   each material to a pale one of its hue family (warm, green, cool) and lightness (dark, mid, light), lit
+  //   ones to a pale glow; the eyes and the darkest stay as they are so the face still reads.
+  // - Plated: ms_<kind>_plated, a set of slate plates on its body with moss in the seams, one set per wearer: the
+  //   Rot Grub's bands down its segments, the Bramble Mole's overlapping scales, the Mender's hex pauldrons. The
+  //   plates sit on the body's biggest prims of each frame, so they ride its walk. When the plate breaks the game
+  //   swaps back to the bare model and crumbles the plate (Game, as an uprooted plant).
+  // - Regrowing: ms_<kind>_regrow, moss tufts with a sprout or two over its back, more and bigger with o.look
+  //   (the kind's look factor, 1 by default). Its green pulse is Game's fx.
+  const CTRAIT_RAMPS = {}, CTRAIT_MATS = {}, VEIL = { w: "#ece0dc", g: "#dde9da", c: "#dde0ee" }, VL = [[0.6, 0.82], [0.7, 0.9], [0.8, 0.97]];
+  for (const h in VEIL) VL.forEach(([lo, hi], i) => { CTRAIT_RAMPS["ctVeil" + h + i] = [VEIL[h], 4, lo, hi, 0.04]; });
+  CTRAIT_RAMPS.ctVeilGlow = ["#dceeff", "#e8f4ff", "#f4faff"]; CTRAIT_MATS.ctVeilGlow = { em: 1, flat: 1 };
+  CTRAIT_RAMPS.ctSlate = ["#6e7c86", 5, 0.22, 0.66, 0.06]; CTRAIT_RAMPS.ctSlateDk = ["#3e4850", 4, 0.12, 0.4, 0.06]; CTRAIT_RAMPS.ctMoss = ["#6a9a3a", 5, 0.2, 0.7, 0.12];
+  CTRAIT_RAMPS.ctSprout = ["#8ad04a", 4, 0.34, 0.86, 0.1];
+  let veilSt = null;
+  const VEIL_BY = new Map(), hexHsl = (hx) => {
+    const v = parseInt(hx.slice(1, 7), 16), r = (v >> 16) / 255, g = ((v >> 8) & 255) / 255, b = (v & 255) / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+    const hh = !d ? 0 : mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return [hh * 60, d ? d / (1 - Math.abs(2 * l - 1)) : 0, l];
+  };
+  const veilOf = (n) => {
+    if (!veilSt || typeof n !== "string" || n.startsWith("ctVeil")) return n;
+    if (VEIL_BY.has(n)) return VEIL_BY.get(n);
+    const ra = veilSt && veilSt.ramps[n], ma = veilSt && veilSt.mats[n];
+    let to = n;
+    if (ma && ma.em) to = "ctVeilGlow";
+    else if (Array.isArray(ra) && typeof ra[0] === "string" && ra[0][0] === "#") {
+      const [hh, sa, l0] = hexHsl(ra[0]), l = typeof ra[2] === "number" ? (ra[2] + ra[3]) / 2 : l0;
+      if (l > 0.1) to = "ctVeil" + (sa < 0.12 || (hh >= 170 && hh < 300) ? "c" : hh >= 70 && hh < 170 ? "g" : "w") + (l < 0.3 ? 0 : l < 0.55 ? 1 : 2);
+    }
+    VEIL_BY.set(n, to);
+    return to;
+  };
+  G.VEIL_REMAP = new Proxy({}, { get: (_, n) => veilOf(n) });
+  // the trait wearers by the design's tables, until the rules list their own (Defs.CTRAITS[id].kinds)
+  const CT_WEAR = { veiled: ["beetle", "golem", "snail", "lichen"], plated: ["grub", "mole", "mender"], regrow: ["golem", "lichen", "bloat", "snail"] };
+  const wearers = (id) => { const t = G.Defs.CTRAITS && G.Defs.CTRAITS[id === "regrow" ? "regrowing" : id]; return (t && t.kinds) || CT_WEAR[id]; };
+  {
+    const { E, S, add, mul, norm, cross, orient } = ME.assetKit;
+    const vol = (p) => (p.rx || p.r || 0) * (p.ry || p.r || 0) * (p.rz || p.r || 0);
+    // the body: the prims of the biggest one's material, biggest first
+    const bodyOf = (ps, n) => { const q = ps.filter((p) => (p.k === 0 || p.k === 1) && typeof p.m === "string"), b = q.reduce((a, p) => (vol(p) > vol(a) ? p : a), q[0]); return q.filter((p) => p.m === b.m).sort((a, c) => vol(c) - vol(a)).slice(0, n); };
+    // the point of body prim b's surface along azimuth az (0 forward, +X) and elevation el, and its normal
+    const onBody = (b, az, el, out = 0) => {
+      const rx = b.rx || b.r, ry = b.ry || b.r, rz = b.rz || b.r, u = [Math.cos(el) * Math.cos(az), Math.cos(el) * Math.sin(az), Math.sin(el)];
+      const n = norm([u[0] / rx, u[1] / ry, u[2] / rz]);
+      return [add([b.x, b.y, b.z], add([u[0] * rx, u[1] * ry, u[2] * rz], mul(n, out))), n];
+    };
+    // a slate plate on b at (az, el), w x l across, its long side along d (or round it)
+    const plate = (p, b, az, el, w, l, d) => {
+      const t = Math.min(b.rx || b.r, b.ry || b.r, b.rz || b.r) * 0.2, [q, n] = onBody(b, az, el, t * 0.2);
+      p.push(E(q, [l, w, t], "ctSlate", { R: orient(n, d || cross(n, [0, 0, 1])), k2: t * 0.4 }), E(add(q, mul(n, -t * 0.5)), [l * 1.04, w * 1.04, t * 0.7], "ctSlateDk", { R: orient(n, d || cross(n, [0, 0, 1])) }));
+      return q;
+    };
+    const moss = (p, b, az, el, r) => { const [q] = onBody(b, az, el, r * 0.2); p.push(S(q, r, "ctMoss")); };
+    const D2R = Math.PI / 180, PLATES = {
+      grub(p, ps) { // a band over each of its three biggest segments behind the head, moss between them
+        const bs = bodyOf(ps, 4).sort((a, c) => c.x - a.x).slice(1); // not the head
+        for (const b of bs) { const r = b.r || b.ry; plate(p, b, 0, 80 * D2R, r * 0.9, r * 0.62, [1, 0, 0]); for (const sd of [1, -1]) plate(p, b, sd * 90 * D2R, 38 * D2R, r * 0.5, r * 0.5, [1, 0, 0]); }
+        for (let i = 1; i < bs.length; i++) { const a = bs[i - 1], c = bs[i], m = mul(add([a.x, a.y, a.z], [c.x, c.y, c.z]), 0.5), r = Math.min(a.r || a.ry, c.r || c.ry); p.push(S(add(m, [0, 0, r * 0.95]), r * 0.2, "ctMoss")); }
+      },
+      mole(p, ps) { // overlapping scales down its back in three rows, tail-most first so the front ones lie over them
+        const [b] = bodyOf(ps, 1), r = Math.min(b.rx, b.ry) || b.r;
+        for (const [az, el] of [[180, 40], [150, 48], [210, 48], [180, 64], [135, 66], [225, 66], [0, 84], [180, 84]]) plate(p, b, az * D2R, el * D2R, r * 0.42, r * 0.38);
+        for (const [az, el] of [[165, 56], [195, 56], [180, 74]]) moss(p, b, az * D2R, el * D2R, r * 0.11);
+      },
+      mender(p, ps) { // hex pauldrons, one on each side and a crest down the back, moss in the joins, on its mould cone
+        const c = ps.find((q) => q.k === 2 && q.m === "hsMould") || bodyOf(ps, 1)[0], rr = c.k === 2 ? (c.ra + c.rb) / 2 : 0;
+        const b = c.k === 2 ? { x: c.x + c.bx / 2, y: c.y + c.by / 2, z: c.z + c.bz / 2, rx: rr, ry: rr, rz: c.bz / 2 + c.rb * 0.5 } : c, r = Math.min(b.rx || b.r, b.ry || b.r);
+        for (const [az, el, s] of [[90, 30, 0.62], [-90, 30, 0.62], [180, 50, 0.56], [180, 78, 0.46]]) plate(p, b, az * D2R, el * D2R, r * s, r * s);
+        for (const [az, el] of [[135, 42], [225, 42], [180, 64]]) moss(p, b, az * D2R, el * D2R, r * 0.13);
+      },
+    };
+    const regrow = (p, ps, look) => { // tufts over the back and shoulders (az 70-290, the tail side) and a sprout or two, more with look
+      const [b] = bodyOf(ps, 1), r = Math.min(b.rx || b.r, b.ry || b.r), n = Math.round(3 + 2 * look), s = 0.8 + 0.2 * look;
+      for (let i = 0; i < n; i++) {
+        const az = (180 + ((i * 137.5) % 220) - 110) * D2R, el = (56 + ((i * 53) % 30)) * D2R, [q, nn] = onBody(b, az, el, 0), rr = r * (0.2 + 0.06 * ((i * 7) % 3)) * s;
+        p.push(S(q, rr, "ctMoss"), S(add(q, add(mul(nn, rr * 0.6), [rr * 0.5, 0, 0])), rr * 0.7, "ctMoss"));
+        if (i % 3 === 0) { const t = add(q, mul(nn, rr * 2.6 * s)); p.push(E(t, [rr * 0.5, rr * 0.22, rr * 0.9], "ctSprout", { R: orient(nn, [1, 0, 0]) })); }
+      }
+    };
+    // ms_<kind>_<look>: the kind's model, the look's prims added per frame; its k (kMul) and frames are the kind's
+    const wrap = (k, sfx, fn) => {
+      const base = "ms_" + k, name = base + "_" + sfx, b = M[base];
+      ME.assetKit.model(name, 1, (o) => { const md = b(o); md.prims = md.prims.slice(); fn(md.prims, o); md.kMul = md.k; return md; }, ME.FRAMES[base] || 1);
+      ME.ASSET_BY[name] += ME.ASSET_BY[base] || base; ME.ASSET_SRC += ME.ASSET_BY[base] || base;
+    };
+    for (const k in PLATES) if (M["ms_" + k]) wrap(k, "plated", (ps) => PLATES[k](ps, ps.slice()));
+    for (const k of CT_WEAR.regrow) if (M["ms_" + k]) wrap(k, "regrow", (ps, o) => regrow(ps, ps.slice(), o.look || 1));
+  }
+
   // frames: the idle loop's flipbook (FRAMES when unset). The plants hold still for now (one frame each,
   // 24 volumes for the eight at three levels); their idle loop is a follow-up. Their density is G.heroFine.
   G.TOWER_MODELS = {
@@ -23699,6 +24081,8 @@ function MA_DSP() {
     briar: { name: "ms_tw_briar", size: 0.72, frames: 1 }, toad: { name: "ms_tw_toad", size: 0.72, frames: 1 }, moon: { name: "ms_tw_moon", size: 0.72, frames: 1 }, lily: { name: "ms_tw_lily", size: 0.72, frames: 1 },
     // the grafts, only ever grown at level 3 (lvs: the levels baked; G.models.towerFrames gives level 3 for the others)
     warden: { name: "ms_tw_warden", size: 0.72, frames: 1, lvs: [3] }, eclipse: { name: "ms_tw_eclipse", size: 0.72, frames: 1, lvs: [3] }, mire: { name: "ms_tw_mire", size: 0.72, frames: 1, lvs: [3] }, lantern: { name: "ms_tw_lantern", size: 0.72, frames: 1, lvs: [3] },
+    // the helpers (the seed pouch): baked once the rules have them (D.UTILITY, G1a), until then their stand-ins
+    cistern: { name: "ms_tw_cistern", size: 0.72, frames: 1 }, sundew: { name: "ms_tw_sundew", size: 0.72, frames: 1 }, glowcap: { name: "ms_tw_glowcap", size: 0.72, frames: 1 }, stump: { name: "ms_tw_stump", size: 0.72, frames: 1 },
   };
   G.HEART_MODEL = { name: "ms_heart", size: 1.25 };
   // the asset models grow by level themselves; the instance adds only a touch
@@ -23798,9 +24182,16 @@ function MA_DSP() {
   G.bakeList = () => {
     const out = {};
     for (const k in G.CREATURE_MODELS) { if (!G.Defs.ENEMIES[k]) continue; const c = G.CREATURE_MODELS[k]; out["e_" + k] = [c.name, { scale: k0(c.name) * c.size, fine: G.heroFine() }, FRAMES]; }
+    // the creatures' traits, once the rules have them (Defs.CTRAITS): a flipbook per wearer and look
+    if (G.Defs.CTRAITS) for (const t of ["veiled", "plated", "regrow"]) for (const k of wearers(t)) {
+      const c = G.CREATURE_MODELS[k];
+      if (!c || !G.Defs.ENEMIES[k] || (t !== "veiled" && !M[c.name + "_" + t])) continue;
+      const o = { scale: k0(c.name) * c.size, fine: G.heroFine() };
+      out["e_" + k + "_" + t] = t === "veiled" ? [c.name, Object.assign(o, { remap: G.VEIL_REMAP }), FRAMES] : [c.name + "_" + t, Object.assign(o, { look: G.Defs.ENEMIES[k].look || 1 }), FRAMES];
+    }
     // (only the plants the rules have, and the grafts' models, G.GRAFT_ART: a model may land before its plant)
     const grafts = new Set(Object.values(G.GRAFT_ART || {}).map((a) => a.model));
-    for (const k in G.TOWER_MODELS) { if (!G.Defs.TOWERS[k] && !grafts.has(k)) continue; const c = G.TOWER_MODELS[k]; for (const lv of c.lvs || [1, 2, 3]) out["t_" + k + lv] = [c.name, { lv, scale: k0(c.name) * c.size, fine: G.heroFine(lv === 3) }, c.frames || FRAMES]; }
+    for (const k in G.TOWER_MODELS) { if (!G.Defs.TOWERS[k] && !(G.Defs.UTILITY && G.Defs.UTILITY[k]) && !grafts.has(k)) continue; const c = G.TOWER_MODELS[k]; for (const lv of c.lvs || [1, 2, 3]) out["t_" + k + lv] = [c.name, { lv, scale: k0(c.name) * c.size, fine: G.heroFine(lv === 3) }, c.frames || FRAMES]; }
     for (const h of [1, 2]) out["heart" + h] = [G.HEART_MODEL.name, heartO(h), FRAMES]; // its crown's sway, as stage 0's
     out.rift0 = ["ms_rift", Object.assign(riftO(), { dim: true }), 1]; // a rift asleep (G.models.riftAt)
     return out;
@@ -23819,6 +24210,9 @@ function MA_DSP() {
         return { frames, fwd: c.fwd, hover: c.hover * k0(c.name) * c.size, gait: c.gait, flap: !!c.flap, scale: 1 / m.fine, h: m.h, r: m.r };
       }),
       towerFrames,
+      // a creature's flipbook in a trait's look (veiled, plated, regrowing), or null for its own (Winged, or a
+      // kind the trait doesn't fit)
+      traitFrames: (kind, trait) => gf["e_" + kind + "_" + (trait === "regrowing" ? "regrow" : trait)] || null,
       // the Heart Tree's flipbook per hurt stage (0 is the baked static's own)
       heartFrames: (s0) => [s0.frames, gf.heart1, gf.heart2],
       // the rift standing at P (in tiles: map.game.spawn or spawn2), or null: { s, frames, lights }. s is its
@@ -24010,6 +24404,14 @@ function MA_DSP() {
     heart: `${heart(12, 10, 0.8)}<path d="M12 16.4V21.5M12 21.5H8.5M12 21.5H15.5M12 18.5l-2.2-1.6M12 19.4l2.4-1.6"/>`,
     garden: `<path d="M2.5 18.5C7 15.5 17 15.5 21.5 18.5" ${W}/><path d="M2.5 21.5C7 19 17 19 21.5 21.5" opacity=".55"/>${sprout(7.5, 16.6)}<path d="M7.5 16.6V10.6"/><path d="M16.5 16.4V9.5M16.5 12.5C19.5 12.5 20.5 10 20.5 8.5C18 8.5 16.5 10 16.5 12.5Z" ${W}/><circle cx="12" cy="5" r="1.6" ${S}/>`,
   };
+  // the helpers (the seed pouch, D.UTILITY): the Dew Cistern's pitcher with its dew line, the Sundew's hairy leaf on
+  // a stalk, the Glowcap's lit bell on its crook, the Nurse Stump's shoot
+  Object.assign(PLANT, {
+    cistern: `<path d="M8.6 7H15.4L14.6 9.6C17.4 12 17.4 18.4 14.8 21.5H9.2C6.6 18.4 6.6 12 9.4 9.6Z" ${W}/><path d="M7.4 7C8.6 4.6 13 3.4 17.6 4.8L15.4 7M8.2 15.4H15.8"/><circle cx="12" cy="18.4" r="1.3" ${S}/>`,
+    sundew: `<path d="M12 21.5V13.2M12 18C9.8 18 8.2 16.6 7.6 14.6"/><circle cx="12" cy="8.6" r="3.6" ${W}/>${rays(9, 4.6, 6.8, 12, 8.6)}`,
+    glowcap: `<path d="M6.5 21.5V9.5C6.5 4.6 13.2 3.4 15 7"/><path d="M11.2 13C11.2 9.2 12.8 7 15 7C17.2 7 18.8 9.2 18.8 13Z" ${W}/><circle cx="15" cy="15.4" r="1.7" ${S}/><path d="M15 18.4V19.6M12.6 17.4L11.8 18.4M17.4 17.4L18.2 18.4" opacity=".6"/>`,
+    stump: `<path d="M5 21.5L6.8 13H17.2L19 21.5Z" ${W}/><path d="M6.8 13C8.6 14.2 15.4 14.2 17.2 13M10.6 17.6L11.4 21.5"/>${sprout(12, 12.4)}<path d="M12 9.4C14.6 9.4 16.6 7.6 17 5.4C14.4 5.4 12.6 7 12 9.4Z" ${W}/>`,
+  });
   // (Briar Vine, Stinkhorn, Moonpetal and Ghost Lily are the plants #58 adds)
   G.PLANT_ICONS = {};
   for (const k in PLANT) G.PLANT_ICONS[k] = svg(PLANT[k]);
@@ -24058,6 +24460,19 @@ function MA_DSP() {
   };
   G.TRAIT_ART = {};
   for (const id in TRAIT) G.TRAIT_ART[id] = { color: TRAIT[id][0], icon: svg(TRAIT[id][1]) };
+
+  // --- a creature's trait (Defs.CTRAITS, the seed pouch design 3.4), its badge over the creature, in the almanac and
+  // on the pouch screen, read at 16 px: G.CTRAIT_ART[id] = { color, icon }, each its own shape (never colour alone):
+  // Winged a feather, Veiled a closed eye with its lashes, Plated a hex plate with a crack, Regrowing a sprout
+  // from a ring that closes on itself
+  const CTRAIT = {
+    winged: [[0.62, 0.78, 0.92], `<path d="M20 3.5C12.4 3.8 6.6 9.4 5.6 18.4C11.8 17.6 18 12.2 20 3.5Z" ${W}/><path d="M3.5 20.5L15.6 8.4M8.6 15.4H12.6M11.6 12.4H15.4"/>`],
+    veiled: [[0.76, 0.72, 0.9], `<path d="M2.8 10C7.4 16 16.6 16 21.2 10C16.6 12.8 7.4 12.8 2.8 10Z" ${W}/><path d="M6.2 14.2L4.6 17.2M10 15.6L9.4 19M14 15.6L14.6 19M17.8 14.2L19.4 17.2"/>`],
+    plated: [[0.56, 0.62, 0.66], `<path d="M12 2.8L20 7.4V16.6L12 21.2L4 16.6V7.4Z" ${W}/><path d="M12 2.8L10.6 9L13.4 13.2L11.6 21.2"/>`],
+    regrowing: [[0.5, 0.8, 0.36], `<path d="M19.2 15.2A7.6 7.6 0 1 1 15.4 5.4M15.4 5.4L15.8 9.2M15.4 5.4L11.8 6.6"/>${sprout(10.8, 18.4)}`],
+  };
+  G.CTRAIT_ART = {};
+  for (const id in CTRAIT) G.CTRAIT_ART[id] = { color: CTRAIT[id][0], icon: svg(CTRAIT[id][1]) };
 
   // --- the links between neighbouring plants (Defs.LINKS, game/links), read by the view as G.LINK_ART[id]:
   // { color: the vine, color2: the motes running along it, width, motes per direction, mote, icon }. The
@@ -25708,8 +26123,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       sp.put(m[0], m[1], m[2], w, b[0], b[1], b[2], K.STREAK, ...mul(cb, 1.3 * k), 1);
       for (let j = 0; j < 2 * L.motes; j++) {
         const back = j % 2 === 1, u = (ph * 0.45 + (j >> 1) / L.motes + (back ? 0.5 : 0)) % 1;
-        const p = u < 0.5 ? mix(back ? b : a, m, u * 2) : mix(m, back ? a : b, u * 2 - 1);
-        sp.put(p[0], p[1], p[2] + 0.02, 0.045 * L.width, 0, 0, 0, L.mote, ...mul(L.color2 || (back ? cb : ca), 2.2 * k), 1);
+        const at = (v) => (v < 0.5 ? mix(back ? b : a, m, v * 2) : mix(m, back ? a : b, v * 2 - 1)), p = at(u);
+        // a streak mote needs its own tail (a short way back along the vine): its second point is the streak's
+        // other end, and the 0,0,0 the round motes leave there drew a line to the world origin (the white lines)
+        const q = L.mote === K.STREAK ? at(Math.max(0, u - 0.05)) : [0, 0, -0.02];
+        sp.put(p[0], p[1], p[2] + 0.02, 0.045 * L.width, q[0], q[1], q[2] + 0.02, L.mote, ...mul(L.color2 || (back ? cb : ca), 2.2 * k), 1);
       }
     }
 
