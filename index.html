@@ -173,6 +173,13 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 #almbody .ti, #almbody .ei svg { margin-right: 2px; }
 #almbody .det .ei svg { width: 1.05em; height: 1.05em; }
 #almbody .legend { font-size: calc(12px * var(--ts)); color: #a99f8a; margin-top: 6px; }
+/* T1: the creature traits in words (hud.js G.ctWords): the garden's line, the preview's badges with their counts (one no
+   seed answers tinted red, outlined: never colour alone), and the badge on a card or a tip, at the text's size */
+#almbody .garden { font-size: calc(12.5px * var(--ts)); color: #d8cfba; margin-top: 2px; }
+#almbody .cts { margin-left: 16px; display: flex; flex-wrap: wrap; gap: 4px; }
+#almbody .ctc { cursor: pointer; padding: 0 6px; border-radius: 8px; background: rgba(255, 255, 255, 0.07); font-size: calc(12.5px * var(--ts)); white-space: nowrap; }
+#almbody .ctc.warn { background: rgba(226, 64, 90, 0.28); outline: 1.5px solid #e2405a; color: #ffd0d6; }
+.ctb svg { width: 1.15em; height: 1.15em; vertical-align: -0.22em; margin-right: 2px; }
 /* the wave skip under the coming wave (hud.js skipBtn): small and quiet, its second tap outlined */
 #almbody .btn.skip { display: block; margin: 5px 0 2px 16px; padding: 3px 10px; border-width: 2px; border-radius: 10px; box-shadow: none; font-size: calc(13px * var(--ts)); text-align: left; }
 #almbody .btn.skip small { display: block; font-weight: 500; opacity: 0.8; font-size: calc(11.5px * var(--ts)); }
@@ -276,12 +283,13 @@ body.calm .coach-spot { animation: none; }
   30% { outline: 3px solid #e0506a; } }
 /* the seed in hand over a cell (scene.ghostTag): the links it would make there, the dew it lacks. Fixed on its own
    layer over the tips (.hintbit, .coach: 3) and the tray (2), not in #floats, which every bubble covered */
-.ghosttag { position: fixed; z-index: 4; pointer-events: none; left: 0; top: 0; max-width: min(340px, 72vw); padding: 5px 9px; border-radius: 10px; background: rgba(26, 38, 13, 0.78); color: #f4f1e2;
+.ghosttag { position: fixed; z-index: 4; pointer-events: none; left: 0; top: 0; max-width: min(340px, 72vw); padding: 5px 9px; border-radius: 10px; background: rgb(30, 43, 16); color: #f4f1e2; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
   font-size: calc(13.5px * var(--ts)); font-weight: 600; line-height: 1.25; text-align: center; animation: tagpulse 1.6s ease-in-out infinite; }
 .ghosttag b { font-weight: 800; }
 .ghosttag i { font-style: normal; font-weight: 800; color: #cfe7ff; }
 .ghosttag i.short { color: #ffb3c0; }
-@keyframes tagpulse { 50% { opacity: 0.8; } }
+/* (solid, so a tip it covers never shows through; it pulses by its outline, not its opacity) */
+@keyframes tagpulse { 50% { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45), 0 0 0 2px rgba(207, 231, 255, 0.4); } }
 body.calm .ghosttag, body.calm #dew.short { animation: none; }
 #wavebtn { position: fixed; right: calc(12px + var(--sr)); bottom: calc(12px + var(--sb)); width: 210px; height: calc(104px * var(--ts)); font-size: calc(24px * var(--ts)); }
 /* (while a wave runs: the next one called early, Game.callEarly, with the dew it pays) */
@@ -308,6 +316,8 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 #inspbody .chip { display: flex; flex-direction: column; align-items: center; padding: 3px 2px; border-radius: 8px; background: #efe4c4; color: #38452e; min-width: 0; }
 #inspbody .chip small { font-size: 0.72em; color: #6b7560; text-transform: uppercase; letter-spacing: 0.04em; }
 #inspbody .chip b { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+#inspbody .chip.wide { grid-column: span 2; } /* (a creature's counter trait: its badge and element, T1) */
+#inspector.foe #inspbody { padding-right: 6px; } /* (a phone's overlay scrollbar is not drawn over the trait line) */
 #inspbody .tips > div { margin-top: 2px; }
 #inspbody .tips .ei { white-space: nowrap; margin-right: 4px; font-weight: 800; }
 #inspbody .tips .ei svg { width: 1em; height: 1em; vertical-align: -0.15em; }
@@ -20668,7 +20678,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.102.0", name: "Mossheart", commit: "187d4ceb" };
+  G.VERSION = { v: "0.103.0", name: "Mossheart", commit: "6f34e23b" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -27458,7 +27468,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
       const game = this.game, hv = this.hover, kind = this.seed, w = game.world, c = hv && hv.cell;
       let html = "";
-      if (kind && c && w.inside(c[0], c[1]) && !game.towerAt(c[0], c[1])) {
+      // (only in play: not over the gifts veil or the game over card, which have no z-index above the tag's)
+      const play = S.phase === G.Phase.BUILD || S.phase === G.Phase.WAVE;
+      if (play && kind && c && w.inside(c[0], c[1]) && !game.towerAt(c[0], c[1])) {
         const block = game.placeBlock(kind, c[0], c[1]), seen = new Map();
         if (block !== "spot") for (const l of game.linksAt(kind, c[0], c[1])) seen.set(l.link.id, [l.link, (seen.get(l.link.id) || [0, 0])[1] + 1, l.other.kind]);
         const lines = [...seen.values()].map(([link, n, other]) => {
@@ -27749,6 +27761,25 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     ["adapt", "↻", "adapts", (e) => e.adapt, "Adapts: it learns to resist what hits it most."],
   ];
   const traitsOf = (kind) => TRAITS.filter((t) => t[3](D.ENEMIES[kind]));
+  // A creature's counter trait (D.CTRAITS, core/enemies.js) in plain words for a new player (T1, the user: "make
+  // sure it is clear to new players the creature traits and how to prepare for them"): what it does, then what
+  // answers it, naming the plants of its counter element (the utility plants left out: the Glowcap's reveal is
+  // not offered before G1b). One line each, on the first-meeting tip (hints.js), the wave preview, the creature's
+  // card and the garden's line. G.ctWords(id) = { name, does, fix, line, badge, inked, el }; G.ctAnswered(id): a seed
+  // of the pouch answers it.
+  const CT_DOES = { winged: "flies past most plants", veiled: "half-seen: most plants miss it", plated: "a plate turns most hits", regrowing: "heals itself over time" };
+  const CT_FIX = {
+    winged: (p) => `Light hits it (${p}), or a Downpour grounds it.`, veiled: (p) => `Spirit hits it (${p}).`,
+    plated: (p) => `Pierce wears the plate down (${p}).`, regrowing: (p) => `Spore or poison stops it (${p}).`,
+  };
+  const ctAnswers = (t) => Object.keys(D.TOWERS).filter((k) => !D.TOWERS[k].util && D.elementOf(k) === t.counter);
+  // (its badge as it is on the dark almanac, darkened to ink on the light cards and tips)
+  const ctBadge = (id, f = hex) => { const a = G.CTRAIT_ART && G.CTRAIT_ART[id]; return a ? `<span class="ctb" style="color:${f(a.color)}">${a.icon}</span>` : ""; };
+  G.ctWords = (id) => {
+    const t = D.CTRAITS.find((c) => c.id === id), fix = CT_FIX[id](ctAnswers(t).map((k) => D.TOWERS[k].name).join(", "));
+    return { name: t.name, does: CT_DOES[id], fix, line: `${t.name}: ${CT_DOES[id]}. ${fix}`, badge: ctBadge(id), inked: ctBadge(id, ink), el: D.ELEMENTS[t.counter] };
+  };
+  G.ctAnswered = (id) => { const t = D.CTRAITS.find((c) => c.id === id); return S.plants.some((k) => D.TOWERS[k] && !D.TOWERS[k].util && D.elementOf(k) === t.counter); };
   // at most TAGS trait tags on the meadow at once (nearest the Heart Tree first)
   const TAGS = 24;
   // a screen without hover (a phone): planting takes two taps (main.js)
@@ -27808,8 +27839,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.boonArr = null; this.boonN = 0; this.chips = null;
       $("boonbar").addEventListener("click", (e) => { const c = e.target.closest("[data-boon]"); if (c) this.inspectGift(c.dataset.boon === this.gift ? "" : c.dataset.boon); });
       $("almbody").addEventListener("click", (e) => {
-        const c = e.target.closest("[data-foe]"), k = e.target.closest("[data-skip]");
-        if (c) this.inspectFoe(-1, c.dataset.foe);
+        const c = e.target.closest("[data-foe]"), k = e.target.closest("[data-skip]"), ct = e.target.closest("[data-ct]");
+        // (a trait badge of the preview: what answers it, as a toast; its title says the same on a hover)
+        if (ct) this.toast(G.ctWords(ct.dataset.ct).line);
+        else if (c) this.inspectFoe(-1, c.dataset.foe);
         // (the wave skip, Game.skipWave: two taps, the first asks, as Uproot does)
         else if (k && !k.disabled) {
           if (this.skipArmed !== S.wave) { this.armSkip(S.wave); return; }
@@ -28136,7 +28169,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       box.classList.toggle("docked", dk);
       box.style.left = box.style.top = ""; if (!dk) box.style.maxHeight = "";
       $("insptitle").innerHTML = head;
-      $("inspbody").innerHTML = (chips.length ? `<div class="chips">${chips.map(([l, v]) => `<span class="chip"><small>${l}</small><b>${v}</b></span>`).join("")}</div>` : "") +
+      $("inspbody").innerHTML = (chips.length ? `<div class="chips">${chips.map(([l, v, c]) => `<span class="chip${c ? " " + c : ""}"><small>${l}</small><b>${v}</b></span>`).join("")}</div>` : "") +
         (tips.length ? `<div class="tips">${tips.map((t) => `<div>${t}</div>`).join("")}</div>` : "") +
         (more ? `<div class="more">${more}</div><span class="tomore" role="button">More</span>` : "");
       queueMicrotask(() => { this.fitCard(); this.placeCard(); }); // (once the caller has shown it)
@@ -28337,13 +28370,20 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (this.act.deselect) this.act.deselect(); // (the plant looked at, and its ring, let go)
       this.foe = i >= 0 ? { i, uid: E.uid[i], kind } : { i: -1, kind };
       const e = D.ENEMIES[kind], tr = traitsOf(kind), { weak, resist } = this.affChips(kind, i >= 0 ? E.trait : null);
-      const tips = [];
+      const tips = [], chips = [["Speed", e.speed.toFixed(2)], ["Harm", e.harm], ["Dew", e.reward], ["Traits", tr.length ? `<span class="tglyph">${tr.map((t) => t[1]).join("")}</span>` : "–"]];
+      // its counter trait (this one's, or for the almanac's kind the one it may wear in this garden): the badge and
+      // the counter element on a chip, and what answers it in words first
+      const c = i >= 0 ? E.ct[i] : D.ctFor(kind, S.level, null);
+      if (c >= 0) {
+        const w = G.ctWords(D.CTRAITS[c].id);
+        chips.push([w.name, `${w.inked}${w.el}`, "wide"]); // (two columns: badge and element read whole on the narrow desktop card)
+        tips.push(`${w.inked}<b>${i >= 0 ? "" : "Some are "}${esc(w.name)}</b>: ${esc(w.does)}. ${esc(w.fix)}`);
+      }
       if (weak.length) tips.push(`Weak to ${weak.join(" ")}`);
       if (resist.length) tips.push(`Resists ${resist.join(" ")}`);
-      if (!tips.length) tips.push(`<span class="dim">No weak spot: anything hurts it</span>`);
+      if (!weak.length && !resist.length) tips.push(`<span class="dim">No weak spot: anything hurts it</span>`);
       this.card("foe", this.head(icon("ENEMY_ICONS", kind) || "●", ink(e.color), e.name, i >= 0 ? this.foeHp(i) : `HP ${e.hp}`),
-        [["Speed", e.speed.toFixed(2)], ["Harm", e.harm], ["Dew", e.reward], ["Traits", tr.length ? `<span class="tglyph">${tr.map((t) => t[1]).join("")}</span>` : "–"]],
-        tips, `${esc(e.lore || "")}${tr.map((t, k) => `${k || e.lore ? "<br>" : ""}<span class="tglyph">${t[1]}</span> ${esc(t[4])}`).join("")}`);
+        chips, tips, `${esc(e.lore || "")}${tr.map((t, k) => `${k || e.lore ? "<br>" : ""}<span class="tglyph">${t[1]}</span> ${esc(t[4])}`).join("")}`);
       this.foeFig = $("insptitle").querySelector(".cfig");
       $("inspector").classList.add("show");
       this.showAlmanac();
@@ -28402,7 +28442,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     freeRect() {
       let top = 0, bottom = innerHeight, left = 0, right = innerWidth;
       for (const id of ["top", "topright"]) { const e = $(id); if (e && e.offsetWidth) top = Math.max(top, e.getBoundingClientRect().bottom); }
-      const tr = $("tray"); if (tr && tr.offsetWidth) bottom = Math.min(bottom, tr.getBoundingClientRect().top);
+      // (a seed's folded card is left out: it comes and goes as seeds are picked, and the garden slid up ~33 px
+      // just as the player aimed; it covers only the garden's foot)
+      const tr = $("tray"), ins = $("inspector"), seedFold = ins.classList.contains("seedinfo") && !ins.classList.contains("open") && ins.offsetHeight > 0 && !this.riting; // (not while Rites hide the card on a phone or sit above it on desktop)
+      if (tr && tr.offsetWidth) bottom = Math.min(bottom, seedFold ? ins.getBoundingClientRect().bottom : tr.getBoundingClientRect().top);
       if (!NARROW.matches) { const m = Math.min(280, 0.17 * innerWidth); left = m; right = innerWidth - m; }
       return { x: left, y: top, w: Math.max(1, right - left), h: Math.max(1, bottom - top) };
     }
@@ -28441,7 +28484,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       let tag = "coming";
       if (running) tag = `now · ${Object.values(left).reduce((a, b) => a + b, 0)} left`;
       const skip = S.phase === G.Phase.BUILD ? `<button class="btn skip" data-skip></button>` : "";
-      const html = this.waveHtml(first, tag, running ? left : null) + skip + this.waveHtml(second, running ? "next" : "after", null) +
+      // the counter traits of the coming wave, for the first-meeting tips (hints.js)
+      this.nextCts = running ? second.cts || {} : first.cts || {};
+      const html = this.gardenHtml() + this.waveHtml(first, tag, running ? left : null) + skip + this.waveHtml(second, running ? "next" : "after", null) +
         this.giftsHtml() + `<div class="legend">halo = resists · pulsing veins = weak spot</div>`;
       if (html !== this.almHtml) { this.almHtml = html; $("almbody").innerHTML = html; this.skipBtn(); }
       this.matchup = this.matchups(first, running ? left : null);
@@ -28467,6 +28512,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
       return t;
     }
+    // the garden's line, over the waves: its two counter traits and the elements that answer them ("Momiji
+    // Valley: Winged and Regrowing creatures. Bring light and spore.")
+    gardenHtml() {
+      const ids = D.LEVEL_TRAITS[S.level] || [], lv = G.LEVELS && G.LEVELS[S.level];
+      if (!ids.length || !lv) return "";
+      const ws = ids.map(G.ctWords), els = [...new Set(ws.map((w) => w.el))];
+      return `<div class="garden">${ws.map((w) => w.badge).join("")} <b>${esc(lv.name)}</b>: ${ws.map((w) => w.name).join(" and ")} creatures. Bring ${els.join(" and ")}.</div>`;
+    }
     // what a fused boon fuses: "Ember Seeds II + Bramble Hedge I", the parts owned in full marked
     recipe(f) { return f.needs.map(([id, lv]) => `<span class="${S.boonLevel(id) >= lv ? "have" : ""}">${esc(D.boon(id).name)} ${ROMAN[lv]}</span>`).join(" + "); }
     // the fusions a card would unlock, or leave one step away (a found fusion by name, one not yet found
@@ -28490,6 +28543,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     waveHtml(p, tag, left) {
       const wt = p.trait;
       let t = `<div class="wv"><b class="wn">Wave ${p.wave}</b> <span class="wt">${tag}</span>${wt ? ` <span class="tr">${this.traitIcon(wt)}${esc(wt.name)}</span>` : ""}${p.boss ? ` <span class="tr">· boss</span>` : ""}</div>`;
+      // its counter traits with their counts ("3 Winged"); a tap or a hover says what answers one, and one no seed
+      // of the pouch answers is tinted as a warning
+      const cts = Object.entries(p.cts || {});
+      if (cts.length) t += `<div class="cts">` + cts.map(([id, n]) => {
+        const w = G.ctWords(id), warn = !G.ctAnswered(id);
+        return `<span class="ctc${warn ? " warn" : ""}" data-ct="${id}" title="${esc(w.line)}${warn ? " No seed of yours answers it." : ""}">${w.badge}${n} ${esc(w.name)}</span>`;
+      }).join(" ") + `</div>`;
       for (const g of p.groups) {
         const e = D.ENEMIES[g.kind], count = left ? left[g.kind] || 0 : g.count, aff = D.affinity(g.kind, wt), weak = [], resist = [];
         D.ELEMENTS.forEach((_, el) => {
@@ -30107,6 +30167,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
   // id, the element it sits by, when it is due (t: this, g: the game, h: the HUD), and what it says
   const TIPS = [
+    // (T1: the first wave that brings a counter trait not yet met on this device, in the build before it, by the
+    // wave button: its badge, what it does, what answers it (G.ctWords, view/hud.js). First in the list, and a
+    // key tip: past the run's few, as it says how to prepare)
+    ...D.CTRAITS.map((c) => ({ id: "ct-" + c.id, by: "wavebtn", key: true, due: (t, g, h) => S.phase === P().BUILD && !!(h.nextCts || {})[c.id],
+      text: () => { const w = G.ctWords(c.id); return `${w.inked}<b>${w.name}</b>: ${w.does}. ${w.fix}`; } })),
     { id: "challenge", by: "chal", due: (t, g) => S.phase === P().BUILD && S.wave >= 1 && !!g.nextChallenge(),
       text: "<b>Dew challenge</b>: meet it this wave for bonus dew." },
     { id: "matchup", by: "seeds", due: (t, g, h) => S.phase === P().BUILD && S.wave >= 1 && Object.values(h.matchup || {}).some((m) => m),
@@ -30156,14 +30221,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
       if (busy || now < this.next) return;
       const seen = this.seen(), hud = this.app.hud, more = this.on() && this.count < MAX_RUN;
-      const tip = TIPS.find((t) => (t.run ? !this.ran.includes(t.id) : more && !seen.includes(t.id)) && t.due(this, game, hud) && shown(t.by)); // (the cheap state test first: shown() reads layout)
+      const tip = TIPS.find((t) => (t.run ? !this.ran.includes(t.id) : (more || (t.key && this.on())) && !seen.includes(t.id)) && t.due(this, game, hud) && shown(t.by)); // (the cheap state test first: shown() reads layout)
       if (tip) this.show(tip);
     }
     show(tip) {
       this.cur = tip; this.until = performance.now() + LIFE_MS;
       if (tip.run) this.ran.push(tip.id);
-      else { this.count++; const m = this.app.menu; if (m) m.set("hintsSeen", this.seen().concat(tip.id)); }
-      this.el.querySelector(".hb-t").innerHTML = tip.text;
+      else { if (!tip.key) this.count++; const m = this.app.menu; if (m) m.set("hintsSeen", this.seen().concat(tip.id)); }
+      this.el.querySelector(".hb-t").innerHTML = typeof tip.text === "function" ? tip.text() : tip.text;
       this.el.dataset.tip = tip.id;
       this.el.classList.add("show");
       this.place();
