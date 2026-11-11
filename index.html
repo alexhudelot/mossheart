@@ -22049,7 +22049,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.115.0", name: "Mossheart", commit: "1ec4a15c" };
+  G.VERSION = { v: "0.116.0", name: "Mossheart", commit: "70993056" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -27333,9 +27333,10 @@ ${K} .coachrow .btn { box-shadow: 0 2px 0 #2b2c22; }
   // Tree, 23-24 its stage (healthy, wounded, critical), and then markV is its knot's glow 0..1 (view/scene.js)
   // 26-28 a creature's counter trait (view/scene.js traitLook): 26 Veiled (a pale rim on its dithered ghost), 27 a
   // Veiled one a Glowcap shows (a warm rim), 28 a Regrowing one healing (a green pulse)
+  // 29-30 a creature's damage stage (view/wounds.js: 0 whole, 1 hurt, 2 near dead)
   // 25 a garden wispling (MossheartEngine/content/critters.js wispPut, through ME.content.wispMark), and then markV
   // is its glow 0..1 (dim by day, full at dusk)
-  G.MARK = { WEAK_SHIFT: 4, HIT_SHIFT: 8, HIT_WEAK: 1 << 10, HIT_RESISTED: 1 << 11, SLOWED: 1 << 13, GHOST_OK: 1 << 14, GHOST_BAD: 1 << 15, SELECTED: 1 << 16, STANDIN: 1 << 17, PLANT_SHIFT: 18, CREATURE: 1 << 21, HEART: 1 << 22, HEART_SHIFT: 23, WISP: 1 << 25, VEIL: 1 << 26, LIT: 1 << 27, REGROW: 1 << 28 };
+  G.MARK = { WEAK_SHIFT: 4, HIT_SHIFT: 8, HIT_WEAK: 1 << 10, HIT_RESISTED: 1 << 11, SLOWED: 1 << 13, GHOST_OK: 1 << 14, GHOST_BAD: 1 << 15, SELECTED: 1 << 16, STANDIN: 1 << 17, PLANT_SHIFT: 18, CREATURE: 1 << 21, HEART: 1 << 22, HEART_SHIFT: 23, WISP: 1 << 25, VEIL: 1 << 26, LIT: 1 << 27, REGROW: 1 << 28, WOUND_SHIFT: 29 };
   ME.content = ME.content || {}; ME.content.wispMark = G.MARK.WISP;
   G.plantMark = (kind) => (G.standIn && G.standIn(kind) !== kind && !G.Defs.TOWERS[kind].util ? G.MARK.STANDIN | (G.Defs.TOWER_ORDER.indexOf(kind) << G.MARK.PLANT_SHIFT) : 0);
   // the creatures that can stand in another's model (the first 8 with a Defs `standIn`), and the mark of a
@@ -27408,6 +27409,13 @@ fn hookMark(m: u32, flash: f32, n: vec3f, lp: vec3f, hc: f32, seed: f32) -> Mark
   if ((m & ${G.MARK.REGROW}u) != 0u) { let rp = pow(0.5 + 0.5 * sin(tm * 4.0 + seed * 1.3), 2.0); g.emit += vec3f(0.35, 1.0, 0.45) * rp * (0.2 + 1.1 * rim); }
   // spore dust clinging while slowed
   if ((m & ${G.MARK.SLOWED}u) != 0u) { g.tint = vec4f(0.8, 0.66, 0.95, step(0.62, hc) * 0.55); }
+  // its damage stage (wounds.js): 15% / 30% darker, and at stage 2 the blight showing through its cracks
+  let ws = (m >> ${G.MARK.WOUND_SHIFT}u) & 3u;
+  if (ws != 0u) {
+    let wd = 0.15 * f32(ws);
+    if (g.tint.a == 0.0) { g.tint = vec4f(0.0, 0.0, 0.0, wd); } else { g.tint = vec4f(g.tint.rgb * (1.0 - wd), max(g.tint.a, wd)); }
+    if (ws == 2u) { g.emit += vec3f(0.75, 0.22, 0.62) * crack * (0.35 + 0.25 * sin(tm * 3.0 + seed)); }
+  }
   // hit flash: the element's colour on a weak spot, dull grey when resisted, white otherwise
   if (flash > 0.0) {
     let hcol = ELEMENT_COL[(m >> 8u) & 3u];
@@ -28405,6 +28413,228 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 })();
 
 </script>
+<script>/* src/view/wounds.js */
+/* The creatures' damage stages (swarm D1; design docs/designs/2026-11-10-creature-swarm.md 5). View only:
+     stage = hp/maxHp <= 0.33 ? 2 : <= 0.66 ? 1 : 0
+   read every frame, so healing (a Mender, Regrowing) brings it back down and the look mends with it. A shell
+   holds the hp, so a shelled creature keeps its rings (creaturefx.js) until the shell goes. Bosses too.
+   - at a crossing up: a chip of its own voxels breaks off (n CHIP[stage], a patch around one voxel of the
+     frame it wears) and a puff in its colour
+   - its gait (scene.writeInstances, gait()): stage 1 limps (the bob uneven, pitch -0.05); stage 2 lurches
+     (its phase hitches: ph += 0.15 sin 2 pi ph, pitch -0.1)
+   - a trail: stage 1 sheds a flake of its own voxels every ~FLAKE_S, stage 2 drips blight ichor every ~DRIP_S
+   - the tint: G.MARK.WOUND_SHIFT (2 bits) in view/shaders.js hookMark: 15% / 30% darker, and at stage 2 the
+     blight showing through its cracks
+   At most TRAIL_MAX trail bits a second across the swarm, CHIPS_FRAME chips a frame. ?wounds=0 turns it all off. */
+(function () {
+  const G = window.MG, ME = window.ME, D = G.Defs, K = ME.SPRITE, TAU = Math.PI * 2;
+  const CHIP = [0, [6, 10], [10, 16]], CHIP_SPEED = 0.55, CHIP_LIFE = 2.2;
+  const FLAKE_S = 0.6, DRIP_S = 0.25, TRAIL_MAX = 60, CHIPS_FRAME = 12, SCAN = 400;
+  const ICHOR = [0.75, 0.22, 0.62];
+
+  G.woundStage = (hp, max) => { const f = hp / max; return f <= 0.33 ? 2 : f <= 0.66 ? 1 : 0; };
+
+  class Wounds {
+    constructor(view) {
+      this.view = view;
+      this.on = ME.qn("wounds", 1) !== 0;
+      const N = G.ENEMY_CAPACITY;
+      this.st = new Uint8Array(N); this.uid = new Int32Array(N).fill(-1); this.next = new Float32Array(N);
+      this.budget = TRAIL_MAX; this.stats = { chips: 0, voxels: 0, flakes: 0, drips: 0, dropped: 0 };
+    }
+    reset() { this.uid.fill(-1); this.st.fill(0); }
+    // the stage of creature k as drawn (0 when off)
+    stage(E, k) { return this.on ? G.woundStage(E.hp[k], E.maxHp[k]) : 0; }
+    // the stage's gait on top of the walk: [phase, pitch, bob] (ph the walk's phase in cycles, bob its own)
+    gait(st, ph, bob, out) {
+      if (st === 2) { out[0] = ph + 0.15 * Math.sin(TAU * ph); out[1] = -0.1; out[2] = bob; }
+      else if (st === 1) { const s = Math.sin(TAU * ph); out[0] = ph; out[1] = -0.05; out[2] = bob + (s > 0 ? 0.03 * s : 0.008 * s); }
+      else { out[0] = ph; out[1] = 0; out[2] = bob; }
+      return out;
+    }
+    update(dt) {
+      const game = this.view.game;
+      if (!this.on || !game || !(dt > 0)) return;
+      const E = game.enemies, MD = G.models;
+      this.budget = Math.min(TRAIL_MAX, this.budget + TRAIL_MAX * dt);
+      let chips = CHIPS_FRAME; // (past it, a crossing this frame only takes its stage)
+      for (let k = 0; k < G.ENEMY_CAPACITY; k++) {
+        if (!E.alive[k]) continue;
+        const st = this.stage(E, k);
+        if (this.uid[k] !== E.uid[k]) { this.uid[k] = E.uid[k]; this.st[k] = st; this.next[k] = Math.random() * FLAKE_S; continue; }
+        const was = this.st[k];
+        this.st[k] = st;
+        if (E.under[k] === 1) continue; // (a mole under the road)
+        if (st > was) { if (chips > 0) { chips--; this.chip(E, k, st, MD); } else this.stats.dropped++; }
+        if (st === 0) continue;
+        if ((this.next[k] -= dt) > 0) continue;
+        const gap = st === 2 ? DRIP_S : FLAKE_S;
+        this.next[k] = gap * (0.7 + 0.6 * Math.random());
+        if (this.budget < 1) { this.stats.dropped++; continue; }
+        this.budget--;
+        if (st === 2) this.drip(E, k); else this.flake(E, k, MD);
+      }
+    }
+    // the frame creature k wears and its model's scale, turn and centre
+    wear(E, k, MD) {
+      const cm = MD.creature[E.kind[k]], fr = this.view.traitLook(E, k, MD, cm.frames);
+      return { mi: fr.frames[0], s: cm.scale, yaw: E.yaw[k] - cm.fwd };
+    }
+    // n of its voxels nearest a random one of them, thrown out
+    chip(E, k, st, MD) {
+      const w = this.wear(E, k, MD), list = this.view.voxelsOf(w.mi);
+      if (!list.length) return;
+      const [lo, hi] = CHIP[st], n = Math.min(list.length, lo + Math.floor(Math.random() * (hi - lo + 1)));
+      const a = list[Math.floor(Math.random() * list.length)];
+      // the n nearest it (an insertion list over at most ~SCAN of them: a sweep crossing a crowd at once stays cheap)
+      const near = [], step = Math.max(1, Math.floor(list.length / SCAN));
+      for (let j = Math.floor(Math.random() * step); j < list.length; j += step) {
+        const v = list[j], d = (v[0] - a[0]) ** 2 + (v[1] - a[1]) ** 2 + (v[2] - a[2]) ** 2;
+        if (near.length === n && d >= near[n - 1][0]) continue;
+        let at = near.length;
+        while (at > 0 && near[at - 1][0] > d) at--;
+        near.splice(at, 0, [d, j]);
+        if (near.length > n) near.pop();
+      }
+      const c = Math.cos(w.yaw), s = Math.sin(w.yaw), P = this.view.phys;
+      const ox = a[0] * c - a[1] * s, oy = a[0] * s + a[1] * c, ol = Math.hypot(ox, oy) || 1;
+      for (const [, j] of near) {
+        const [x0, y0, z, mat] = list[j], x = (x0 * c - y0 * s) * w.s, y = (x0 * s + y0 * c) * w.s, sp = CHIP_SPEED * (0.5 + 0.5 * Math.random());
+        P.emitMat(E.px[k] + x, E.py[k] + y, E.vz[k] + z * w.s, (ox / ol) * sp + (Math.random() - 0.5) * 0.3, (oy / ol) * sp + (Math.random() - 0.5) * 0.3, sp * 0.8, mat, CHIP_LIFE * (0.7 + 0.6 * Math.random()));
+      }
+      const col = D.ENEMIES[E.kindOf(k)].color, pfx = this.view.plantFx, p = E.centre(k);
+      if (pfx) pfx.spray(p, st === 2 ? 7 : 5, col, K.PUFF, 0.5, 0.45, 0.06, -0.4);
+      this.stats.chips++; this.stats.voxels += near.length;
+    }
+    // one of its voxels drops off behind it
+    flake(E, k, MD) {
+      const w = this.wear(E, k, MD), list = this.view.voxelsOf(w.mi);
+      if (!list.length) return;
+      const [x0, y0, z, mat] = list[Math.floor(Math.random() * list.length)], c = Math.cos(w.yaw), s = Math.sin(w.yaw);
+      this.view.phys.emitMat(E.px[k] + (x0 * c - y0 * s) * w.s, E.py[k] + (x0 * s + y0 * c) * w.s, E.vz[k] + z * w.s, (Math.random() - 0.5) * 0.2, (Math.random() - 0.5) * 0.2, 0.15, mat, 1.6 + Math.random());
+      this.stats.flakes++;
+    }
+    // a drop of blight ichor falls from it
+    drip(E, k) {
+      const pfx = this.view.plantFx, p = E.centre(k);
+      if (!pfx) return;
+      pfx.add(p[0] + (Math.random() - 0.5) * 0.08, p[1] + (Math.random() - 0.5) * 0.08, p[2] - 0.03, 0, 0, -0.15, 0.6, 0.035, ICHOR, K.ORB, -3.5);
+      this.stats.drips++;
+    }
+  }
+  G.Wounds = Wounds;
+})();
+
+</script>
+<script>/* src/view/gait.js */
+/* Body motion per gait (swarm W2; design docs/designs/2026-11-10-creature-swarm.md 3.1). View only, no bricks:
+   a table by kind of what the walk phase (ph, which follows dist, so the feet stay put) can't show by itself.
+   - squash: a footfall squash, z x(1 - a max(0, cos 2pi ph 2)), x and y the inverse (golem, plus a dust puff each
+     step; beetle, lichen crab)
+   - sway: a roll of +-b at the stride, about the heading (beetle, lichen, mite)
+   - lean: every walker leans into a climb (the slope of its height over the distance walked, the crowd's ride
+     included, clamped +-0.6, as a shear along its heading) and back on a hit (flash)
+   - bank: a flier rolls into its turns from the yaw rate, +-0.35 (moth, crow, midge)
+   - jelly: a squash-stretch at 2x the stride, a = 0.12 (bloat)
+   - glide: no bob (snail); sideways: the lichen crab walks crabwise (yaw + pi/2)
+   - stun: the frame holds (dist stops) and the body jitters +-0.03
+   ?gait=0 turns it off. scene.writeInstances calls begin(time) once, then pose(E, k, ph, out) per creature. */
+(function () {
+  const G = window.MG, TAU = Math.PI * 2;
+  const LEAN_MAX = 0.6, LEAN_K = 0.3, HIT_LEAN = 0.12, BANK_MAX = 0.35, BANK_K = 0.3, EASE = 8, JIT = 0.03;
+  const DUST = [0.62, 0.58, 0.52];
+  // per kind: squash a, sway b, bank, jelly a, glide, yaw offset (sideways), dust on each step
+  const T = {
+    golem: { squash: 0.08, dust: true },
+    beetle: { squash: 0.05, sway: 0.06 },
+    lichen: { squash: 0.05, sway: 0.06, side: Math.PI / 2 },
+    mite: { sway: 0.1 },
+    moth: { bank: true },
+    crow: { bank: true },
+    midge: { bank: true },
+    bloat: { jelly: 0.12 },
+    snail: { glide: true },
+  };
+  const NONE = {};
+
+  G.Gait = class {
+    constructor(scene) {
+      this.scene = scene;
+      this.on = !/[?&]gait=0\b/.test(location.search);
+      const n = G.ENEMY_CAPACITY, F = () => new Float32Array(n);
+      this.z = F(); this.d = F(); this.yaw = F(); this.lean = F(); this.bank = F(); this.step = new Int32Array(n);
+      this.seen = new Uint32Array(n); this.frame = 0; this.t = 0; this.dt = 0;
+      this.R = new Float32Array(9); this.stats = { steps: 0, maxLean: 0, maxBank: 0 };
+    }
+    reset() { this.seen.fill(0); this.frame = 0; this.t = 0; this.stats = { steps: 0, maxLean: 0, maxBank: 0 }; }
+    begin(time) { this.dt = this.frame ? Math.min(0.1, Math.max(0, time - this.t)) : 0; this.t = time; this.frame++; }
+
+    // out: { sc: [x, y, z] factors, sh: [x, y] shear in the model's frame, roll (about the heading), yaw (added),
+    // bob (x, 0 for a glide), jx, jy (a stun's jitter) }. A slot first seen this frame (a new creature, or one back
+    // from under the road) starts from rest.
+    pose(E, k, kind, ph, flap, out) {
+      const r = T[kind] || NONE, fresh = this.seen[k] !== this.frame - 1, dt = this.dt;
+      this.seen[k] = this.frame;
+      out.sc[0] = out.sc[1] = out.sc[2] = 1; out.sh[0] = out.sh[1] = 0; out.roll = 0; out.yaw = r.side || 0; out.bob = r.glide ? 0 : 1; out.jx = out.jy = 0;
+      const z = E.vz[k], d = Math.max(0, E.dist[k]), y = E.yaw[k];
+      if (fresh) { this.z[k] = z; this.d[k] = d; this.yaw[k] = y; this.lean[k] = 0; this.bank[k] = 0; this.step[k] = Math.floor(ph * 2); }
+      if (!this.on) return out;
+      const u = ph * TAU;
+      if (r.squash) {
+        const q = 1 - r.squash * Math.max(0, Math.cos(u * 2)), w = 1 / Math.sqrt(q);
+        out.sc[0] = w; out.sc[1] = w; out.sc[2] = q;
+      }
+      if (r.jelly) { const q = 1 + r.jelly * Math.sin(u * 2), w = 1 / Math.sqrt(q); out.sc[0] = w; out.sc[1] = w; out.sc[2] = q; }
+      if (r.sway) out.roll += r.sway * Math.sin(u);
+      const e = 1 - Math.exp(-EASE * dt);
+      if (!flap) {
+        // the lean: the slope over what it walked this frame (a held one keeps its lean), eased
+        const dd = d - this.d[k];
+        let tgt = this.lean[k];
+        if (E.face[k]) tgt = 0; // (on a wall its frame already stands it on the face)
+        else if (dd > 1e-4) tgt = Math.max(-LEAN_MAX, Math.min(LEAN_MAX, (z - this.z[k]) / dd)) * LEAN_K;
+        else if (dd < -1e-4 || dt === 0) tgt = 0;
+        this.lean[k] += (tgt - this.lean[k]) * e;
+        const a = this.lean[k] - HIT_LEAN * E.flash[k], c = Math.cos(-out.yaw), s = Math.sin(-out.yaw);
+        out.sh[0] = a * c; out.sh[1] = a * s; // (the heading in the model's frame: +x, turned back by the yaw offset)
+        if (Math.abs(a) > this.stats.maxLean) this.stats.maxLean = Math.abs(a);
+      } else if (r.bank && dt > 0) {
+        let dy = y - this.yaw[k]; dy -= TAU * Math.round(dy / TAU);
+        const tgt = Math.max(-BANK_MAX, Math.min(BANK_MAX, (dy / dt) * BANK_K));
+        this.bank[k] += (tgt - this.bank[k]) * e;
+        out.roll += this.bank[k];
+        if (Math.abs(this.bank[k]) > this.stats.maxBank) this.stats.maxBank = Math.abs(this.bank[k]);
+      }
+      if (r.dust) {
+        const st = Math.floor(ph * 2);
+        if (st !== this.step[k]) { this.step[k] = st; if (!fresh && d > 0) this.puff(E.px[k], E.py[k], z); }
+      }
+      if (E.stunT[k] > 0) { out.jx = (Math.random() * 2 - 1) * JIT; out.jy = (Math.random() * 2 - 1) * JIT; }
+      this.z[k] = z; this.d[k] = d; this.yaw[k] = y;
+      return out;
+    }
+
+    // a ring of four dust motes at a golem's foot
+    puff(x, y, z) {
+      const pfx = this.scene.plantFx;
+      if (!pfx) return;
+      this.stats.steps++;
+      for (let k = 0; k < 4; k++) { const a = (k / 4) * TAU + Math.random(); pfx.add(x + Math.cos(a) * 0.08, y + Math.sin(a) * 0.08, z + 0.02, Math.cos(a) * 0.3, Math.sin(a) * 0.3, 0.15, 0.6, 0.04, DUST, window.ME.SPRITE.PUFF, -0.5); }
+    }
+
+    // a roll of r about the heading yaw (world z-up): the rotation the sim's frame argument takes (row-major, applied
+    // after the model's own yaw)
+    rollFrame(yaw, r) {
+      const x = Math.cos(yaw), y = Math.sin(yaw), c = Math.cos(r), s = Math.sin(r), t = 1 - c, R = this.R;
+      R[0] = t * x * x + c; R[1] = t * x * y; R[2] = s * y;
+      R[3] = t * x * y; R[4] = t * y * y + c; R[5] = -s * x;
+      R[6] = -s * y; R[7] = s * x; R[8] = c;
+      return R;
+    }
+  };
+})();
+
+</script>
 <script>/* src/view/creaturefx.js */
 /* The deeper creatures' looks beyond their models (Defs.ENEMIES: shell, split, heal, burrow, adapt,
    brood, halfShell). Placeholders built from the engine's sprites, until Art's models and effects are in:
@@ -28956,10 +29186,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.fx = new G.Fx();
       this.boonFx = new G.BoonFx(this); // the boons' looks (boonfx.js)
       this.plantFx = new G.PlantFx(this); // the plants' looks beyond their models (plantfx.js)
+      this.wounds = new G.Wounds(this); this.gaitOut = [0, 0, 0]; // the damage stages (wounds.js)
       this.deaths = new G.Deaths(this); // how each one dies (deaths.js)
       this.creatureFx = new G.CreatureFx(this); // the deeper creatures' looks (creaturefx.js)
       this.tombs = new G.Tombs(this); // where the creatures fell (tombs.js)
       this.acts = new G.ActsView(this); // the living map's act turns (acts.js)
+      this.gait = new G.Gait(this); this.gaitPose = { sc: [1, 1, 1], sh: [0, 0], roll: 0, yaw: 0, bob: 1, jx: 0, jy: 0 }; // body motion per gait (gait.js)
       this.game = null; this.anim = new Map();
       this.heartKick = 0; this.heartStatic = null; this.heartFrames = null; this.heartFrames0 = null; this.heartBase = null; this.heartStage = 0;
       this.beat = { t: -1e9, hit: false, s: BEAT_S[0] }; // when the last hit's beat began, and its period (hit: one came since the last frame)
@@ -29036,13 +29268,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.heartStatic = hs ? { place: hs.place, frames: this.heartFrames[0], phase: hs.phase, hidden: false } : null;
       this.heartStage = 0; this.bossWave = false; this.beat.t = -1e9; this.beat.hit = false;
       // every loose voxel goes, and the sand banks are as they were baked (dug sand stays within a run)
-      this.deaths.reset(); this.phys.clear(); this.phys.resetTerrain(); if (this.vfx) this.vfx.clear();
+      this.deaths.reset(); this.wounds.reset(); this.phys.clear(); this.phys.resetTerrain(); if (this.vfx) this.vfx.clear();
       this.later = []; this.footfall.clear(); this.burrow.clear();
       for (const p of this.pots) p.hidden = false; // (the pots stand again)
       this.potsFlying = []; this.potWaves = []; this.potStep.clear();
       this.upload = new Uint8Array(b.w * b.h);
       for (const t of game.towers) this.anim.set(t, this.newAnim());
-      this.fx.reset(w); this.boonFx.reset(); this.plantFx.reset(); this.creatureFx.reset(); this.tombs.reset(); this.acts.reset(game);
+      this.fx.reset(w); this.boonFx.reset(); this.plantFx.reset(); this.creatureFx.reset(); this.tombs.reset(); this.acts.reset(game); this.gait.reset();
       b.dirty = true;
       this.updateCells(); this.updateLights();
     }
@@ -29102,6 +29334,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.fx.update(dt, this.game && this.game.enemies); this.boonFx.update(dt); this.plantFx.update(dt); this.creatureFx.update(dt); this.tombs.update(dt); this.acts.update(dt);
       this.updateSand(dt); this.breakPots(dt); this.deaths.update(dt);
       this.heartKick = Math.max(0, this.heartKick - dt * 1.6);
+      this.wounds.update(dt);
       // dusk falls while a wave runs, deeper as the run goes on and deepest for the boss; day to build in
       const P = G.Phase, ph = S.phase;
       // (a mood other than Auto holds its own dusk: scene.moodDusk, view/atmos.js)
@@ -29373,7 +29606,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         const gm = block === "dew" ? MARK.GHOST_OK | MARK.GHOST_BAD : block ? MARK.GHOST_BAD : MARK.GHOST_OK;
         sim.put(i++, f, X, Y, Z, 0, false, [bob, bob, bob], [0, 0], 1, 0, gm | G.plantMark(this.seed), 0);
       }
-      const E = game.enemies;
+      const E = game.enemies, GA = this.gait, gp = this.gaitPose;
+      GA.begin(time);
       for (let k = 0; k < G.ENEMY_CAPACITY; k++) {
         if (!E.alive[k] || E.under[k] === 1) continue; // (a mole under the road: creaturefx.js draws its trail)
         const cm = MD.creature[E.kind[k]], n = cm.frames.length;
@@ -29381,14 +29615,21 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (cm.flap) ph = time * cm.gait + E.phase[k];
         else ph = Math.max(0, E.dist[k]) * cm.gait + E.phase[k] / (Math.PI * 2);
         if (n === 1) { const s = Math.sin(ph * Math.PI * 2); pitch = s * 0.07; bob = Math.abs(s) * 0.035; }
+        // its damage stage (wounds.js): a limp or a lurch on its walk, and the tint
+        const ws = this.wounds.stage(E, k);
+        if (ws) { const g = this.wounds.gait(ws, ph, bob, this.gaitOut); ph = g[0]; pitch += g[1]; bob = g[2]; }
+        GA.pose(E, k, E.kindOf(k), ph, cm.flap, gp); bob *= gp.bob; // (body motion per gait: gait.js)
         const fr = this.traitLook(E, k, MD, cm.frames), n2 = fr.frames.length;
-        const f = fr.frames[Math.floor((((ph % 1) + 1) % 1) * n2) % n2], fl = E.flash[k], sq = fl * 0.1, s = cm.scale, mk = this.marks(E, k) | fr.mark;
-        const wob = n === 1 ? Math.sin(ph * Math.PI * 2) * 0.08 : 0, sc = [s * (1 + sq), s * (1 + sq), s * (1 - sq)];
+        const f = fr.frames[Math.floor((((ph % 1) + 1) % 1) * n2) % n2], fl = E.flash[k], sq = fl * 0.1, s = cm.scale, mk = this.marks(E, k) | fr.mark | (ws << G.MARK.WOUND_SHIFT);
+        const wob = n === 1 ? Math.sin(ph * Math.PI * 2) * 0.08 : 0, g = gp.sc, sc = [s * (1 + sq) * g[0], s * (1 + sq) * g[1], s * (1 - sq) * g[2]];
         if (E.face[k]) {
           // on a wall: drawn in its frame (heading, across, up: core/enemies.js place), its bob along the up
           const Fr = E.frame.subarray(k * 9, k * 9 + 9);
-          sim.put(i++, f, E.px[k] + Fr[2] * bob, E.py[k] + Fr[5] * bob, E.vz[k] + Fr[8] * bob, wob - cm.fwd, false, sc, [0, 0], fr.flags, pitch, mk, fl * (G.flashK ?? 1), Fr);
-        } else sim.put(i++, f, E.px[k], E.py[k], E.vz[k] + bob, E.yaw[k] - cm.fwd + wob, false, sc, [0, 0], fr.flags, pitch, mk, fl * (G.flashK ?? 1));
+          sim.put(i++, f, E.px[k] + Fr[2] * bob, E.py[k] + Fr[5] * bob, E.vz[k] + Fr[8] * bob, wob - cm.fwd + gp.yaw, false, sc, gp.sh, fr.flags, pitch, mk, fl * (G.flashK ?? 1), Fr);
+        } else {
+          const yaw = E.yaw[k] - cm.fwd + wob + gp.yaw;
+          sim.put(i++, f, E.px[k] + gp.jx, E.py[k] + gp.jy, E.vz[k] + bob, yaw, false, sc, gp.sh, fr.flags, pitch, mk, fl * (G.flashK ?? 1), gp.roll ? GA.rollFrame(E.yaw[k], gp.roll) : null);
+        }
         sim.avoid(E.px[k], E.py[k]);
       }
       // the tombstones last: a full buffer drops them first (keeping room for the bodies and critters after)
