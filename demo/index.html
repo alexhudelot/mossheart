@@ -5726,9 +5726,47 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       let i = this.ids[name];
       if (i !== undefined) return i;
       i = this.names.length;
-      if (i > 255) throw new Error("more than 255 materials");
+      if (i > 255) return this.full(name);
       this.names.push(name); this.ids[name] = i;
       return i;
+    }
+    // ids are 8 bits (the pool's alpha), so the 256th material has no id of its own. It takes the id of a material
+    // already numbered on the same ramp, else the numbered material nearest its base colour of the same kind (a glow
+    // for a glow, else a lit one), else the default material's (else 1), and the load goes on with that material
+    // drawn in the stand-in's colours, where it used to die ("more than 255 materials"). One WARN per name (ME.log),
+    // and pal.over lists them: { name: the id it took }. A palette under 256 never comes here
+    full(name) {
+      const over = this.over || (this.over = {});
+      if (over[name] !== undefined) return over[name];
+      const ramp = this.mat(name).ramp, same = this.names.findIndex((n, j) => j && this.mat(n).ramp === ramp);
+      let i = same > 0 ? same : 0;
+      if (!i) try { i = this.nearest(name); } catch (e) { i = 0; } // a stand-in must never kill the load
+      if (!(i > 0)) i = this.ids[this.defaultName()] ?? 1;
+      over[name] = i;
+      const msg = `WARN palette full (256 materials): "${name}" drawn as "${this.names[i]}" (${Object.keys(over).length} over so far)`;
+      if (ME && ME.log) ME.log(msg); else console.warn(msg);
+      return i;
+    }
+    // the numbered material whose base colour (as build() takes it) is nearest name's, glow only for glow; 0 if none
+    base(name) {
+      const memo = this.bases || (this.bases = new Map());
+      if (memo.has(name)) return memo.get(name);
+      const M = this.mat(name), r = this.ramp(name), byName = (ME.content && ME.content.materialClass) || {};
+      const s0 = Math.min(1, Math.max(0, 0.6 + (M.bias || 0))), c = r[Math.round(s0 * (r.length - 1))];
+      const b = { c, glow: !!(M.em || (M.cls ?? CLS[byName[name]]) === CLS.EMISSIVE) };
+      memo.set(name, b);
+      return b;
+    }
+    nearest(name) {
+      const a = this.base(name);
+      let best = 0, bd = Infinity;
+      for (let j = 1; j < this.names.length; j++) {
+        const b = this.base(this.names[j]);
+        if (b.glow !== a.glow) continue;
+        const d = (a.c[0] - b.c[0]) ** 2 + (a.c[1] - b.c[1]) ** 2 + (a.c[2] - b.c[2]) ** 2;
+        if (d < bd) { bd = d; best = j; }
+      }
+      return best;
     }
     // the name id(undefined) takes (the bake workers number their materials by name, src/bake-models.js)
     defaultName() { return (ME.content && ME.content.defaultMaterial) ?? Object.keys(this.st.ramps || {})[0]; }
@@ -11252,7 +11290,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     job(MB, mi, row, o, fly) {
       const want = Math.min(o.max ?? 8192, this.capacity);
       if (this.capacity - this.used < want && this.live() < this.used) this.compact();
-      const vox = ME.surfaceVoxels(MB, mi, Math.min(want, this.capacity - this.used), () => this.rng()), n = vox.length;
+      // (o.vox: a surface sample the caller kept, its first room voxels when the room is short: still uniform)
+      const room = Math.min(want, this.capacity - this.used);
+      const vox = o.vox ? (o.vox.length <= room ? o.vox : Object.assign(o.vox.slice(0, room), { surface: o.vox.surface })) : ME.surfaceVoxels(MB, mi, room, () => this.rng()), n = vox.length;
       if (!n) return null;
       const secs = o.secs ?? 1.6, travel = Math.min(secs, o.travel ?? 0.5), span = Math.max(0, secs - travel), radius = o.radius ?? 1.2, lift = fly ? o.lift ?? 0.3 : 0;
       const t0 = this.clock - (o.at ? o.at * secs : 0), end = t0 + secs, D = this.data, U = this.dataU, first = this.used;
@@ -22656,7 +22696,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.125.0", name: "Mossheart", commit: "ea47a4bc" };
+  G.VERSION = { v: "0.127.0", name: "Mossheart", commit: "6c86f38b" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -30098,6 +30138,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     constructor(app) {
       this.app = app; this.R = app.R; this.sim = app.sim; this.MB = app.MB; this.phys = app.phys;
       this.vfx = ME.qn("grow", 1) === 1 && app.vfx ? app.vfx : null; this.growMax = ME.phoneLike() ? GROW_MAX_PHONE : GROW_MAX;
+      // the grow-in's surface samples per model (growVox) and the seed last warmed (warmSeed); a swap that
+      // replaces models drops what was kept for them (this.vox too: voxelsOf)
+      this.growSample = new Map(); this.warmed = "";
+      const swapped = this.R.onSwap;
+      this.R.onSwap = (key, ids) => { for (const i of ids) { this.growSample.delete(i); this.vox.delete(i); } this.warmed = ""; if (swapped) swapped(key, ids); };
       this.fx = new G.Fx();
       this.boonFx = new G.BoonFx(this); // the boons' looks (boonfx.js)
       this.plantFx = new G.PlantFx(this); // the plants' looks beyond their models (plantfx.js)
@@ -30163,10 +30208,24 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (!fx || fx.capacity - fx.used < this.growMax) return a; // (a part-filled job would look sparse: the elastic one instead)
       const fr = G.models.towerFrames(modelKind(t), t.level), f = fr[0], k = 1 / this.MB.models[f].fine;
       const row = ME.affineOf(this.MB, f, t.X, t.Y, t.VZ, 0, false, G.LEVEL_SCALE[t.level - 1] * k);
-      const job = fx.grow(this.MB, f, row, { secs: GROW_S, travel: GROW_TRAVEL, max: this.growMax,
+      const job = fx.grow(this.MB, f, row, { secs: GROW_S, travel: GROW_TRAVEL, max: this.growMax, vox: this.growVox(f),
         done: () => { if (a.growing === job) { a.growing = null; a.bounce = 0; } } });
       if (job) { a.growing = job; a.age = 1; }
       return a;
+    }
+    // model f's surface sample for growIn (ME.surfaceVoxels: 90 to 500 ms for a plant at vs 40, and on the
+    // placement's frame it was the lag the user saw, 2026-11-11), made once per model and kept until a swap
+    // replaces the model (R.onSwap). warmSeed makes the picked seed's before it is planted.
+    growVox(f) {
+      let v = this.growSample.get(f);
+      if (!v) { v = ME.surfaceVoxels(this.MB, f, this.growMax); this.growSample.set(f, v); }
+      return v;
+    }
+    warmSeed() {
+      if (!this.vfx || !this.seed || this.seed === this.warmed) return;
+      this.warmed = this.seed;
+      const fr = G.models.towerFrames(this.seed, 1);
+      if (fr) this.growVox(fr[0]);
     }
 
     // a new run (on the same baked world)
@@ -30289,6 +30348,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
     // --- every simulation step (game time)
     update(dt) {
+      this.warmSeed();
       for (const a of this.anim.values()) {
         a.age += dt; a.recoil += dt; a.bounce += dt;
         const k = 1 - Math.exp(-dt * 8);
@@ -37339,6 +37399,7 @@ function MG_SFX(L) {
     let mouseHover = false;
     const pickSeed = (kind) => {
       deselect(); pending = null; scene.seed = kind;
+      scene.warmSeed(); // (here too: scene.update takes no steps while paused, and pause, pick, place lagged; the Architect on #714)
       if (!mouseHover) scene.hover = null;
       else if (lastHover) { if (!hoverEv) requestAnimationFrame(hoverNow); hoverEv = lastHover; } // (a key or a card: the hover under a still mouse picks again, ground or leaves)
       if (kind && !S.canAfford(S.towerCost(D.TOWERS[kind].cost, kind))) hud.short(kind);
