@@ -4474,17 +4474,20 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // Walk the path: stone stairs on the lower tile wherever it climbs, an arched bridge wherever it
   // crosses water (from the bank tile before to the bank tile after).
   const trail = (map) => {
-    const deco = [], isW = (x, y) => map.typ[y][x] === "w";
+    // (a second road that joins the first walks its tail again: its stairs and bridges once)
+    const deco = [], isW = (x, y) => map.typ[y][x] === "w", seen = new Set();
     for (const cs of map.path.map(cellsOf)) {
       for (let i = 0; i + 1 < cs.length; i++) {
         const [x, y] = cs[i], [x1, y1] = cs[i + 1];
+        if (seen.has(cs[i] + ">" + cs[i + 1])) continue; seen.add(cs[i] + ">" + cs[i + 1]);
         if (isW(x, y) || isW(x1, y1)) continue;
         const d = map.hgt[y1][x1] - map.hgt[y][x]; if (!d) continue;
         const [lx, ly, hx, hy] = d > 0 ? [x, y, x1, y1] : [x1, y1, x, y];
         deco.push(["stairs", { H: Math.abs(d) * 0.5, dir: (hx - lx + hy - ly > 0 ? "+" : "-") + (hx !== lx ? "x" : "y") }, lx, ly]);
       }
       for (let i = 1; i < cs.length; i++) {
-        if (!isW(...cs[i]) || isW(...cs[i - 1])) continue;
+        if (!isW(...cs[i]) || isW(...cs[i - 1]) || seen.has("b" + cs[i])) continue;
+        seen.add("b" + cs[i]);
         let j = i; while (j < cs.length && isW(...cs[j])) j++;
         if (j >= cs.length) break;
         const [ax, ay] = cs[i - 1], [bx, by] = cs[j], [wx, wy] = cs[i], L = Math.hypot(bx - ax, by - ay) + 0.1;
@@ -4535,7 +4538,11 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     water: [{ seg: [9.6, 8.2, 9.6, 17.8], r: 0.6, carve: true }, { seg: [10.5, 21.2, 10.5, 24.0], r: 0.42, carve: true }, { e: { x: 10.4, y: 19.6, rx: 3.2, ry: 2.0 }, h: 2 }],
     // enemies enter through the torii on the right, snake through the lowland, climb onto the first
     // terrace, cross the river on the red bridge, then switch back up three more terraces to the summit
-    paths: [[[23, 8], [21, 8], [21, 4], [19, 4], [19, 12], [22, 12], [22, 16], [13, 16], [4, 16], [4, 14], [7, 14], [7, 12], [5, 12], [5, 10], [6, 10], [6, 7]]], lane: "u",
+    paths: [[[23, 8], [21, 8], [21, 4], [19, 4], [19, 12], [22, 12], [22, 16], [13, 16], [4, 16], [4, 14], [7, 14], [7, 12], [5, 12], [5, 10], [6, 10], [6, 7]],
+      // the living map's second road (A-L2): from the south-east rift across the meadow, joining the first
+      // at (18, 16); it sleeps until Act III wakes it (Defs.LEVEL_ACTS, LEVEL_SPLIT); G.dressLevel stands a
+      // rift at its start
+      [[20, 20], [18, 20], [18, 16], [13, 16], [4, 16], [4, 14], [7, 14], [7, 12], [5, 12], [5, 10], [6, 10], [6, 7]]], lane: "u",
   });
   falls({
     id: "mf-valley", name: "Momiji Valley", jp: "紅葉の谷間", map: VALLEY, seed: 47, tw: 60, dumpMap: true, spill: true,
@@ -22049,7 +22056,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.116.0", name: "Mossheart", commit: "70993056" };
+  G.VERSION = { v: "0.117.0", name: "Mossheart", commit: "261522db" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -22467,7 +22474,8 @@ function MA_DSP() {
   // wave, every, at], counted from the first row's wave on), where its map's game block has no split. The Ever
   // Stair (the Architect's §11.1): from wave 3 every fourth creature leaves lap B for the North Wall's face (road
   // 1), from wave 4 another fourth for the West Wall's (road 2); half stay on the spine. Bosses keep road 0.
-  D.LEVEL_SPLIT = { everstair: [[1, 3, 4, 1], [2, 4, 4, 3]] };
+  // Momiji: none, so its second road (the south-east rift, A-L2) sleeps until Ember Leaves wakes it (D.LEVEL_ACTS)
+  D.LEVEL_SPLIT = { everstair: [[1, 3, 4, 1], [2, 4, 4, 3]], momiji: [] };
   // what each plant is for, read by the seed pouch's tips (view/pouch.js): single (focuses one creature), area (hits a
   // crowd), slow, support
   D.ROLES = { thorn: ["single"], sun: ["single"], puff: ["area", "slow"], wisp: ["area"], briar: ["area", "slow"], toad: ["area"], moon: ["support"], lily: ["single"] };
@@ -22477,13 +22485,15 @@ function MA_DSP() {
   // second road's split (wake: a World split row, only where the garden has that road), widen the
   // Heartwood (heartwood: its reach), put the Dewbank to sleep (dewbank: false) and grow the Heart Tree
   // (heart: n, n * 2 more vitality, healed). Only where G.LEVELS marks the garden living unless ?acts=0
-  // (G.actsOf); tools/sim.html the same. Momiji's cells wait on Art's A-L2 map.
+  // (G.actsOf); tools/sim.html the same. Momiji (A-L2): Green Canopy opens two scrub patches, the summit's east
+  // shoulder and the meadow east of the river (only small dress on them: mounds, ferns, a rock); Lantern Night
+  // freezes the pond, not the gorge below it.
   D.LEVEL_ACTS = {
     momiji: [
       null,
-      { name: "Green Canopy", open: [[11, 3], [12, 3], [12, 4], [13, 4], [13, 5], [14, 5]], heart: 1 },
+      { name: "Green Canopy", open: [[12, 4], [13, 4], [13, 5], [16, 12], [17, 12], [16, 13]], heart: 1 },
       { name: "Ember Leaves", wake: [1, 21, 3, 2], heart: 1, heartwood: 4 },
-      { name: "Lantern Night", freeze: [[6, 17, 13, 23]], heart: 1, dewbank: false },
+      { name: "Lantern Night", freeze: [[6, 17, 13, 21]], heart: 1, dewbank: false },
     ],
   };
   // the floor the lane's blight never heals below, per act past the first (Blight.floor)
@@ -26181,6 +26191,8 @@ function MA_DSP() {
     const rift = ["ms_rift", riftO()];
     deco.push(game.spawn ? [...rift, ...anchor(game.spawn)] : [...rift, path[0][0], path[0][1]]);
     if (game.spawn2) deco.push([...rift, ...anchor(game.spawn2)]); // a second entrance (Corn Moon's east gate)
+    // a generator map's further roads each start at a rift of their own (Momiji's south-east rift, A-L2)
+    if (!v1) for (const p of map.path.slice(1)) deco.push([...rift, p[0][0], p[0][1]]);
     // glowcaps: every ~7 road cells, on the road's verge (its own cell, pushed to a side that isn't road
     // or walk, on any of the routes), so the build spots stay as they are; none on the bridge (water)
     const kinds = (window.ME.content && window.ME.content.kinds) || {}, walks = new Set(game.lane || []);
@@ -26207,7 +26219,7 @@ function MA_DSP() {
       return out;
     };
     const cells = cellsOf(path);
-    const road = new Set((v1 ? game.route : [path]).flatMap(cellsOf).map(([x, y]) => x + "," + y));
+    const road = new Set((v1 ? game.route : map.path).flatMap(cellsOf).map(([x, y]) => x + "," + y));
     for (let i = 5; i < cells.length - 5; i += 7) {
       const [x, y] = cells[i];
       if (wet(x, y)) continue;
@@ -28439,7 +28451,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.view = view;
       this.on = ME.qn("wounds", 1) !== 0;
       const N = G.ENEMY_CAPACITY;
-      this.st = new Uint8Array(N); this.uid = new Int32Array(N).fill(-1); this.next = new Float32Array(N);
+      this.st = new Uint8Array(N); this.uid = new Int32Array(N).fill(-1); this.next = new Float32Array(N); this.o = [0, 0, 0];
       this.budget = TRAIL_MAX; this.stats = { chips: 0, voxels: 0, flakes: 0, drips: 0, dropped: 0 };
     }
     reset() { this.uid.fill(-1); this.st.fill(0); }
@@ -28478,7 +28490,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // the frame creature k wears and its model's scale, turn and centre
     wear(E, k, MD) {
       const cm = MD.creature[E.kind[k]], fr = this.view.traitLook(E, k, MD, cm.frames);
-      return { mi: fr.frames[0], s: cm.scale, yaw: E.yaw[k] - cm.fwd };
+      const yaw = (E.face[k] ? 0 : E.yaw[k]) - cm.fwd; // (on a wall its frame holds the heading: scene.js)
+      return { mi: fr.frames[0], s: cm.scale, c: Math.cos(yaw), sn: Math.sin(yaw) };
+    }
+    // a point of its model (voxel units) as an offset from it in the world: turned and scaled, and on a wall through
+    // its frame (heading, across, up: core/enemies.js place) as scene.js draws it
+    at(E, k, w, x0, y0, z0, sc) {
+      const x = (x0 * w.c - y0 * w.sn) * sc, y = (x0 * w.sn + y0 * w.c) * sc, z = z0 * sc, o = this.o;
+      if (E.face[k]) { const F = E.frame, b = k * 9; o[0] = F[b] * x + F[b + 1] * y + F[b + 2] * z; o[1] = F[b + 3] * x + F[b + 4] * y + F[b + 5] * z; o[2] = F[b + 6] * x + F[b + 7] * y + F[b + 8] * z; }
+      else { o[0] = x; o[1] = y; o[2] = z; }
+      return o;
     }
     // n of its voxels nearest a random one of them, thrown out
     chip(E, k, st, MD) {
@@ -28496,11 +28517,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         near.splice(at, 0, [d, j]);
         if (near.length > n) near.pop();
       }
-      const c = Math.cos(w.yaw), s = Math.sin(w.yaw), P = this.view.phys;
-      const ox = a[0] * c - a[1] * s, oy = a[0] * s + a[1] * c, ol = Math.hypot(ox, oy) || 1;
+      const P = this.view.phys, u = this.at(E, k, w, a[0], a[1], 0, 1), ol = Math.hypot(u[0], u[1], u[2]) || 1;
+      const ox = u[0] / ol, oy = u[1] / ol, oz = u[2] / ol; // (out from its middle, in its body's plane)
       for (const [, j] of near) {
-        const [x0, y0, z, mat] = list[j], x = (x0 * c - y0 * s) * w.s, y = (x0 * s + y0 * c) * w.s, sp = CHIP_SPEED * (0.5 + 0.5 * Math.random());
-        P.emitMat(E.px[k] + x, E.py[k] + y, E.vz[k] + z * w.s, (ox / ol) * sp + (Math.random() - 0.5) * 0.3, (oy / ol) * sp + (Math.random() - 0.5) * 0.3, sp * 0.8, mat, CHIP_LIFE * (0.7 + 0.6 * Math.random()));
+        const [x0, y0, z0, mat] = list[j], p = this.at(E, k, w, x0, y0, z0, w.s), sp = CHIP_SPEED * (0.5 + 0.5 * Math.random());
+        P.emitMat(E.px[k] + p[0], E.py[k] + p[1], E.vz[k] + p[2], ox * sp + (Math.random() - 0.5) * 0.3, oy * sp + (Math.random() - 0.5) * 0.3, (oz + 0.8) * sp, mat, CHIP_LIFE * (0.7 + 0.6 * Math.random()));
       }
       const col = D.ENEMIES[E.kindOf(k)].color, pfx = this.view.plantFx, p = E.centre(k);
       if (pfx) pfx.spray(p, st === 2 ? 7 : 5, col, K.PUFF, 0.5, 0.45, 0.06, -0.4);
@@ -28510,8 +28531,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     flake(E, k, MD) {
       const w = this.wear(E, k, MD), list = this.view.voxelsOf(w.mi);
       if (!list.length) return;
-      const [x0, y0, z, mat] = list[Math.floor(Math.random() * list.length)], c = Math.cos(w.yaw), s = Math.sin(w.yaw);
-      this.view.phys.emitMat(E.px[k] + (x0 * c - y0 * s) * w.s, E.py[k] + (x0 * s + y0 * c) * w.s, E.vz[k] + z * w.s, (Math.random() - 0.5) * 0.2, (Math.random() - 0.5) * 0.2, 0.15, mat, 1.6 + Math.random());
+      const [x0, y0, z0, mat] = list[Math.floor(Math.random() * list.length)], p = this.at(E, k, w, x0, y0, z0, w.s);
+      this.view.phys.emitMat(E.px[k] + p[0], E.py[k] + p[1], E.vz[k] + p[2], (Math.random() - 0.5) * 0.2, (Math.random() - 0.5) * 0.2, 0.15, mat, 1.6 + Math.random());
       this.stats.flakes++;
     }
     // a drop of blight ichor falls from it
@@ -28563,18 +28584,19 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.on = !/[?&]gait=0\b/.test(location.search);
       const n = G.ENEMY_CAPACITY, F = () => new Float32Array(n);
       this.z = F(); this.d = F(); this.yaw = F(); this.lean = F(); this.bank = F(); this.step = new Int32Array(n);
-      this.seen = new Uint32Array(n); this.frame = 0; this.t = 0; this.dt = 0;
-      this.R = new Float32Array(9); this.stats = { steps: 0, maxLean: 0, maxBank: 0 };
+      this.seen = new Uint32Array(n).fill(0xffffffff); this.uid = new Int32Array(n).fill(-1); this.frame = 0; this.t = 0; this.dt = 0;
+      this.R = new Float32Array(9); this.R2 = new Float32Array(9); this.stats = { steps: 0, maxLean: 0, maxBank: 0 };
     }
-    reset() { this.seen.fill(0); this.frame = 0; this.t = 0; this.stats = { steps: 0, maxLean: 0, maxBank: 0 }; }
+    reset() { this.seen.fill(0xffffffff); this.uid.fill(-1); this.frame = 0; this.t = 0; this.stats = { steps: 0, maxLean: 0, maxBank: 0 }; }
     begin(time) { this.dt = this.frame ? Math.min(0.1, Math.max(0, time - this.t)) : 0; this.t = time; this.frame++; }
 
     // out: { sc: [x, y, z] factors, sh: [x, y] shear in the model's frame, roll (about the heading), yaw (added),
     // bob (x, 0 for a glide), jx, jy (a stun's jitter) }. A slot first seen this frame (a new creature, or one back
-    // from under the road) starts from rest.
-    pose(E, k, kind, ph, flap, out) {
-      const r = T[kind] || NONE, fresh = this.seen[k] !== this.frame - 1, dt = this.dt;
-      this.seen[k] = this.frame;
+    // from under the road, or a new creature in a slot freed this tick: its uid) starts from rest. turn: the model's
+    // own turn off the heading (cm.fwd - wob), so the lean's shear points along the heading whatever the model's fwd.
+    pose(E, k, kind, ph, flap, out, turn = 0) {
+      const r = T[kind] || NONE, fresh = this.seen[k] !== this.frame - 1 || this.uid[k] !== E.uid[k], dt = this.dt;
+      this.seen[k] = this.frame; this.uid[k] = E.uid[k];
       out.sc[0] = out.sc[1] = out.sc[2] = 1; out.sh[0] = out.sh[1] = 0; out.roll = 0; out.yaw = r.side || 0; out.bob = r.glide ? 0 : 1; out.jx = out.jy = 0;
       const z = E.vz[k], d = Math.max(0, E.dist[k]), y = E.yaw[k];
       if (fresh) { this.z[k] = z; this.d[k] = d; this.yaw[k] = y; this.lean[k] = 0; this.bank[k] = 0; this.step[k] = Math.floor(ph * 2); }
@@ -28595,8 +28617,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         else if (dd > 1e-4) tgt = Math.max(-LEAN_MAX, Math.min(LEAN_MAX, (z - this.z[k]) / dd)) * LEAN_K;
         else if (dd < -1e-4 || dt === 0) tgt = 0;
         this.lean[k] += (tgt - this.lean[k]) * e;
-        const a = this.lean[k] - HIT_LEAN * E.flash[k], c = Math.cos(-out.yaw), s = Math.sin(-out.yaw);
-        out.sh[0] = a * c; out.sh[1] = a * s; // (the heading in the model's frame: +x, turned back by the yaw offset)
+        const a = this.lean[k] - HIT_LEAN * E.flash[k], c = Math.cos(turn - out.yaw), s = Math.sin(turn - out.yaw);
+        out.sh[0] = a * c; out.sh[1] = a * s; // (the heading in the model's frame: +x, turned back by the model's turn)
         if (Math.abs(a) > this.stats.maxLean) this.stats.maxLean = Math.abs(a);
       } else if (r.bank && dt > 0) {
         let dy = y - this.yaw[k]; dy -= TAU * Math.round(dy / TAU);
@@ -28629,6 +28651,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       R[0] = t * x * x + c; R[1] = t * x * y; R[2] = s * y;
       R[3] = t * x * y; R[4] = t * y * y + c; R[5] = -s * x;
       R[6] = -s * y; R[7] = s * x; R[8] = c;
+      return R;
+    }
+    // on a wall: its frame F (heading, across, up as columns, row-major) times a roll of r about its heading (local x)
+    wallFrame(F, r) {
+      const c = Math.cos(r), s = Math.sin(r), R = this.R2;
+      for (let i = 0; i < 3; i++) { const a = F[i * 3 + 1], b = F[i * 3 + 2]; R[i * 3] = F[i * 3]; R[i * 3 + 1] = a * c + b * s; R[i * 3 + 2] = b * c - a * s; }
       return R;
     }
   };
@@ -29016,6 +29044,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         this.stepGrow(0);
       } else this.full();
       this.heartTo(n, true);
+      this.view.livingMap(true); // (the woken rift lit, the opened cells' props gone: scene.js)
       this.drift = this.driftFor(n);
     }
     // the Heart Tree at act n's grow stage (n - 1), if baked; burst: its crown's leaves fly first
@@ -29177,6 +29206,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // GROW_S s, at most GROW_MAX cubes (GROW_MAX_PHONE on a phone); then it shows as itself with a little bounce.
   // No room in the effect table (its cubes compact only once every job has ended: Engine C5), ?grow=0, or no
   // layer: the old elastic grow-in.
+  // a prop on a cell an act opens puffs into OPEN_PUFF_N of its voxels as it goes, at most OPEN_PUFFS of them at a
+  // turn (Momiji's Act II opens the cells of 6: livingMap)
+  const OPEN_PUFFS = 8, OPEN_PUFF_N = 60;
   const GROW_S = 0.9, GROW_TRAVEL = 0.35, GROW_MAX = 1500, GROW_MAX_PHONE = 450;
 
   class GameView {
@@ -29194,6 +29226,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.gait = new G.Gait(this); this.gaitPose = { sc: [1, 1, 1], sh: [0, 0], roll: 0, yaw: 0, bob: 1, jx: 0, jy: 0 }; // body motion per gait (gait.js)
       this.game = null; this.anim = new Map();
       this.heartKick = 0; this.heartStatic = null; this.heartFrames = null; this.heartFrames0 = null; this.heartBase = null; this.heartStage = 0;
+      this.rifts = null; this.openProps = null; // the further roads' rifts and the props on cells an act opens (livingMap)
       this.beat = { t: -1e9, hit: false, s: BEAT_S[0] }; // when the last hit's beat began, and its period (hit: one came since the last frame)
       this.dusk = 0; this.zoomIn = 1; this.closeFade = ME.qn("closeup", 1); this.glassMul = ME.qn("glassk", GLASS_K); this.bossWave = false; this.pinDusk = ME.params.has("dusk") ? ME.qn("dusk", 0) : null;
       this.vox = new Map(); // model index -> sampled voxels [x, y, z, mat, ...] (voxelsOf)
@@ -29275,8 +29308,50 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.upload = new Uint8Array(b.w * b.h);
       for (const t of game.towers) this.anim.set(t, this.newAnim());
       this.fx.reset(w); this.boonFx.reset(); this.plantFx.reset(); this.creatureFx.reset(); this.tombs.reset(); this.acts.reset(game); this.gait.reset();
+      this.livingMap(false);
       b.dirty = true;
       this.updateCells(); this.updateLights();
+    }
+
+    // The living map as drawn (A-L2, Art's view items): each further road's rift (G.models.riftAt) is drawn dim, its
+    // pool's lights out, until its road wakes (joins world.split: an act's wake), then lit; and the props standing on
+    // the cells an act opens (world.opens) go when it opens them, in a puff of their voxels (burst: an act turn in
+    // play, acts.js; a new or restored run takes the state silently). The records are made once (the baked world is
+    // the same every run), keeping each light's own strength.
+    livingMap(burst) {
+      const w = this.game.world, MB = this.MB;
+      if (!this.rifts) {
+        this.rifts = [];
+        if (G.models.riftAt) w.roads.forEach((r, n) => {
+          const p = n > 0 && r.path && r.path[0], f = p && G.models.riftAt([p[0] + 0.5, p[1] + 0.5]);
+          if (!f || f.frames[0] == null) return;
+          f.s.hidden = true;
+          this.rifts.push({ road: n, s: f.s, place: f.s.place, phase: f.s.phase || 0, frames: f.frames.map((x) => (Array.isArray(x) ? x : [x])), lights: f.lights, lit: -1 });
+        });
+        // (the props: any baked static on a cell but the Heart Tree and the rifts; kept only where an act opens it)
+        const skip = new Set(this.rifts.map((r) => r.s));
+        if (this.heartBase) skip.add(this.heartBase);
+        this.openProps = [];
+        for (const s of MB.statics) {
+          const x = Math.floor(s.place.X), y = Math.floor(s.place.Y);
+          if (!skip.has(s) && s.place.name !== "ms_rift" && w.inside(x, y) && w.opens.has(w.idx(x, y))) this.openProps.push({ s, k: w.idx(x, y) });
+        }
+      }
+      let lights = false;
+      for (const r of this.rifts) {
+        const lit = w.split.some((q) => q[0] === r.road) ? 1 : 0;
+        if (lit === r.lit) continue;
+        r.lit = lit; lights = true;
+        for (const L of r.lights) L.l.k = lit ? L.k : 0;
+        if (burst && lit) this.fx.burst("resist", [r.place.X, r.place.Y, r.place.Z + 0.3]);
+      }
+      if (lights) this.updateLights();
+      let n = 0;
+      for (const p of this.openProps) {
+        const gone = w.opens.get(p.k) <= w.act, s = p.s, q = s.place;
+        if (gone && !s.hidden && burst && n++ < OPEN_PUFFS) this.emitModel(s.frames[0], [q.X, q.Y, q.Z], 0, { n: OPEN_PUFF_N, speed: 0.45, life: 3, flip: q.flip, rot: q.rot });
+        s.hidden = gone;
+      }
     }
 
     // per-cell flags for the build overlay: r buildable, g blocked, b planted
@@ -29586,6 +29661,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         const sx = f * (1 + SWELL[0] * v), sz = f * (1 + SWELL[1] * v);
         sim.put(i++, mi, p.X, p.Y, p.Z, p.rot ? (p.rot * Math.PI) / 2 : 0, p.flip, [sx, sx, sz], [kick, -kick * 0.6], 0, 0, MARK.HEART | (st << MARK.HEART_SHIFT), glow);
       }
+      // the further roads' rifts, dim or lit (livingMap)
+      if (this.rifts) for (const r of this.rifts) {
+        const fr = r.frames[r.lit > 0 ? 1 : 0], p = r.place, mi = fr[Math.floor((((time * 1.1 + r.phase) % 1) + 1) % 1 * fr.length) % fr.length], f = 1 / this.MB.models[mi].fine;
+        sim.put(i++, mi, p.X, p.Y, p.Z, p.rot ? (p.rot * Math.PI) / 2 : 0, p.flip, [f, f, f], [0, 0], 0, 0, 0, 0);
+      }
       // (the plants as drawn this frame, from the layer's instance plantsFrom: cellAt maps an R.pick hit back to its plant)
       this.plantsFrom = i - i0; this.plantsDrawn.length = 0;
       for (const t of game.towers) {
@@ -29618,14 +29698,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         // its damage stage (wounds.js): a limp or a lurch on its walk, and the tint
         const ws = this.wounds.stage(E, k);
         if (ws) { const g = this.wounds.gait(ws, ph, bob, this.gaitOut); ph = g[0]; pitch += g[1]; bob = g[2]; }
-        GA.pose(E, k, E.kindOf(k), ph, cm.flap, gp); bob *= gp.bob; // (body motion per gait: gait.js)
+        const wob = n === 1 ? Math.sin(ph * Math.PI * 2) * 0.08 : 0;
+        GA.pose(E, k, E.kindOf(k), ph, cm.flap, gp, cm.fwd - wob); bob *= gp.bob; // (body motion per gait: gait.js)
         const fr = this.traitLook(E, k, MD, cm.frames), n2 = fr.frames.length;
         const f = fr.frames[Math.floor((((ph % 1) + 1) % 1) * n2) % n2], fl = E.flash[k], sq = fl * 0.1, s = cm.scale, mk = this.marks(E, k) | fr.mark | (ws << G.MARK.WOUND_SHIFT);
-        const wob = n === 1 ? Math.sin(ph * Math.PI * 2) * 0.08 : 0, g = gp.sc, sc = [s * (1 + sq) * g[0], s * (1 + sq) * g[1], s * (1 - sq) * g[2]];
+        const g = gp.sc, sc = [s * (1 + sq) * g[0], s * (1 + sq) * g[1], s * (1 - sq) * g[2]];
         if (E.face[k]) {
-          // on a wall: drawn in its frame (heading, across, up: core/enemies.js place), its bob along the up
-          const Fr = E.frame.subarray(k * 9, k * 9 + 9);
-          sim.put(i++, f, E.px[k] + Fr[2] * bob, E.py[k] + Fr[5] * bob, E.vz[k] + Fr[8] * bob, wob - cm.fwd + gp.yaw, false, sc, gp.sh, fr.flags, pitch, mk, fl * (G.flashK ?? 1), Fr);
+          // on a wall: drawn in its frame (heading, across, up: core/enemies.js place), its bob along the up, its
+          // roll about the heading and a stun's jitter in the wall's plane
+          const Fr = E.frame.subarray(k * 9, k * 9 + 9), jx = gp.jx, jy = gp.jy;
+          sim.put(i++, f, E.px[k] + Fr[2] * bob + Fr[0] * jx + Fr[1] * jy, E.py[k] + Fr[5] * bob + Fr[3] * jx + Fr[4] * jy, E.vz[k] + Fr[8] * bob + Fr[6] * jx + Fr[7] * jy, wob - cm.fwd + gp.yaw, false, sc, gp.sh, fr.flags, pitch, mk, fl * (G.flashK ?? 1), gp.roll ? GA.wallFrame(Fr, gp.roll) : Fr);
         } else {
           const yaw = E.yaw[k] - cm.fwd + wob + gp.yaw;
           sim.put(i++, f, E.px[k] + gp.jx, E.py[k] + gp.jy, E.vz[k] + bob, yaw, false, sc, gp.sh, fr.flags, pitch, mk, fl * (G.flashK ?? 1), gp.roll ? GA.rollFrame(E.yaw[k], gp.roll) : null);
