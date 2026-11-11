@@ -1021,6 +1021,50 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   #tray #inspector.docked:not(.open) #inspact { flex: 1 1 100%; }
   #tray #inspector.docked:not(.open) #inspact > .btn { flex: 1 1 0; padding: 0 3px; font-size: calc(12px * var(--ts)); }
 }
+/* (a placed plant's card pops up beside the plant instead, out of the tray, the user 2026-11-11: hud.js popCard sets
+   its left and top every frame, so it follows the plant as the view moves, and an open one's height to the room.
+   "Popup, reworked": one column, at every screen size. Its head; its stat chips (with what Grow makes them, .nx);
+   the key tips (its element and what it is strong against, what Grow gives next, a graft asked about: hud.js
+   inspect, [html, "key"]), the rest of the tips and More's long text only open; then big actions with their real
+   labels, not the short words: Grow across, Move and Uproot side by side, Deepen across, then the graft rows) */
+#tray #inspector.docked.popup, #tray #inspector.docked.popup:not(.open) { position: fixed; order: 0; right: auto; bottom: auto;
+  width: min(340px, calc(var(--vw) - 16px)); z-index: 6; flex-direction: column; flex-wrap: nowrap; align-items: stretch;
+  gap: 6px; padding: 8px 10px; max-height: none; box-shadow: var(--shadow), 0 6px 18px #0006; }
+#tray #inspector.docked.popup.open { max-height: none; }
+#tray #inspector.docked.popup #insptitle, #tray #inspector.docked.popup:not(.open) #insptitle { order: 0; flex: none; padding-right: 36px;
+  font-size: calc(18px * var(--ts)); }
+#tray #inspector.docked.popup #inspbody, #tray #inspector.docked.popup:not(.open) #inspbody { display: block; order: 1; flex: 0 1 auto;
+  min-height: 0; overflow-y: auto; font-size: calc(14px * var(--ts)); line-height: 1.3; }
+#tray #inspector.docked.popup:not(.open) #inspbody > :not(.more) { display: revert; } /* (beats the dock's :not(.chips):not(.tomore) hiding) */
+#tray #inspector.docked.popup:not(.open) #inspbody .more { display: none; }
+#tray #inspector.docked.popup:not(.open) #inspbody .tips > div:not(.key) { display: none; }
+#tray #inspector.docked.popup #inspbody .chips, #tray #inspector.docked.popup:not(.open) #inspbody .chips { display: flex; flex-wrap: wrap;
+  margin: 0 0 4px; gap: 4px; }
+#tray #inspector.docked.popup #inspbody .chip, #tray #inspector.docked.popup:not(.open) #inspbody .chip { padding: 2px 5px; line-height: 1.2; }
+#tray #inspector.docked.popup #inspbody .tomore, #tray #inspector.docked.popup:not(.open) #inspbody .tomore { display: inline-block;
+  margin: 2px 0 0; padding: 6px 2px 2px; }
+#inspbody .nx { font-weight: 800; color: #3f7a1f; margin-left: 2px; }
+#tray #inspector.docked.popup:not(.open) #inspbody .chips + .tips > div.key { display: block; } /* (a phone's dock shows one tip folded; the popup all its key ones) */
+#tray #inspector.docked.popup #inspact, #tray #inspector.docked.popup:not(.open) #inspact { order: 2; display: flex; flex: none;
+  flex-wrap: wrap; gap: 6px; }
+#tray #inspector.docked.popup #inspact > .btn, #tray #inspector.docked.popup:not(.open) #inspact > .btn { order: 1; flex: 1 1 0;
+  min-width: 0; height: auto; min-height: 48px; padding: 4px 8px; line-height: 1.15; white-space: normal;
+  font-size: calc(15px * var(--ts)); }
+#tray #inspector.docked.popup #inspact > #grow, #tray #inspector.docked.popup:not(.open) #inspact > #grow { order: 0; flex-basis: 100%; }
+#tray #inspector.docked.popup #inspact > #deepen, #tray #inspector.docked.popup:not(.open) #inspact > #deepen { order: 2; flex-basis: 100%; }
+#tray #inspector.docked.popup #inspact > .btn .lb, #tray #inspector.docked.popup:not(.open) #inspact > .btn .lb { display: inline; }
+#tray #inspector.docked.popup #inspact > .btn::after, #tray #inspector.docked.popup:not(.open) #inspact > .btn::after { content: none; }
+#tray #inspector.docked.popup > #grafts, #tray #inspector.docked.popup:not(.open) > #grafts { order: 3; display: flex; flex: none; margin: 0; max-height: none;
+  padding: 0; overflow: visible; min-height: 0; }
+#tray #inspector.docked.popup > #grafts:empty { display: none; }
+#tray #inspector.docked.popup #grafts .btn { height: auto; min-height: 46px; padding: 4px 8px; white-space: normal; font-size: calc(15px * var(--ts)); }
+#tray #inspector.docked.popup #inspbody .fork { min-height: 64px; padding: 8px; }
+/* (on a phone, folded, its three actions in one row, each two lines at most, so the card fits above or below a plant
+   in the middle of the screen; open, Grow goes back across) */
+@media (max-width: 760px) {
+  #tray #inspector.docked.popup:not(.open) #inspact > #grow { order: 1; flex-basis: 0; }
+  #tray #inspector.docked.popup:not(.open) #inspact > .btn { padding: 3px 5px; font-size: calc(14px * var(--ts)); }
+}
 
 /* the seed pouch (view/pouch.js, G1b): a paper box over the void. One bar on top (the garden, its trait chips,
    Suggested / Last / Back), the 6 slots and Begin in one row, one tip line that opens to the rest, then the
@@ -8567,6 +8611,44 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       return { md, vf };
     });
   }
+  // MB.extra (below): a bake list (key -> [name, o, n], as opts.models) frame by frame, [{ key, name, o }], a key's n
+  // frames next to each other with o.t = i / n, as listOf numbers opts.models' flipbooks
+  function extraVariants(list) {
+    const vs = [];
+    for (const key in list || {}) {
+      const [name, o = {}, n = 1] = list[key];
+      for (let i = 0; i < n; i++) vs.push({ key, name, o: n > 1 ? Object.assign({}, o, { t: i / n }) : o });
+    }
+    return vs;
+  }
+  // MB.extra's room, sized before the bake from ex.lists (the lists the game will bake mid-run, in order: one is
+  // freed once the next is in, so two next to each other are in at once): each frame's box at most tightBox's
+  // bound (sdf.js: its scan box rounded up to its 4-voxel bricks, + 2; ex.box [W, H, D] overrides it), its copy
+  // (L1) half that. Rows of W x H voxels (H the tallest box, D the deepest, both in bricks of 8) under the layout,
+  // as many as the largest pair packs into first-fit, + 1 (holes a free leaves); pool bricks for the largest pair
+  // (a cylinder r x h of solid bricks, its shell only for a hollow model, x 1.25 with copies; ex.bricks overrides
+  // it); and as many spare model entries as that pair has frames. null when a frame's box is wider than a row or
+  // there is no frame.
+  function extraPlan(ex, L1, W) {
+    const VS = ME.VS, pad = (n) => Math.ceil(n / 8) * 8, c4 = (n) => Math.ceil(n / 4) * 4, hollow = hollowOn();
+    const lists = (ex.lists || []).map((list) => modelsOf(extraVariants(list)).map(({ md, vf }) => {
+      const K = md.k, R = md.r * K * 1.6 + 0.15, Hh = md.h * K * 1.45 + 0.2, nx = c4(Math.ceil(2 * R * VS)) + 2, nz = c4(Math.ceil((Hh + 0.45) * VS)) + 2;
+      const d = ex.box || [nx, nx, nz], rv = md.r * K * VS, hv = md.h * K * VS, vol = (Math.PI * rv * rv * hv) / 512, surf = ((2 * Math.PI * rv * hv + 2 * Math.PI * rv * rv) / 64) * 1.5;
+      const full = Math.ceil(d[0] / 8) * Math.ceil(d[1] / 8) * Math.ceil(d[2] / 8), b = Math.min(full, hollow && VS * vf > ME.POOL_HOLLOW ? Math.min(vol, surf) : vol) * (L1 ? 1.25 : 1);
+      return { w: [pad(d[0])].concat(L1 ? [pad(Math.ceil(d[0] / 2))] : []), d, b };
+    }));
+    const all = lists.flat();
+    if (!all.length || all.some((f) => f.w[0] > W)) return null;
+    const H = Math.max(8, ...all.map((f) => pad(f.d[1]))), D = Math.max(8, ...all.map((f) => pad(f.d[2])));
+    const pairs = lists.length > 1 ? lists.slice(1).map((l, k) => lists[k].concat(l)) : lists;
+    let rows = 0, b = 0, models = 0;
+    for (const p of pairs) {
+      const xs = [];
+      for (const w of p.flatMap((f) => f.w)) { const k = xs.findIndex((x) => x + w <= W); if (k >= 0) xs[k] += w; else xs.push(w); }
+      rows = Math.max(rows, xs.length); b = Math.max(b, p.reduce((a, f) => a + f.b, 0)); models = Math.max(models, p.length);
+    }
+    return { rows: rows + 1, H, D, bricks: Math.ceil(ex.bricks || b), models };
+  }
   const workersOn = (opts) => opts.worker !== false && ME.bakeWorkers !== false;
   // why a model stays here (stats.offWorker: name -> reason), or null for a data-only one (no function prim, no
   // contour, no focus to bake); the game never waits for a focus: opts.focus bakes it here
@@ -8850,13 +8932,18 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     if (!prog && vols.reduce((a, v) => a + kept(v), 0) + lods.reduce((a, l) => a + kept(l), 0) > ME.poolBricks()) lods = [];
     const lodMs = ME.now() - tl, lodBricks = lods.reduce((a, l) => a + kept(l), 0), all = vols.concat(lods), hollowN = all.reduce((a, l) => a + (l.inner ? l.inner.n : 0), 0);
     for (const l of lods) l.copy = true;
+    // MB.extra (desktops; opts.extra, or ?extra=1 with window.ME_EXTRA(), a check's): room kept for models the game
+    // bakes mid-run (extraPlan: rows under the layout, pool bricks, model entries); MB.extra below
+    const ex = ME.phoneLike() ? null : opts.extra || (ME.qn("extra", 0) && typeof window.ME_EXTRA === "function" ? window.ME_EXTRA() : null);
+    let X0 = ex ? extraPlan(ex, lods.length > 0, 1024) : null;
+    if (ex && !X0) ME.log("WARN BAKE extra: no room kept (no frame, or a frame wider than the layout): no MB.extra");
 
     // shelf-pack brick-aligned volumes into the atlas; short volumes stack in z inside a column whose
     // footprint fits them (critters and ferns would otherwise each reserve the full atlas depth). E4: a progressive
     // frame's full model and its copy get their place now, a proxy { dims } with no bricks yet (v.px)
     const proxies = [];
     if (prog) for (const g of prog) for (const i of g.vs) { const d = vols[i].full.slice(3); proxies.push((vols[i].px = { dims: d })); if (lods.length) proxies.push((lods[i].px = { dims: d.map((n) => Math.ceil(n / 2)) })); }
-    const pad = (n) => Math.ceil(n / 8) * 8, W = 1024, AZ = Math.max(8, ...vols.concat(proxies).map((v) => pad(v.dims[2]))), cols = [];
+    const pad = (n) => Math.ceil(n / 8) * 8, W = 1024, AZ = Math.max(8, X0 ? X0.D : 0, ...vols.concat(proxies).map((v) => pad(v.dims[2]))), cols = [];
     let x = 0, y = 0, rowH = 0;
     for (const v of all.concat(proxies)) {
       const [nx, ny, nz] = v.dims.map(pad);
@@ -8871,7 +8958,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // brick map (one u32 per 8^3 brick of the layout above: bits 24..31 the occupied 4^3 octants, filled below, and
     // bits 0..23 1 + pool slot; 0 for empty; an interior brick (no octant) 1 + its index in MB.inner) and a dense
     // pool holding only the occupied bricks (the layout is ~1% solid, so the pool is a fraction of it)
-    const AX = W, AY = pad(y + rowH), BX = AX / 8, BY = AY / 8, BZ = AZ / 8, bricks = new Uint32Array(BX * BY * BZ);
+    // (MB.extra's rows from EY down)
+    const AX = W, EY = pad(y + rowH), AY = EY + (X0 ? X0.rows * X0.H : 0), BX = AX / 8, BY = AY / 8, BZ = AZ / 8, bricks = new Uint32Array(BX * BY * BZ);
     let nb = 0, ni = 0, solid = 0;
     for (const v of all) {
       const [px, py, pz] = v.pdims.map((n) => n / 8), [bx, by, bz] = v.base.map((n) => n / 8);
@@ -8884,7 +8972,17 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     }
     // the slab: 16 x 16 while the bricks fit (the pool and its rounding as before E6), else 32 x 32; a progressive
     // bake's pool holds its peak
-    const need = prog ? C : nb, PB = slabOf(need);
+    // (MB.extra's bricks on top, as many as the pool may hold past the bake's: under 64, no MB.extra; its rows stay)
+    const base = prog ? C : nb;
+    let exB = X0 ? X0.bricks : 0;
+    if (X0) {
+      const lim = Math.min(ME.poolMaxBricks(undefined, slabOf(base + exB)), ME.poolBricks());
+      if (base + exB > lim) {
+        if (lim - base < 64) { ME.log(`WARN BAKE extra: the pool holds ${lim} bricks, ${Math.max(0, lim - base)} past the bake's ${base}: no MB.extra`); X0 = null; exB = 0; }
+        else { ME.log(`WARN BAKE extra: ${lim - base} pool bricks kept, not the ${exB} estimated (the pool holds ${lim})`); exB = lim - base; }
+      }
+    }
+    const need = base + exB, PB = slabOf(need);
     const PX = PB * 8, PY = PB * 8, PZ = Math.max(1, Math.ceil(need / (PB * PB))) * 8;
     const cap = ME.poolMaxBricks(undefined, PB), budget = ME.poolBricks();
     if (need > Math.min(cap, budget)) throw new Error(`the volume pool needs ${need} bricks; ` + (budget < cap ? `this device's budget is ${budget} (ME.poolBudget)` : `the device allows ${cap} (a ${PX} x ${PY} x ${PZ} texture against maxTextureDimension3D ${ME.poolMaxDepth()})`) + ": fewer or smaller volumes, or fewer frames");
@@ -8897,8 +8995,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // volume shader skips the empty octants and draws its proxy box over lo..hi, not the whole dims). putVol(v,
     // take): volume v's, take(bk) the pool slot of brick-map entry bk (by default the one the count above gave it;
     // an upgrade's take, below, ignores bk: it hands out the lowest free slot);
-    // a generator that yields every 64 bricks, run through at once here (drive) and over frames by an upgrade (E4)
-    const putVol = function* (v, take = (bk) => bricks[bk] - 1) {
+    // a generator that yields every 64 bricks, run through at once here (drive) and over frames by an upgrade (E4);
+    // tin() the index in MB.inner of the model's next interior brick (MB.extra's reuses those freed), else the next
+    const putVol = function* (v, take = (bk) => bricks[bk] - 1, tin = null) {
       const [px, py, pz] = v.pdims.map((n) => n / 8), [bx, by, bz] = v.base.map((n) => n / 8), lo = [1e9, 1e9, 1e9], hi = [0, 0, 0];
       let c = 0;
       for (let iz = 0; iz < pz; iz++) for (let iy = 0; iy < py; iy++) for (let ix = 0; ix < px; ix++) {
@@ -8909,8 +9008,11 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         // entry has no octant (the shader's empty) and 1 + its index in MB.inner below
         if (v.inner && v.inner.is[bi]) {
           // (1 + its index must stay in the entry's 24 bits: past them it would read as octants, a pool slot)
-          if (!v.copy && ni + 1 >= 1 << 24) throw new Error(`MB.inner is full: ${ni} interior bricks, past the brick map's 24 bits`);
-          if (!v.copy) { bricks[bk] = ni + 1; for (let j = 0; j < 512; j++) inner.mats[ni * 512 + j] = b[j * 4 + 3]; ni++; }
+          if (!v.copy) {
+            const n = tin ? tin() : ni++;
+            if (n + 1 >= 1 << 24) throw new Error(`MB.inner is full: ${n} interior bricks, past the brick map's 24 bits`);
+            bricks[bk] = n + 1; for (let j = 0; j < 512; j++) inner.mats[n * 512 + j] = b[j * 4 + 3];
+          }
           continue;
         }
         const k = take(bk);
@@ -8934,7 +9036,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     // E4: the pool's slots as an upgrade takes and frees them: used[k] (one byte a slot; the pool is sized to the
     // peak, so a free list never has to grow it), lw the lowest slot that may be free, inUse their count, touched
     // the slots written since the last upload (P4, #492's PERF-E11: R.uploadSlots writes only theirs)
-    const slots = (PZ / 8) * PB * PB, used = prog ? new Uint8Array(slots).fill(1, 0, nb) : null, touched = new Set();
+    const slots = (PZ / 8) * PB * PB, used = prog || X0 ? new Uint8Array(slots).fill(1, 0, nb) : null, touched = new Set();
     let lw = nb, inUse = nb;
     // take: the lowest free slot (putVol passes it a brick-map entry, which it doesn't need)
     const take = () => { let k = lw; while (used[k]) k++; if (k >= slots) throw new Error("the progressive pool is full"); used[k] = 1; lw = k + 1; inUse++; touched.add(k); return k; };
@@ -9002,6 +9104,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const MB = { atlas: pool, adims: [PX, PY, PZ], bricks, bdims: [BX, BY, BZ], inner, models, lods: lods.map((l) => ({ base: l.base, dims: l.dims, lo: l.lo, hi: l.hi })), statics, walkerTypes, walkerFrames, critterFrames, extraFrames, lights, stats };
     MB.voxel = ME.brickVoxel(MB);
     if (prog) MB.prog = progOf2();
+    if (X0) extraOf(X0);
     return MB;
 
     // E4: MB.prog, a progressive bake's upgrade: { maxGroup (the most models one swap takes), started, stats (sp:
@@ -9171,10 +9274,177 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       };
       return { maxGroup, started: false, stats: sp, upgraded, cancel, want, gen, compact: () => compactOf(MB, slabOf) };
     }
+
+    // MB.extra (non-enumerable: the bake cache's compactOf leaves it out), models the game bakes mid-run into the
+    // room extraPlan kept: X0.rows rows of W x X0.H voxels under the layout (from EY), the pool's spare bricks and
+    // X0.models model entries after the bake's (ids m0.., their copies' l0..; R's model buffer holds them: passes.js).
+    // bake(list) (key -> [name, o, n], as opts.models): a promise of { key: [ids] } once its frames are drawable, or
+    // null (a WARN) if they don't fit or R isn't up; installs run one after another, each on R.addTask after the
+    // progressive upgrade (MB.prog.upgraded), on workers of their own (here without them), each frame put as an
+    // upgrade's (finishOf: its interior and its copy) into the first row gap that holds it, then its slots, its map
+    // boxes and the palette uploaded and its model entries written. free(ids): those models' bricks, interior
+    // bricks, row gaps and entries given back (an entry freed is zero: nothing drawn), at once; the count freed.
+    // stats: { baked, freed, failed: [{ keys, why }], ms }.
+    function extraOf(X0) {
+      const rows = Array.from({ length: X0.rows }, () => [[0, W]]);
+      // alloc(w): [row, x, w], the first gap w voxels wide; release gives it back (gaps merged)
+      const alloc = (w) => {
+        for (let k = 0; k < rows.length; k++) for (let j = 0; j < rows[k].length; j++) {
+          const [a, b] = rows[k][j];
+          if (b - a < w) continue;
+          if (b - a === w) rows[k].splice(j, 1); else rows[k][j] = [a + w, b];
+          return [k, a, w];
+        }
+        return null;
+      };
+      const release = ([k, x, w]) => {
+        const fr = rows[k];
+        fr.push([x, x + w]); fr.sort((p, q) => p[0] - q[0]);
+        for (let j = fr.length - 1; j > 0; j--) if (fr[j - 1][1] === fr[j][0]) { fr[j - 1][1] = fr[j][1]; fr.splice(j, 1); }
+      };
+      const baseOf = (iv) => [iv[1], EY + iv[0] * X0.H, 0], boxOf = (base, dims) => { const b = base.map((n) => n / 8); return b.concat(dims.map((n, a) => b[a] + Math.ceil(n / 8))); };
+      // the MB.inner indices a box's map entries point at (an entry with no octant)
+      const inners = (base, dims) => {
+        const [x0, y0, z0, x1, y1, z1] = boxOf(base, dims), o = [];
+        for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { const e = bricks[(z * BY + y) * BX + x]; if (e && !(e >>> 24)) o.push(e - 1); }
+        return o;
+      };
+      // spare[s]: entry m0 + s taken; fin: freed MB.inner indices (tin reuses them); ivs: id -> its row gaps; xt:
+      // the pool slots written since the last upload (an install's own, not the upgrade's touched)
+      const spare = new Uint8Array(X0.models), fin = [], ivs = new Map(), xt = new Set();
+      const takeX = () => { const k = take(); touched.delete(k); xt.add(k); return k; }, tin = () => (fin.length ? fin.pop() : ni++);
+      const chunksOf = (buf, n) => Array.from({ length: n }, (_, k) => buf.subarray(k * 2048, k * 2048 + 2048));
+      let chain = Promise.resolve();
+      const X = { m0: MB.models.length, l0: MB.lods.length, models: X0.models, lods: lods.length > 0, rows: X0.rows, H: X0.H, D: X0.D, bricks: exB, R: null, palN: pal.names.length, stats: { baked: 0, freed: 0, failed: [], ms: 0 } };
+      const install = function* (list) {
+        const R = X.R, keys = Object.keys(list || {}).join(" ");
+        if (MB.prog) { try { yield MB.prog.upgraded; } catch (e) { /* cancelled: its slots are as it left them */ } X.palN = Math.max(X.palN, pal.names.length); } // (the upgrade kept R's palette whole)
+        const t0 = ME.now(), vs = extraVariants(list), mds = modelsOf(vs), n = vs.length, def = defOf(pal), in0 = MB.inner;
+        const put = [], got = [], recs = [];
+        let fail = n ? null : "no frame", run = null, bricksN = 0;
+        try {
+          const jobs = [];
+          mds.forEach(({ md }, i) => { if (!notData(md, {})) jobs.push({ id: i, name: vs[i].name, ms: ME.bakeFullJobMs || 240000, q: { id: i, md: { prims: md.prims, k: md.k, r: md.r, h: md.h }, vs: VS, cull: ME.sdf.cull, def, detail: !!md.detail } }); });
+          const ws = jobs.length && !fail ? yield startWorkers(Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 2) - 1), jobs.length)) : [];
+          if (ws.length) run = runJobs(ws, jobs, 1);
+          const L1 = X.lods && !(MB.prog && MB.prog.stats.lodDropped);
+          for (let i = 0; i < n && !fail; i++) {
+            const { md, vf } = mds[i], name = vs[i].name;
+            const r = run && run.out.has(i) ? yield run.out.get(i) : null;
+            let v, buf, nb;
+            if (r) { v = yield* takeIn(r, md, []); buf = r.buf; nb = r.nb; }
+            else {
+              v = sparse(recIds([], () => ME.voxelizeModel(md, VS, pal, { focus: false })));
+              nb = v.chunks.length; buf = new Uint8Array(nb * 2048); v.chunks.forEach((c, k) => buf.set(c, k * 2048));
+              yield;
+            }
+            setEmi();
+            // its interior and its copy, in a worker (copies of the buffers go), else here
+            const q = { finish: true, id: n + i, buf, nb, bmap: v.bmap, dims: v.dims, hollow: hollow && VS * vf > ME.POOL_HOLLOW, lod: L1, emi };
+            let f = null;
+            if (run) {
+              const qc = Object.assign({}, q, { buf: buf.slice(), bmap: v.bmap.slice() });
+              run.add([{ id: q.id, name, q: qc, tr: [qc.buf.buffer, qc.bmap.buffer], miss: "finished on the main thread" }], true);
+              f = yield run.out.get(q.id);
+            }
+            if (!f) f = finishOf(q)[0];
+            const pd = v.dims.map(pad), ld = f.lod ? f.lod.dims : null;
+            if (pd[1] > X0.H || pd[2] > AZ) { fail = `${name} is ${v.dims} voxels, past the rows' ${X0.H} high and ${AZ} deep`; break; }
+            const need = nb - f.ninner + (ld ? f.lod.nb - f.lod.ninner : 0), s = spare.indexOf(0);
+            if (need > slots - inUse) { fail = `no room: ${need} bricks against the ${slots - inUse} free`; break; }
+            if (s < 0) { fail = `no model entry left (MB.extra holds ${X0.models})`; break; }
+            const iv = alloc(pd[0]);
+            if (!iv) { fail = `no row has ${pd[0]} voxels free for ${name}`; break; }
+            const base = baseOf(iv);
+            put.push([base, v.dims, iv]);
+            let liv = null, lbase = null;
+            if (ld) {
+              liv = alloc(pad(ld[0]));
+              if (!liv) { fail = `no row has ${pad(ld[0])} voxels free for ${name}'s copy`; break; }
+              lbase = baseOf(liv); put.push([lbase, ld, liv]);
+            }
+            spare[s] = 1; got.push(s);
+            const fv = { base, pdims: pd, bmap: f.bmap, chunks: chunksOf(f.buf, nb), inner: f.inner ? { is: f.inner, n: f.ninner } : null };
+            const lv = ld ? { base: lbase, pdims: ld.map(pad), bmap: f.lod.bmap, chunks: chunksOf(f.lod.buf, f.lod.nb), inner: f.lod.inner ? { is: f.lod.inner, n: f.lod.ninner } : null, copy: true } : null;
+            // MB.inner grows by its interior bricks (doubling)
+            if (f.ninner && (ni + f.ninner) * 512 > (inner ? inner.mats.length : 0)) {
+              const m = new Uint8Array(Math.max(ni + f.ninner, ni * 2) * 512);
+              if (inner) m.set(inner.mats.subarray(0, Math.min(inner.mats.length, ni * 512)));
+              MB.inner = inner = { mats: m };
+            }
+            yield* putVol(fv, takeX, tin);
+            if (lv) yield* putVol(lv, takeX);
+            recs.push({ key: vs[i].key, s, ivs: [iv, liv], m: { name, base, dims: v.dims, box: v.box, lo: fv.lo, hi: fv.hi, k: md.k, fine: vf, h: (md.h * md.k) / vf, r: (md.r * md.k) / vf, lod: lv ? X.l0 + s : -1 }, l: lv ? { base: lbase, dims: ld, lo: lv.lo, hi: lv.hi } : null });
+            bricksN += need;
+          }
+        } catch (e) { fail = (e && e.message) || String(e); }
+        finally { if (run) run.stop(); }
+        if (fail) {
+          // what was put out again: its interior bricks, slots, map boxes and row gaps; the palette up as a swap's
+          const boxes = [];
+          for (const [b, d, iv] of put) { fin.push(...inners(b, d)); boxes.push(clear(b, d)); release(iv); }
+          for (const s of got) spare[s] = 0;
+          xt.clear();
+          if (R) { for (const b of boxes) R.uploadBricks(b); if (pal.names.length > X.palN) { R.refreshPalette(pal); X.palN = pal.names.length; } }
+          if (MB.inner !== in0) MB.voxel = ME.brickVoxel(MB);
+          X.stats.failed.push({ keys, why: fail });
+          ME.log(`WARN BAKE extra ${keys}: ${fail}; nothing installed`);
+          return null;
+        }
+        // up to the GPU: the slots written, the map boxes, the palette if it grew, then the model entries
+        R.uploadSlots(xt); xt.clear();
+        yield;
+        for (const [b, d] of put) R.uploadBricks(boxOf(b, d));
+        if (pal.names.length > X.palN) { R.refreshPalette(pal); X.palN = pal.names.length; }
+        if (MB.inner !== in0) MB.voxel = ME.brickVoxel(MB);
+        const out = {};
+        for (const { key, s, ivs: iv, m, l } of recs) {
+          const id = X.m0 + s;
+          MB.models[id] = m;
+          if (l) { while (MB.lods.length < m.lod) MB.lods.push({ base: [0, 0, 0], dims: [0, 0, 0], lo: [0, 0, 0], hi: [0, 0, 0] }); MB.lods[m.lod] = l; }
+          ivs.set(id, iv);
+          R.putModel(id, m, MB.lods); R.writeModels(id, id + 1);
+          if (m.lod >= 0) R.writeModels(R.mcap + m.lod, R.mcap + m.lod + 1);
+          (out[key] || (out[key] = [])).push(id);
+        }
+        const ms = Math.round(ME.now() - t0);
+        X.stats.baked += n; X.stats.ms += ms;
+        ME.log(`EXTRA ${keys}: ${n} frames, ${bricksN} bricks, in ${ms} ms`);
+        return out;
+      };
+      X.bake = (list) => {
+        const p = chain.then(() => {
+          if (!X.R) { ME.log("WARN BAKE extra: no renderer yet (R.init sets MB.extra.R): nothing installed"); return null; }
+          return X.R.addTask(install(list));
+        }).catch(() => null);
+        chain = p;
+        return p;
+      };
+      X.free = (ids) => {
+        const R = X.R, boxes = [];
+        let k = 0;
+        for (const id of [].concat(ids || [])) {
+          const s = id - X.m0, m = MB.models[id];
+          if (!(s >= 0 && s < X0.models) || !spare[s] || !m || m.free || !ivs.has(id)) continue;
+          fin.push(...inners(m.base, m.dims));
+          boxes.push(clear(m.base, m.dims));
+          if (m.lod >= 0) { const l = MB.lods[m.lod]; boxes.push(clear(l.base, l.dims)); }
+          for (const iv of ivs.get(id)) if (iv) release(iv);
+          ivs.delete(id); spare[s] = 0;
+          MB.models[id] = Object.assign({}, m, { free: true });
+          if (R) { R.putModel(id, MB.models[id], MB.lods); R.writeModels(id, id + 1); if (m.lod >= 0) R.writeModels(R.mcap + m.lod, R.mcap + m.lod + 1); }
+          k++;
+        }
+        if (R) for (const b of boxes) R.uploadBricks(b);
+        X.stats.freed += k;
+        return k;
+      };
+      Object.defineProperty(MB, "extra", { value: X, enumerable: false, configurable: true });
+    }
   };
 
   // the private functions a model bake depends on, for the bake cache's key (src/cache.js)
-  ME.bakeModels.parts = [bricksOf, matOf, innerOf, halfOf, workerJob, finishOf, estOf, runJobs, listOf, modelsOf, launch, workersOn, notData, defOf, sigOf, progOf, compactOf, rankOf, progOn, hollowOn, kfOf];
+  ME.bakeModels.parts = [bricksOf, matOf, innerOf, halfOf, workerJob, finishOf, estOf, runJobs, listOf, modelsOf, launch, workersOn, notData, defOf, sigOf, progOf, compactOf, rankOf, progOn, hollowOn, kfOf, extraVariants, extraPlan];
 
   // Starts a bake's worker jobs before the terrain bake, so the workers run during it (#185): the variant list
   // from st (ME.volumeDecoOf, the props bakeTerrain bakes as volumes), the models built, the jobs posted. Returns
@@ -11023,7 +11293,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 
   // float offsets into the uniform buffer (vec4 aligned); blob: the flier shadows (E1b), ME.BLOB_MAX vec4s (sim.js sets it)
   ME.BLOB_MAX = ME.BLOB_MAX || 16;
-  ME.UOFF = { vp: 0, ivp: 16, vdir: 32, sun: 36, res: 40, grid: 44, dims: 48, cgrid: 52, cdims: 56, look: 60, look2: 64, look3: 68, fog: 72, beamCol: 76, canopy: 80, canopy2: 84, shadow: 88, shadow2: 92, beams: 96, beamK: 128, ids: 136, misc: 140, outres: 144, part: 148, psrc: 152, geo: 156, misc2: 160, look4: 164, wind: 168, canopy3: 172, water2: 176, lgrid: 180, field: 184, weather: 188, weather2: 192, weather3: 196, wclear: 200, weather4: 216, key: 220, key2: 224, sky: 228, sky2: 232, sky3: 236, blob: 240, user: 240 + 4 * ME.BLOB_MAX };
+  ME.UOFF = { vp: 0, ivp: 16, vdir: 32, sun: 36, res: 40, grid: 44, dims: 48, cgrid: 52, cdims: 56, look: 60, look2: 64, look3: 68, fog: 72, beamCol: 76, canopy: 80, canopy2: 84, shadow: 88, shadow2: 92, beams: 96, beamK: 128, ids: 136, misc: 140, outres: 144, part: 148, psrc: 152, geo: 156, misc2: 160, look4: 164, wind: 168, canopy3: 172, water2: 176, lgrid: 180, field: 184, weather: 188, weather2: 192, weather3: 196, wclear: 200, weather4: 216, key: 220, key2: 224, sky: 228, sky2: 232, sky3: 236, look5: 240, look6: 244, look7: 248, look8: 252, look9: 256, blob: 260, user: 260 + 4 * ME.BLOB_MAX };
   // vec4 slots of app data at the end of the block (u.user[k], Renderer.user) for the shader hooks
   ME.USER_SLOTS = 6;
   ME.USIZE = ME.UOFF.user + 4 * ME.USER_SLOTS;
@@ -11089,6 +11359,11 @@ struct U {
   sky: vec4f,     // night and void backdrops: zenith colour (linear); w = star density (night), cloud amount (void)
   sky2: vec4f,    // night and void: horizon colour (linear); w = moon disc radius (night, a share of the screen height), horizon height (void, a share of the screen from the top)
   sky3: vec4f,    // void backdrop: mist colour (linear), w = the far islets' amount
+  look5: vec4f,   // R.set: poolWarp, poolLobe (the sun pools' outline), hotK, fallHotK (the over-range boosts)
+  look6: vec4f,   // R.set: waterBase, waterShadeK, waterFresK (the water's body and its mirror), wrapLift (the cushions' tops)
+  look7: vec4f,   // R.set: foamSoft, foamF (the plunge foam's edge and grain), fallBase (the falls' shade level), -
+  look8: vec4f,   // R.set: bevelT, aoT (the terrain's rounded shoulders and contact AO, in tiles; 0 the old voxel taps), -, -
+  look9: vec4f,   // R.set: shaftOut (the shafts past the glass, tiles along the sun; 0 clipped to it), shaftOutK (their air), shaftStreak (the blur along the beam), -
   blob: array<vec4f, ${ME.BLOB_MAX}>, // flier shadows (E1b, Sim.blob): anchor x y z, radius in tiles; a zero radius ends the list
   user: array<vec4f, ${ME.USER_SLOTS}>, // app data for the shader hooks (Renderer.user)
 };
@@ -11160,8 +11435,9 @@ fn canopyGaps(q: vec2f, rk: f32) -> vec2f {
     if (r > bm.w * 1.9) { continue; }
     let fi = f32(i) * 1.7; let ang = atan2(d.y, d.x);
     // lobed, warped outline: no two pools alike, none a disc
-    let lobes = 1.0 + 0.2 * sin(ang * 2.0 + fi) + 0.13 * sin(ang * 3.0 + fi * 2.3) + 0.08 * sin(ang * 5.0 - fi);
-    let warp = (vnoise(d * 1.5 + vec2f(fi * 7.0, fi * 3.0)) - 0.5) * 0.65;
+    // R.set.poolLobe scales the lobes (1), poolWarp the noise warp (0.65): 0 and 0 give round pools
+    let lobes = 1.0 + u.look5.y * (0.2 * sin(ang * 2.0 + fi) + 0.13 * sin(ang * 3.0 + fi * 2.3) + 0.08 * sin(ang * 5.0 - fi));
+    let warp = (vnoise(d * 1.5 + vec2f(fi * 7.0, fi * 3.0)) - 0.5) * u.look5.x;
     open = max(open, sstep(1.0, 1.0 - u.canopy2.w, r / (bm.w * (lobes + warp))) * beamKOf(i));
   }
   if (rk <= 0.0) { return vec2f(open); }
@@ -11316,17 +11592,27 @@ fn faceN(d: u32) -> vec3f {
   let fnm = faceN(i.dm & 7u);
   let tv = (i.w - u.grid.xyz) * u.grid.w;
   let vox = floor(tv - fnm * 0.5);
-  // tetrahedral gradient: 4 taps instead of 6 central differences (same scale: 2h per axis)
-  let h = 0.87; let ka = vec3f(1.0, -1.0, -1.0); let kb = vec3f(-1.0, -1.0, 1.0); let kc = vec3f(-1.0, 1.0, -1.0); let kd = vec3f(1.0);
-  let g = (ka * dens3(tv + ka * h, 0.0) + kb * dens3(tv + kb * h, 0.0) + kc * dens3(tv + kc * h, 0.0) + kd * dens3(tv + kd * h, 0.0)) * 0.5;
+  // tetrahedral gradient: 4 taps instead of 6 central differences (same scale: 2h per axis). Fix 8 (Demo 1):
+  // R.set.bevelT (u.look8.x, tiles) sets h in tiles, so the shoulders keep their width at any density, read from
+  // the density mip whose texel matches (the base is half res: a texel is 2 voxels); 0 keeps 0.87 voxel at mip 0
+  var h = 0.87; var hl = 0.0;
+  let bw = u.look8.x * u.grid.w;
+  if (bw > 0.0) { h = bw; hl = max(0.0, log2(bw * 0.5)); }
+  let ka = vec3f(1.0, -1.0, -1.0); let kb = vec3f(-1.0, -1.0, 1.0); let kc = vec3f(-1.0, 1.0, -1.0); let kd = vec3f(1.0);
+  let g = (ka * dens3(tv + ka * h, hl) + kb * dens3(tv + kb * h, hl) + kc * dens3(tv + kc * h, hl) + kd * dens3(tv + kd * h, hl)) * 0.5;
   var n = fnm;
   let gl = length(g);
   if (gl > 0.01) {
     n = normalize(mix(fnm, -g / gl, u.look2.x * sstep(0.01, 0.08, gl)));
     if (dot(n, fnm) < 0.2) { n = fnm; }
   }
-  let o1 = dens3(tv + n * 2.2, 0.0);
-  let o2 = dens3(tv + n * 5.0, 1.0);
+  // contact AO: two taps along n, at 2.2 and 5 voxels (mips 0 and 1); R.set.aoT (u.look8.y) sets the far one in
+  // tiles (the near one at 0.44 of it), each from the mip a texel of which is about its reach / 2.5
+  var d1 = 2.2; var d2 = 5.0; var l1 = 0.0; var l2 = 1.0;
+  let aw = u.look8.y * u.grid.w;
+  if (aw > 0.0) { d1 = 0.44 * aw; d2 = aw; l1 = max(0.0, log2(d1 / 2.5)); l2 = max(0.0, log2(d2 / 2.5)); }
+  let o1 = dens3(tv + n * d1, l1);
+  let o2 = dens3(tv + n * d2, l2);
   let ao = clamp(1.0 - 1.1 * max(0.0, o1 - 0.04) - 0.9 * max(0.0, o2 - 0.03), 0.12, 1.0);
   let m0 = mats[mat * 2u]; let m1 = mats[mat * 2u + 1u];
   let cls = u32(m1.w + 0.5);
@@ -11355,9 +11641,9 @@ fn faceN(d: u32) -> vec3f {
 `;
   W.terrainHi = W.common + W.terrain.slice(W.common.length).replace("@vertex fn vs(", "struct RG { grid: vec4f, dims: vec4f, fd: vec4f };\n@group(1) @binding(3) var<uniform> rg: RG;\n" + DITH + "@vertex fn vs(")
     .replaceAll("u.grid", "rg.grid").replaceAll("u.dims", "rg.dims")
-    .replace("tv + n * 2.2, 0.0", "tv + n * 2.2 * rg.dims.w, 0.0").replace("tv + n * 5.0, 1.0", "tv + n * 5.0 * rg.dims.w, 1.0")
+    .replace("var d1 = 2.2; var d2 = 5.0;", "var d1 = 2.2 * rg.dims.w; var d2 = 5.0 * rg.dims.w;")
     .replace("let vox = floor(tv - fnm * 0.5);", "let vox = floor(tv - fnm * 0.5);\n  if (dith4(i.pos.xy) >= rg.fd.x) { discard; }");
-  if (!W.terrainHi.includes("2.2 * rg.dims.w") || !W.terrainHi.includes("5.0 * rg.dims.w") || !W.terrainHi.includes(">= rg.fd.x")) throw new Error("terrainHi: the terrain shader changed");
+  if (!W.terrainHi.includes("2.2 * rg.dims.w") || !W.terrainHi.includes("5.0 * rg.dims.w") || !W.terrainHi.includes("u.look8.y * rg.grid.w") || !W.terrainHi.includes(">= rg.fd.x")) throw new Error("terrainHi: the terrain shader changed");
   // P3b (docs/designs/2026-11-07-engine-opt-progressive-density.md, 4.6): the stream's crossfade (R.swapTerrain
   // with o.fade). For a while the terrain draws twice, the stream's (new) and the boot's (old, drawn with the boot's
   // grid and density texture), each a fragment's region's share of the pixels on a 4x4 ordered dither: the new
@@ -11488,6 +11774,33 @@ fn hitT(M: Model, ro: vec3f, rd: vec3f) -> f32 {
   }
   return 1e30;
 }
+// V0 (?smooth=1, a debug look for Art: the build below turns SMOOTH on): the hit's normal from the field alone, the
+// 8 cells around p (model voxels) with their stored normals blended trilinearly, so the cells' facets melt; empty
+// cells weigh 0. Zero when none of the 8 is solid (the caller keeps the cell's own normal)
+const SMOOTH = false;
+fn smoothN(M: Model, p: vec3f) -> vec3f {
+  let idims = vec3i(M.dims.xyz); let bbase = vec3i(M.base.xyz / 8u);
+  let psh = countTrailingZeros(textureDimensions(pool, 0).x) - 3u; let pmsk = (1u << psh) - 1u;
+  let q = p - 0.5; let c0 = vec3i(floor(q)); let f = q - floor(q);
+  var s = vec3f(0.0);
+  for (var j = 0u; j < 8u; j += 1u) {
+    let o = vec3i(i32(j & 1u), i32((j >> 1u) & 1u), i32(j >> 2u));
+    let c = c0 + o;
+    if (any(c < vec3i(0)) || any(c >= idims)) { continue; }
+    let slot = textureLoad(bricks, bbase + (c >> vec3u(3u)), 0).r;
+    let ob = (c >> vec3u(2u)) & vec3i(1);
+    if ((((slot >> 24u) >> u32(ob.x + ob.y * 2 + ob.z * 4)) & 1u) == 0u) { continue; }
+    let k = (slot & 0xFFFFFFu) - 1u;
+    let v = textureLoad(pool, vec3i(vec3u(k & pmsk, (k >> psh) & pmsk, k >> (2u * psh)) * 8u) + (c & vec3i(7)), 0);
+    if (v.a <= 0.0) { continue; }
+    // an interior voxel (sdf.js: oct 128,128, AO 255) has no normal of its own. (A surface voxel facing exactly +z
+    // with AO 255 reads the same: skipped too, which leaves a flat top on its own normal, +z, anyway)
+    if (all(abs(v.xy * 2.0 - 1.0) < vec2f(0.01)) && v.b > 0.999) { continue; }
+    let w = select(1.0 - f, f, o == vec3i(1));
+    s += octDec(v.xy * 2.0 - 1.0) * (w.x * w.y * w.z);
+  }
+  return s;
+}
 
 @vertex fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VO {
   let I = insts[ii];
@@ -11604,11 +11917,13 @@ fn hitT(M: Model, ro: vec3f, rd: vec3f) -> f32 {
   let hw = xf(I, lp * kf);
   var fl = vec3f(0.0);
   fl[axis] = -sgn[axis];
-  let n = normalize(mix(nrmW(I, fl), nrmW(I, octDec(v.xy * 2.0 - 1.0)), 0.8));
+  var nl = octDec(v.xy * 2.0 - 1.0); var fw = 0.8;
+  if (SMOOTH) { let s = smoothN(M, ro + rd * t); if (dot(s, s) > 1e-6) { nl = s; } fw = 1.0; }
+  let n = normalize(mix(nrmW(I, fl), nrmW(I, nl), fw));
   let mat = u32(v.a * 255.0 + 0.5);
   let m0 = mats[mat * 2u]; let m1 = mats[mat * 2u + 1u];
   let hc = hash13(vec3f(cell) * select(kf, 1.0, old) + f32(I.info.x) * 7.0);
-  let jit = (hc - 0.5) * m1.y;
+  let jit = select((hc - 0.5) * m1.y, 0.0, SMOOTH); // V0: no voxel grain
   var nn = n;
   // foliage: every leaf voxel tilts on its own in the wind, so crowns shimmer as they sway
   if (u32(m1.w + 0.5) == 2u) {
@@ -11630,6 +11945,11 @@ fn hitT(M: Model, ro: vec3f, rd: vec3f) -> f32 {
   return o;
 }
 `;
+  // V0: ?smooth=1 draws every voxel model with field-only, trilinear normals and no grain (default off)
+  if (ME.qn("smooth", 0)) {
+    if (!W.volume.includes("const SMOOTH = false;")) throw new Error("volume: the SMOOTH flag moved");
+    W.volume = W.volume.replace("const SMOOTH = false;", "const SMOOTH = true;");
+  }
 
   // Grass and reed blades: one voxel thick, stacked in three segments that bend with height under the
   // gust field plus each blade's own flutter. 5 faces per segment (inner tops collapsed), 90 vertices.
@@ -11997,6 +12317,8 @@ fn voidSky(fc: vec2f, uv: vec2f) -> vec3f {
     let wallF = max(0.0, dot(n.xy, normalize(L.xy + vec2f(1e-5))));
     let topW = sstep(0.2, 0.9, n.z);
     s = mix(0.3 + 0.5 * wallF, 0.56, topW) - 0.14 * max(0.0, -n.z) + (amb - 0.22) + m1.z;
+    // R.set.wrapLift (0): a wrapped material's (the mounds') tops lose that much of its bias; 1 cancels it
+    if (m1.x > 0.5) { s -= u.look6.w * m1.z * topW; }
     let kSun = mix(min(1.0, wallF * u.shadow2.z), 1.0, topW);
     s += -shade + (shade + pool) * cook * vis * kSun - u.shadow2.w * (1.0 - vis);
     // moss carpet: soft clumps and fine grain, as the generator's velvet tops; gusts comb the fibres
@@ -12031,7 +12353,7 @@ fn voidSky(fc: vec2f, uv: vec2f) -> vec3f {
     let at = mats[512u + mat];
     if (at.w > 0.0) { col *= mix(vec3f(1.0), at.rgb, at.w * growthAt(p.xy)); }
   }
-  col *= 1.0 + max(0.0, s - 0.9) * 1.8;
+  col *= 1.0 + max(0.0, s - 0.9) * u.look5.z; // R.set.hotK (1.8)
   // a level's key light (look.sunCol, look.ambCol): the key's colour where it reaches, the ambient's in its shade
   col *= keyTint(vis * (0.6 + 0.4 * cook) * sstep(0.0, 0.5, lam));
   // a flier's blob shadow on the world below it (not on the units: a flier would shade itself)
@@ -12102,7 +12424,7 @@ fn voidSky(fc: vec2f, uv: vec2f) -> vec3f {
   // with them), broken into rays by a streak pattern fixed along the sun direction, shadowed by the sun
   // volume and weighted by haze that thickens towards the ground. Jittered, then a separable blur.
   W.shafts = W.common + ME.canopyTex(4) + FRAME_HIT + /* wgsl */ `
-const NS = 8; // samples per ray (jittered per pixel and frame, then blurred)
+const NS = 8; // samples per ray (jittered per pixel and frame, then blurred); 12 when the shafts go past the glass
 @group(1) @binding(0) var gD: texture_depth_2d;
 @group(1) @binding(1) var sunV: texture_3d<f32>;
 @group(1) @binding(2) var lin: sampler;
@@ -12122,23 +12444,35 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   let a = (u.ivp * vec4f(ndc, 1.0, 1.0)).xyz;
   let b = (u.ivp * vec4f(ndc, max(d, 0.0), 1.0)).xyz;
   let dz = b.z - a.z;
+  // R.set.shaftOut (u.look9.x > 0): the beams go on past the glass, up along the sun for shaftOut tiles above the
+  // canopy plane, in air of density shaftOutK fading to 0 at their top; inside the frame they stay as before
+  let past = u.look9.x > 0.0;
+  let zt = u.canopy3.x + select(0.0, u.look9.x * u.sun.z, past);
   var t0 = 0.0; var t1 = 1.0;
-  if (dz < -1e-4) { t0 = clamp((u.canopy3.x - a.z) / dz, 0.0, 1.0); t1 = clamp((u.misc2.z - a.z) / dz, 0.0, 1.0); }
-  let fr = inFrame(a, b); t0 = max(t0, fr.x); t1 = min(t1, fr.y);
+  if (dz < -1e-4) { t0 = clamp((zt - a.z) / dz, 0.0, 1.0); t1 = clamp((u.misc2.z - a.z) / dz, 0.0, 1.0); }
+  let fr = inFrame(a, b);
+  if (!past) { t0 = max(t0, fr.x); t1 = min(t1, fr.y); }
+  let ns = select(NS, 12, past);
   var I = 0.0;
   if (t1 > t0) {
     let jit = fract(ign(vec2f(id.xy)) + u.misc2.x * 0.618034);
     let tm = u.vdir.w;
-    for (var i = 0; i < NS; i++) {
-      let p = mix(a, b, mix(t0, t1, (f32(i) + jit) / f32(NS)));
+    for (var i = 0; i < ns; i++) {
+      let tt = mix(t0, t1, (f32(i) + jit) / f32(ns));
+      let p = mix(a, b, tt);
       let q = canopyQ(p, tm);
       let cg = canopyT4(q); let c = cg.y;
       if (c <= 0.0) { continue; }
       let streak = cg.z;
       let haze = exp(-max(0.0, p.z - u.canopy3.z) / u.canopy3.y);
-      I += c * streak * haze * textureSampleLevel(sunV, lin, sunUVW(p), 0.0).r;
+      if (!past || (tt >= fr.x && tt <= fr.y && p.z <= u.canopy3.x)) {
+        I += c * streak * haze * textureSampleLevel(sunV, lin, sunUVW(p), 0.0).r;
+      } else { // past the glass: no sun volume out there
+        let taper = 1.0 - clamp((p.z - u.canopy3.x) / max(zt - u.canopy3.x, 1e-3), 0.0, 1.0);
+        I += c * streak * max(haze, u.look9.y * taper);
+      }
     }
-    I *= length(b - a) * (t1 - t0) / f32(NS);
+    I *= length(b - a) * (t1 - t0) / f32(ns);
   }
   textureStore(outT, vec2i(id.xy), vec4f(I, 0.0, 0.0, 1.0));
 }
@@ -12155,6 +12489,22 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   let dir = select(vec2i(0, 1), vec2i(1, 0), DIRX);
   let r = select(3, 5, u.res.x > 1200.0 && f32(hs.x * 3) > u.res.x); // (3 on a target coarser than half)
   var acc = 0.0; var ws = 0.0;
+  let st = clamp(u.look9.z, 0.0, 0.95);
+  if (st > 0.0) {
+    // R.set.shaftStreak: the first pass runs along the beams on screen (the sun's direction) r * (1 + st) wide, the
+    // second across them r * (1 - st), so the streaks stay fine instead of washing out
+    let s4 = u.vp * vec4f(u.sun.xyz, 0.0);
+    var sd = vec2f(s4.x * u.res.x, -s4.y * u.res.y);
+    sd = select(vec2f(1.0, 0.0), normalize(sd), length(sd) > 1e-4);
+    let d2 = select(vec2f(-sd.y, sd.x), sd, DIRX);
+    let rs = i32(round(f32(r) * select(1.0 - st, 1.0 + st, DIRX)));
+    if (rs < 1) { textureStore(dstT, p, vec4f(textureLoad(src, p, 0).r, 0.0, 0.0, 1.0)); return; }
+    for (var k = -rs; k <= rs; k++) {
+      let w = exp(-f32(k * k) / f32(rs * rs) * 2.0);
+      acc += textureLoad(src, clamp(vec2i(round(vec2f(p) + d2 * f32(k))), vec2i(0), hs - 1), 0).r * w; ws += w;
+    }
+    textureStore(dstT, p, vec4f(acc / ws, 0.0, 0.0, 1.0)); return;
+  }
   for (var k = -r; k <= r; k++) {
     let w = exp(-f32(k * k) / f32(r * r) * 2.0);
     acc += textureLoad(src, clamp(p + dir * k, vec2i(0), hs - 1), 0).r * w; ws += w;
@@ -12254,12 +12604,13 @@ fn ice(c: vec4f, w: vec3f, thick: f32, sv: f32, cook: f32) -> vec4f {
   let sv = textureSampleLevel(sunV, lin, sunUVW(i.w + vec3f(0.0, 0.0, 0.12)), 0.0).r;
   let cook = canopyS(i.w);
   let L = u.sun.xyz; let V = -u.vdir.xyz;
-  let s = 0.5 - u.look.x * 0.6 + (u.look.x + u.look.y) * cook * sv * 0.75 - 0.2 * clamp(thick * 2.2, 0.0, 1.0) + (n.z - 0.97) * 2.5 - rough * 0.05;
+  // R.set.waterBase (0.5), waterShadeK (0.6): the body's level and how much shade darkens it
+  let s = u.look6.x - u.look.x * u.look6.y + (u.look.x + u.look.y) * cook * sv * 0.75 - 0.2 * clamp(thick * 2.2, 0.0, 1.0) + (n.z - 0.97) * 2.5 - rough * 0.05;
   // a level's key light (look.sunCol) tints the body and the foam; on a night or void backdrop the water mirrors its
   // sky (u.sky, u.sky2) and the glint takes the key's colour; without a look all three stay as they were
   var col = rampC(u32(u.ids.y), s) * keyTint(sv * (0.6 + 0.4 * cook));
   let fres = 0.04 + 0.96 * pow(1.0 - max(dot(n, V), 0.0), 5.0);
-  col = mix(col, select(rampC(u32(u.ids.x), 0.5), mix(u.sky2.rgb, u.sky.rgb, 0.3), u.key2.w > 0.5), fres * (0.6 - rough * 0.2));
+  col = mix(col, select(rampC(u32(u.ids.x), 0.5), mix(u.sky2.rgb, u.sky.rgb, 0.3), u.key2.w > 0.5), fres * (u.look6.z - rough * 0.2)); // R.set.waterFresK (0.6)
   col += keyC(vec3f(1.0, 0.88, 0.62)) * pow(max(dot(reflect(-V, n), L), 0.0), mix(110.0, 40.0, rough)) * sv * (0.2 + cook) * 7.0;
   // flow lines: thin streaks carried by the current, broken up so they read as moving water
   let fd = normalize(fl + vec2f(1e-4, 0.0)); let fm = length(fl);
@@ -12364,15 +12715,19 @@ struct VO { @builtin(position) pos: vec4f, @location(0) w: vec3f, @location(1) u
   let uu = i.uv.x + 0.035 * sin(fall * 5.0 - t * 4.3 + i.uv.x * 7.0) * sstep(0.0, 0.3, dz);
   let rope = vnoise(vec2f(uu * 5.0, fall * 0.5 - t * 1.6));
   let str = vnoise(vec2f(uu * 9.0, fall * 1.1 - t * 3.0)) * 0.5 + vnoise(vec2f(uu * 23.0, fall * 2.4 - t * 4.2)) * 0.3 + rope * 0.2;
-  var s = 0.7 + 0.6 * (str - 0.5) + sstep(0.55, 0.8, rope) * 0.12;
+  var s = u.look7.z + 0.6 * (str - 0.5) + sstep(0.55, 0.8, rope) * 0.12;
   if (dz < 0.07) { s = max(s, 0.86 + (vnoise(vec2f(uu * 12.0, t)) - 0.5) * 0.1); }
   // the plunge foam: a foam gain above 1 makes the band taller and whiter
-  let foamH = (0.16 + 0.12 * vnoise(vec2f(uu * 18.0, t * 2.3)) + 0.05 * sin(t * 6.0 + uu * 30.0)) * i.k.y;
-  if (v < foamH) { s = 0.82 + vnoise(vec2f(uu * 40.0, v * 40.0 - t * 9.0)) * 0.12 + vnoise(vec2f(uu * 90.0 + t * 3.0, v * 70.0)) * 0.06 + max(0.0, i.k.y - 1.0) * 0.08; }
+  // R.set.foamF (1) scales the band edge's grain; foamSoft (0: a hard edge) fades the foam out over that height
+  let foamH = (0.16 + 0.12 * vnoise(vec2f(uu * 18.0 * u.look7.y, t * 2.3)) + 0.05 * sin(t * 6.0 + uu * 30.0 * u.look7.y)) * i.k.y;
+  if (u.look7.x > 0.0 || v < foamH) {
+    let foamS = 0.82 + vnoise(vec2f(uu * 40.0, v * 40.0 - t * 9.0)) * 0.12 + vnoise(vec2f(uu * 90.0 + t * 3.0, v * 70.0)) * 0.06 + max(0.0, i.k.y - 1.0) * 0.08;
+    if (u.look7.x > 0.0) { s = mix(s, foamS, 1.0 - sstep(foamH - u.look7.x, foamH, v)); } else { s = foamS; }
+  }
   let sv = textureSampleLevel(sunV, lin, sunUVW(i.w + i.n * 0.2), 0.0).r;
   let cook = canopyS(i.w);
   s += -0.22 + 0.45 * cook * sv;
-  let col = rampC(u32(u.ids.z), s) * (1.0 + max(0.0, s - 0.85) * 2.2);
+  let col = rampC(u32(u.ids.z), s) * (1.0 + max(0.0, s - 0.85) * u.look5.w); // R.set.fallHotK (2.2)
   // ragged sides that flicker as the sheet breaks up
   let rag = 0.1 + 0.08 * vnoise(vec2f(fall * 3.0 - t * 2.5, un * 3.0));
   let edge = sstep(0.0, rag, un) * sstep(1.0, 1.0 - rag, un);
@@ -13427,7 +13782,6 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
    Instances come from the Sim (sim.layers). */
 (function () {
   const ME = window.ME, W = ME.wgsl, GU = GPUTextureUsage, BU = GPUBufferUsage;
-  const BEVEL = 0.85, BLOOM_THRESHOLD = 0.82; // fixed: the settings sweep found neither visible across its range
   const PASSES = ["prep", "layers", "gbuffer", "lighting", "shafts", "forward", "bloom", "composite"];
   const BLEND_ALPHA = { color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" }, alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" } };
   const BLEND_ADD = { color: { srcFactor: "one", dstFactor: "one", operation: "add" }, alpha: { srcFactor: "one", dstFactor: "one", operation: "add" } };
@@ -13488,7 +13842,10 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
   // ME.DUSK: R.duskTo), windAz (ME.WIND_DIR), and backdrop "night" (a night sky with stars and the moon at
   // L's azimuth; skyTop, skyLow, stars, moon tune it) or "void" (no ground: a sky around floating islands;
   // skyTop, skyLow, horizon, mist, clouds, islets tune it, ME.VOID_SKY).
-  ME.LOOK_SET = ["shade", "pool", "amb", "aoK", "shaftK", "bloomK", "exposure", "haze", "vignette", "mottle", "windK", "gust"];
+  ME.LOOK_SET = ["shade", "pool", "amb", "aoK", "shaftK", "bloomK", "exposure", "haze", "vignette", "mottle", "windK", "gust",
+    "leafA", "leafB", "fleckAt", "fleckK", "poolEdge", "poolWarp", "poolLobe", "hotK", "fallHotK", "bloomAt",
+    "waterBase", "waterShadeK", "waterFresK", "foamSoft", "foamF", "fallBase", "wrapLift", "bevelK", "bevelT", "aoT",
+    "shaftOut", "shaftOutK", "shaftStreak"];
   ME.NIGHT_SKY = { skyTop: [0.010, 0.012, 0.045], skyLow: [0.060, 0.074, 0.120], stars: 1, moon: 0.035 };
   // the void backdrop: zenith, horizon band and mist (linear RGB), the horizon's height (a share of the screen from
   // the top), the clouds' and the far islets' amounts (0 = none). Art sets a level's own in its look.
@@ -13678,6 +14035,12 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
         shafts: true, water: true, particles: true, glass: true, glassK: 1, wind: true, windK: 1, gust: 0.5, grass: true, critters: true,
         sunAz: 0, sunEl: 0, scale: 1, autoScale: true, dusk: 0, cycle: 0, // dusk, cycle: src/daycycle.js
         beamDrift: 1, moonK: 5, // the sun pools wander this far (units); the moon beams' gain at full night
+        // Demo 1 (the critic's fixes): look values a level may set (ME.LOOK_SET); these defaults are the old constants
+        leafA: 0.62, leafB: 0.38, fleckAt: 0.68, fleckK: 0.4, poolEdge: 0, poolWarp: 0.65, poolLobe: 1, // the sun pools
+        hotK: 1.8, fallHotK: 2.2, bloomAt: 0.82, // the over-range boosts (lit, falls) and the bloom threshold
+        waterBase: 0.5, waterShadeK: 0.6, waterFresK: 0.6, foamSoft: 0, foamF: 1, fallBase: 0.7, wrapLift: 0, // water, plunge foam, falls, cushions
+        bevelK: 0.85, bevelT: 0, aoT: 0, // the terrain's rounded shoulders and contact AO (bevelT, aoT in tiles: 0 keeps the old voxel taps)
+        shaftOut: 0, shaftOutK: 0.3, shaftStreak: 0, // the shafts past the glass (tiles along the sun, 0 clipped to it), their air, the blur along the beam
       };
       this.shaftMul = hd.shaftMul ?? 1; // a map's own shaft gain (style.hd.shaftMul): out of set, so presets and moods stay relative to it
       // the level's look (ME.LOOK_SET above): its base values, wind, key light, dusk targets and backdrop
@@ -13920,9 +14283,12 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       // the models, then their 2x-down copies (MB.lods), then the spare entries a swap dissolves from (R.swapModel:
       // MB.prog.maxGroup of them), 16 u32 each (W.volume's Model): base.xyz the atlas corner, base.w its voxels' low
       // bound lo (10 bits an axis), dims.xyz their high bound hi (the proxy box spans lo..hi), dims.w the copy's
-      // entry, 0 for none (a bake from before the LOD has no MB.lods); ext and off zero but while a swap fades
-      const nm = MB.models.length, nl = (MB.lods || []).length;
-      this.mdl = new Uint32Array((nm + nl + (MB.prog ? MB.prog.maxGroup : 0)) * 16); this.mdlF = new Float32Array(this.mdl.buffer);
+      // entry, 0 for none (a bake from before the LOD has no MB.lods); ext and off zero but while a swap fades.
+      // MB.extra (room for a mid-run bake): its models' entries follow the models (ids m0..m0+models-1) and their
+      // copies' the copies (l0..), zero until MB.extra.bake fills them; mcap and lcap count both
+      const nm = MB.models.length, nl = (MB.lods || []).length, X = MB.extra;
+      this.mcap = X ? Math.max(nm, X.m0 + X.models) : nm; this.lcap = X && X.lods ? Math.max(nl, X.l0 + X.models) : nl;
+      this.mdl = new Uint32Array((this.mcap + this.lcap + (MB.prog ? MB.prog.maxGroup : 0)) * 16); this.mdlF = new Float32Array(this.mdl.buffer);
       this.putModels();
       this.modelBuf = ME.buffer(d, this.mdl, BU.STORAGE, "models");
       this.instBuf = d.createBuffer({ label: "instances", size: S.sim.inst.byteLength, usage: BU.STORAGE | BU.COPY_DST | BU.COPY_SRC }); // (COPY_SRC: ME.GpuInstances.read, a check)
@@ -13985,6 +14351,7 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       for (const L of this.layers) L.init(this);
       // a progressive bake's upgrade (ME.bakeModels: the full-density models after the coarse ones), over the frames
       if (MB.prog && !MB.prog.started) { MB.prog.started = true; this.addTask(MB.prog.gen(this)); }
+      if (MB.extra) MB.extra.R = this; // (MB.extra.bake installs over this renderer's frames)
     }
 
     // Entry i of the model buffer (the first 8 u32: a swap's ext and off stay): model or copy m, w its copy's entry
@@ -13995,10 +14362,18 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       u[o + 4] = hi[0]; u[o + 5] = hi[1]; u[o + 6] = hi[2]; u[o + 7] = w;
     }
     putModels() {
-      const MB = this.S.MB, lods = MB.lods || [], nm = MB.models.length;
-      MB.models.forEach((m, i) => this.putEntry(i, m, m.lod >= 0 && lods[m.lod] ? nm + m.lod : 0));
-      lods.forEach((m, j) => this.putEntry(nm + j, m, 0));
+      const MB = this.S.MB, lods = MB.lods || [];
+      MB.models.forEach((m, i) => this.putModel(i, m, lods));
     }
+    // model i's entry and its copy's; an MB.extra record freed (m.free) or not baked yet is zero: nothing drawn
+    putModel(i, m, lods = this.S.MB.lods || []) {
+      const u = this.mdl, j = m && m.lod >= 0 && lods[m.lod] ? m.lod : -1;
+      if (!m || m.free) { u.fill(0, i * 16, i * 16 + 16); if (m && m.lod >= 0) u.fill(0, (this.mcap + m.lod) * 16, (this.mcap + m.lod) * 16 + 16); return; }
+      this.putEntry(i, m, j >= 0 ? this.mcap + j : 0);
+      if (j >= 0) this.putEntry(this.mcap + j, lods[j], 0);
+    }
+    // entries i..j-1 of the model buffer to the GPU
+    writeModels(i, j) { if (j > i) this.dev.queue.writeBuffer(this.modelBuf, i * 64, this.mdl, i * 16, (j - i) * 16); }
     // MB.models and MB.lods again into the model buffer (a model's lod, lo or hi changed: no swap, no fade)
     refreshModels() { this.putModels(); this.dev.queue.writeBuffer(this.modelBuf, 0, this.mdl); }
 
@@ -14080,7 +14455,7 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     // the app (a box it keeps per model must be read again). Returns a promise, resolved when the fade is done;
     // the old bricks are in use until then. One swap fades at a time, of at most MB.prog.maxGroup models.
     swapModel({ key = null, ids, models, lods = [], fade = 400 }) {
-      const S = this.S, MB = S.MB, nm = MB.models.length, nl = (MB.lods || []).length, spare = this.mdl.length / 16 - nm - nl;
+      const S = this.S, MB = S.MB, nm = this.mcap, nl = this.lcap, spare = this.mdl.length / 16 - nm - nl;
       if (this.fading) throw new Error("R.swapModel: a swap is still fading (one at a time: await the last one)");
       if (ids.length > spare) throw new Error(`R.swapModel: ${ids.length} models against ${spare} spare entries (MB.prog.maxGroup)`);
       const u = this.mdl, F = this.mdlF, ents = [];
@@ -14694,7 +15069,7 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       u.set(T.O, O.cgrid); u[O.cgrid + T.O.length] = T.CPU;
       u.set(T.cdims, O.cdims); u[O.cdims + T.cdims.length] = ME.VS; // w: the models' voxels a tile (the terrain's while the stream bakes, P3, may be fewer)
       set4(u, O.look, s.shade, s.pool, s.amb, s.aoK);
-      set4(u, O.look2, BEVEL, s.ramp ? 1 : 0, this.ext.jar ? this.ext.dome : -this.ext.half[1], s.canopy ? 1 : 0);
+      set4(u, O.look2, s.bevelK, s.ramp ? 1 : 0, this.ext.jar ? this.ext.dome : -this.ext.half[1], s.canopy ? 1 : 0);
       // the moon, 0 by day to 1 at night (the dusk blend, as in daycycle.js): the shafts turn pale blue-silver,
       // fewer (every other pool fades), less streaky, and gain moonK so they still read once the dusk has
       // dimmed shaftK (the gain comes in late, so dusk itself stays soft)
@@ -14708,8 +15083,13 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       const bc = (st.hd && st.hd.beamCol) || BEAM_COL;
       set4(u, O.beamCol, lerpN(bc[0], MOON_COL[0], moon) / 255, lerpN(bc[1], MOON_COL[1], moon) / 255, lerpN(bc[2], MOON_COL[2], moon) / 255, s.vignette);
       const g = st.light;
-      set4(u, O.canopy, 0.62, 0.38, 1.7, 3.1);
-      set4(u, O.canopy2, 0.68, this.drift, 0.4, Math.min(0.6, (g.soft ?? 0.16) * 2.2));
+      set4(u, O.canopy, s.leafA, s.leafB, 1.7, 3.1);
+      set4(u, O.canopy2, s.fleckAt, this.drift, s.fleckK, s.poolEdge > 0 ? s.poolEdge : Math.min(0.6, (g.soft ?? 0.16) * 2.2));
+      set4(u, O.look5, s.poolWarp, s.poolLobe, s.hotK, s.fallHotK);
+      set4(u, O.look6, s.waterBase, s.waterShadeK, s.waterFresK, s.wrapLift);
+      set4(u, O.look7, s.foamSoft, s.foamF, s.fallBase, 0);
+      set4(u, O.look8, s.bevelT, s.aoT, 0, 0);
+      set4(u, O.look9, s.shaftOut, s.shaftOutK, s.shaftStreak, 0);
       u.set(ME.WIND_DIR, O.wind); u[O.wind + ME.WIND_DIR.length] = this.windE[0]; u[O.wind + ME.WIND_DIR.length + 1] = this.windE[1];
       set4(u, O.canopy3, 15, 4.5, 1.0, moon);
       set4(u, O.water2, this.ripples ? this.ripples.n : 0, s.water ? 1 : 0, this.wl ? this.wl.W : 0, this.wl ? this.wl.H : 0);
@@ -14736,7 +15116,7 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       set4(u, O.part, this.pcount.leaf, this.pcount.fly, this.pcount.mist, Math.min(0.05, dt));
       u.set(this.psrc, O.psrc); u[O.psrc + this.psrc.length] = cam.D1 - cam.D0;
       set4(u, O.geo, E.c[0], E.c[1], E.jar ? E.R : E.half[0], E.top); // (a box: its half x here, minus its half y in look2.z)
-      set4(u, O.misc2, fno % 64, 18, E.base, BLOOM_THRESHOLD);
+      set4(u, O.misc2, fno % 64, 18, E.base, s.bloomAt);
       set4(u, O.look4, st.light.spriteK ?? 1, s.mottle, this.pcount.spray, this.sprayAt);
       set4(u, O.field, st.map.W, st.map.H, this.fieldRes, this.actFreeze || 0);
       // the weather (zeros without one): the channels, wet and cover, the fog's floor and the clearings
@@ -22163,7 +22543,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.122.0", name: "Mossheart", commit: "136fbae2" };
+  G.VERSION = { v: "0.123.0", name: "Mossheart", commit: "6468ee3f" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -26083,11 +26463,10 @@ function MA_DSP() {
     };
     // o.lv 1..3; o.hi forces the detail level (the check). wi, the first wispling's variant, hashes kind, so each
     // plant starts on its own one and its next wisplings cycle on from it; it depends on kind alone, so bakes repeat
-    // HI and wth's floor follow dv, the density the plant bakes at (VS x o.fine), once ?heromax lifts the heroes past
-    // 64 (the vs128 study's H0, under H1's query only: today's look stays the user's call, decide a70bcad); WK and WT,
-    // the wisplings' size at the play zoom, stay on ME.VS
+    // HI and wth's floor follow dv, the density the plant bakes at (VS x o.fine; the vs128 study's H0, decide
+    // a70bcad A); WK and WT, the wisplings' size at the play zoom, stay on ME.VS
     const build = (kind, o) => {
-      const vs = ME.VS || 32, dv = (G.HERO_MAX || 64) > 64 ? vs * (o.fine ?? G.heroFine(o.lv === 3)) : vs;
+      const vs = ME.VS || 32, dv = vs * (o.fine ?? G.heroFine(o.lv === 3));
       HI = o.hi ?? (dv >= 128 ? 3 : dv >= 32 ? 2 : dv >= 24 ? 1 : 0); chips = 0; wi = (kind.charCodeAt(0) * 3 + kind.length) % 8;
       WVS = dv; WK = Math.min(2.2, Math.max(1, (28 / vs) ** 0.85)); WT = vs < 24 ? 1.2 : 1;
       const hi = HI, L = Math.max(1, Math.min(3, o.lv || 2)), s = LS[L - 1], p = [], F = [], D = [];
@@ -26284,12 +26663,13 @@ function MA_DSP() {
   G.gaitFrames = (c) => ME.qn("gaitframes", 0) || (c && c.frames) || (ME.phoneLike() || (G.HERO_MAX || 64) <= 32 ? 4 : 8);
   // D2 (docs/designs/2026-11-10-creature-swarm.md 5.3): a creature at wound stage 2 (hp <= a third) walks in its
   // broken look, the kind's model with o.dmg (asset-set.js: a torn wing, a snapped horn, a claw gone, a glowing
-  // gash): 4 frames, desktops only (not on phones or ?heromax=32), ?dmglook=0 turns it off. Bosses get the stages
+  // gash): 4 frames on desktops and phones alike (a phone bakes it at its own density, G.heroFine() under HERO_MAX
+  // 32; the user, 2026-11-11), ?dmglook=0 turns it off. Bosses get the stages
   // too (5.1): the Blight Spirit's robe frays (5.3). Not the Mould Mother (her halfShell is her broken look), the
   // Mould Mite or the Midge Swarm (too small to read). A trait's look (traitLook) wins over it.
   G.DMG_KINDS = ["grub", "beetle", "moth", "golem", "spirit", "snail", "bloat", "mender", "mole", "lichen", "crow"];
   const DMG_FRAMES = 4;
-  G.dmgOn = () => ME.qn("dmglook", 1) !== 0 && !ME.phoneLike() && (G.HERO_MAX || 64) > 32;
+  G.dmgOn = () => ME.qn("dmglook", 1) !== 0;
 
   // The level's dressing, before the bake: the Heart Tree takes the big maple's place (the road ends under
   // it), a blight rift opens where the road starts, and glowcaps grow on unbuildable cells beside the road.
@@ -30181,7 +30561,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       // ghost's foot, and below the card if it still reaches there. (Docked over the seed rows, on a phone or a
       // touch screen, the card is one more floor under the tag, below.)
       let y = sy / dpr, under = false;
-      const box = document.getElementById("inspector"), docked = !!box && box.classList.contains("show"); // (every card docks: a plant's above the tray since 2026-11-10)
+      // (every card docks but a placed plant's, which pops up beside it, 2026-11-11: hud.js popCard; kept clear of over the ghost)
+      const box = document.getElementById("inspector"), docked = !!box && box.classList.contains("show") && !box.classList.contains("popup");
       if (box && box.classList.contains("show") && !docked) {
         const r = box.getBoundingClientRect();
         if (x + h - 8 > r.left && x - h + 8 < r.right && y - this.tagH < r.bottom && y > r.top) {
@@ -30474,6 +30855,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const CT_RED = () => "#ff5a72";
   // at most TAGS trait tags on the meadow at once (nearest the Heart Tree first)
   const TAGS = 24;
+  const POP_H = 1.3; // (a plant's height on the screen for its pop-up card to keep clear of, world units over its plot: popCard)
   // how long the counter warning stays up once its wave is called (ms)
   const CW_CALL_MS = 6000;
   // a screen without hover (a phone): planting takes two taps (main.js)
@@ -30903,10 +31285,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const tw = kind === "tower", dk = tw || kind === "seedinfo";
       box.classList.toggle("open", tw ? this.towerOpen || (!!this.forking && this.forking === this.inspected) : dk ? !!this.seedOpen : this.moreOpen);
       box.classList.toggle("docked", dk);
+      // (a placed plant's card pops up beside it instead, following it as the view moves: placeCard, the user 2026-11-11)
+      box.classList.toggle("popup", tw);
       box.style.left = box.style.top = ""; if (!dk) box.style.maxHeight = "";
       $("insptitle").innerHTML = head;
       $("inspbody").innerHTML = (chips.length ? `<div class="chips">${chips.map(([l, v, c]) => `<span class="chip${c ? " " + c : ""}"><small>${l}</small><b>${v}</b></span>`).join("")}</div>` : "") +
-        (tips.length ? `<div class="tips">${tips.map((t) => `<div>${t}</div>`).join("")}</div>` : "") +
+        (tips.length ? `<div class="tips">${tips.map((t) => (Array.isArray(t) ? `<div class="${t[1]}">${t[0]}</div>` : `<div>${t}</div>`)).join("")}</div>` : "") + // (a tip as [html, class]: "key" stays in view on a folded popup)
         (more ? `<div class="more">${more}</div><span class="tomore" role="button">More</span>` : "");
       queueMicrotask(() => { this.fitCard(); this.placeCard(); }); // (once the caller has shown it)
       this.showAlmanac(); // (a desktop's almanac folds for a creature's card only: a card that takes its place unfolds it)
@@ -30927,7 +31311,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // a creature's or a gift's card shut: the seed's comes back if one is in hand
     closeCard() {
       this.foe = null; this.gift = "";
-      $("inspector").classList.remove("show", "foe", "gift", "docked");
+      $("inspector").classList.remove("show", "foe", "gift", "docked", "popup");
       this.almOver = false; this.showAlmanac(); this.seedInfo();
     }
     // a creature's element chips under the wave trait (D.affinity): what it is weak to and what it resists
@@ -30951,12 +31335,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (this.forking && (this.forking !== t || !this.forkable(t))) this.forking = null;
       if (this.moving && (this.moving !== t || this.game.moveBlocked(t))) this.moving = null;
       if (!t) {
-        box.classList.remove("show", "docked"); this.inspected = null; this.foe = null; this.gift = "";
+        box.classList.remove("show", "docked", "popup"); this.inspected = null; this.foe = null; this.gift = "";
         this.arm(null); this.almOver = false; this.showAlmanac(); this.seedInfo(); return;
       }
       // (a phone's tray has room for one: the plant's card shuts the Rites)
       if (this.riting && NARROW.matches) this.rites(false);
-      if (t !== this.inspected || !this.showing("tower")) { this.openedAt = performance.now(); this.arm(null); this.towerOpen = false; }
+      if (t !== this.inspected || !this.showing("tower")) { this.openedAt = performance.now(); this.arm(null); this.towerOpen = false; this.popSide = null; }
       this.seedKey = ""; this.foe = null; this.gift = "";
       const def = D.TOWERS[t.kind];
       // what it does at its level, and what growing it would change
@@ -30973,26 +31357,40 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const x2 = (l) => (t.deep.has(l) ? " ×2" : "");
       const links = [...by].map(([l, names]) => `<span class="lnk">${G.linkIcon(l.id) || "⟡"} ${esc(l.name)}${x2(l)}</span> <span class="dim">with ${esc([...names].join(", "))}</span>: ${esc(l.desc)}`).join("<br>");
       const el = D.elementOf(t.kind), strong = D.ENEMY_ORDER.filter((e) => D.affinity(e, null)[el] > D.WEAK_ABOVE).map((e) => D.ENEMIES[e].name);
-      const tips = [by.size ? [...by.keys()].map((l) => `<span class="lnk">${G.linkIcon(l.id) || "⟡"} ${esc(l.name)}${x2(l)}</span>`).join(" ")
-        : `<span class="dim">${partners.length ? `Links with ${esc(partners.join(", "))}: plant beside it` : "No links"}</span>`];
-      if (strong.length) tips.push(`Strong vs <b>${esc(strong.slice(0, 3).join(", "))}</b>`);
-      // (and the placement zone it stands in, first: D.ZONES)
-      const zone = t.zone ? `<b style="color:${G.css(t.zone.rgb)}">${esc(t.zone.name)}</b> ${esc(t.zone.desc)}` : "";
-      if (zone) tips.unshift(zone);
-      if (t.level >= 3 && fork) tips.unshift(`${bname(t.branch)}<span class="dim">${esc(fork[t.branch].chip.join(" "))}</span>`);
-      // (a graft, first: what it plays as and its gift; or the graft asked about, what the two would become)
+      // The tips, most-used first (the popup, the user 2026-11-11 "popup, reworked"): "key" ones stay in view folded
+      // (a graft asked about, its element and what it is strong against, what Grow gives next); then its branch,
+      // its zone (D.ZONES), its graft, its links (or the plants it could link with) and the gifts that boost it
       const ga = this.graftArmed && this.game.graftPartners(t).find((p) => p.other === this.graftArmed);
       // (the deepened links the graft undoes said too: those of the plot it frees, Game.graft)
       const lost = ga && this.game.deepAt(ga.other).length, undone = lost > 1 ? `, ${lost} deepened links undone` : lost ? ", a deepened link undone" : "";
-      if (t.graft) tips.unshift(`<span class="lnk">✦ ${esc(t.graft.name)}</span> <span class="dim">plays as ${esc(def.name)} and ${esc(D.TOWERS[t.twin.kind].name)}:</span> ${esc(t.graft.desc)}`);
-      else if (ga) tips.unshift(`<span class="lnk">✦ ${esc(ga.graft.name)}</span> <span class="dim">one plant here, as both (their links kept${undone}), the other plot freed:</span> ${esc(ga.graft.desc)}`);
+      const gtip = t.graft ? `<span class="lnk">✦ ${esc(t.graft.name)}</span> <span class="dim">plays as ${esc(def.name)} and ${esc(D.TOWERS[t.twin.kind].name)}:</span> ${esc(t.graft.desc)}`
+        : ga ? `<span class="lnk">✦ ${esc(ga.graft.name)}</span> <span class="dim">one plant here, as both (their links kept${undone}), the other plot freed:</span> ${esc(ga.graft.desc)}` : "";
+      const zone = t.zone ? `<b style="color:${G.css(t.zone.rgb)}">${esc(t.zone.name)}</b> ${esc(t.zone.desc)}` : "";
+      const eli = el >= 0 ? `<span class="ei" style="color:${ink(D.TOWERS[D.ELEMENT_TOWER[el]].color)}">${icon("ELEMENT_ICONS", D.ELEMENTS[el])}${D.ELEMENT_NAMES[el]}</span>` : `<span class="ei">Helper</span>`;
+      const grows = t.level >= D.MAX_LEVEL ? "" : `<span class="how">Grow ▸ ${ROMAN[t.level + 1]}</span> ` +
+        (this.forkable(t) ? `choose ${bname("a")}or ${bname("b")}` : esc(def.levels[t.level]));
+      // (a gift boosts it when its level's numbers name this plant's kind or all plants: dmg_thorn, rate_all...)
+      const gifts = [...new Set(S.boons)].map((id) => {
+        const b = D.boon(id), lv = b ? Math.min(b.levels.length, S.boonLevel(id)) : 0, L = lv && b.levels[lv - 1];
+        return L && Object.keys(L.mods || {}).some((k) => k.endsWith("_" + t.kind) || k.endsWith("_all")) ? `<b>${esc(b.name)} ${ROMAN[lv] || lv}</b> <span class="dim">${esc(L.desc)}</span>` : "";
+      }).filter(Boolean);
+      const tips = [];
+      if (ga) tips.push([gtip, "key"]);
+      tips.push([`${eli}${strong.length ? ` Strong vs <b>${esc(strong.slice(0, 3).join(", "))}</b>` : ""}`, "key"]);
+      if (grows) tips.push([grows, "key"]);
+      if (t.level >= 3 && fork) tips.push(`${bname(t.branch)}<span class="dim">${esc(fork[t.branch].chip.join(" "))}</span>`);
+      if (zone) tips.push(zone);
+      if (t.graft) tips.push(gtip);
+      tips.push(by.size ? [...by.keys()].map((l) => `<span class="lnk">${G.linkIcon(l.id) || "⟡"} ${esc(l.name)}${x2(l)}</span>`).join(" ")
+        : `<span class="dim">${partners.length ? `Links with ${esc(partners.join(", "))}: plant beside it` : "No links"}</span>`);
+      for (const s of gifts) tips.push(s);
       this.inspected = t;
       if (this.forking === t) {
         // the choice: a tile for each branch (its name, what it does, its figure), in its branch's tint
         const cost = t.upgradeCost(), can = S.canAfford(cost);
         const tile = (b) => `<button class="fork" data-branch="${b}" style="--acc:${G.css(G.branchTint(t.kind, b) || def.color)}"${can ? "" : " disabled"}><b>${esc(fork[b].name)}</b><span>${esc(fork[b].text)}</span><small>${esc(fork[b].chip.join(" "))}</small></button>`;
         this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, `${ROMAN[t.level]} ▸ ${ROMAN[t.level + 1]}`, "step"), [],
-          [`<div class="forks">${tile("a")}${tile("b")}</div>`, `<span class="dim">${can ? `Choose a branch: ${cost} dew, for good` : "Not enough dew"}</span>`], "");
+          [[`<div class="forks">${tile("a")}${tile("b")}</div>`, "key"], [`<span class="dim">${can ? `Choose a branch: ${cost} dew, for good` : "Not enough dew"}</span>`, "key"]], "");
         label($("grow"), "Back", "Back"); $("grow").disabled = false;
         $("deepen").style.display = $("move").style.display = "none"; $("grafts").innerHTML = "";
         this.uprootLabel(t);
@@ -31000,8 +31398,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         return;
       }
       $("grow").style.display = $("uproot").style.display = $("move").style.display = "";
+      // (its stats, and what the next level makes them: the plant one level up, its boons and links as now)
+      const nx = t.level < D.MAX_LEVEL ? Object.create(t) : null; if (nx) nx.level = t.level + 1;
+      const st = (f, d) => { const a = f(t).toFixed(d), b = nx && f(nx).toFixed(d); return b && b !== a ? `${a}<span class="nx">›${b}</span>` : a; };
       this.card("tower", this.head(icon("PLANT_ICONS", t.kind), ink(def.color), def.name, `Lv ${ROMAN[t.level]}`),
-        [["Damage", t.damage().toFixed(0)], ["Reach", t.range().toFixed(1)], ["Rate", `${t.rate().toFixed(2)}/s`], ["Aims", AIMS[t.kind] || "nearest"]],
+        [["Damage", st((p) => p.damage(), 0)], ["Reach", st((p) => p.range(), 1)], ["Rate /s", st((p) => p.rate(), 2)], ["Aims", AIMS[t.kind] || "nearest"]],
         tips, `${now}${next}${links ? "<br>" + links : ""}${zone ? "<br>" + zone : ""}<br>Aims at ${esc(TARGETS[t.kind] || "the creature nearest the Heart Tree")}<br><span class="dim">${esc(this.matchupsOf(t.kind))}</span>`);
       const grow = $("grow");
       if (t.level >= D.MAX_LEVEL) { label(grow, "Fully grown", "Grown"); grow.disabled = true; }
@@ -31146,7 +31547,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.showAlmanac();
     }
 
-    // Each frame (main.js, after the ghost's tag): a plant's card keeps its height to the room (placeCard); a creature's
+    // Each frame (main.js, after the ghost's tag): a plant's card follows it beside it (placeCard, popCard); a creature's
     // card follows its HP and shuts when it is gone; the creatures' trait tags sit beside their HP bars. (The
     // other cards dock, HUD A: a phone opens them in the tray, a desktop in the right margin: game.css.)
     frame(cam, canvas) {
@@ -31161,12 +31562,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const dpr = canvas.width / Math.max(1, canvas.clientWidth), scr = (p) => { const q = cam.toScreen(p, canvas.width, canvas.height); return [q[0] / dpr, q[1] / dpr]; };
       this.foeTags(E, scr);
     }
-    // A plant's card docked above the tray (game.css #inspector.docked): folded, one row as tall as it needs; open,
+    // The seed's card docked above the tray (game.css #inspector.docked; a placed plant's pops up beside it: popCard): folded, one row as tall as it needs; open,
     // it grows upward no higher than the top strip (its text scrolls, its buttons stay in view). Screen px in, the
     // zoomed px out (G.uiScale, as hints.js place).
     placeCard() {
       const box = $("inspector");
       if (!box.classList.contains("docked") || !box.classList.contains("show")) return;
+      if (box.classList.contains("popup")) { this.popCard(box); return; }
       let mh = "";
       if (box.classList.contains("open")) {
         let y0 = 8;
@@ -31175,8 +31577,60 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
       if (box.style.maxHeight !== mh) box.style.maxHeight = mh;
     }
+    // A placed plant's card as a pop-up beside it (game.css #inspector.popup, the user 2026-11-11: "have a popup next
+    // to tower rather than dock when selecting an existing tower"), every frame, so it follows the plant as the view
+    // pans, zooms and turns. Between the top strip and the tray and inside the screen; never over the plant's own box
+    // on the screen (its plot, POP_H tall) while there is room: right of it, else left, above, below, keeping last
+    // frame's side while it still fits (no flicker as the view moves). Open, it is no taller than the room; where no
+    // side has room for it, it goes above or below, whichever has more, and is clamped onto the screen.
+    popCard(box) {
+      const v = this.view, t = this.inspected;
+      if (!v || !t) return;
+      const { cam, canvas } = v, ui = G.uiScale || 1, W = innerWidth, pad = 8, gap = 10;
+      const cr = canvas.getBoundingClientRect(), dpr = canvas.width / Math.max(1, canvas.clientWidth);
+      const [X, Y, Z] = this.game.world.viewCentre(t.cx, t.cy), P = this.popP || (this.popP = [0, 0, 0]);
+      let l = Infinity, r = -Infinity, tp = Infinity, bt = -Infinity;
+      for (let n = 0; n < 8; n++) {
+        P[0] = X + (n & 1 ? 0.5 : -0.5); P[1] = Y + (n & 2 ? 0.5 : -0.5); P[2] = Z + (n & 4 ? POP_H : 0);
+        const q = cam.toScreen(P, canvas.width, canvas.height), x = cr.left + q[0] / dpr, y = cr.top + q[1] / dpr;
+        if (x < l) l = x; if (x > r) r = x; if (y < tp) tp = y; if (y > bt) bt = y;
+      }
+      let y0 = pad, y1 = innerHeight - pad;
+      for (const id of ["top", "topright"]) { const e = $(id); if (e && e.offsetWidth) y0 = Math.max(y0, e.getBoundingClientRect().bottom + 6); }
+      const tr = $("tray"); if (tr && tr.offsetWidth) y1 = Math.min(y1, tr.getBoundingClientRect().top - 6);
+      if (y1 - y0 < 120) y1 = y0 + 120;
+      const room = (s) => s === "above" ? tp - gap - y0 : s === "below" ? y1 - bt - gap : y1 - y0;
+      // open, no taller than the room it will sit in (the side's, or the whole height beside the plant)
+      const open = box.classList.contains("open"), cap = (s) => Math.floor(Math.max(120, room(s)) / ui) + "px";
+      const setMh = (mh) => { if (box.style.maxHeight !== mh) box.style.maxHeight = mh; };
+      // (folded, its natural height is measured without clearing a cap the fallback below set: the cap flipping off and
+      // on each frame cost two layouts and snapped #inspbody's scroll back to the top)
+      if (open) setMh(cap("right"));
+      const ib = $("inspbody");
+      let w = box.offsetWidth * ui, h = (box.offsetHeight + (open || !ib ? 0 : ib.scrollHeight - ib.clientHeight)) * ui;
+      const cx = (l + r) / 2, cy = (tp + bt) / 2, clampX = (x) => Math.min(Math.max(pad, x), W - w - pad), clampY = (y) => Math.min(Math.max(y0, y), y1 - h);
+      const at = (s) => s === "right" ? [r + gap, clampY(cy - h / 2)] : s === "left" ? [l - gap - w, clampY(cy - h / 2)]
+        : s === "above" ? [clampX(cx - w / 2), tp - gap - h] : [clampX(cx - w / 2), bt + gap];
+      const fits = (s) => { const [x, y] = at(s); return x >= pad && x + w <= W - pad && y >= y0 - 0.5 && y + h <= y1 + 0.5; };
+      let side = [this.popSide, "right", "left", "above", "below"].find((s) => s && fits(s));
+      if (!side) {
+        // (no side has room for it whole: above or below, whichever has more, its height cut to that room)
+        side = room("above") >= room("below") ? "above" : "below";
+        // (folded too: its text scrolls and its buttons stay, rather than the card covering the plant, a phone's middle)
+        setMh(cap(side)); w = box.offsetWidth * ui; h = box.offsetHeight * ui;
+      } else if (!open) setMh("");
+      this.popSide = side;
+      let [x, y] = at(side);
+      x = clampX(x); y = clampY(y);
+      const lx = (x / ui).toFixed(1) + "px", ly = (y / ui).toFixed(1) + "px";
+      if (box.style.left !== lx) box.style.left = lx;
+      if (box.style.top !== ly) box.style.top = ly;
+      if (box.dataset.side !== side) box.dataset.side = side;
+    }
     // The garden's room (CSS px): the screen less the top strip, the tray, and on a desktop the margins the
-    // plant card and the Rites dock in. main.js fits the dome into it, so the HUD never covers the garden.
+    // creature card and the Rites dock in. main.js fits the dome into it, so the HUD never covers the garden. (A placed
+    // plant's pop-up, popCard, is left out: it floats over the garden beside its plant, out of the tray, so the garden
+    // no longer slides up when a plant is picked)
     freeRect() {
       let top = 0, bottom = innerHeight, left = 0, right = innerWidth;
       for (const id of ["top", "topright"]) { const e = $(id); if (e && e.offsetWidth) top = Math.max(top, e.getBoundingClientRect().bottom); }
