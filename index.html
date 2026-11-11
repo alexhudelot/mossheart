@@ -140,6 +140,13 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 #dewbar[data-tier="2"] .luck { background: linear-gradient(180deg, #ffb070, #e0602a); color: #3a1204; box-shadow: 0 0 7px rgba(255, 140, 70, 0.9); }
 #dewbar[data-tier="3"] .luck { background: linear-gradient(90deg, #ffd6f0, #c9f3ff, #fff3b8, #d9c8ff); color: #3a2a5a; box-shadow: 0 0 9px rgba(220, 200, 255, 0.95); }
 /* (the droplets: they leap from the water's front) */
+/* (G1b, design 4.2: the brim, a line across the tube at the cap (S.cap(), on hud.js barFill's scale, --cap); a bank
+   at it brims and the line glows. Dew over it is spilt: droplets spray from the bulb, .spray.spill) */
+#dewbar .brim { position: absolute; top: -6px; bottom: -6px; left: calc(var(--cap, 1) * (100% - 2px)); width: 3px; margin-left: -1.5px; z-index: 3; border-radius: 2px;
+  background: #f4eedc; box-shadow: 0 0 0 1px rgba(26, 23, 18, 0.8); transition: left 0.6s, background 0.3s, box-shadow 0.3s; }
+#dewbar .brim::before { content: ""; position: absolute; left: -3.5px; top: -5px; border: 5px solid transparent; border-top-color: #f4eedc; border-bottom: 0; }
+#dewbar.full .brim { background: #fff; box-shadow: 0 0 0 1px rgba(26, 23, 18, 0.8), 0 0 8px var(--lg), 0 0 3px #fff; }
+#dewbar .spray.spill { left: -30px; }
 #dewbar .spray { position: absolute; left: calc(var(--fill, 0) * 100%); top: 50%; width: 8px; height: 10px; margin: -5px 0 0 -4px; border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%; background: var(--lb); box-shadow: 0 0 4px var(--lg); opacity: 0; }
 #wave { font-size: calc(22px * var(--ts)); }
 #topright { position: fixed; right: calc(12px + var(--sr)); top: calc(12px + var(--st)); display: flex; gap: 8px; align-items: center; pointer-events: none; }
@@ -179,6 +186,13 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 #almbody .cts { margin-left: 16px; display: flex; flex-wrap: wrap; gap: 4px; }
 #almbody .ctc { cursor: pointer; padding: 0 6px; border-radius: 8px; background: rgba(255, 255, 255, 0.07); font-size: calc(12.5px * var(--ts)); white-space: nowrap; }
 #almbody .ctc.warn { background: rgba(226, 64, 90, 0.28); outline: 1.5px solid #e2405a; color: #ffd0d6; }
+/* (G1b: no seed of the pouch answers it: solid red, its badge red too; and a creature icon that wears a trait carries
+   its badge on its corner, red the same way) */
+#almbody .ctc.none { background: #b3263c; outline-width: 2px; outline-color: #ff8a9a; color: #fff; font-weight: 700; }
+#almbody .ctc.none .ctb svg { filter: drop-shadow(0 0 1.5px #fff); }
+#almbody .sw.ct { position: relative; display: inline-block; margin-right: 6px; }
+#almbody .swct { position: absolute; right: -0.55em; bottom: -0.3em; font-size: 0.7em; line-height: 0; pointer-events: none; }
+#almbody .swct .ctb svg { margin: 0; filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000); }
 .ctb svg { width: 1.15em; height: 1.15em; vertical-align: -0.22em; margin-right: 2px; }
 /* the wave skip under the coming wave (hud.js skipBtn): small and quiet, its second tap outlined */
 #almbody .btn.skip { display: block; margin: 5px 0 2px 16px; padding: 3px 10px; border-width: 2px; border-radius: 10px; box-shadow: none; font-size: calc(13px * var(--ts)); text-align: left; }
@@ -1008,97 +1022,102 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   #tray #inspector.docked:not(.open) #inspact > .btn { flex: 1 1 0; padding: 0 3px; font-size: calc(12px * var(--ts)); }
 }
 
-/* the seed pouch (view/pouch.js, G1b): a paper box over the void, the garden and the pouch on the left, the
-   roster on the right, the picked card's sheet in a third column on a wide screen and a dock at the bottom
-   below 1060 px. Its own light paper and dark ink (the Overgrown skin's bark is for .panel) */
+/* the seed pouch (view/pouch.js, G1b): a paper box over the void. One bar on top (the garden, its trait chips,
+   Suggested / Last / Back), the 6 slots and Begin in one row, one tip line that opens to the rest, then the
+   roster as seed chips, a row per element; the touched chip's sheet in a column beside it on a wide screen and a
+   dock at the bottom below 900 px (its head only, .peek, on a phone). Its own light paper and dark ink (the
+   Overgrown skin's bark is for .panel) */
 #pouch.show { display: block; overflow-y: auto; padding: max(12px, var(--st)) max(12px, var(--sr)) max(12px, var(--sb)) max(12px, var(--sl)); }
 .pz-box { --warn: #b5462f; --warnbg: #f6dccf; --ok: #4d7a38; --okbg: #e1ecd2; --syn: #8a5a9e; --synbg: #ece0ef; --ink2: #6a7357; --line: #cfc4a2;
-  margin: 0 auto; max-width: 1280px; background: #fbf4e0; color: #38452e; border: 3px solid #6b9952; border-radius: 16px; padding: 14px; box-shadow: 0 6px 24px #000a; }
-.pz-cols { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr) minmax(280px, 340px); gap: 16px; align-items: start; }
-.pz-lab { font-size: calc(11px * var(--ts)); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink2); margin: 10px 0 6px; }
-.pz-garden { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.veil .pz-garden h2 { margin: 0; color: #38452e; text-shadow: none; text-align: left; font-size: calc(26px * var(--ts)); }
-.pz-garden small { color: var(--ink2); }
-.pz-traits { display: grid; gap: 6px; margin-top: 8px; }
-.pz-trait { display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; border-radius: 10px; background: #fffaf0; border: 2px solid var(--line); font-size: calc(13px * var(--ts)); font-weight: 500; }
-.pz-trait.bad { border-color: var(--warn); background: var(--warnbg); }
-.pz-trait.bad b { color: var(--warn); }
-.pz-trait i { color: var(--ink2); font-style: normal; }
-.pz-trait.none { color: var(--ink2); }
-.pz-box .ctb { flex: none; display: inline-flex; width: 1.3em; height: 1.3em; vertical-align: -0.25em; }
+  margin: 0 auto; max-width: 980px; background: #fbf4e0; color: #38452e; border: 3px solid #6b9952; border-radius: 16px; padding: 12px; box-shadow: 0 6px 24px #000a; }
+.pz-box.withsheet { max-width: 1320px; }
+.pz-box .ctb { flex: none; display: inline-flex; width: 1.2em; height: 1.2em; vertical-align: -0.22em; }
 .pz-box .ctb svg { width: 100%; height: 100%; }
-.pz-slots { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
-.pz-slot { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 64px; padding: 4px 2px;
-  border-radius: 10px; border: 2px dashed var(--line); background: #fffaf0; color: var(--ink2); font: inherit; font-size: calc(11px * var(--ts)); }
-.pz-slot.full { border: 2px solid var(--el); color: #38452e; cursor: pointer; }
-.pz-slot.util { border-style: double; border-width: 4px; }
-.pz-slot .nm { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pz-slot .n { position: absolute; top: 1px; left: 5px; font-size: calc(10px * var(--ts)); color: var(--ink2); }
-.pz-seed { flex: none; display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 3px var(--c); font-weight: 800; }
-.pz-seed svg { width: 24px; height: 24px; }
-.pz-tips { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 5px; }
-.pz-tip { display: flex; gap: 7px; padding: 6px 8px; border-radius: 9px; font-size: calc(13px * var(--ts)); font-weight: 500; }
-.pz-tip .ic { flex: none; font-weight: 800; }
-.pz-tip.w { background: var(--warnbg); color: #6e2a1a; }
-.pz-tip.w .ic { color: var(--warn); }
-.pz-tip.ok { background: var(--okbg); }
-.pz-tip.ok .ic { color: var(--ok); }
-.pz-tip.syn { background: var(--synbg); }
-.pz-tip.syn .ic { color: var(--syn); }
-.pz-row { display: flex; gap: 6px; margin-top: 10px; }
-.pz-box .btn.pz-sm { width: auto; flex: 1 1 0; height: 42px; padding: 0 8px; font-size: calc(15px * var(--ts)); }
-.pz-box .btn.pz-begin { width: 100%; height: 60px; margin-top: 8px; font-size: calc(24px * var(--ts)); }
-.pz-pair { margin-bottom: 10px; }
-.pz-el { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-weight: 800; color: var(--el); margin-bottom: 5px; }
-.pz-el .dot, .pz-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--el); }
-.pz-beats { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 99px; background: #fffaf0; border: 1px solid var(--line); font-size: calc(12px * var(--ts)); }
-.pz-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
-.pz-card { position: relative; display: flex; align-items: center; gap: 9px; padding: 7px 9px; border-radius: 11px; border: 2px solid var(--line); background: #fffaf0; color: #38452e;
-  font: inherit; text-align: left; cursor: pointer; }
-.pz-card.in { border-color: var(--el); background: #fff; }
-.pz-card.sel { box-shadow: 0 0 0 3px var(--el); }
-.pz-meta { display: flex; flex-direction: column; min-width: 0; }
-.pz-meta small { color: var(--ink2); font-weight: 500; font-size: calc(12px * var(--ts)); }
-.pz-tick { position: absolute; top: 3px; right: 7px; color: var(--el); font-weight: 900; }
-.pz-sheet { background: #fffaf0; border: 2px solid var(--line); border-radius: 12px; padding: 12px; font-size: calc(13px * var(--ts)); font-weight: 500; }
-.pz-sheet:not(.open) { visibility: hidden; }
+.pz-top { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; }
+.veil .pz-top h2 { margin: 0 4px 0 0; color: #38452e; text-shadow: none; text-align: left; font-size: calc(24px * var(--ts)); }
+.pz-trs { display: inline-flex; gap: 5px; flex-wrap: wrap; }
+.pz-tr { display: inline-flex; align-items: center; gap: 3px; padding: 2px 9px 2px 5px; border-radius: 99px; border: 2px solid var(--line); background: #fffaf0; color: #38452e;
+  font: inherit; font-size: calc(13px * var(--ts)); cursor: pointer; }
+.pz-tr.bad { border-color: var(--warn); background: var(--warn); color: #fff; }
+.pz-tr.on { box-shadow: 0 0 0 2px #38452e; }
+.pz-sp { flex: 1; }
+.pz-ln { font: inherit; font-size: calc(14px * var(--ts)); padding: 4px 6px; border: 0; background: none; color: var(--ink2); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.pz-trline { margin: 6px 0 0; font-size: calc(13px * var(--ts)); font-weight: 500; }
+.pz-bar { display: flex; gap: 8px; align-items: stretch; margin-top: 10px; }
+.pz-slots { flex: 1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(0, 1.15fr); gap: 5px; max-width: 460px; }
+.pz-slot { position: relative; display: grid; place-items: center; height: 50px; border-radius: 12px; border: 2px dashed var(--line); background: #fffaf0; font: inherit; padding: 0; }
+.pz-slot.full { border: 2px solid var(--el); background: #fff; cursor: pointer; }
+.pz-slot.util { border-style: double; border-width: 4px; margin-left: 6px; }
+.pz-slot .n { position: absolute; top: 0; left: 4px; font-size: calc(10px * var(--ts)); color: var(--ink2); }
+.pz-box .btn.pz-begin { flex: 1 1 0; min-width: 110px; height: auto; min-height: 50px; padding: 0 12px; font-size: calc(22px * var(--ts)); }
+.pz-seed { flex: none; display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 3px var(--c); font-weight: 800; }
+.pz-seed svg { width: 22px; height: 22px; }
+.pz-tip { display: flex; align-items: center; gap: 7px; width: 100%; margin-top: 8px; padding: 5px 9px; border: 0; border-radius: 9px; font: inherit; font-size: calc(13px * var(--ts)); font-weight: 500; color: #38452e; text-align: left; cursor: pointer; }
+.pz-tip:disabled { cursor: default; }
+.pz-tip .tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pz-tip .more { flex: none; font-weight: 800; color: var(--ink2); padding: 0 4px; }
+.pz-tip .ic, .pz-tips .ic { flex: none; font-weight: 800; margin-right: 7px; }
+.pz-tip .ic { margin-right: 0; }
+.pz-tip.w, .pz-tips .w { background: var(--warnbg); color: #6e2a1a; }
+.pz-tip.w .ic, .pz-tips .w .ic { color: var(--warn); }
+.pz-tip.ok, .pz-tips .ok { background: var(--okbg); }
+.pz-tip.ok .ic, .pz-tips .ok .ic { color: var(--ok); }
+.pz-tip.syn, .pz-tips .syn { background: var(--synbg); }
+.pz-tip.syn .ic, .pz-tips .syn .ic { color: var(--syn); }
+.pz-tips { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; }
+.pz-tips li { display: flex; padding: 5px 9px; border-radius: 9px; font-size: calc(13px * var(--ts)); font-weight: 500; }
+.pz-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; margin-top: 10px; }
+.withsheet .pz-body { grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); }
+.pz-el { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding: 5px 0; border-top: 1px solid var(--line); }
+.pz-el .lab { flex: 0 0 96px; display: flex; flex-direction: column; font-weight: 800; color: var(--el); font-size: calc(14px * var(--ts)); line-height: 1.15; }
+.pz-el .lab small { display: inline-flex; align-items: center; gap: 2px; color: var(--ink2); font-weight: 600; font-size: calc(11px * var(--ts)); }
+.pz-chip { position: relative; display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px 3px 3px; border-radius: 99px; border: 2px solid var(--line); background: #fffaf0;
+  color: #38452e; font: inherit; font-size: calc(14px * var(--ts)); cursor: pointer; touch-action: manipulation; }
+.pz-chip small { color: var(--ink2); font-weight: 600; font-size: calc(11px * var(--ts)); }
+.pz-chip.in { border-color: var(--el); background: var(--el); color: #fff; }
+.pz-chip.in small { color: #fffc; }
+.pz-chip.sel { box-shadow: 0 0 0 2px #fbf4e0, 0 0 0 4px var(--el); }
+.pz-chip.full:not(.in) { opacity: 0.6; }
+.pz-sheet { background: #fffaf0; border: 2px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: calc(13px * var(--ts)); font-weight: 500; }
 .pz-head { display: flex; align-items: center; gap: 10px; }
 .pz-head > div { flex: 1; min-width: 0; }
-.pz-head h3 { margin: 0; font-size: calc(19px * var(--ts)); }
-.pz-head small { display: inline-flex; align-items: center; gap: 5px; color: var(--ink2); }
-.pz-x { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--line); background: #fff; color: #38452e; font-weight: 800; font-size: 20px; line-height: 1; cursor: pointer; }
+.pz-head h3 { margin: 0; font-size: calc(18px * var(--ts)); }
+.pz-head small { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; color: var(--ink2); }
+.pz-x { flex: none; width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--line); background: #fff; color: #38452e; font-weight: 800; font-size: 20px; line-height: 1; cursor: pointer; }
 .pz-desc { margin: 8px 0; }
-.pz-stats { display: flex; gap: 6px; }
-.pz-stats span { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 4px; border-radius: 8px; background: #f3ead0; color: var(--ink2); font-size: calc(11px * var(--ts)); }
-.pz-stats b { color: #38452e; font-size: calc(17px * var(--ts)); }
+.pz-hint { margin: 8px 0 0; color: var(--ink2); }
 .pz-path { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
 .pz-path li { display: flex; gap: 7px; }
 .pz-path .lv { flex: none; width: 28px; text-align: center; border-radius: 6px; background: #38452e; color: #fffaf0; font-weight: 800; font-size: calc(11px * var(--ts)); padding: 2px 0; height: fit-content; }
 .pz-path .price { color: var(--ink2); white-space: nowrap; }
 .pz-fork { display: grid; gap: 4px; margin-top: 4px; }
 .pz-fork > span { padding: 4px 6px; border-radius: 7px; border: 1px dashed var(--line); }
-.pz-vs { display: grid; gap: 4px; }
+.pz-vs { display: grid; gap: 4px; margin-top: 8px; }
 .pz-vs > div { display: flex; gap: 6px; align-items: flex-start; }
 .pz-vs .up { flex: none; color: var(--ok); font-weight: 800; }
 .pz-vs .down { flex: none; color: var(--warn); font-weight: 800; }
-.pz-links { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.pz-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--el); }
+.pz-links { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; }
 .pz-links li.off { color: var(--ink2); }
-.pz-links i { font-style: normal; color: var(--ink2); }
-.pz-links .graft { display: block; color: var(--syn); }
-.pz-box .btn.pz-act { width: 100%; height: 46px; margin-top: 10px; font-size: calc(17px * var(--ts)); }
-@media (max-width: 1059px) {
-  .pz-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); }
+.pz-links .graft { color: var(--syn); }
+.pz-box .btn.pz-act { width: 100%; height: 44px; margin-top: 10px; font-size: calc(16px * var(--ts)); }
+@media (max-width: 899px) {
+  .withsheet .pz-body { grid-template-columns: minmax(0, 1fr); }
+  .pz-box.withsheet { padding-bottom: 96px; }
   .pz-sheet { position: fixed; left: 8px; right: 8px; bottom: max(8px, var(--sb)); max-height: 58vh; overflow-y: auto; z-index: 5; box-shadow: 0 -6px 24px #0008; }
-  .pz-sheet:not(.open) { display: none; }
+  .pz-sheet.peek > :not(.pz-head) { display: none; }
+  .pz-sheet .pz-head { cursor: pointer; }
 }
 @media (max-width: 699px) {
-  .pz-cols { grid-template-columns: minmax(0, 1fr); }
-  .pz-box { padding: 10px; }
-  .pz-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pz-card { padding: 6px; gap: 6px; }
-  .pz-seed { width: 28px; height: 28px; }
-  .pz-seed svg { width: 20px; height: 20px; }
-  .pz-slot { min-height: 56px; }
+  .pz-box { padding: 9px; }
+  .veil .pz-top h2 { font-size: calc(20px * var(--ts)); }
+  .pz-slots { max-width: none; }
+  .pz-slot { height: 44px; }
+  .pz-box .btn.pz-begin { flex: 0 0 auto; min-width: 0; min-height: 44px; font-size: calc(18px * var(--ts)); }
+  .pz-el .lab { flex: 1 1 100%; flex-direction: row; align-items: baseline; gap: 6px; }
+  .pz-seed { width: 26px; height: 26px; }
+  .pz-seed svg { width: 18px; height: 18px; }
+  .pz-chip { padding-right: 8px; font-size: calc(13px * var(--ts)); }
 }
 /* the living map's acts (view/acts.js): the chip by the wave button, and the act turn's banner */
 #actchip { display: none; margin-left: -8px; padding: 3px 9px; border-radius: 10px; background: rgba(40, 60, 24, 0.55); color: #f4f8dc; font-size: calc(14px * var(--ts)); font-weight: 800; letter-spacing: 0.04em; align-self: center; white-space: nowrap; }
@@ -8433,7 +8452,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // a few jobs in hand keep a worker busy between them (ME.bakeJobDepth, 4 by default). out: id -> a promise of its
   // result, or of null where it failed (a prim that is not plain data, an error, a worker lost), and that variant
   // bakes on the main thread (a job's miss: what happens instead). The watchdog terminates a worker that holds jobs
-  // and has sent nothing for ME.bakeJobMs (30 s by default; restarted on each answer, so it bounds one job), and
+  // and has sent nothing for ME.bakeJobMs (30 s by default; restarted on each answer, so it bounds one job; a held
+  // job's own ms, when longer, wins unless ME.bakeJobMs is set: a progressive full bake's, ME.bakeFullJobMs), and
   // every job it held bakes here. startMs, idleMs, busyMs: the workers' summed time from the probe to their first
   // job, between jobs (waiting for a post; not after the last) and in them. add(jobs, front) queues more (E4: a
   // progressive bake's full bakes once its upgrade starts, its finishing jobs with front: before those waiting),
@@ -8444,7 +8464,11 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     let alive = ws.length, stopped = false;
     const failed = (j, why) => { ME.log("WARN BAKE worker: " + j.name + ": " + why + "; " + (j.miss || "baked on the main thread")); j.res(null); };
     const quit = (w) => { clearTimeout(w.dog); w.dead = true; w.terminate(); w.onmessage = w.onerror = null; };
-    const arm = (w) => { clearTimeout(w.dog); w.dog = w.held.length ? setTimeout(() => lose(w, "no answer in " + limit + " ms"), limit) : 0; };
+    const arm = (w) => {
+      clearTimeout(w.dog);
+      const ms = ME.bakeJobMs ? limit : w.held.reduce((a, j) => Math.max(a, j.ms || 0), limit);
+      w.dog = w.held.length ? setTimeout(() => lose(w, "no answer in " + ms + " ms"), ms) : 0;
+    };
     const lose = (w, why) => {
       quit(w);
       for (const j of w.held.splice(0)) failed(j, why);
@@ -8658,7 +8682,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       if (!pv.has(i)) { jobs.push({ id: i, name, cost, q }); return; }
       const kf = kfOf(vf, opts);
       jobs.push({ id: i, name, cost: cost / kf ** 3, q: Object.assign({}, q, { md: Object.assign({}, q.md, { k: md.k / kf }), fullK: md.k, vf: kf, hollow: hollowOn() && ME.VS * vf > ME.POOL_HOLLOW }) });
-      full.push({ id: nv + i, name, cost, q: Object.assign({}, q, { id: nv + i }), miss: "kept the coarse model" });
+      // (its own watchdog, ME.bakeFullJobMs: a hero model at full density can hold a worker past 30 s; the Heart
+      // Tree's grown crown, ?heartgrow=3, did, and the 30 s one lost every worker and the full bakes queued after it)
+      full.push({ id: nv + i, name, cost, ms: ME.bakeFullJobMs || 240000, q: Object.assign({}, q, { id: nv + i }), miss: "kept the coarse model" });
     });
     jobs.sort((a, b) => b.cost - a.cost); full.sort((a, b) => pv.get(a.id - nv) - pv.get(b.id - nv));
     const h = { sig: sigOf(L, def, opts), mds, offWorker, prog, nv, full, ws: [], res: new Map(), run: null, done: false };
@@ -22058,7 +22084,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.118.0", name: "Mossheart", commit: "a4055573" };
+  G.VERSION = { v: "0.119.0", name: "Mossheart", commit: "c751e587" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -30044,7 +30070,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // the dew bank's rate tiers (dew a second, State.gained; each gain adds amount / DEW_TAU): one kill's dew
   // (about 6) makes tier 1, a few kills together or a wave's clearing bonus (about 11/s) tier 2, a pile-up or
   // a boon's dew tier 3. Its pulse grows by DEW_PULSE per tier, and it sprays up to SPRAY droplets
-  const DEW_HOT = [3, 8, 18], DEW_PULSE = [0.04, 0.07, 0.12, 0.18], SPRAY = 8;
+  const DEW_HOT = [3, 8, 18], DEW_PULSE = [0.04, 0.07, 0.12, 0.18], SPRAY = 8, SPILL_MS = 250;
   // the bank tiers (Defs.DEW_TIERS, dew held, from START_DEW 160): the bank's rim deepens at each, gold with a
   // shine at the last, and the dew bar's water changes colour. The bar's water stands at BAR_AT of its height at
   // each tier, linearly between, and climbs the last fifth slowly past the last (half of it at BAR_TOP more)
@@ -30103,6 +30129,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // warn chip, the user 2026-11-10: "warning message if no tower built to counter a certain trait")
   const ctFixers = (id) => { const t = D.CTRAITS.find((c) => c.id === id); return ctAnswers(t).concat(id === "veiled" ? ["glowcap"] : []); };
   G.ctPlanted = (id, game) => { const f = ctFixers(id); return !!game && game.towers.some((t) => f.includes(t.kind)); };
+  // a seed of the pouch answers it (a fixer, the Glowcap counted); else its badge is drawn in CT_RED (the almanac)
+  const ctPouch = (id) => ctFixers(id).some((k) => S.plants.includes(k));
+  const CT_RED = () => "#ff5a72";
   // at most TAGS trait tags on the meadow at once (nearest the Heart Tree first)
   const TAGS = 24;
   // how long the counter warning stays up once its wave is called (ms)
@@ -30255,7 +30284,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       // (while the frame's update runs, main.js holds the HUD: a kill's dew, tens a frame late in a wave,
       // only marks it, and flush() redraws once)
       this.hold = false; this.stale = false;
-      for (const ev of ["dew", "heart", "wave", "phase", "mods", "waves"]) G.on(ev, () => { if (this.hold) this.stale = true; else this.refresh(); });
+      for (const ev of ["dew", "heart", "wave", "phase", "mods", "waves", "links"]) G.on(ev, () => { if (this.hold) this.stale = true; else this.refresh(); });
       // the wave's dew challenge (Game.chal): met or failed it keeps that look a moment after the clear; met,
       // a toast with what it paid
       this.chalDone = null; this.chalT = 0;
@@ -30278,7 +30307,21 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       $("ui").appendChild(cw);
       this.cwWave = -1; this.cwGone = -1; this.cwCall = 0; this.cwPlan = null;
       for (const ev of ["tower_placed", "tower_sold"]) G.on(ev, () => G.emit("waves"));
-      G.on("wave_start", () => { this.cwCall = performance.now() + CW_CALL_MS; });
+      G.on("wave_start", () => { this.cwCall = performance.now() + CW_CALL_MS; this.spiltAt = S.spilt || 0; });
+      // the cap (G1b, design 4.2): a brim line across the tube at S.cap() (refresh); dew over it is spilt,
+      // droplets spraying from the bulb (at most one burst per SPILL_MS), and the wave's clear tells "+N spilt"
+      $("dewbar").appendChild(Object.assign(document.createElement("i"), { className: "brim" }));
+      this.spiltAt = S.spilt || 0; this.spillAt = 0;
+      G.on("spill", (e) => {
+        const now = performance.now();
+        if (now - this.spillAt < SPILL_MS || document.body.classList.contains("calm")) return;
+        this.spillAt = now; this.dewSpray(Math.max(2, Math.min(6, Math.round(2 + e.amount / 8))), true);
+      });
+      G.on("wave_clear", () => {
+        const n = Math.round((S.spilt || 0) - this.spiltAt);
+        this.spiltAt = S.spilt || 0;
+        if (n > 0) setTimeout(() => this.toast(`+${fmtDew(n)} spilt over the cap`), 900);
+      });
       this.refresh();
     }
     // the counter climbs to dewTo, about a tenth of the gap a frame and at least 1, and keeps a frame
@@ -30315,10 +30358,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (t >= 2 && now - this.sprayAt > 220) { this.sprayAt = now; this.dewSpray(t === 3 ? 6 : 3); }
     }
     // n droplets leap out of the dew bar's surface and fall back, fading (a pool of SPRAY)
-    dewSpray(n) {
+    // spill: from the bulb instead (dew over the cap, lost)
+    dewSpray(n, spill) {
       if (!this.sprays) this.sprays = Array.from({ length: SPRAY }, () => $("dewbar").appendChild(Object.assign(document.createElement("i"), { className: "spray" })));
       for (let i = 0; i < n; i++) {
-        const el = this.sprays[this.si = ((this.si || 0) + 1) % SPRAY], a = -Math.PI / 2 + (i / Math.max(1, n - 1) - 0.5) * 2.2 + (Math.random() - 0.5) * 0.4;
+        const el = this.sprays[this.si = ((this.si || 0) + 1) % SPRAY];
+        el.classList.toggle("spill", !!spill);
+        const a = -Math.PI / 2 + (i / Math.max(1, n - 1) - 0.5) * 2.2 + (Math.random() - 0.5) * 0.4;
         const r = 30 + Math.random() * 22, x = Math.cos(a) * r, y = Math.sin(a) * r;
         el.animate([{ transform: "translate(0, 0) scale(0.6)", opacity: 1 }, { transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(1)`, opacity: 1, offset: 0.55 },
           { transform: `translate(${(x * 1.3).toFixed(1)}px, ${(y + 26).toFixed(1)}px) scale(0.7)`, opacity: 0 }], { duration: 560 + Math.random() * 160, easing: "ease-out" });
@@ -30922,15 +30968,22 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const wt = p.trait, count = (g) => (left ? left[g.kind] || 0 : g.count), n = p.groups.reduce((a, g) => a + count(g), 0);
       let t = `<div class="wv"><b class="wn">Wave ${p.wave}</b> <span class="wt">· ${left ? `now · ${n} left` : `${n} creatures`}</span>${wt ? ` <span class="tr">${this.traitIcon(wt)}${esc(wt.name)}</span>` : ""}${p.boss ? ` <span class="tr">· boss</span>` : ""}</div>`;
       // its counter traits with their counts and answers ("3 Winged: bring light"); a tap or a hover says the
-      // whole line, and one no plant in the garden answers is tinted as a warning (as ctWarn)
+      // whole line. One no plant in the garden answers yet is tinted as a warning (as ctWarn); one no seed of the
+      // pouch answers at all (G1b, design 2.4) is solid red, its badge too
       const cts = Object.entries(p.cts || {});
       if (cts.length) t += `<div class="cts">` + cts.map(([id, k]) => {
-        const w = G.ctWords(id), warn = !G.ctPlanted(id, this.game), none = warn && !ctFixers(id).some((k) => S.plants.includes(k));
-        return `<span class="ctc${warn ? " warn" : ""}" data-ct="${id}" title="${esc(w.line)}${none ? " No seed of yours answers it." : warn ? " None planted yet." : ""}">${w.badge}${k} ${esc(w.name)}: bring ${esc(w.el)}</span>`;
+        const w = G.ctWords(id), warn = !G.ctPlanted(id, this.game), none = warn && !ctPouch(id);
+        return `<span class="ctc${none ? " warn none" : warn ? " warn" : ""}" data-ct="${id}" title="${esc(w.line)}${none ? " No seed of yours answers it." : warn ? " None planted yet." : ""}">${none ? ctBadge(id, CT_RED) : w.badge}${k} ${esc(w.name)}: bring ${esc(w.el)}</span>`;
       }).join(" ") + `</div>`;
-      // its creatures as icons (a tap opens the card), then the elements its creatures, by count, are weakest and
-      // strongest against (the matchups' sums, in words)
-      const icons = p.groups.filter((g) => count(g) > 0).map((g) => { const e = D.ENEMIES[g.kind]; return `<span class="sw" data-foe="${g.kind}" style="color:${hex(e.color)}" title="${esc(e.name)} ×${count(g)}">${icon("ENEMY_ICONS", g.kind) || "●"}</span>`; }).join("");
+      // its creatures as icons (a tap opens the card), each that wears a counter trait with that trait's badge on
+      // its corner (red when no seed of the pouch answers it), then the elements its creatures, by count, are
+      // weakest and strongest against (the matchups' sums, in words)
+      const worn = {};
+      for (const s of p.spawns || []) if (s[0] && s[2] >= 0 && !worn[s[0]]) worn[s[0]] = D.CTRAITS[s[2]].id;
+      const icons = p.groups.filter((g) => count(g) > 0).map((g) => {
+        const e = D.ENEMIES[g.kind], id = worn[g.kind], b = id ? `<i class="swct">${ctBadge(id, ctPouch(id) ? hex : CT_RED)}</i>` : "";
+        return `<span class="sw${id ? " ct" : ""}" data-foe="${g.kind}" style="color:${hex(e.color)}" title="${esc(e.name)} ×${count(g)}${id ? ", some " + esc(G.ctWords(id).name) : ""}">${icon("ENEMY_ICONS", g.kind) || "●"}${b}</span>`;
+      }).join("");
       const avg = this.elAvg(p, left), by = D.ELEMENTS.map((_, el) => el);
       const best = by.filter((el) => avg[el] > 0.2).sort((a, b) => avg[b] - avg[a]).slice(0, 2).map((el) => D.ELEMENT_NAMES[el]);
       const avoid = by.filter((el) => avg[el] < -0.15).sort((a, b) => avg[a] - avg[b]).slice(0, 2).map((el) => D.ELEMENT_NAMES[el]);
@@ -30990,12 +31043,15 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const luck = S.luck(), bar = $("dewbar"), fill = barFill(S.dew).toFixed(3), next = D.DEW_TIERS[luck.tier];
       $("dew").dataset.bank = luck.tier || "";
       if (bar.style.getPropertyValue("--fill") !== fill) bar.style.setProperty("--fill", fill);
+      const cap = S.cap(), capAt = barFill(cap).toFixed(3);
+      if (bar.style.getPropertyValue("--cap") !== capAt) bar.style.setProperty("--cap", capAt);
+      bar.classList.toggle("full", S.dew >= cap);
       if (bar.dataset.tier !== String(luck.tier)) {
         bar.dataset.tier = luck.tier;
         bar.querySelector(".luck").textContent = LUCK_TAG[luck.tier];
       }
       bar.setAttribute("aria-valuenow", S.dew);
-      const tip = `Dew ${S.dew}: gifts ${luck.tier ? `rare ×${luck.rare}, epic ×${luck.epic}` + (luck.tier >= 3 ? ", legendary ×" + luck.legendary + " and exquisite ones" : luck.tier >= 2 ? ", and legendary ones" : "") : "at their usual odds"}` + (next ? ` (more from ${next} dew)` : "");
+      const tip = `Dew ${S.dew}: gifts ${luck.tier ? `rare ×${luck.rare}, epic ×${luck.epic}` + (luck.tier >= 3 ? ", legendary ×" + luck.legendary + " and exquisite ones" : luck.tier >= 2 ? ", and legendary ones" : "") : "at their usual odds"}` + (next ? ` (more from ${next} dew)` : "") + `. Cap ${cap}: more is spilt`;
       if (bar.title !== tip) { bar.title = tip; bar.setAttribute("aria-valuetext", tip); }
       this.dewTo = S.dew;
       if (this.dewGain && S.dew > this.dewShown) this.dewRun(); else { this.dewShown = S.dew; setText($("dewn"), fmtDew(S.dew)); }
@@ -31784,14 +31840,15 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 <script>/* src/view/pouch.js */
 /* The seed pouch (G1b, docs/designs/2026-11-10-loadout-and-traits/mockup.html): before a run begins in a
    garden, the player picks the 5 plants on the seed bar (keys 1-5) and the helper in slot 6. Opened by
-   Menu.go for a run that begins (not one that resumes): the garden's card with its counter traits (red while
-   nothing picked answers one), the pouch's 6 slots, a few tips, Suggested / Last, Begin; on the right the
-   roster by element (each pair "beats" its trait) and the helpers, and a sheet for the picked card (a column
-   on a wide screen, a dock at the bottom of a phone).
-     a card            shows its sheet; a double click puts it in (or takes it out of) the pouch
-     a filled slot     takes that plant out and shows its sheet
-     the sheet button  Add to pouch / Take out of pouch / In slot 6
-     Begin             remembers the pouch for the garden (state.js rememberPouch, "Last") and plays
+   Menu.go for a run that begins (not one that resumes). Streamlined: one bar on top (the garden, its counter
+   traits as chips, red while nothing picked answers one, the 6 slots, Begin), one tip line that opens to the
+   rest, and the roster as seed chips by element (each element "beats" its trait), the helpers last. The sheet
+   (the card's growth, counters and links) shows only for the chip touched last: a column beside the roster on a
+   wide screen; a dock at the bottom of a phone that shows its head only until tapped.
+     a chip          puts that plant in the pouch (or takes it out), and shows its sheet
+     a filled slot   takes that plant out (slot 6: shows the helper's sheet)
+     a trait chip    says what the trait does and what answers it
+     Begin           remembers the pouch for the garden (state.js rememberPouch, "Last") and plays
    Reads only D and G.LEVELS, so it opens for any garden before the reload into it. ?pouch=0 skips it.
    (Inner pieces take pz- names: the Overgrown skin dresses .seed, .card and .boon.) */
 (() => {
@@ -31805,6 +31862,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const roles = (k) => (D.ROLES && D.ROLES[k]) || [];
   const upCost = (cost, lv) => Math.floor(cost * 0.8 * lv);
   const roman = (i) => ["I", "II", "III"][i];
+  const short = (k) => T(k).name.split(" ")[T(k).util ? T(k).name.split(" ").length - 1 : 0];
   // the roster: each element's plants (in the seed bar's order) and the trait it beats
   const order = () => D.ELEMENTS.map((el, i) => ({ el, kinds: D.TOWER_ORDER.filter((k) => T(k) && !T(k).util && T(k).element === el),
     trait: (D.CTRAITS.find((t) => t.counter === i) || {}).id }));
@@ -31817,15 +31875,15 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   class Pouch {
     constructor(menu, el) {
       this.menu = menu; this.el = el; this.id = ""; this.mode = ""; this.pick = []; this.util = "cistern"; this.sel = "";
+      this.tipsOpen = false; this.trait = ""; this.peek = true;
       this.phone = window.matchMedia("(max-width: 699px)");
       el.addEventListener("click", (e) => this.click(e));
-      el.addEventListener("dblclick", (e) => { const c = e.target.closest("[data-card]"); if (c) this.toggle(c.dataset.card); });
     }
     open(id, mode) {
       this.id = id; this.mode = mode;
       const p = G.state.pouchOf(id);
       this.set(p.plants, p.util || "cistern");
-      this.sel = this.phone.matches ? "" : this.pick[0] || "";
+      this.sel = ""; this.tipsOpen = false; this.trait = "";
       this.render();
       setTimeout(() => { const b = this.el.querySelector("[data-begin]"); if (b && !this.phone.matches) b.focus({ preventScroll: true }); }, 0);
     }
@@ -31836,92 +31894,94 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     counters(id) { const o = order().find((r) => r.trait === id); return o ? o.kinds.map((k) => T(k).name) : []; }
     stored() { try { return JSON.parse(localStorage.getItem("mossheart.pouch." + this.id) || "null"); } catch (e) { return null; } }
 
+    // the tips, warnings first; each one short line
     tips() {
       const out = [], tr = this.traits();
-      for (const t of tr) if (!this.answered(t)) out.push(["w", "⚠", `Nothing here harms <b>${traitOf(t).name}</b> creatures. Add ${this.counters(t).join(" or ")}${t === "veiled" ? ", or take a Glowcap" : ""}.`]);
+      for (const t of tr) if (!this.answered(t)) out.push(["w", "⚠", `Nothing harms <b>${traitOf(t).name}</b>: add ${this.counters(t).join(" or ")}${t === "veiled" ? " or a Glowcap" : ""}`]);
       if (this.pick.length === 5) {
-        if (!this.pick.some((k) => roles(k).includes("area"))) out.push(["w", "⚠", "Nothing hits a crowd: Midge Swarms will slip through."]);
+        if (!this.pick.some((k) => roles(k).includes("area"))) out.push(["w", "⚠", "Nothing hits a crowd: swarms slip through"]);
         const cheap = Math.min(...this.pick.map((k) => T(k).cost));
-        if (cheap > 75) out.push(["w", "⚠", `Your cheapest seed is ${cheap} dew (you start with ${G.state.START_DEW}): a slow first wave.`]);
-        if (!this.pick.some((k) => roles(k).includes("single"))) out.push(["w", "⚠", "Nothing focuses one creature: bosses will be long fights."]);
-      } else out.push(["w", "⚠", `${5 - this.pick.length} more plant${this.pick.length === 4 ? "" : "s"} to pick.`]);
-      if (!out.length) out.push(["ok", "✓", "A balanced pouch."]);
-      if (D.ELEMENTS.every((e) => this.has(e))) out.push(["ok", "✓", "All four elements: every creature's weak spot is yours."]);
+        if (cheap > 75) out.push(["w", "⚠", `Cheapest seed ${cheap} dew (you start with ${G.state.START_DEW}): a slow start`]);
+        if (!this.pick.some((k) => roles(k).includes("single"))) out.push(["w", "⚠", "Nothing focuses one creature: long boss fights"]);
+      } else out.push(["w", "⚠", `Pick ${5 - this.pick.length} more`]);
+      if (!out.length) out.push(["ok", "✓", "A balanced pouch"]);
+      if (D.ELEMENTS.every((e) => this.has(e))) out.push(["ok", "✓", "All four elements"]);
       const graft = (l) => D.GRAFTS.find((g) => g.link === l.id);
       const links = D.LINKS.filter((l) => this.pick.includes(l.kinds[0]) && this.pick.includes(l.kinds[1])).sort((x, y) => !!graft(y) - !!graft(x));
       for (const l of links.slice(0, 2)) {
         const [a, b] = l.kinds, pair = a === b ? `Two ${T(a).name}s` : `${T(a).name} + ${T(b).name}`, g = graft(l);
-        out.push(["syn", "✦", `${pair}: <b>${l.name}</b>. ${l.desc}${g ? `; at III they graft into the ${g.name}` : ""}.`]);
+        out.push(["syn", "✦", `${pair}: <b>${l.name}</b>${g ? `, grafting into the ${g.name}` : ""}`]);
       }
       const veiled = tr.includes("veiled"), slow = this.pick.some((k) => roles(k).includes("slow"));
       const uf = {
-        cistern: "Dew Cistern: a bigger bank for the interest gifts (Golden Harvest pays its full 110 only from 1,830 dew).",
-        sundew: slow ? "Sundew beside your slow plants: creatures die in its reach." : "The Sundew wants kills in its reach: a slow plant (Puffcap, Briar Vine) holds them there.",
-        glowcap: veiled ? "Glowcap by the road: Veiled creatures in its light take every element." : "No Veiled creatures here: the Glowcap has little to light.",
-        stump: "Nurse Stump in the middle of a cluster: up to 8 neighbours fire faster.",
+        cistern: "Cistern: a bigger bank for the interest gifts",
+        sundew: slow ? "Sundew beside your slow plants" : "Sundew wants a slow plant beside it",
+        glowcap: veiled ? "Glowcap by the road: Veiled creatures take every element" : "No Veiled creatures here for the Glowcap",
+        stump: "Nurse Stump amid a cluster: 8 neighbours fire faster",
       }[this.util];
       if (uf) out.push(this.util === "glowcap" && !veiled ? ["w", "⚠", uf] : ["syn", "✦", uf]);
       const rank = { w: 0, ok: 1, syn: 2 };
-      return out.sort((a, b) => rank[a[0]] - rank[b[0]]).slice(0, 4);
+      return out.sort((a, b) => rank[a[0]] - rank[b[0]]).slice(0, 5);
     }
 
     seed(k) {
       const ic = icon("PLANT_ICONS", k);
       return `<span class="pz-seed" style="--c:${hex(T(k).color)};color:${ink(T(k).color)}">${ic || esc(T(k).name[0])}</span>`;
     }
-    card(k) {
-      const d = T(k), isU = !!d.util, inP = isU ? this.util === k : this.pick.includes(k);
-      const sub = isU ? `${d.cost} dew · helper` : `${d.cost} dew · reach ${d.range} · ${Math.round(d.damage * d.rate)}/s`;
-      return `<button class="pz-card${this.sel === k ? " sel" : ""}${inP ? " in" : ""}" style="--el:${kInk(k)}" data-card="${k}" aria-pressed="${inP}">${this.seed(k)}
-        <span class="pz-meta"><b>${esc(d.name)}</b><small>${sub}</small></span>${inP ? '<span class="pz-tick">✓</span>' : ""}</button>`;
+    // a seed chip of the roster: tap puts it in or takes it out
+    chip(k) {
+      const d = T(k), inP = d.util ? this.util === k : this.pick.includes(k);
+      const full = !inP && !d.util && this.pick.length >= 5;
+      return `<button class="pz-chip${inP ? " in" : ""}${this.sel === k ? " sel" : ""}${full ? " full" : ""}" style="--el:${kInk(k)}" data-chip="${k}" aria-pressed="${inP}" title="${esc(d.name)}, ${d.cost} dew">${this.seed(k)}<span class="nm">${esc(short(k))}</span><small>${d.cost}</small></button>`;
     }
     render() {
       const tr = this.traits();
-      const traits = tr.length ? tr.map((t) => {
-        const w = words(t), ok = this.answered(t), who = this.counters(t).join(", ") + (t === "veiled" ? ", or a Glowcap" : "");
-        return `<div class="pz-trait${ok ? "" : " bad"}">${w.inked || ""}<span><b>${esc(w.name)}</b> ${esc(traitOf(t).desc)}. <i>Counter: ${esc(who)}.</i></span></div>`;
-      }).join("") : `<div class="pz-trait none">No counter traits in this garden.</div>`;
+      const traits = tr.map((t) => {
+        const w = words(t), ok = this.answered(t);
+        return `<button class="pz-tr${ok ? "" : " bad"}${this.trait === t ? " on" : ""}" data-trait="${t}" title="${esc(traitOf(t).desc)}">${w.inked || ""}${esc(w.name)}</button>`;
+      }).join("");
+      const trLine = this.trait && tr.includes(this.trait) ? `<p class="pz-trline"><b>${esc(words(this.trait).name)}</b> ${esc(traitOf(this.trait).desc)} (from wave 4). Answered by ${esc(this.counters(this.trait).join(", "))}${this.trait === "veiled" ? ", or a Glowcap" : ""}.</p>` : "";
       let slots = "";
       for (let i = 0; i < 5; i++) {
         const k = this.pick[i];
-        slots += k ? `<button class="pz-slot full" style="--el:${kInk(k)}" data-out="${k}" title="Take ${esc(T(k).name)} out">${this.seed(k)}<span class="nm">${esc(T(k).name.split(" ")[0])}</span><span class="n">${i + 1}</span></button>`
-          : `<div class="pz-slot"><span class="n">${i + 1}</span><span class="nm">empty</span></div>`;
+        slots += k ? `<button class="pz-slot full" style="--el:${kInk(k)}" data-out="${k}" title="${i + 1}: ${esc(T(k).name)} (tap to take out)">${this.seed(k)}<span class="n">${i + 1}</span></button>`
+          : `<span class="pz-slot"><span class="n">${i + 1}</span></span>`;
       }
-      slots += `<button class="pz-slot full util" style="--el:${kInk(this.util)}" data-show="${this.util}" title="${esc(T(this.util).name)}">${this.seed(this.util)}<span class="nm">${esc(T(this.util).name.split(" ").pop())}</span><span class="n">6</span></button>`;
-      const tips = this.tips().map(([c, i, t]) => `<li class="pz-tip ${c}"><span class="ic">${i}</span><span>${t}</span></li>`).join("");
+      slots += `<button class="pz-slot full util" style="--el:${kInk(this.util)}" data-show="${this.util}" title="6: ${esc(T(this.util).name)}">${this.seed(this.util)}<span class="n">6</span></button>`;
+      const tips = this.tips(), [c0, i0, t0] = tips[0], more = tips.length - 1;
+      const tipList = this.tipsOpen && more ? `<ul class="pz-tips">${tips.slice(1).map(([c, i, t]) => `<li class="${c}"><span class="ic">${i}</span>${t}</li>`).join("")}</ul>` : "";
       let roster = "";
       for (const o of order()) {
         const w = o.trait ? words(o.trait) : null;
-        roster += `<div class="pz-pair"><div class="pz-el" style="--el:${elInk(o.el)}"><span class="dot"></span>${EL_NAME[o.el] || o.el}${w ? `<span class="pz-beats">${w.inked || ""}beats ${esc(w.name)}</span>` : ""}</div>
-          <div class="pz-cards">${o.kinds.map((k) => this.card(k)).join("")}</div></div>`;
+        roster += `<div class="pz-el" style="--el:${elInk(o.el)}"><span class="lab">${EL_NAME[o.el] || o.el}${w ? `<small title="beats ${esc(w.name)}">${w.inked || ""}${esc(w.name)}</small>` : ""}</span>${o.kinds.map((k) => this.chip(k)).join("")}</div>`;
       }
-      roster += `<div class="pz-pair"><div class="pz-el" style="--el:#7a6a4a"><span class="dot"></span>Helpers · pick 1 (slot 6)</div><div class="pz-cards">${D.UTILITY.map((k) => this.card(k)).join("")}</div></div>`;
-      const last = this.stored();
-      this.el.innerHTML = `<div class="pz-box"><div class="pz-cols">
-        <div class="pz-l">
-          <div class="pz-garden"><h2>${esc(gardenName(this.id))}</h2><small>${tr.length ? "traits from wave 4" : ""}</small></div>
-          <div class="pz-traits">${traits}</div>
-          <div class="pz-lab">Your pouch</div><div class="pz-slots">${slots}</div>
-          <ul class="pz-tips">${tips}</ul>
-          <div class="pz-row"><button class="btn small pz-sm" data-sugg>Suggested</button>${last ? '<button class="btn small pz-sm" data-last>Last</button>' : ""}<button class="btn small pz-sm" data-back>Back</button></div>
-          <button class="btn pink big pz-begin" data-begin ${this.pick.length < 5 ? "disabled" : ""}>Begin</button>
+      roster += `<div class="pz-el" style="--el:#7a6a4a"><span class="lab">Helper<small>slot 6</small></span>${D.UTILITY.map((k) => this.chip(k)).join("")}</div>`;
+      const last = this.stored(), sheet = this.sheet(this.sel);
+      this.el.innerHTML = `<div class="pz-box${sheet ? " withsheet" : ""}">
+        <div class="pz-top">
+          <h2>${esc(gardenName(this.id))}</h2>${traits ? `<span class="pz-trs">${traits}</span>` : ""}
+          <span class="pz-sp"></span>
+          <button class="pz-ln" data-sugg>Suggested</button>${last ? '<button class="pz-ln" data-last>Last</button>' : ""}<button class="pz-ln" data-back>Back</button>
         </div>
-        <div class="pz-r"><div class="pz-lab">Plants · pick 5</div>${roster}</div>
-        <div class="pz-sheet${this.sel ? " open" : ""}">${this.sheet(this.sel)}</div>
-      </div></div>`;
+        ${trLine}
+        <div class="pz-bar"><div class="pz-slots">${slots}</div><button class="btn pink pz-begin" data-begin ${this.pick.length < 5 ? "disabled" : ""}>Begin</button></div>
+        <button class="pz-tip ${c0}${this.tipsOpen ? " open" : ""}" data-tips ${more ? `aria-expanded="${this.tipsOpen}"` : "disabled"}><span class="ic">${i0}</span><span class="tx">${t0}</span>${more ? `<span class="more">${this.tipsOpen ? "−" : "+" + more}</span>` : ""}</button>
+        ${tipList}
+        <div class="pz-body"><div class="pz-roster">${roster}</div>${sheet ? `<div class="pz-sheet${this.peek && this.phone.matches ? " peek" : ""}">${sheet}</div>` : ""}</div>
+      </div>`;
     }
     sheet(k) {
       if (!k) return "";
       const d = T(k), close = `<button class="pz-x" data-close aria-label="Close">×</button>`;
-      const head = (sub) => `<div class="pz-head" style="--el:${kInk(k)}">${this.seed(k)}<div><h3>${esc(d.name)}</h3><small>${sub}</small></div>${close}</div>`;
+      const head = (sub) => `<div class="pz-head" data-peek style="--el:${kInk(k)}">${this.seed(k)}<div><h3>${esc(d.name)}</h3><small>${sub}</small></div>${close}</div>`;
       const step = (t, i, price) => `<li><span class="lv">${roman(i)}</span><span>${t} <span class="price">${price}</span></span></li>`;
       const price = (i) => `${i ? upCost(d.cost, i) : d.cost} dew`;
       if (d.util) {
         const inP = this.util === k;
-        return `${head("Helper · no damage")}<p class="pz-desc">${esc(d.desc)}</p>
-          <div class="pz-lab">Growth</div><ol class="pz-path">${d.levels.map((t, i) => step(esc(t), i, price(i))).join("")}</ol>
-          ${k === "cistern" ? `<p class="pz-hint">Dew over the cap is spilt and shown. Uprooting it lowers the cap, but never takes dew you hold.</p>` : ""}
-          <button class="btn pz-act" data-util="${k}" ${inP ? "disabled" : ""}>${inP ? "In slot 6" : "Put in slot 6"}</button>`;
+        return `${head(`${d.cost} dew · helper${inP ? " · in slot 6" : ""}`)}<p class="pz-desc">${esc(d.desc)}</p>
+          <ol class="pz-path">${d.levels.map((t, i) => step(esc(t), i, price(i))).join("")}</ol>
+          ${k === "cistern" ? `<p class="pz-hint">Dew over the cap is spilt. Uprooting it lowers the cap, never the dew you hold.</p>` : ""}
+          ${inP ? "" : `<button class="btn pz-act" data-chip="${k}">Put in slot 6</button>`}`;
       }
       const el = d.element, ei = D.ELEMENTS.indexOf(el), inP = this.pick.includes(k), f = D.FORKS && D.FORKS[k];
       const path = d.levels.map((t, i) => {
@@ -31935,34 +31995,36 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const links = D.LINKS.filter((l) => l.kinds.includes(k)).map((l) => {
         const other = l.kinds[0] === k ? l.kinds[1] : l.kinds[0], on = this.pick.includes(other) && (other !== k || inP);
         const g = D.GRAFTS.find((x) => x.link === l.id);
-        return `<li class="${on ? "" : "off"}"><b>${esc(l.name)}</b> with ${other === k ? "a second one" : esc(T(other).name)}${on ? "" : ` <i>(add ${esc(T(other).name)})</i>`}: ${esc(l.desc)}.${g ? ` <span class="graft">Both at III, side by side → <b>${esc(g.name)}</b>: ${esc(g.desc)}.</span>` : ""}</li>`;
+        return `<li class="${on ? "" : "off"}"><b>${esc(l.name)}</b> + ${other === k ? "a second" : esc(T(other).name)}: ${esc(l.desc)}.${g ? ` <span class="graft">Both III → <b>${esc(g.name)}</b></span>` : ""}</li>`;
       }).join("");
       const full = !inP && this.pick.length >= 5;
-      return `${head(`<span class="pz-dot" style="--el:${elInk(el)}"></span>${EL_NAME[el] || el}`)}<p class="pz-desc">${esc(d.desc)}</p>
-        <div class="pz-stats"><span><b>${d.cost}</b>dew</span><span><b>${d.range}</b>reach</span><span><b>${Math.round(d.damage * d.rate)}</b>dmg / s</span></div>
-        <div class="pz-lab">Growth path</div><ol class="pz-path">${path}</ol>
-        <div class="pz-lab">Counters</div><div class="pz-vs">
-          ${w ? `<div>${w.inked || ""}<span><b>${esc(w.name)}</b>: ${esc(traitOf(tid).desc)}.</span></div>` : ""}
-          <div><span class="up">▲ strong</span><span>${esc(strong.join(", ") || "-")}</span></div>
-          <div><span class="down">▼ weak</span><span>${esc(weak.join(", ") || "-")}</span></div></div>
-        ${links ? `<div class="pz-lab">Links · plant side by side</div><ul class="pz-links">${links}</ul>` : ""}
-        <button class="btn pz-act" data-toggle="${k}" ${full ? "disabled" : ""}>${inP ? "Take out of pouch" : full ? "Pouch full: take one out first" : "Add to pouch"}</button>`;
+      return `${head(`<span class="pz-dot" style="--el:${elInk(el)}"></span>${EL_NAME[el] || el} · ${d.cost} dew · reach ${d.range} · ${Math.round(d.damage * d.rate)}/s`)}<p class="pz-desc">${esc(d.desc)}</p>
+        <ol class="pz-path">${path}</ol>
+        <div class="pz-vs">
+          ${w ? `<div>${w.inked || ""}<span>beats <b>${esc(w.name)}</b></span></div>` : ""}
+          ${strong.length ? `<div><span class="up">▲</span><span>${esc(strong.join(", "))}</span></div>` : ""}
+          ${weak.length ? `<div><span class="down">▼</span><span>${esc(weak.join(", "))}</span></div>` : ""}</div>
+        ${links ? `<ul class="pz-links">${links}</ul>` : ""}
+        ${full ? `<p class="pz-hint">Pouch full: tap a slot to take one out.</p>` : ""}`;
     }
+    // a chip: in or out of the pouch, and its sheet shown (a full pouch only shows it)
     toggle(k) {
       if (T(k).util) this.util = k;
       else if (this.pick.includes(k)) this.pick = this.pick.filter((x) => x !== k);
       else if (this.pick.length < 5) this.pick = [...this.pick, k];
+      this.sel = k;
       this.render();
     }
     click(e) {
-      const b = e.target.closest("button"); if (!b || b.disabled) return;
+      const b = e.target.closest("button,[data-peek]"); if (!b || b.disabled) return;
       const ds = b.dataset;
-      if (ds.card) { this.sel = ds.card; this.render(); }
+      if ("close" in ds) { this.sel = ""; this.peek = true; this.render(); }
+      else if ("peek" in ds) { this.peek = !this.peek; this.render(); }
+      else if (ds.chip) this.toggle(ds.chip);
       else if (ds.out) { this.pick = this.pick.filter((x) => x !== ds.out); this.sel = ds.out; this.render(); }
-      else if (ds.show) { this.sel = ds.show; this.render(); }
-      else if (ds.toggle) this.toggle(ds.toggle);
-      else if (ds.util) this.toggle(ds.util);
-      else if ("close" in ds) { this.sel = ""; this.render(); }
+      else if (ds.show) { this.sel = this.sel === ds.show ? "" : ds.show; this.render(); }
+      else if (ds.trait) { this.trait = this.trait === ds.trait ? "" : ds.trait; this.render(); }
+      else if ("tips" in ds) { this.tipsOpen = !this.tipsOpen; this.render(); }
       else if ("sugg" in ds) { const p = G.state.suggestedPouch(this.id); this.set(p.plants, p.util); this.render(); }
       else if ("last" in ds) { const p = G.state.pouchOf(this.id); this.set(p.plants, p.util); this.render(); }
       else if ("back" in ds) this.back();
@@ -31975,7 +32037,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.menu.go(this.id, this.mode + "!");
     }
     key(e) {
-      if (e.key === "Escape") { e.preventDefault(); if (this.sel && this.phone.matches) { this.sel = ""; this.render(); } else this.back(); }
+      if (e.key === "Escape") { e.preventDefault(); if (this.sel) { this.sel = ""; this.render(); } else this.back(); }
       else if (e.key === "Enter" && e.target === document.body) { e.preventDefault(); this.begin(); }
     }
   }
