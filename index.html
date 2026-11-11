@@ -618,7 +618,6 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
   #skybtn, #turnl, #turnr { grid-row: 2; }
   #skybtn { grid-column: 2; } #turnl { grid-column: 3; } #turnr { grid-column: 4; }
   .btn.small { width: 44px; height: 42px; font-size: calc(17px * var(--ts)); }
-  #fps { position: fixed; right: calc(8px + var(--sr)); top: calc(100px + var(--st)); margin: 0; font-size: calc(11px * var(--ts)); }
   #almanac { top: calc(118px + var(--st)); right: calc(6px + var(--sr)); max-height: calc(var(--vh) * 0.4); font-size: calc(12.5px * var(--ts)); }
   #giftbox { left: calc(6px + var(--sl)); top: calc(52px + var(--st)); max-width: calc(var(--vw) - 190px); }
   .bchip { height: 28px; min-width: 28px; padding: 0 4px; border-radius: 9px; }
@@ -751,7 +750,10 @@ body.calm #rites.pick { animation: none; }
   #wave { font-size: calc(15px * var(--ts)); line-height: 1; }
   #topright { right: var(--sr); display: flex; gap: 4px; padding: 2px 4px; }
   #topright .btn.small { width: 44px; height: 36px; font-size: calc(16px * var(--ts)); border-radius: 10px; }
-  #turnl, #fps { display: none; }
+  #turnl { display: none; }
+  /* (fps · scale · vox: small, under the strip on the right, over the garden but never in the way of a tap; the
+     open almanac covers it) */
+  #fps { position: fixed; right: calc(6px + var(--sr)); top: calc(42px + var(--st)); margin: 0; font-size: calc(10px * var(--ts)); white-space: nowrap; pointer-events: none; }
   #pquick .btn.small { width: 52px; height: 46px; }
   #almanac { top: calc(44px + var(--st)); right: calc(6px + var(--sr)); max-height: calc(var(--vh) * 0.45); }
   body:not(.alm-open) #almanac { display: none; }
@@ -22056,7 +22058,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.117.0", name: "Mossheart", commit: "261522db" };
+  G.VERSION = { v: "0.118.0", name: "Mossheart", commit: "a4055573" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
