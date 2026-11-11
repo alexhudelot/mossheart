@@ -22084,7 +22084,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.119.0", name: "Mossheart", commit: "c751e587" };
+  G.VERSION = { v: "0.120.0", name: "Mossheart", commit: "e7b0df6d" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -26196,6 +26196,12 @@ function MA_DSP() {
   // the asset models grow by level themselves; the instance adds only a touch
   G.LEVEL_SCALE = [1, 1.04, 1.08];
   const FRAMES = 4;
+  // W1: a creature's gait flipbook (its walk by distance, a flier's flap by time; the view plays frames.length):
+  // 8 frames on desktops, 4 on phones (the devices that cap at 32: ME.phoneLike(), or ?heromax=32 on a desktop).
+  // A kind's own `frames` (G.CREATURE_MODELS) wins; ?gaitframes= sets every kind's, for a check (4: before W1).
+  // Its trait flipbooks (veiled, plated, regrowing) take the same count. Every model's walk is a loop over o.t,
+  // frame 0 its contact pose, so frames 0, 2, 4, 6 of 8 are the 4-frame flipbook's.
+  G.gaitFrames = (c) => ME.qn("gaitframes", 0) || (c && c.frames) || (ME.phoneLike() || (G.HERO_MAX || 64) <= 32 ? 4 : 8);
 
   // The level's dressing, before the bake: the Heart Tree takes the big maple's place (the road ends under
   // it), a blight rift opens where the road starts, and glowcaps grow on unbuildable cells beside the road.
@@ -26294,13 +26300,13 @@ function MA_DSP() {
   // opts.models for ME.bakeModels: key -> [model, options, frames]
   G.bakeList = () => {
     const out = {};
-    for (const k in G.CREATURE_MODELS) { if (!G.Defs.ENEMIES[k]) continue; const c = G.CREATURE_MODELS[k]; out["e_" + k] = [c.name, { scale: k0(c.name) * c.size, fine: G.heroFine() }, FRAMES]; }
+    for (const k in G.CREATURE_MODELS) { if (!G.Defs.ENEMIES[k]) continue; const c = G.CREATURE_MODELS[k]; out["e_" + k] = [c.name, { scale: k0(c.name) * c.size, fine: G.heroFine() }, G.gaitFrames(c)]; }
     // the creatures' traits, once the rules have them (Defs.CTRAITS): a flipbook per wearer and look
     if (G.Defs.CTRAITS) for (const t of ["veiled", "plated", "regrow"]) for (const k of wearers(t)) {
       const c = G.CREATURE_MODELS[k];
       if (!c || !G.Defs.ENEMIES[k] || (t !== "veiled" && !M[c.name + "_" + t])) continue;
-      const o = { scale: k0(c.name) * c.size, fine: G.heroFine() };
-      out["e_" + k + "_" + t] = t === "veiled" ? [c.name, Object.assign(o, { remap: G.VEIL_REMAP }), FRAMES] : [c.name + "_" + t, Object.assign(o, { look: G.Defs.ENEMIES[k].look || 1 }), FRAMES];
+      const o = { scale: k0(c.name) * c.size, fine: G.heroFine() }, n = G.gaitFrames(c);
+      out["e_" + k + "_" + t] = t === "veiled" ? [c.name, Object.assign(o, { remap: G.VEIL_REMAP }), n] : [c.name + "_" + t, Object.assign(o, { look: G.Defs.ENEMIES[k].look || 1 }), n];
     }
     // (only the plants the rules have, and the grafts' models, G.GRAFT_ART: a model may land before its plant)
     const grafts = new Set(Object.values(G.GRAFT_ART || {}).map((a) => a.model));
@@ -28480,9 +28486,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.on = ME.qn("wounds", 1) !== 0;
       const N = G.ENEMY_CAPACITY;
       this.st = new Uint8Array(N); this.uid = new Int32Array(N).fill(-1); this.next = new Float32Array(N); this.o = [0, 0, 0];
+      this.turn = new Float32Array(N); // each creature's gait turn and wobble as last drawn (scene.js), so its chips leave the body as drawn
       this.budget = TRAIL_MAX; this.stats = { chips: 0, voxels: 0, flakes: 0, drips: 0, dropped: 0 };
     }
-    reset() { this.uid.fill(-1); this.st.fill(0); }
+    reset() { this.uid.fill(-1); this.st.fill(0); this.turn.fill(0); }
     // the stage of creature k as drawn (0 when off)
     stage(E, k) { return this.on ? G.woundStage(E.hp[k], E.maxHp[k]) : 0; }
     // the stage's gait on top of the walk: [phase, pitch, bob] (ph the walk's phase in cycles, bob its own)
@@ -28518,7 +28525,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // the frame creature k wears and its model's scale, turn and centre
     wear(E, k, MD) {
       const cm = MD.creature[E.kind[k]], fr = this.view.traitLook(E, k, MD, cm.frames);
-      const yaw = (E.face[k] ? 0 : E.yaw[k]) - cm.fwd; // (on a wall its frame holds the heading: scene.js)
+      const yaw = (E.face[k] ? 0 : E.yaw[k]) - cm.fwd + this.turn[k]; // (on a wall its frame holds the heading: scene.js)
       return { mi: fr.frames[0], s: cm.scale, c: Math.cos(yaw), sn: Math.sin(yaw) };
     }
     // a point of its model (voxel units) as an offset from it in the world: turned and scaled, and on a wall through
@@ -29236,7 +29243,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // layer: the old elastic grow-in.
   // a prop on a cell an act opens puffs into OPEN_PUFF_N of its voxels as it goes, at most OPEN_PUFFS of them at a
   // turn (Momiji's Act II opens the cells of 6: livingMap)
-  const OPEN_PUFFS = 8, OPEN_PUFF_N = 60;
+  const OPEN_PUFFS = 8, OPEN_PUFF_N = 120;
   const GROW_S = 0.9, GROW_TRAVEL = 0.35, GROW_MAX = 1500, GROW_MAX_PHONE = 450;
 
   class GameView {
@@ -29336,6 +29343,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.upload = new Uint8Array(b.w * b.h);
       for (const t of game.towers) this.anim.set(t, this.newAnim());
       this.fx.reset(w); this.boonFx.reset(); this.plantFx.reset(); this.creatureFx.reset(); this.tombs.reset(); this.acts.reset(game); this.gait.reset();
+      if (this.openProps) for (const p of this.openProps) p.gone = null; // (the pots stood again: livingMap sets each anew)
       this.livingMap(false);
       b.dirty = true;
       this.updateCells(); this.updateLights();
@@ -29362,7 +29370,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         this.openProps = [];
         for (const s of MB.statics) {
           const x = Math.floor(s.place.X), y = Math.floor(s.place.Y);
-          if (!skip.has(s) && s.place.name !== "ms_rift" && w.inside(x, y) && w.opens.has(w.idx(x, y))) this.openProps.push({ s, k: w.idx(x, y) });
+          if (!skip.has(s) && s.place.name !== "ms_rift" && w.inside(x, y) && w.opens.has(w.idx(x, y))) this.openProps.push({ s, k: w.idx(x, y), gone: null });
         }
       }
       let lights = false;
@@ -29376,9 +29384,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (lights) this.updateLights();
       let n = 0;
       for (const p of this.openProps) {
+        // (only on a change, by its own flag: a prop something else hides or shows is left alone while its cell holds)
         const gone = w.opens.get(p.k) <= w.act, s = p.s, q = s.place;
-        if (gone && !s.hidden && burst && n++ < OPEN_PUFFS) this.emitModel(s.frames[0], [q.X, q.Y, q.Z], 0, { n: OPEN_PUFF_N, speed: 0.45, life: 3, flip: q.flip, rot: q.rot });
-        s.hidden = gone;
+        if (gone === p.gone) continue;
+        if (gone && p.gone === false && burst && n++ < OPEN_PUFFS) {
+          this.emitModel(s.frames[0], [q.X, q.Y, q.Z], 0, { n: OPEN_PUFF_N, speed: 0.8, life: 3, flip: q.flip, rot: q.rot });
+          this.fx.burst("plant", [q.X, q.Y, q.Z + 0.3]);
+        }
+        s.hidden = gone; p.gone = gone;
       }
     }
 
@@ -29728,6 +29741,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (ws) { const g = this.wounds.gait(ws, ph, bob, this.gaitOut); ph = g[0]; pitch += g[1]; bob = g[2]; }
         const wob = n === 1 ? Math.sin(ph * Math.PI * 2) * 0.08 : 0;
         GA.pose(E, k, E.kindOf(k), ph, cm.flap, gp, cm.fwd - wob); bob *= gp.bob; // (body motion per gait: gait.js)
+        this.wounds.turn[k] = wob + gp.yaw; // (its chips and flakes turn with it: wounds.js wear)
         const fr = this.traitLook(E, k, MD, cm.frames), n2 = fr.frames.length;
         const f = fr.frames[Math.floor((((ph % 1) + 1) % 1) * n2) % n2], fl = E.flash[k], sq = fl * 0.1, s = cm.scale, mk = this.marks(E, k) | fr.mark | (ws << G.MARK.WOUND_SHIFT);
         const g = gp.sc, sc = [s * (1 + sq) * g[0], s * (1 + sq) * g[1], s * (1 - sq) * g[2]];
