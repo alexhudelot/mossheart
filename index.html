@@ -1098,6 +1098,15 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   .pz-seed svg { width: 20px; height: 20px; }
   .pz-slot { min-height: 56px; }
 }
+/* the living map's acts (view/acts.js): the chip by the wave button, and the act turn's banner */
+#actchip { display: none; margin-left: -8px; padding: 3px 9px; border-radius: 10px; background: rgba(40, 60, 24, 0.55); color: #f4f8dc; font-size: calc(14px * var(--ts)); font-weight: 800; letter-spacing: 0.04em; align-self: center; white-space: nowrap; }
+#actchip.show { display: inline-block; }
+#actbanner { position: fixed; left: 50%; top: calc(22% + var(--st)); z-index: 4; width: auto; min-width: min(360px, calc(var(--vw) - 32px)); max-width: calc(var(--vw) - 32px);
+  transform: translate(-50%, -10px); opacity: 0; pointer-events: none; transition: opacity 0.45s, transform 0.45s; padding: 14px 28px; }
+#actbanner.show { opacity: 1; transform: translate(-50%, 0); }
+#actbanner small { display: block; font-size: calc(16px * var(--ts)); font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; opacity: 0.75; }
+#actbanner b { display: block; font-size: calc(32px * var(--ts)); font-weight: 900; color: var(--ink); }
+@media (max-width: 760px) { #actbanner b { font-size: calc(24px * var(--ts)); } #actchip { font-size: calc(12px * var(--ts)); margin-left: -4px; } }
 </style>
 </head>
 <body>
@@ -6558,13 +6567,13 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // null: bake it here); grab() takes the next queued region for the main thread (-1: none in the window); drop(r)
   // drops region r's answer when it comes (the main thread baked r). Each worker holds 2 regions at most, and a
   // region is posted or grabbed only while it is fewer than `ahead` past the one taken, so the records waiting
-  // here stay few. The watchdog (ME.bakeJobMs, 30 s; restarted on each answer) loses a worker that holds regions
+  // here stay few. The watchdog (ME.bakeJobMs, else jobMs, else 30 s; restarted on each answer) loses a worker that holds regions
   // and sends nothing; its regions, and the queue once no worker is left, answer null. job(r, x) (W1's baker) queues
   // one region in any order, its message carrying x's fields too; a pool given such jobs posts them with no window
-  const terrainPool = (n) => {
+  const terrainPool = (n, jobMs = 0) => {
     let url = null;
     try { url = URL.createObjectURL(new Blob([terrainWorkerSrc()], { type: "text/javascript" })); } catch (e) { return null; }
-    const limit = ME.bakeJobMs || 30000, ahead = n * 3, ws = [], got = new Map(), dropped = new Set(), queue = [], extra = new Map(), ch = new MessageChannel();
+    const limit = ME.bakeJobMs || jobMs || 30000, ahead = n * 3, ws = [], got = new Map(), dropped = new Set(), queue = [], extra = new Map(), ch = new MessageChannel();
     let taken = 0, stopped = false, loose = false;
     const whys = []; // why each worker was lost (pool.why; T.stats.regions.workers.lost)
     // waiters: the stream's bake waiting on an answer (pool.wait); an answer, a lost worker or stop wakes them
@@ -7203,7 +7212,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       // #548 note C: a region's grid (and a lamp's) is a window of the bricks its columns C reach, not the map's
       const bwin = (c) => [c[0] >> 4, (c[2] + 15) >> 4, c[1] >> 4, (c[3] + 15) >> 4];
       // P1c: the workers start (and boot) during the lamp pre-pass; a worker takes the lamps' heights from the plan
-      const nw = o.serve ? 0 : terrainWorkerN(VS, !!(o.bg || o.hold)), pool = nw > 0 ? terrainPool(nw) : null;
+      const nw = o.serve ? 0 : terrainWorkerN(VS, !!(o.bg || o.hold)), pool = nw > 0 ? terrainPool(nw, o.jobMs) : null;
       if (o.bg && !pool) throw noWorkers("no terrain workers");
       // o.only (W1, a single region's bake): only the lamps within 3 tiles of region o.only get their heights (a
       // lamp's stamp reaches less than 1.5 tiles); the others' stamps are clipped out of it
@@ -7372,8 +7381,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       // nothing is left to number), baked from the map's state as it was after the prelude (keep). A live worker
       // takes it; none, a worker's error or a record that does not fit and it bakes here (one at a time: a bake
       // here forks the palette). The same r asked twice while it bakes gives the same promise. stop() ends the
-      // workers; stats: { workers (the pool's start, as regions.workers), took, here, lost }
-      const baker = (pl, wk, fits) => {
+      // workers; stats: { workers (the pool's start, as regions.workers), live, took, here, lost }. mayHere false
+      // (o.here, C128): never here; where it would bake a region here, bake(r) rejects with an error with .noWorkers
+      const baker = (pl, wk, fits, mayHere) => {
         const busy = new Map();
         let here = Promise.resolve(), stopped = false, took = 0, inHere = 0;
         const local = (r, ring) => {
@@ -7382,15 +7392,19 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           return p;
         };
         const one = async (r, ring) => {
-          let res = null;
+          let res = null, why = "no live terrain worker";
           if (pl && pl.live()) {
             pl.job(r, { ring, keep: true });
             let m;
             while ((m = pl.answer(r)) === undefined) { if (stopped) throw new Error("W1: the baker was stopped"); await pl.wait(1000); }
             if (m && m.res && fits(m.res)) { res = m.res; took++; }
-            else if (m && m.err) ME.log("WARN TERRAIN worker: region " + r + ": " + m.err.split("\n")[0] + "; baked on the main thread");
+            else {
+              why = m && m.err ? "its worker: " + m.err.split("\n")[0] : m ? "its record would take the palette past 255" : "its worker was lost";
+              if (mayHere && m && m.err) ME.log("WARN TERRAIN worker: region " + r + ": " + m.err.split("\n")[0] + "; baked on the main thread");
+            }
           }
           if (stopped) throw new Error("W1: the baker was stopped");
+          if (!res && !mayHere) throw Object.assign(new Error("W1: region " + r + " not baked (" + why + "; none on the main thread)"), { noWorkers: true });
           if (!res) { res = await local(r, ring); inHere++; }
           const rg = lay(res, res.M);
           return Object.assign({}, res, { grid: rg.record(), base: PAL.names.length, names: [], entries: [], mats: [] });
@@ -7481,7 +7495,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         if (o.hold) {
           const wk = pool ? { n: pool.ws.length, ready, checks: boxes.length, checkMs, lost: pool.why } : null;
           held = !!ready;
-          return baker(ready ? pool : null, wk, fits);
+          return baker(ready ? pool : null, wk, fits, o.here !== false);
         }
         if (pool && ready) pool.jobs(N);
         // the main thread never waits on a worker: while region r is out, it bakes the next region no worker holds
@@ -7648,8 +7662,10 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // is checked as the regions bake's are (digest and probe bake); then baker.bake(r) bakes region r in any
   // order, on a worker when one is live, else here. Resolves to { vs, n, size, workers, bake(r, ring = 16),
   // stop(), stats }; pass it to ME.bakeRegionHi. The baker keeps its workers (and the prelude's arrays) until
-  // stop(). pal: the app's, as ME.bakeRegionHi's
-  ME.hiBaker = (st, pal, vs = 128) => ME.bakeTerrain(st, pal, { vs, hold: true });
+  // stop(). pal: the app's, as ME.bakeRegionHi's. o.here false: no region bakes here (baker.bake rejects, with
+  // .noWorkers, where it would). o.jobMs: the workers' watchdog (ME.bakeJobMs wins); by default 4 min at vs >= 64,
+  // where a region takes 20-70 s (C128's slot, 2026-11-10: at 30 s both workers were lost mid-bake), else 30 s
+  ME.hiBaker = (st, pal, vs = 128, o = {}) => ME.bakeTerrain(st, pal, { vs, hold: true, here: o.here, jobMs: o.jobMs || (vs >= 64 ? 240000 : 0) });
 
   // W1: region r of the regions bake (4 x 4 tiles) at a second density
   // vs, apart from the map's terrain, on the main thread. Its grid is cropped to its bricks with one brick round
@@ -11261,10 +11277,18 @@ fn faceN(d: u32) -> vec3f {
   // W1 (docs/designs/2026-11-08-whole-game-128.md): a region baked at a second density draws with its own grid
   // (origin, voxels per unit) and density texture's extent (rg.dims.xyz, in its voxels; rg.dims.w its density over
   // the map's, so the AO taps reach as far in the world as the map's do). No carve: W3 edits a region
-  W.terrainHi = W.common + W.terrain.slice(W.common.length).replace("@vertex fn vs(", "struct RG { grid: vec4f, dims: vec4f };\n@group(1) @binding(3) var<uniform> rg: RG;\n@vertex fn vs(")
+  // W2 (C128): rg.fd.x is its fade in (0 none, 1 all), a pixel kept below it on P3b's 4x4 ordered dither (dith4);
+  // the base region under it draws the others (terrainOld with the C128 fade buffer: the complementary side)
+  const DITH = `fn dith4(p: vec2f) -> f32 {
+  let x = u32(p.x) & 3u; let y = u32(p.y) & 3u; let a = x ^ y;
+  return (f32(((a & 1u) << 3u) | ((y & 1u) << 2u) | (a & 2u) | ((y >> 1u) & 1u)) + 0.5) / 16.0;
+}
+`;
+  W.terrainHi = W.common + W.terrain.slice(W.common.length).replace("@vertex fn vs(", "struct RG { grid: vec4f, dims: vec4f, fd: vec4f };\n@group(1) @binding(3) var<uniform> rg: RG;\n" + DITH + "@vertex fn vs(")
     .replaceAll("u.grid", "rg.grid").replaceAll("u.dims", "rg.dims")
-    .replace("tv + n * 2.2, 0.0", "tv + n * 2.2 * rg.dims.w, 0.0").replace("tv + n * 5.0, 1.0", "tv + n * 5.0 * rg.dims.w, 1.0");
-  if (!W.terrainHi.includes("2.2 * rg.dims.w") || !W.terrainHi.includes("5.0 * rg.dims.w")) throw new Error("terrainHi: the terrain shader changed");
+    .replace("tv + n * 2.2, 0.0", "tv + n * 2.2 * rg.dims.w, 0.0").replace("tv + n * 5.0, 1.0", "tv + n * 5.0 * rg.dims.w, 1.0")
+    .replace("let vox = floor(tv - fnm * 0.5);", "let vox = floor(tv - fnm * 0.5);\n  if (dith4(i.pos.xy) >= rg.fd.x) { discard; }");
+  if (!W.terrainHi.includes("2.2 * rg.dims.w") || !W.terrainHi.includes("5.0 * rg.dims.w") || !W.terrainHi.includes(">= rg.fd.x")) throw new Error("terrainHi: the terrain shader changed");
   // P3b (docs/designs/2026-11-07-engine-opt-progressive-density.md, 4.6): the stream's crossfade (R.swapTerrain
   // with o.fade). For a while the terrain draws twice, the stream's (new) and the boot's (old, drawn with the boot's
   // grid and density texture), each a fragment's region's share of the pixels on a 4x4 ordered dither: the new
@@ -11279,11 +11303,7 @@ fn fadeOf(w: vec2f) -> f32 {
   let ry = max(i32(floor((w.y - fade[1]) * fade[2])), 0);
   return fade[4u + min(u32(ry * c + rx), arrayLength(&fade) - 5u)];
 }
-fn dith4(p: vec2f) -> f32 {
-  let x = u32(p.x) & 3u; let y = u32(p.y) & 3u; let a = x ^ y;
-  return (f32(((a & 1u) << 3u) | ((y & 1u) << 2u) | (a & 2u) | ((y >> 1u) & 1u)) + 0.5) / 16.0;
-}
-`;
+` + DITH;
   const faded = (src, b, keepNew) => src.replace("@fragment fn fs(i: VO) -> GO {", FADE(b) + "@fragment fn fs(i: VO) -> GO {")
     .replace("let vox = floor(tv - fnm * 0.5);", "let vox = floor(tv - fnm * 0.5);\n  if (dith4(i.pos.xy) " + (keepNew ? ">=" : "<") + " fadeOf((vox.xy + 0.5) / u.grid.w + u.grid.xy)) { discard; }");
   W.terrainFade = faded(W.terrain, 3, true);
@@ -13327,6 +13347,9 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
      pick(px, py, cam, o)  the terrain voxel or instance under a canvas pixel, on the CPU (o: terrain,
                         instances: false to skip one; accept(layer, index) to skip some instances)
      addTask(gen)    CPU work spread over the frames, a few ms each (a progressive bake's upgrade runs on it)
+     prepHi(), hiAdd(h, mesh, o), hiStep(bytes), hiFade(n, f), hiDrop(n), hiClear()  terrain regions at a
+                     second density over the base mesh, faded on the dither (W2: ME.C128 drives them); onCarve(cells)
+                     hears each carve first
      weather         an ME.WeatherMix: setWeather(kind, k, s) or weather.mix(vector, s) eases clouds, wind and
                      gusts (Weather 1; rain, snow, fog reach the uniforms) on top of R.set, never writing it
      swapModel(o)    models replaced in place under the same ids, dissolved in over a fade (onSwap(key, ids)
@@ -13650,7 +13673,7 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
         this.patchDirty = false;
       }
       // W1: the region at a second density was the old terrain's
-      if (this.hi) this.setHiRegion(null);
+      this.hiClear();
       S.T = T; S.mesh = mesh; S.grass = grass;
       if (!keep) this.densTex.destroy();
       this.densTex = ME.tex3d(d, "density", "r8unorm", [T.NX >> 1, T.NY >> 1, T.NZ >> 1], T.mips, 1);
@@ -14288,6 +14311,7 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     // coarse occupancy (sun volume) are recomputed over the box around the change.
     carve(cells) {
       if (!cells.length) return;
+      if (this.onCarve) this.onCarve(cells); // (W2: the regions at a second density mirror the edit, ME.C128)
       this.carveGrass(cells);
       const d = this.dev, T = this.S.T, NX = T.NX, NY = T.NY, NZ = T.NZ, PL = NX * NY, vg = T.grid;
       if (!this.carved) {
@@ -14663,70 +14687,207 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     }
 
     // A mesh by regions (greedy.js): regionOut[n] is 1 while region n's box is off screen. The view is orthographic,
-    // so a box is off when its centre's clip x or y is past +-1 by more than its half extent there (2% slack)
+    // so a box is off when its centre's clip x or y is past +-1 by more than its half extent there (2% slack).
+    // regionD[n]: its centre's squared distance from the view's in clip x and y (W2's order, centre first)
     cullRegions(vp, T) {
       const R = this.S.mesh.regions, iv = 1 / T.VS;
       let out = this.regionOut, drawn = 0;
-      if (!out || out.length !== R.length) out = this.regionOut = new Uint8Array(R.length);
+      if (!out || out.length !== R.length) { out = this.regionOut = new Uint8Array(R.length); this.regionD = new Float32Array(R.length); }
+      const D = this.regionD;
       for (let n = 0; n < R.length; n++) {
         const b = R[n].box, cx = (b[0] + b[3]) * 0.5 * iv + T.O[0], cy = (b[1] + b[4]) * 0.5 * iv + T.O[1], cz = (b[2] + b[5]) * 0.5 * iv + T.O[2];
         const hx = (b[3] - b[0]) * 0.5 * iv, hy = (b[4] - b[1]) * 0.5 * iv, hz = (b[5] - b[2]) * 0.5 * iv;
-        let off = 0;
-        for (let a = 0; a < 2 && !off; a++) {
+        let off = 0, dd = 0;
+        for (let a = 0; a < 2; a++) {
           const c = vp[a] * cx + vp[4 + a] * cy + vp[8 + a] * cz + vp[12 + a], e = Math.abs(vp[a]) * hx + Math.abs(vp[4 + a]) * hy + Math.abs(vp[8 + a]) * hz;
-          off = c - e > 1.02 || c + e < -1.02 ? 1 : 0;
+          if (!off) off = c - e > 1.02 || c + e < -1.02 ? 1 : 0;
+          dd += c * c;
         }
+        D[n] = dd;
         out[n] = off; drawn += 1 - off;
       }
       this.regionDrawn = drawn;
     }
 
     // the terrain's index range for snap k: one draw, or by regions each part whose region is on screen (and under a
-    // crossfade, not still all old: skip)
+    // crossfade, not still all old: skip; W2: not drawn at a second density, all of it or under a fade: hiState)
     drawSnap(r, k, skip) {
       const sn = this.S.mesh.snaps[k];
       if (!sn.parts) { r.drawIndexed(sn.count, 1, sn.first, 0, 0); return; }
-      const p = sn.parts, out = this.regionOut, hn = this.hi ? this.hi.n : -1;
-      for (let n = 0; n < p.length; n += 4) if (!out[p[n]] && p[n] !== hn && !(skip && skip[p[n]])) r.drawIndexed(p[n + 3], 1, p[n + 2], p[n + 1], 0);
+      const p = sn.parts, out = this.regionOut, hs = this.hiState;
+      for (let n = 0; n < p.length; n += 4) if (!out[p[n]] && !(hs && hs[p[n]]) && !(skip && skip[p[n]])) r.drawIndexed(p[n + 3], 1, p[n + 2], p[n + 1], 0);
     }
 
-    // W1 (docs/designs/2026-11-08-whole-game-128.md): one region drawn from a bake at a second density (h from
-    // ME.bakeRegionHi, its mesh from greedyMesh over h.grid) in place of the base mesh's parts there; null puts
-    // the base back. Its own pipeline (W.terrainHi, compiled on the first call), density texture and grid uniform
-    // (h.origin in the region's voxels, h.vs of them a unit); the materials are the map's (h's palette was mapped
-    // into it). Needs a mesh by regions with a region of h.rect
-    async setHiRegion(h, mesh) {
-      const d = this.dev, T = this.S.T, old = this.hi;
-      this.hi = null;
-      if (old) for (const b of [old.tex, old.ubuf, old.vb, old.ib]) b.destroy();
-      if (!h) return null;
-      const R = this.S.mesh.regions, n = R ? R.findIndex((g) => g.rect.every((v, a) => v === h.rect[a])) : -1;
-      if (n < 0) throw new Error("setHiRegion: no base region at " + h.rect + (R ? "" : " (a mesh not by regions)"));
-      if (!this.plHi) {
+    // W1 and W2 (docs/designs/2026-11-08-whole-game-128.md): regions drawn from a bake at a second density (h from
+    // ME.bakeRegionHi, its mesh from greedyMesh over h.grid) in place of the base mesh's parts there, each with a
+    // fade (0 the base, 1 the region; between, P3b's 4x4 dither: the region's pixels below the fade, the base's the
+    // others, through terrainOld and a fade buffer by base region, this.hiUnder). Each region has its own density
+    // texture and grid uniform (h.origin in its voxels, h.vs of them a unit, then the fade: W.terrainHi); the
+    // materials are the map's (h's palette was mapped into it). Needs a mesh by regions with a region of h.rect.
+    // this.his: base region -> its record; this.hiState by base region: 1 drawn at the second density only, 2 under
+    // a fade (drawSnap leaves both), null with none.
+    // prepHi(): the pipelines (terrainHi, and the fade's: prepFade), a promise; hiAdd needs them
+    prepHi() {
+      if (!this.plHiP) {
         const k = kit(this.gpu, this.hooks);
-        this.plHi = await k.rp("terrainHi", k.mod("terrainHi"), { targets: ME.GBUFFER.G, depthStencil: ME.GBUFFER.DEPTH, vertex: { buffers: [{ arrayStride: 8, attributes: [{ shaderLocation: 0, offset: 0, format: "uint16x4" }] }] } });
-        this.g0hi = this.bg(this.plHi, 0, [{ buffer: this.ubuf }]);
+        this.plHiP = Promise.all([k.rp("terrainHi", k.mod("terrainHi"), { targets: ME.GBUFFER.G, depthStencil: ME.GBUFFER.DEPTH, vertex: { buffers: [{ arrayStride: 8, attributes: [{ shaderLocation: 0, offset: 0, format: "uint16x4" }] }] } }), this.prepFade()])
+          .then(([pl]) => { this.plHi = pl; this.g0hi = this.bg(pl, 0, [{ buffer: this.ubuf }]); return pl; });
       }
-      const [cw, ch, cz] = h.dims, tex = ME.tex3d(d, "density hi", "r8unorm", [cw >> 1, ch >> 1, cz >> 1], [h.d1, h.d2], 1);
-      const iv = 1 / h.vs, u = new Float32Array([T.O[0] + h.origin[0] * iv, T.O[1] + h.origin[1] * iv, T.O[2] + h.origin[2] * iv, h.vs, cw, ch, cz, h.vs / T.VS]);
-      const ubuf = ME.buffer(d, u, BU.UNIFORM, "grid hi");
-      this.hi = {
-        n, tex, ubuf, snaps: mesh.snaps, idx: mesh.index.BYTES_PER_ELEMENT === 2 ? "uint16" : "uint32",
+      return this.plHiP;
+    }
+    // region h (mesh: its mesh) over its base region at o.fade (default 0, or the fade of the one it replaces). Its
+    // density goes up now, or with o.staged a few z layers at a time (hiStep: W2's install, a few MB a frame); it
+    // draws once all of it is up. A region already there is replaced: the old one draws (at the new one's fade)
+    // until the new one is up (an edit's re-mesh, W2). Returns its record { n, fade, ready, MB, quads, upMs }
+    hiAdd(h, mesh, o = {}) {
+      const d = this.dev, T = this.S.T, R = this.S.mesh.regions;
+      if (!this.plHi) throw new Error("hiAdd: no pipeline yet (await R.prepHi())");
+      const n = R ? R.findIndex((g) => g.rect.every((v, a) => v === h.rect[a])) : -1;
+      if (n < 0) throw new Error("hiAdd: no base region at " + h.rect + (R ? "" : " (a mesh not by regions)"));
+      const his = this.his || (this.his = new Map()), old = his.get(n), [cw, ch, cz] = h.dims, dims = [cw >> 1, ch >> 1, cz >> 1];
+      const tex = d.createTexture({ label: "density hi", format: "r8unorm", dimension: "3d", size: dims, mipLevelCount: 2, usage: GU.TEXTURE_BINDING | GU.COPY_DST });
+      const iv = 1 / h.vs, fade = Math.min(1, Math.max(0, o.fade ?? (old ? old.fade : 0)));
+      const u = new Float32Array([T.O[0] + h.origin[0] * iv, T.O[1] + h.origin[1] * iv, T.O[2] + h.origin[2] * iv, h.vs, cw, ch, cz, h.vs / T.VS, fade, 0, 0, 0]);
+      const ubuf = d.createBuffer({ label: "grid hi", size: u.byteLength, usage: BU.UNIFORM | BU.COPY_DST });
+      d.queue.writeBuffer(ubuf, 0, u);
+      const H = {
+        n, fade, ready: false, tex, dims, ubuf, u, snaps: mesh.snaps, idx: mesh.index.BYTES_PER_ELEMENT === 2 ? "uint16" : "uint32",
         vb: ME.buffer(d, mesh.verts, BU.VERTEX, "terrain hi vb"), ib: ME.buffer(d, mesh.index, BU.INDEX, "terrain hi ib"),
         g1: this.bg(this.plHi, 1, [tex.createView(), this.lin, { buffer: this.matBuf }, { buffer: ubuf }]),
+        up: { levels: [h.d1, h.d2], mip: 0, z: 0 }, upMs: 0, quads: mesh.quads, prev: null,
+        MB: +((h.d1.byteLength + h.d2.byteLength + mesh.verts.byteLength + mesh.index.byteLength) / 1048576).toFixed(1),
       };
-      return this.hi;
+      // the one it replaces: drawn until H is up (one still going up never draws: dropped, its own prev kept)
+      if (old) {
+        H.prev = old.ready ? old : old.prev;
+        if (old.ready) { if (old.prev) { this.hiFree(old.prev); old.prev = null; } }
+        else { old.prev = null; this.hiFree(old); }
+      }
+      if (H.prev) this.hiFadeOf(H.prev, fade);
+      his.set(n, H);
+      if (!o.staged) this.hiUpload(H, Infinity);
+      this.hiSync();
+      return H;
     }
-    // the hi region's snaps k0 and k1, while its base region is on screen
-    drawHi(r, k0, k1) {
-      const H = this.hi;
-      if (!H || (this.regionOut && this.regionOut[H.n])) return;
-      r.setPipeline(this.plHi); r.setBindGroup(0, this.g0hi); r.setBindGroup(1, H.g1);
-      r.setVertexBuffer(0, H.vb); r.setIndexBuffer(H.ib, H.idx);
+    // up to `bytes` of a region's density (its two levels, z layer by z layer, at least one layer) into its texture
+    hiUpload(H, bytes) {
+      const U = H.up, d = this.dev, t0 = ME.now();
+      let sent = 0;
+      while (U && U.mip < 2 && sent < bytes) {
+        const w = Math.max(1, H.dims[0] >> U.mip), h = Math.max(1, H.dims[1] >> U.mip), D = Math.max(1, H.dims[2] >> U.mip), L = w * h;
+        const nz = Math.min(D - U.z, Math.max(1, Math.floor((bytes - sent) / L)));
+        d.queue.writeTexture({ texture: H.tex, mipLevel: U.mip, origin: [0, 0, U.z] }, U.levels[U.mip], { offset: U.z * L, bytesPerRow: w, rowsPerImage: h }, [w, h, nz]);
+        sent += nz * L; U.z += nz;
+        if (U.z >= D) { U.mip++; U.z = 0; }
+      }
+      H.upMs += ME.now() - t0;
+      if (U && U.mip >= 2) {
+        H.up = null; H.ready = true; H.upMs = +H.upMs.toFixed(2);
+        if (H.prev) { this.hiFree(H.prev); H.prev = null; }
+        this.hiSync();
+      }
+      return sent;
+    }
+    // the staged regions' density, up to `bytes` in all this call (in the order they were added): the bytes sent
+    hiStep(bytes) {
+      let sent = 0;
+      if (this.his) for (const H of this.his.values()) { if (sent >= bytes) break; if (H.up) sent += this.hiUpload(H, bytes - sent); }
+      return sent;
+    }
+    hiFadeOf(H, f) { H.fade = f; H.u[8] = f; this.dev.queue.writeBuffer(H.ubuf, 32, H.u, 8, 1); }
+    // base region n's region to fade f (0..1)
+    hiFade(n, f) {
+      const H = this.his && this.his.get(n);
+      f = Math.min(1, Math.max(0, f));
+      if (!H || H.fade === f) return;
+      this.hiFadeOf(H, f);
+      if (H.prev) this.hiFadeOf(H.prev, f);
+      this.hiSync();
+    }
+    hiFree(H) { for (const b of [H.tex, H.ubuf, H.vb, H.ib]) b.destroy(); if (H.prev) this.hiFree(H.prev); }
+    // base region n back to the base mesh (its region's resources go)
+    hiDrop(n) {
+      const H = this.his && this.his.get(n);
+      if (!H) return;
+      this.his.delete(n); this.hiFree(H); this.hiSync();
+    }
+    hiClear() {
+      if (this.his) for (const n of [...this.his.keys()]) this.hiDrop(n);
+      const U = this.hiUnder;
+      if (U) { for (const b of [U.buf, U.rg, U.dummy]) b.destroy(); this.hiUnder = null; }
+      this.hiState = null;
+    }
+    // hiState from the regions' fades, and the under pass's fade buffer
+    hiSync() {
+      const R = this.S.mesh.regions, his = this.his;
+      if (!his || !his.size || !R) { this.hiState = null; return; }
+      const hs = this.hiState && this.hiState.length === R.length ? this.hiState.fill(0) : (this.hiState = new Uint8Array(R.length));
+      let U = this.hiUnder, any = 0;
+      if (U && U.mesh !== this.S.mesh) { for (const b of [U.buf, U.rg, U.dummy]) b.destroy(); U = this.hiUnder = null; }
+      for (const H of his.values()) {
+        const f = H.ready || H.prev ? H.fade : 0;
+        hs[H.n] = f >= 1 ? 1 : f > 0 ? 2 : 0;
+        if (hs[H.n] === 2) {
+          if (!U) U = this.hiUnderFor();
+          if (!any) U.data.fill(0, 4);
+          U.data[4 + U.cell[H.n]] = f; any = 1;
+        }
+      }
+      if (U) { U.any = any; if (any) this.dev.queue.writeBuffer(U.buf, 0, U.data); }
+    }
+    // the under pass's fade buffer (startTfade's layout: [O.x, O.y, regions per unit, columns], then a fade by cell,
+    // a base region's the cell its box's centre is in), its grid uniform and a carve with none
+    hiUnderFor() {
+      const d = this.dev, T = this.S.T, mesh = this.S.mesh, R = mesh.regions, rt = mesh.rt, per = T.VS / rt, cols = Math.ceil(T.NX / rt), rows = Math.ceil(T.NY / rt);
+      const data = new Float32Array(4 + cols * rows);
+      data.set([T.O[0], T.O[1], per, cols]);
+      const cell = Int32Array.from(R, ({ box: b }) => {
+        const x = (b[0] + b[3]) * 0.5 / T.VS, y = (b[1] + b[4]) * 0.5 / T.VS;
+        return Math.min(rows - 1, Math.max(0, Math.floor(y * per))) * cols + Math.min(cols - 1, Math.max(0, Math.floor(x * per)));
+      });
+      this.hiUnder = {
+        mesh, data, cell, any: 0, g1: null, g1For: null,
+        buf: d.createBuffer({ label: "hi fade", size: data.byteLength, usage: BU.STORAGE | BU.COPY_DST }),
+        rg: ME.buffer(d, new Float32Array([T.O[0], T.O[1], T.O[2], T.VS, T.NX, T.NY, T.NZ, 1]), BU.UNIFORM, "grid base"),
+        dummy: d.createBuffer({ label: "carved none", size: 16, usage: BU.STORAGE }),
+      };
+      return this.hiUnder;
+    }
+    // the base regions under a fade (hiState 2, on screen): snaps k0 and k1 with terrainOld on the base's own grid
+    // and carve, keeping the pixels at or above the region's fade
+    drawUnder(r, k0, k1) {
+      const U = this.hiUnder, P = this.plFadeReady, hs = this.hiState, out = this.regionOut;
+      if (!U || !U.any || !P || !hs || !out) return;
+      const c = this.carvedBuf || U.dummy;
+      if (U.g1For !== c) { U.g1For = c; U.g1 = this.bg(P.old, 1, [this.densTex.createView(), this.lin, { buffer: this.matBuf }, { buffer: U.rg }, { buffer: c }, { buffer: U.buf }]); }
+      r.setPipeline(P.old); r.setBindGroup(0, P.g0old); r.setBindGroup(1, U.g1);
+      r.setVertexBuffer(0, this.tVB); r.setIndexBuffer(this.tIB, this.S.mesh.index.BYTES_PER_ELEMENT === 2 ? "uint16" : "uint32");
       for (const k of k1 !== k0 ? [k0, k1] : [k0]) {
-        const sn = H.snaps[k];
-        if (!sn.parts) r.drawIndexed(sn.count, 1, sn.first, 0, 0);
-        else for (let m = 0; m < sn.parts.length; m += 4) r.drawIndexed(sn.parts[m + 3], 1, sn.parts[m + 2], sn.parts[m + 1], 0);
+        const p = this.S.mesh.snaps[k].parts;
+        for (let n = 0; n < p.length; n += 4) if (hs[p[n]] === 2 && !out[p[n]]) r.drawIndexed(p[n + 3], 1, p[n + 2], p[n + 1], 0);
+      }
+    }
+    // W1's call: region h alone, all of it (null: none). Resolves to its record
+    async setHiRegion(h, mesh) {
+      this.hiClear();
+      if (!h) return null;
+      await this.prepHi();
+      return this.hiAdd(h, mesh, { fade: 1 });
+    }
+    // the regions' snaps k0 and k1 (each one up, or the one it replaces, at a fade over 0), on screen
+    drawHi(r, k0, k1) {
+      if (!this.his || !this.plHi) return;
+      let set = false;
+      for (const H of this.his.values()) {
+        const D = H.ready ? H : H.prev;
+        if (!D || H.fade <= 0 || (this.regionOut && this.regionOut[H.n])) continue;
+        if (!set) { r.setPipeline(this.plHi); r.setBindGroup(0, this.g0hi); set = true; }
+        r.setBindGroup(1, D.g1); r.setVertexBuffer(0, D.vb); r.setIndexBuffer(D.ib, D.idx);
+        for (const k of k1 !== k0 ? [k0, k1] : [k0]) {
+          const sn = D.snaps[k];
+          if (!sn.parts) r.drawIndexed(sn.count, 1, sn.first, 0, 0);
+          else for (let m = 0; m < sn.parts.length; m += 4) r.drawIndexed(sn.parts[m + 3], 1, sn.parts[m + 2], sn.parts[m + 1], 0);
+        }
       }
     }
 
@@ -14848,7 +15009,7 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       this.drawSnap(r, k0, skip); if (k1 !== k0) this.drawSnap(r, k1, skip);
       if (CD && CD.n) { r.setVertexBuffer(0, CD.vb); r.setIndexBuffer(CD.ib, "uint32"); r.drawIndexed(CD.n); }
       if (TF) this.drawOld(r, k0, k1);
-      if (this.hi) this.drawHi(r, k0, k1);
+      if (this.hiState) { this.drawUnder(r, k0, k1); this.drawHi(r, k0, k1); }
       if (s.grass && S.grass.count) { r.setPipeline(P.grass); r.setBindGroup(0, g0.grass); r.setBindGroup(1, g1.grass); r.draw(42, S.grass.count); }
       r.setPipeline(P.volume); r.setBindGroup(0, g0.volume); r.setBindGroup(1, g1.volume); r.draw(36, nInst);
       for (const L of this.layers) L.gbuffer(r);
@@ -21875,7 +22036,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.113.0", name: "Mossheart", commit: "f9d8240f" };
+  G.VERSION = { v: "0.114.0", name: "Mossheart", commit: "5745a8ac" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -24738,6 +24899,9 @@ function MA_DSP() {
         G.emit("waves");
       } finally { Save.busy = false; }
       G.emit("restored", { wave: S.wave, towers: game.towers.length });
+      // a living run past Act I: its act again, for the music (the view takes it silently, view/acts.js)
+      const w = game.world;
+      if (w.acts && w.act > 1) G.emit("act", { act: w.act, data: w.acts[w.act - 1], restored: true });
       return true;
     },
 
@@ -28400,6 +28564,165 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 })();
 
 </script>
+<script>/* src/view/acts.js */
+/* The living map's act turn, as the player sees it (G-L2; design docs/designs/2026-11-10-living-map.md 3.5, 9):
+   - the banner "Act II · Green Canopy" in the HUD's card style for BANNER_MS, and one hint line on what changed
+     (beds opened, a rift woken, the pond frozen, the Dewbank asleep), as a toast after it
+   - the act chip by the wave button ("Act II"), on a living run only
+   - the light: ME.Sky reads run.act (view/atmos.js) and blends to the act's look itself
+   - the growth (R.setGrowth): out of Act I (no look of its own) the act's palette spreads from the Heart Tree
+     over GROW_S; later turns keep the field full and let the sky's blend carry the change (a front there would
+     have to show the old act's palette outside it, which the field cannot)
+   - the Heart Tree: a burst of its crown, and its grown model when that grow stage is baked
+     (G.models.heartFrames(s, act - 1); ?heartgrow=N bakes one at boot), else it keeps its own
+   - drifts (L5): the act's leaves or snow falling over the garden, at most DRIFT_MAX live (DRIFT_PHONE on a
+     phone), all cleared at the next turn (phys.clear, in the build phase)
+   A restored run (Save.restore re-emits "act" with restored: true, for the music) takes its act's state
+   silently at scene.setGame: chip, grown tree, full growth, its drifts. ?drifts=0 turns the drifts off. */
+(function () {
+  const G = window.MG, ME = window.ME, S = G.state;
+  const ROMAN = ["", "I", "II", "III", "IV", "V"];
+  const BANNER_MS = 3200, HINT_DELAY = 1400, GROW_S = 2;
+  const DRIFT_MAX = 1500, DRIFT_PHONE = 600, DRIFT_LIFE = 30;
+  // each act's drift: the materials to try (the first in the palette), and its strength (0..1 of the rate)
+  const DRIFTS = { 2: [["leaf2", "leaf"], 0.35], 3: [["maple"], 1], 4: [["snow", "ice", "frost"], 0.8] };
+
+  class ActsView {
+    constructor(view) {
+      this.view = view; this.app = view.app; this.R = view.R; this.phys = view.phys;
+      this.phone = ME.phoneLike();
+      this.cap = this.phone ? DRIFT_PHONE : DRIFT_MAX;
+      this.rate = this.cap / DRIFT_LIFE; // so the live drifts settle at the cap
+      this.driftsOn = ME.qn("drifts", 1) !== 0;
+      this.game = null; this.act = 1; this.grow = null; this.drift = null; this.born = []; this.acc = 0;
+      this.toast = null; // the HUD's toast (main.js)
+      G.on("act", (e) => { if (this.game && this.view.game === this.game && !e.restored) this.turn(e.act, e.data); });
+    }
+    // a new run (scene.setGame), restored or not
+    reset(game) {
+      this.game = game; this.grow = null; this.born.length = 0; this.acc = 0;
+      const w = game.world;
+      this.act = G.living && w.acts ? w.act : 1;
+      this.full();
+      this.chip();
+      this.hideBanner();
+      this.heartTo(this.act, false);
+      this.drift = this.driftFor(this.act);
+    }
+    // the growth field full (the act's look everywhere)
+    full() {
+      const b = this.game.blight;
+      if (!this.R.setGrowth) return;
+      const f = new Uint8Array(b.w * b.h); f.fill(255);
+      this.R.setGrowth(f);
+    }
+    turn(n, data) {
+      const prev = this.act;
+      this.act = n;
+      this.phys.clear(); this.born.length = 0; // the last act's drifts (and loose voxels: a build phase)
+      this.chip();
+      this.banner(n, data);
+      // the growth front, out of an act with no look of its own
+      const acts = this.game.world.acts, lookless = !acts[prev - 1];
+      if (this.R.setGrowth && lookless) {
+        const b = this.game.blight, [hx, hy] = this.game.world.heart, RES = G.BLIGHT_RES;
+        const cx = (hx + 0.5) * RES, cy = (hy + 0.5) * RES;
+        const far = Math.max(Math.hypot(cx, cy), Math.hypot(b.w - cx, cy), Math.hypot(cx, b.h - cy), Math.hypot(b.w - cx, b.h - cy));
+        this.grow = { t: 0, cx, cy, far, bytes: new Uint8Array(b.w * b.h) };
+        this.stepGrow(0);
+      } else this.full();
+      this.heartTo(n, true);
+      this.drift = this.driftFor(n);
+    }
+    // the Heart Tree at act n's grow stage (n - 1), if baked; burst: its crown's leaves fly first
+    heartTo(n, burst) {
+      const v = this.view, s = v.heartStatic, base = v.heartBase;
+      if (!s || !base) return;
+      const frames = G.models.heartFrames(base, Math.max(0, n - 1));
+      if (burst && !s.hidden) v.emitModel(s.frames[0], [s.place.X, s.place.Y, s.place.Z], 0, { n: this.phone ? 70 : 140, speed: 0.6, life: 6, from: 0.55, flip: s.place.flip, rot: s.place.rot });
+      if (frames[0] === v.heartFrames[0]) return;
+      v.heartFrames = frames;
+      s.frames = frames[v.heartStage] || frames[0];
+    }
+    stepGrow(dt) {
+      const g = this.grow;
+      g.t += dt;
+      const k = Math.min(1, g.t / GROW_S), e = k * k * (3 - 2 * k), r = e * (g.far + 6), soft = 5;
+      const b = this.game.blight, B = g.bytes;
+      for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+        const d = Math.hypot(x + 0.5 - g.cx, y + 0.5 - g.cy), f = Math.max(0, Math.min(1, (r - d) / soft));
+        B[y * b.w + x] = Math.round(255 * f);
+      }
+      this.R.setGrowth(B);
+      if (k >= 1) { this.grow = null; this.full(); }
+    }
+    // act n's drift: { mat, rate } or null
+    driftFor(n) {
+      if (!this.driftsOn || !G.living) return null;
+      const d = DRIFTS[n];
+      if (!d) return null;
+      const ids = this.app.pal.ids, name = d[0].find((m) => ids[m]);
+      return name ? { mat: ids[name], rate: this.rate * d[1], name } : null;
+    }
+    update(dt) {
+      if (!this.game) return;
+      if (this.grow) this.stepGrow(dt);
+      const d = this.drift;
+      if (!d || !(dt > 0)) return;
+      const now = performance.now() / 1000, born = this.born;
+      while (born.length && born[0] < now) born.shift();
+      this.acc = Math.min(4, this.acc + d.rate * dt);
+      const w = this.game.world, s = this.view.heartStatic, z0 = (s ? s.place.Z : 0) + 7;
+      while (this.acc >= 1 && born.length < this.cap) {
+        this.acc -= 1;
+        const life = DRIFT_LIFE * (0.7 + 0.6 * Math.random());
+        this.phys.emitMat(Math.random() * w.W, Math.random() * w.H, z0 + Math.random() * 4, 0.25 + Math.random() * 0.2, 0.1 + (Math.random() - 0.5) * 0.3, -0.2, d.mat, life);
+        born.push(now + life);
+      }
+      if (born.length >= this.cap) this.acc = 0;
+    }
+    // the chip by the wave button: the act, on a living run
+    chip() {
+      let c = document.getElementById("actchip");
+      if (!c) {
+        const wave = document.getElementById("wave");
+        if (!wave) return;
+        c = document.createElement("span"); c.id = "actchip";
+        wave.after(c);
+      }
+      const on = !!(G.living && this.game.world.acts);
+      c.textContent = on ? "Act " + ROMAN[this.act] : "";
+      c.title = on ? (this.game.world.acts[this.act - 1] || { name: "Act I" }).name || "" : "";
+      c.classList.toggle("show", on);
+    }
+    banner(n, data) {
+      let el = document.getElementById("actbanner");
+      if (!el) { el = document.createElement("div"); el.id = "actbanner"; el.className = "panel card"; document.body.appendChild(el); }
+      const name = (data && data.name) || "";
+      el.innerHTML = `<small>Act ${ROMAN[n]}</small><b>${name.replace(/[&<>"]/g, (c) => "&#" + c.charCodeAt(0) + ";")}</b>`;
+      el.classList.remove("show"); void el.offsetWidth; el.classList.add("show");
+      clearTimeout(this.bannerT); this.bannerT = setTimeout(() => el.classList.remove("show"), BANNER_MS);
+      const hint = this.hint(data);
+      clearTimeout(this.hintT);
+      if (hint && this.toast) this.hintT = setTimeout(() => this.toast(hint), HINT_DELAY);
+      this.lastHint = hint || "";
+    }
+    hideBanner() { clearTimeout(this.bannerT); clearTimeout(this.hintT); const el = document.getElementById("actbanner"); if (el) el.classList.remove("show"); }
+    // one line on what the act changed
+    hint(a) {
+      if (!a) return "";
+      const out = [];
+      if (a.open && a.open.length) out.push(`Moss spread: ${a.open.length} new beds`);
+      if (a.wake) out.push(`A rift woke: a second road from wave ${a.wake[1]}`);
+      if (a.freeze && a.freeze.length) out.push("The pond froze: plant on the ice");
+      if (a.dewbank === false) out.push("The Dewbank sleeps");
+      return out.join(" · ");
+    }
+  }
+  G.ActsView = ActsView;
+})();
+
+</script>
 <script>/* src/view/scene.js */
 /* GameView: how a run looks, through the engine's generic extension points (and nothing else):
      an instance layer (sim.layers)  the plants (the asset set's, one model per level), the placement
@@ -28481,8 +28804,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.plantFx = new G.PlantFx(this); // the plants' looks beyond their models (plantfx.js)
       this.deaths = new G.Deaths(this); // how each one dies (deaths.js)
       this.creatureFx = new G.CreatureFx(this); // the deeper creatures' looks (creaturefx.js)
+      this.acts = new G.ActsView(this); // the living map's act turns (acts.js)
       this.game = null; this.anim = new Map();
-      this.heartKick = 0; this.heartStatic = null; this.heartFrames = null; this.heartStage = 0;
+      this.heartKick = 0; this.heartStatic = null; this.heartFrames = null; this.heartFrames0 = null; this.heartBase = null; this.heartStage = 0;
       this.beat = { t: -1e9, hit: false, s: BEAT_S[0] }; // when the last hit's beat began, and its period (hit: one came since the last frame)
       this.dusk = 0; this.zoomIn = 1; this.closeFade = ME.qn("closeup", 1); this.glassMul = ME.qn("glassk", GLASS_K); this.bossWave = false; this.pinDusk = ME.params.has("dusk") ? ME.qn("dusk", 0) : null;
       this.vox = new Map(); // model index -> sampled voxels [x, y, z, mat, ...] (voxelsOf)
@@ -28550,7 +28874,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       // the Heart Tree's baked static stays hidden; the view draws it (writeInstances) from its own record,
       // { place, frames, phase, hidden }, hidden once it has fallen (the soundscape reads that too)
       const hs = this.MB.statics.find((s) => Math.hypot(s.place.X - w.heart[0], s.place.Y - w.heart[1]) < 0.6) || null;
-      if (hs && !this.heartFrames) this.heartFrames = G.models.heartFrames(hs);
+      // (grow 0's frames each run; an act turn swaps in its grow stage, acts.js)
+      if (hs && !this.heartFrames0) { this.heartFrames0 = G.models.heartFrames(hs); this.heartBase = hs; }
+      this.heartFrames = this.heartFrames0;
       if (hs) hs.hidden = true;
       this.heartStatic = hs ? { place: hs.place, frames: this.heartFrames[0], phase: hs.phase, hidden: false } : null;
       this.heartStage = 0; this.bossWave = false; this.beat.t = -1e9; this.beat.hit = false;
@@ -28561,7 +28887,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.potsFlying = []; this.potWaves = []; this.potStep.clear();
       this.upload = new Uint8Array(b.w * b.h);
       for (const t of game.towers) this.anim.set(t, this.newAnim());
-      this.fx.reset(w); this.boonFx.reset(); this.plantFx.reset(); this.creatureFx.reset();
+      this.fx.reset(w); this.boonFx.reset(); this.plantFx.reset(); this.creatureFx.reset(); this.acts.reset(game);
       b.dirty = true;
       this.updateCells(); this.updateLights();
     }
@@ -28618,7 +28944,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         a.lean[0] += (a.leanTo[0] - a.lean[0]) * k; a.lean[1] += (a.leanTo[1] - a.lean[1]) * k;
         a.leanTo[0] *= Math.exp(-dt * 1.5); a.leanTo[1] *= Math.exp(-dt * 1.5);
       }
-      this.fx.update(dt, this.game && this.game.enemies); this.boonFx.update(dt); this.plantFx.update(dt); this.creatureFx.update(dt);
+      this.fx.update(dt, this.game && this.game.enemies); this.boonFx.update(dt); this.plantFx.update(dt); this.creatureFx.update(dt); this.acts.update(dt);
       this.updateSand(dt); this.breakPots(dt); this.deaths.update(dt);
       this.heartKick = Math.max(0, this.heartKick - dt * 1.6);
       // dusk falls while a wave runs, deeper as the run goes on and deepest for the boss; day to build in
@@ -29165,6 +29491,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         run.build = !!(S && S.phase === G.Phase.BUILD);
         run.over = !!(S && S.phase === G.Phase.GAME_OVER && game);
         run.life = S && S.heartMax > 0 && game ? S.heartHp / S.heartMax : 1;
+        run.act = G.living && game && game.world.acts ? game.world.act : 0; // the living map's act (ME.Sky blends to its look)
         return run;
       },
       on: (ev, f) => {
@@ -35498,6 +35825,7 @@ function MG_SFX(L) {
     });
     // (the view framed again in the room the HUD leaves, and slid as the tray grows or shrinks)
     freeRect = () => hud.freeRect(); frameView();
+    scene.acts.toast = (s) => hud.toast(s); // (an act turn's hint line, view/acts.js)
     if (window.ResizeObserver) new ResizeObserver(nudgeView).observe(document.getElementById("tray"));
     const refreshWaves = () => {
       if (S.phase === G.Phase.WAVE) hud.showWaves(game.plan(S.wave), game.remaining(), game.plan(S.wave + 1));
