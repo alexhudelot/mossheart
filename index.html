@@ -8488,8 +8488,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       if (front) queue.unshift(...more); else queue.push(...more);
       deal();
     };
-    // first(ids): those jobs still queued moved to its front, in their order (P4: MB.prog.want)
-    run.first = (ids) => { const s = new Set(ids), mv = queue.filter((j) => s.has(j.id)); if (mv.length) { for (let k = queue.length - 1; k >= 0; k--) if (s.has(queue[k].id)) queue.splice(k, 1); queue.unshift(...mv); } };
+    // first(ids): those jobs still queued moved to its front, in ids' order (P4: MB.prog.want)
+    run.first = (ids) => { const s = new Map(ids.map((id, k) => [id, k])), mv = queue.filter((j) => s.has(j.id)).sort((a, b) => s.get(a.id) - s.get(b.id)); if (mv.length) { for (let k = queue.length - 1; k >= 0; k--) if (s.has(queue[k].id)) queue.splice(k, 1); queue.unshift(...mv); } };
     for (const w of ws) {
       w.held = [];
       w.onmessage = (e) => {
@@ -8584,7 +8584,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // static volumes' flipbooks (the props) upgrade too, ME.PROG_BATCH frames a swap. opts.progLazy: opts.models and
   // critter keys a run may never show (the graft models, a game's spare kit): their full bakes come last, or next
   // once the game asks for them (MB.prog.want(key)). A lazy critter is progressive without opts.progCritters, and
-  // under opts.boot a lazy model is whatever its fine (kf > 1 at fine 1 too).
+  // under opts.boot a lazy model is whatever its fine (kf > 1 at fine 1 too). (c) opts.progFirst: keys whose full
+  // bakes go first, in that order (the others then go costliest first: the bake below, "the order the full bakes")
+  // (not in sigOf: the order changes no job, and the bake cache keeps the palette's names with its MB)
   ME.PROG_MIN = 32; ME.PROG_BATCH = 8;
   // The full bakes start once the game's frames settle (its first frames after READY compile pipelines, and the
   // bakes' CPU would make that freeze longer): ME.PROG_SETTLE ms of frames, none longer than ME.PROG_HITCH ms, or
@@ -8812,11 +8814,25 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     let C = 0, sp = null;
     if (prog) {
       const est = (g, k) => g.vs.reduce((a, i) => a + vols[i].est[k], 0), rest = (L) => vols.reduce((a, v, i) => a + (gOf.has(i) ? 0 : kept(v) + (L && lods[i] ? kept(lods[i]) : 0)), 0);
+      // (c) the order the full bakes go to the workers in: opts.progFirst's keys in their order (?progfirst=a,b
+      // before them), then the costliest flipbooks (the most bricks, est.) first, as the single pass's jobs: a hero
+      // model's full bake started last ended the upgrade last (the Heart Tree's, ~155 s at Momiji vs16), and the
+      // swaps no longer wait for it (gen: a flipbook swaps once its frames are in); the lazy ones still last
+      const firsts = (ME.q("progfirst", "") || "").split(",").filter(Boolean).concat(opts.progFirst || []);
+      const firstOf = (g) => { const f = firsts.indexOf(g.key); return f >= 0 ? f - firsts.length : g.lazy ? 1 : 0; };
+      prog.sort((a, b) => firstOf(a) - firstOf(b) || (firstOf(a) ? 0 : est(b, 0) - est(a, 0)));
+      const pos = new Map(prog.flatMap((g, n) => g.vs.map((i, j) => [nv + i, n * 65536 + j])));
+      h.full.sort((a, b) => pos.get(a.id) - pos.get(b.id));
       // (copies cut on the estimate: lodCut, a WARN; the single pass may have kept them)
       const cut = lods.length > 0 && rest(true) + prog.reduce((a, g) => a + est(g, 0) + est(g, 1), 0) > ME.poolBricks();
       if (cut) { lods = []; ME.log("WARN BAKE progressive: the copies are cut on the estimate of the full models' bricks"); }
       const L1 = lods.length > 0, base = rest(L1), F = prog.map((g) => est(g, 0) + (L1 ? est(g, 1) : 0)), Cc = prog.map((g) => g.vs.reduce((a, i) => a + kept(vols[i]) + (L1 ? kept(lods[i]) : 0), 0));
-      for (let g = 0; g < prog.length; g++) { let n = base; for (let j = 0; j < prog.length; j++) n += (j <= g ? F[j] : 0) + (j >= g ? Cc[j] : 0); C = Math.max(C, n); }
+      // (in any order, as the swaps go as their full bakes come in: at a swap the full models swapped before it,
+      // its own full and coarse ones and the coarse ones after it, at most each flipbook's larger plus the largest
+      // smaller one: an upper bound for any order, looser than the in-order peak it replaces, which no order now keeps)
+      let big = 0, small = 0;
+      for (let j = 0; j < prog.length; j++) { big += Math.max(F[j], Cc[j]); small = Math.max(small, Math.min(F[j], Cc[j])); }
+      C = base + big + small;
       sp = { groups: prog.length, frames: gOf.size, C, est: F.reduce((a, b) => a + b, 0), coarse: Cc.reduce((a, b) => a + b, 0), swaps: [], failed: [], doneAt: 0, ...(cut ? { lodCut: true } : {}) };
       const lim = Math.min(ME.poolMaxBricks(undefined, slabOf(C)), ME.poolBricks());
       if (C > lim) {
@@ -8990,10 +9006,11 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 
     // E4: MB.prog, a progressive bake's upgrade: { maxGroup (the most models one swap takes), started, stats (sp:
     // stats.prog), upgraded (a promise: true once every flipbook is swapped, false if one failed or it was
-    // cancelled), cancel() (ends the workers; safe twice), want(key) (P4: that flipbook upgraded next, its full
-    // bakes first in the workers' queue, if it is not started yet: a lazy one the game is about to show; true if
-    // so), gen(R), compact() (compactOf: MB for the bake cache) }. R.init runs gen on R.addTask: for each
-    // flipbook, in h.prog's order (or want's), each frame's full bake taken in from its worker (numbered and painted here, a
+    // cancelled), cancel() (ends the workers; safe twice), want(key or [keys]) (P4: that flipbook upgraded next, its
+    // full bakes first in the workers' queue, if it is not started yet: a lazy one the game is about to show; (c) a
+    // list goes first in its order, as opts.progFirst does from the start; true if one was moved), gen(R), compact()
+    // (compactOf: MB for the bake cache) }. R.init runs gen on R.addTask: for each flipbook, the first in h.prog's
+    // order (or want's) whose full bakes have all come in, each frame's full bake taken in (numbered and painted here, a
     // slice a frame), sent back for its interior and its 2x-down copy (finishOf; here if no worker is left), put
     // into free slots and its proxy's place in the layout, then the touched pool slots and map boxes uploaded,
     // the palette too if it grew, and R.swapModel. Once the fade is done the coarse frames' places are cleared and
@@ -9004,11 +9021,14 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       const cancel = () => { if (cancelled) return; cancelled = true; run.stop(); finish(false); };
       // order: the flipbooks not started yet, the next first
       const order = prog.slice();
-      const want = (key) => {
-        const n = order.findIndex((g) => g.key === key);
-        if (n < 0 || cancelled) return false;
-        const g = order.splice(n, 1)[0], ids = g.vs.map((i) => nv + i), s = new Set(ids);
-        order.unshift(g); h.full.sort((a, b) => s.has(b.id) - s.has(a.id)); run.first(ids);
+      // want(keys): a key or a list of them, in the order given, ahead of the others (those not swapped or started)
+      const want = (keys) => {
+        if (cancelled) return false;
+        const gs = [];
+        for (const key of [].concat(keys)) { const n = order.findIndex((g) => g.key === key); if (n >= 0) gs.push(order.splice(n, 1)[0]); }
+        if (!gs.length) return false;
+        const ids = gs.flatMap((g) => g.vs.map((i) => nv + i)), s = new Map(ids.map((id, k) => [id, k])), at = (j) => (s.has(j.id) ? s.get(j.id) : ids.length);
+        order.unshift(...gs); h.full.sort((a, b) => at(a) - at(b)); run.first(ids);
         return true;
       };
       const gen = function* (R) {
@@ -9027,17 +9047,31 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           run.depth = 1;
           run.add(h.full);
           const progFail = ME.q("progfail", null);
+          // (c) came: the full bakes answered (id -> the answer); the next to swap is the first flipbook in order
+          // whose frames have all come, so a long bake (the Heart Tree's) holds up no other swap; none: the next
+          // answer is waited for (idle, counted as that swap's wait)
+          const came = new Map(), left = (g) => g.vs.filter((i) => !came.has(nv + i));
+          for (const j of h.full) res.get(j.id).then((r) => came.set(j.id, r));
+          let idle = 0;
           while (order.length) {
-            const g = order.shift();
             if (cancelled) { ok = false; break; }
+            const k = order.findIndex((g) => !left(g).length);
+            if (k < 0) {
+              const t = ME.now();
+              yield Promise.race(order.flatMap((g) => left(g).map((i) => res.get(nv + i))));
+              idle += ME.now() - t;
+              continue;
+            }
+            const g = order.splice(k, 1)[0];
             const tg = ME.now(), cur = lists.slice(), recs = [], lrecs = [], put = [], boxes = [];
             // ni0: MB.inner's count before this flipbook's frames (a fail gives their interior bricks back)
             let fail = null, wait = 0, got = 0, ni0 = ni;
+            const idle0 = idle;
+            idle = 0;
             for (const i of g.vs) {
               const { md, vf } = mds[i], px = vols[i].px, lp = lods.length ? lods[i].px : null;
-              let t = ME.now();
-              const r = yield res.get(nv + i);
-              wait += ME.now() - t;
+              let t = 0;
+              const r = came.get(nv + i);
               if (cancelled) { fail = "cancelled"; break; }
               if (!r) { fail = "its full bake failed"; break; }
               if (r.dims.some((n, a) => n !== px.dims[a])) { fail = `its full bake is ${r.dims} voxels, not the ${px.dims} it has room for`; break; }
@@ -9106,7 +9140,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
             for (const i of g.vs) lists[i] = cur[i];
             for (const [b, d] of old) boxes.push(clear(b, d));
             for (const b of boxes) R.uploadBricks(b);
-            const s = { key: g.key, frames: g.vs.length, bricks: got, est: g.vs.reduce((a, i) => a + vols[i].est[0] + (lods.length ? vols[i].est[1] : 0), 0), wait: Math.round(wait), ms: Math.round(at - tg - wait), at: Math.round(at), done: Math.round(ME.now()) };
+            const s = { key: g.key, frames: g.vs.length, bricks: got, est: g.vs.reduce((a, i) => a + vols[i].est[0] + (lods.length ? vols[i].est[1] : 0), 0), wait: Math.round(wait + idle0), ms: Math.round(at - tg - wait), at: Math.round(at), done: Math.round(ME.now()) };
             sp.swaps.push(s);
             ME.log(`PROG ${g.key}: ${s.frames} frames at full density, ${got} bricks (est. ${s.est}), swapped at ${s.at} ms (${s.wait} ms waiting on the workers, ${s.ms} ms here)`);
           }
@@ -22084,7 +22118,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.120.0", name: "Mossheart", commit: "e7b0df6d" };
+  G.VERSION = { v: "0.121.0", name: "Mossheart", commit: "5bdc730d" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -25009,6 +25043,7 @@ function MA_DSP() {
     Object.assign(st.mats, AK.MATS);
     Object.assign(st.ramps, TOWERS.RAMPS); // the plants' own (stumpsAndStones, below)
     Object.assign(st.mats, TOWERS.MATS);
+    if (G.TOMB_RAMPS) { Object.assign(st.ramps, G.TOMB_RAMPS); Object.assign(st.mats, G.TOMB_MATS); } // the tombstones (tombstones.js)
     Object.assign(st.ramps, CTRAIT_RAMPS); Object.assign(st.mats, CTRAIT_MATS); veilSt = st; VEIL_BY.clear(); // the creatures' traits (below)
     // the garden wisplings, six to a garden on Momiji, Fernglass, Corn Moon and the Ever Stair (critters.js, kind wisp): eight
     // designs of five frames at size 1.5 (a body ~0.5 tiles tall, ~15 px at the fit zoom: the user's pick), ~9.6
@@ -26364,6 +26399,220 @@ function MA_DSP() {
       towerH: (kind, lv) => MB.models[towerFrames(kind, lv)[0]].h * G.LEVEL_SCALE[lv - 1],
     };
   };
+})();
+
+</script>
+<script>/* src/art/tombstones.js */
+/* Tombstones (swarm T1; docs/designs/2026-11-10-creature-swarm.md 4.3): the stone each creature leaves where it fell,
+   one silhouette per kind, about 60% grey stone and 40% the creature's colour (core/defs.js ENEMIES[kind].color, as
+   the ramps tb<Kind> below), plus the two bosses' monuments. view/tombs.js places them (G.TOMB_MODELS).
+   At the fit zoom a tile is ~30 px, so a stone (~0.28 tiles) is ~8 px tall and its outline carries it: every shape
+   below reads in the plane facing the camera (the model's +x turns to the camera, so y is across the screen and z up)
+   and stays thin in x. They bake at the heroes' density (G.heroFine: ~18 voxels tall at 64 voxels a tile edge).
+     grub    a stone larva curled into a C, banded stone and grub, a vein groove
+     beetle  a dome headstone, its cap the beetle's violet, a stub horn
+     moth    a narrow slab with two scalloped wings
+     golem   a cairn of three stones, the middle one the golem's, a moss cap
+     snail   a spiral shell stone on a low foot
+     bloat   a puffball husk in three lobes, the top one split open
+     mite    a pebble with two pincer nubs (a third of a stone's height: it lasts 4 s)
+     mender  a leaf-shaped stone with a midrib, its rim the mender's mint
+     midge   none (view/tombs.js leaves a ring of dust)
+     mole    an earth mound, a stub stone and a claw
+     lichen  an upright claw, lichen spots over it
+     crow    a black feather stuck quill-down in a stone mound
+     spirit  (boss) a violet obelisk on a stepped plinth, a wisp flame on top (lit)
+     mother  (boss) a cracked half-shell behind a broken stone arch
+   Same conventions as the asset set: tile units, anchor at the ground centre, Z up, facing +X. */
+(function () {
+  const G = (window.MG = window.MG || {}), ME = window.ME, AK = ME.assetKit, { S, E, C, B, Y, P, nz3 } = AK;
+  const D2R = Math.PI / 180, ROT_X = P.rot("y", Math.PI / 2); // a cylinder's axis along x (a disc facing the camera)
+
+  // the creatures' colours (ENEMIES[kind].color) as ramps; the stone a shade darker than the shrine stone so its
+  // outline holds on pale ground
+  const RAMP = (hex, lo = 0.2, hi = 0.82) => [hex, 5, lo, hi, 0.12];
+  G.TOMB_RAMPS = {
+    tbStone: ["#9a968a", 6, 0.2, 0.78, 0.14], tbStoneDk: ["#6a665e", 4, 0.12, 0.56, 0.12],
+    tbGrub: RAMP("#dbcc9e", 0.3, 0.9), tbBeetle: RAMP("#8c5ca8"), tbMoth: RAMP("#ccade6", 0.32, 0.92), tbGolem: RAMP("#8c858a"),
+    tbSpirit: RAMP("#5c3d80", 0.14, 0.7), tbSnail: RAMP("#b8996b"), tbSnailDk: ["#5a4630", 4, 0.1, 0.42, 0.1], tbBloat: RAMP("#9ec766", 0.26, 0.86),
+    tbMite: RAMP("#bfd980", 0.3, 0.9), tbMender: RAMP("#80d19e", 0.28, 0.88), tbMole: RAMP("#806657", 0.14, 0.66), tbLichen: RAMP("#a8bd99", 0.3, 0.86),
+    tbMother: RAMP("#7a9e4d"), tbCrow: RAMP("#4a4660", 0.06, 0.5), tbBone: ["#d4c690", 4, 0.4, 0.88, 0.2],
+    tbFlame: ["#c8a0ff", "#dcbcff", "#f0e0ff"],
+  };
+  G.TOMB_MATS = { tbFlame: { em: 1, flat: 1 } };
+  ME.LIGHT_COL.tbFlame = [0.85, 0.62, 1.0, 0.9];
+
+  // a low dark plinth under a stone (rubble), w its half-width across
+  const plinth = (w = 0.1, d = 0.05) => B([0, 0, 0.018], [d, w, 0.018], 0.01, "tbStoneDk");
+  // moss on the stone's tops, as the placeholder's
+  const moss = AK.stoneMoss("tbStone", 11, 0.62);
+  // spots of m over the stone where the noise is high (lichen, mould)
+  const spots = (m, k, th) => (x, y, z, mm) => (mm === "tbStone" && nz3(x, y, z, k, 5) > th ? m : null);
+  const both = (a, b) => (...q) => a(...q) || b(...q);
+  const T = (name, h, r, fn) => AK.model(name, 1, () => { const md = fn(); return Object.assign({ r, h, k: 1 }, md); }, 1);
+
+  T("tb_grub", 0.26, 0.15, () => {
+    // a C in the yz plane, opening to +y: ten segments from the head (upper right, the biggest) round the left to the tail,
+    // banded grub and stone
+    const p = [plinth(0.1)], cz = 0.125, R = 0.078;
+    for (let i = 0; i < 10; i++) {
+      const a = (50 + (i * 260) / 9) * D2R, r = 0.044 - i * 0.0022;
+      p.push(S([0, Math.cos(a) * R, cz + Math.sin(a) * R], r, i === 0 || i % 3 === 1 ? "tbGrub" : "tbStone", { k2: 0.012 }));
+    }
+    p.push(Object.assign(C([0.05, -0.09, 0.1], [0.05, -0.05, 0.2], 0.007, 0.007, null), { sub: true, subm: "tbStoneDk" })); // the vein groove
+    return { prims: p, detail: null };
+  });
+
+  T("tb_beetle", 0.31, 0.14, () => ({
+    prims: [
+      plinth(0.11),
+      B([0, 0, 0.1], [0.04, 0.095, 0.065], 0.01, "tbStone"),
+      E([0, 0, 0.165], [0.045, 0.098, 0.1], "tbBeetle", { k2: 0.01 }),
+      B([0, 0, 0.115], [0.05, 0.11, 0.02], 0.008, "tbStone"), // a stone band under the dome
+      C([0, 0.01, 0.255], [0.012, 0.035, 0.31], 0.024, 0.008, "tbBeetle", { k2: 0.01 }), // the stub horn
+    ],
+    detail: moss,
+  }));
+
+  T("tb_moth", 0.3, 0.16, () => {
+    const p = [plinth(0.08), B([0, 0, 0.15], [0.03, 0.05, 0.13], 0.02, "tbStone")];
+    for (const sd of [-1, 1]) {
+      p.push(E([0, sd * 0.085, 0.2], [0.02, 0.065, 0.075], "tbMoth", { k2: 0.01 }), E([0, sd * 0.075, 0.115], [0.02, 0.05, 0.05], "tbMoth", { k2: 0.01 }));
+      // the scallops along each wing's outer edge
+      for (const [y, z, r] of [[0.15, 0.24, 0.022], [0.155, 0.185, 0.02], [0.125, 0.135, 0.018], [0.125, 0.075, 0.018]]) p.push(S([0, sd * y, z], r, null, { sub: true }));
+    }
+    p.push(E([0, 0, 0.285], [0.03, 0.045, 0.025], "tbStone")); // the slab's round top
+    return { prims: p, detail: moss };
+  });
+
+  T("tb_golem", 0.28, 0.15, () => ({
+    prims: [
+      E([0, 0, 0.05], [0.075, 0.115, 0.055], "tbStone", { k2: 0.008 }),
+      E([0, 0.012, 0.135], [0.06, 0.088, 0.048], "tbGolem", { k2: 0.008 }),
+      E([0, -0.008, 0.205], [0.048, 0.062, 0.04], "tbStone", { k2: 0.008 }),
+      E([0, -0.008, 0.245], [0.042, 0.058, 0.022], "moss", { k2: 0.01 }), // the moss cap
+      S([0.02, 0.05, 0.255], 0.016, "moss"), S([0.015, -0.055, 0.24], 0.014, "moss"),
+    ],
+    detail: moss,
+  }));
+
+  T("tb_snail", 0.27, 0.16, () => ({
+    prims: [
+      B([0, 0, 0.025], [0.045, 0.13, 0.025], 0.02, "tbStone"), // the foot
+      Y([0, -0.005, 0.15], 0.11, 0.045, "tbSnail", { R: ROT_X, round: 0.02 }), // the shell, a disc facing the camera
+      S([0, 0.11, 0.065], 0.035, "tbStone"), // the head end of the foot
+    ],
+    // the spiral: a groove on the disc's face, r = 0.018 + 0.016 theta / (2 pi)
+    detail: (x, y, z, mm) => {
+      if (mm !== "tbSnail") return null;
+      const dy = y + 0.005, dz = z - 0.15, r = Math.hypot(dy, dz);
+      if (r > 0.1) return null;
+      let a = Math.atan2(dz, dy); if (a < 0) a += 2 * Math.PI;
+      for (let n = 0; n < 3; n++) { const s = 0.012 + 0.034 * ((a + n * 2 * Math.PI) / (2 * Math.PI)); if (Math.abs(r - s) < 0.008) return "tbSnailDk"; }
+      return null;
+    },
+  }));
+
+  T("tb_bloat", 0.28, 0.15, () => ({
+    prims: [
+      S([0, -0.058, 0.065], 0.068, "tbStone", { k2: 0.02 }), S([0, 0.058, 0.065], 0.068, "tbStone", { k2: 0.02 }),
+      S([0, 0, 0.175], 0.078, "tbBloat", { k2: 0.02 }),
+      S([0.01, 0, 0.265], 0.035, null, { sub: true, subm: "tbStoneDk" }), // split open at the top
+    ],
+    detail: moss,
+  }));
+
+  T("tb_mite", 0.11, 0.1, () => ({
+    prims: [
+      E([0, 0, 0.045], [0.06, 0.07, 0.05], "tbStone", { k2: 0.01 }),
+      E([0, 0, 0.07], [0.045, 0.05, 0.035], "tbMite", { k2: 0.01 }),
+      C([0.03, 0.035, 0.05], [0.075, 0.05, 0.085], 0.018, 0.01, "tbMite", { k2: 0.008 }), C([0.03, -0.035, 0.05], [0.075, -0.05, 0.085], 0.018, 0.01, "tbMite", { k2: 0.008 }),
+    ],
+    detail: null,
+  }));
+
+  T("tb_mender", 0.3, 0.14, () => ({
+    prims: [
+      plinth(0.07),
+      C([0, 0, 0.03], [0, 0, 0.08], 0.022, 0.018, "tbStone"), // the stalk
+      E([0, 0, 0.165], [0.028, 0.085, 0.11], "tbStone", { k2: 0.01 }),
+      C([0, 0, 0.23], [0, 0, 0.3], 0.05, 0.004, "tbStone", { k2: 0.02 }), // the leaf's point
+      C([0.024, 0, 0.07], [0.022, 0, 0.27], 0.012, 0.006, "tbMender"), // the midrib, raised on the face
+    ],
+    // the leaf's rim in the mender's mint
+    detail: (x, y, z, mm) => {
+      if (mm !== "tbStone" || z < 0.075) return null;
+      const w = z < 0.23 ? 0.085 * Math.sqrt(Math.max(0, 1 - ((z - 0.165) / 0.11) ** 2)) : 0.05 * (0.3 - z) / 0.07;
+      return Math.abs(y) > w * 0.55 ? "tbMender" : null;
+    },
+  }));
+
+  T("tb_mole", 0.27, 0.16, () => ({
+    prims: [
+      E([0, 0, 0.02], [0.1, 0.135, 0.065], "tbMole", { k2: 0.01 }), // the mound
+      S([0.03, -0.07, 0.05], 0.035, "tbMole"), S([-0.03, 0.08, 0.04], 0.03, "tbMole"),
+      B([-0.01, 0.025, 0.14], [0.032, 0.05, 0.1], 0.03, "tbStone"), // the stub stone
+      // the claw out of the mound's front, three digging nails
+      C([0.03, -0.07, 0.06], [0.05, -0.085, 0.13], 0.03, 0.026, "tbMole", { k2: 0.01 }), // the arm, raised beside the stone
+      ...[-0.022, 0, 0.022].map((d) => C([0.06, -0.085 + d, 0.15], [0.07, -0.085 + d * 1.6, 0.2], 0.011, 0.005, "tbBone")),
+    ],
+    detail: moss,
+  }));
+
+  T("tb_lichen", 0.31, 0.15, () => ({
+    prims: [
+      plinth(0.09),
+      C([0, 0.01, 0.03], [0, 0.015, 0.15], 0.05, 0.045, "tbStone", { k2: 0.01 }), // the arm
+      E([0, 0.01, 0.16], [0.042, 0.06, 0.05], "tbStone", { k2: 0.02 }), // the palm
+      C([0, -0.02, 0.19], [0, -0.055, 0.305], 0.036, 0.01, "tbStone", { k2: 0.01 }), // the upper finger
+      C([0, 0.045, 0.19], [0, 0.085, 0.27], 0.028, 0.008, "tbStone", { k2: 0.01 }), // the lower finger
+      S([0, 0.018, 0.27], 0.026, null, { sub: true }), // the gap between them
+    ],
+    detail: both(spots("tbLichen", 22, 0.5), moss),
+  }));
+
+  T("tb_crow", 0.32, 0.15, () => {
+    const R = AK.orient([0, 0.3, 1], [1, 0, 0]); // the feather leans across a little
+    return {
+      prims: [
+        E([0, 0, 0.03], [0.08, 0.12, 0.06], "tbStone", { k2: 0.01 }), S([0.02, -0.07, 0.04], 0.04, "tbStone"),
+        C([0, 0.008, 0.06], [0, 0.04, 0.31], 0.01, 0.006, "tbBone"), // the quill
+        E([0, 0.028, 0.2], [0.014, 0.05, 0.12], "tbCrow", { R, k2: 0.004 }), // the vane
+        S([0.005, 0.07, 0.17], 0.02, null, { sub: true }), S([0.005, -0.015, 0.25], 0.016, null, { sub: true }), // notches in it
+      ],
+      detail: moss,
+    };
+  });
+
+  // the monuments, about twice a stone's height
+  T("tb_spirit", 0.62, 0.2, () => ({
+    prims: [
+      B([0, 0, 0.025], [0.11, 0.15, 0.025], 0.01, "tbStoneDk"), B([0, 0, 0.07], [0.085, 0.115, 0.022], 0.01, "tbStone"),
+      C([0, 0, 0.09], [0, 0, 0.44], 0.072, 0.04, "tbSpirit", { k2: 0.01 }), // the obelisk (round, it reads the same from any side)
+      E([0, 0, 0.45], [0.05, 0.05, 0.045], "tbStone"), // the cap
+      E([0, 0, 0.53], [0.032, 0.032, 0.06], "tbFlame"), S([0, 0.012, 0.6], 0.016, "tbFlame"), // the wisp flame
+    ],
+    detail: (x, y, z, mm) => (mm === "tbSpirit" && Math.abs(((z * 30) % 2) - 1) > 0.86 ? "tbStoneDk" : null),
+  }));
+
+  T("tb_mother", 0.52, 0.24, () => {
+    const p = [
+      B([0, 0, 0.02], [0.1, 0.21, 0.02], 0.01, "tbStoneDk"),
+      Y([-0.04, 0, 0.04], 0.2, 0.035, "tbMother", { R: ROT_X, round: 0.015 }), // the half-shell, a disc sunk to its middle
+      B([-0.04, 0, -0.1], [0.06, 0.25, 0.14], 0, null, { sub: true }),
+      B([-0.04, 0.03, 0.18], [0.06, 0.012, 0.11], 0, null, { sub: true, subm: "tbStoneDk", R: P.rot("x", -0.35) }), // the crack
+      // the broken arch in front: the left pillar whole, the right one snapped, the span only from the left
+      B([0.02, -0.13, 0.17], [0.035, 0.032, 0.15], 0.01, "tbStone"),
+      B([0.02, 0.13, 0.1], [0.035, 0.032, 0.08], 0.01, "tbStone"),
+    ];
+    for (let i = 0; i < 5; i++) { const a = (180 - i * 22) * D2R; p.push(S([0.02, Math.cos(a) * 0.13, 0.32 + Math.sin(a) * 0.12], 0.036, "tbStone", { k2: 0.02 })); }
+    p.push(S([0.05, 0.16, 0.035], 0.03, "tbStone"), S([0.04, 0.19, 0.03], 0.022, "tbStone")); // the fallen pieces
+    return { prims: p, detail: both((x, y, z, mm) => (mm === "tbMother" && Math.abs(Math.atan2(z - 0.04, y) * 4 % 1) < 0.12 ? "tbStoneDk" : null), moss) };
+  });
+
+  // kind -> model (view/tombs.js); a kind without one gets the placeholder, the Midge Swarm none
+  G.TOMB_MODELS = {};
+  for (const k of ["grub", "beetle", "moth", "golem", "spirit", "snail", "bloat", "mite", "mender", "mole", "lichen", "mother", "crow"]) G.TOMB_MODELS[k] = "tb_" + k;
 })();
 
 </script>
@@ -28886,7 +29135,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
    - a boss leaves a monument twice a stone's height, standing until the next boss (one at a time)
    At most CAP live (CAP_PHONE on a phone), pebbles and the monument included: past CAP - SINK_ROOM standing,
    the oldest starts sinking at once; at CAP the one furthest gone goes. Peak: CAP more instances.
-   The stone is a placeholder (ms_tomb, below) until Art's T1. ?tombs=0 turns them off. */
+   Each kind has its own stone (Art's T1, src/art/tombstones.js: G.TOMB_MODELS, authored at full size, the bosses'
+   monuments and the Mite's pebble included), baked at the heroes' density; ms_tomb (below) stands in for a kind
+   without one. ?tombs=0 turns them off. */
 (function () {
   const G = window.MG, ME = window.ME, AK = ME.assetKit, TAU = Math.PI * 2;
   const CAP = 64, CAP_PHONE = 32, SINK_ROOM = 8;
@@ -28915,17 +29166,28 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.on = ME.qn("tombs", 1) !== 0;
       this.cap = ME.phoneLike() ? CAP_PHONE : CAP;
       this.live = []; this.t = 0; this.n = 0; this.peak = 0; this.stats = { stones: 0, pebbles: 0, dust: 0, water: 0, wall: 0, replaced: 0, dropped: 0 };
+      // each kind's stone height, read once from its model (not the whole prim list on every kill), and the kinds
+      // this run has asked the progressive bake to upgrade first (MB.prog.want)
+      this.hOf = new Map(); this.wanted = new Set();
       if (!this.on) return;
       const on = (ev, fn) => G.on(ev, (e) => { if (view.game) fn(e); });
       on("kill", (e) => this.add(e));
       on("wave_clear", () => this.clear());
     }
     // ME.bakeModels' entry (main.js adds it to G.bakeList's)
-    static bakeList() { return ME.qn("tombs", 1) === 0 ? {} : { tomb: ["ms_tomb", { scale: window.MODELS.ms_tomb({}).k }, 1] }; }
-    reset() { this.live.length = 0; this.t = 0; }
+    static bakeList() {
+      if (ME.qn("tombs", 1) === 0) return {};
+      const out = { tomb: ["ms_tomb", { scale: window.MODELS.ms_tomb({}).k }, 1] }, TM = G.TOMB_MODELS || {}, EN = (G.Defs && G.Defs.ENEMIES) || {};
+      for (const k in TM) if (EN[k] && window.MODELS[TM[k]]) out["tomb_" + k] = [TM[k], { scale: 1, fine: G.heroFine() }, 1];
+      return out;
+    }
+    reset() { this.live.length = 0; this.t = 0; this.wanted.clear(); }
     add(e) {
-      if (!this.view.MB.extraFrames.tomb) return;
-      const p = e.pos, kind = e.kind, T = this.app.T;
+      const MB = this.view.MB, XF = MB.extraFrames, p = e.pos, kind = e.kind, T = this.app.T;
+      const own = !!XF["tomb_" + kind], key = own ? "tomb_" + kind : "tomb";
+      if (!XF[key]) return;
+      // the first stone of a kind this run: its full bake next, so the stones the run leaves sharpen first
+      if (own && !this.wanted.has(kind)) { this.wanted.add(kind); if (MB.prog && MB.prog.want) MB.prog.want(key); }
       if (kind === "midge") { this.dust(p); return; }
       const up = e.up || null;
       let z = p[2], drop = 0;
@@ -28953,8 +29215,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const yaw = FACE_YAW + (hash(slot) * 2 - 1) * JITTER;
       let frame = null;
       if (up) { frame = new Float64Array(9); ME.frameOf(1, 1, 1, up[0], up[1], up[2], frame); }
-      const sc = pebble ? [PEBBLE_K, PEBBLE_K, PEBBLE_K] : boss ? BOSS_K : [1, 1, 1];
-      L.push({ x: p[0], y: p[1], z, drop, up, frame, yaw, sc, pebble, boss, born: this.t, sink: -1, life: pebble ? PEBBLE_S : boss ? Infinity : STAND_S });
+      const sc = own ? [1, 1, 1] : pebble ? [PEBBLE_K, PEBBLE_K, PEBBLE_K] : boss ? BOSS_K : [1, 1, 1];
+      let h = STONE_H;
+      if (own) { h = this.hOf.get(kind); if (h === undefined) { h = window.MODELS[G.TOMB_MODELS[kind]]({}).h; this.hOf.set(kind, h); } }
+      L.push({ x: p[0], y: p[1], z, drop, up, frame, yaw, sc, key, h, pebble, boss, born: this.t, sink: -1, life: pebble ? PEBBLE_S : boss ? Infinity : STAND_S });
       this.stats[pebble ? "pebbles" : "stones"]++;
       this.peak = Math.max(this.peak, L.length);
     }
@@ -28978,11 +29242,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
     // the instance layer, after the creatures (room: how many instances are left)
     write(sim, i, room) {
-      const L = this.live, MB = this.view.MB, fr = MB.extraFrames.tomb;
-      if (!fr || !L.length) return i;
-      const mi = fr[0], f = 1 / (MB.models[mi].fine || 1), t = this.t;
+      const L = this.live, MB = this.view.MB, t = this.t;
+      if (!L.length) return i;
       for (let k = 0; k < L.length && room > 0; k++) {
-        const s = L[k], age = t - s.born;
+        const s = L[k], age = t - s.born, fr = MB.extraFrames[s.key];
+        if (!fr) continue;
+        const mi = fr[0], f = 1 / (MB.models[mi].fine || 1);
         let hz, dz = 0;
         if (s.drop) {
           // a flier's: it falls, whole, then stands
@@ -28995,7 +29260,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         }
         if (s.sink >= 0 && t > s.sink) {
           const v = Math.min(1, (t - s.sink) / SINK_S), e = v * v * (3 - 2 * v);
-          dz -= STONE_H * s.sc[2] * e; hz *= 1 - 0.7 * e;
+          dz -= s.h * s.sc[2] * e; hz *= 1 - 0.7 * e;
         }
         const sx = s.sc[0] * f, sz = s.sc[2] * f * hz;
         if (s.up) {
