@@ -21271,7 +21271,10 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
   model("ms_grub", 2.0, (o) => {
     const w = ph(o), L = larva("hsBlight", "hsBarkDk", { wave: w });
     const bump = (i) => Math.max(0, Math.sin(w - i * 1.3)) * 0.035;
-    for (const [x, r, i] of [[0.06, 0.03, 0], [-0.05, 0.034, 1], [-0.15, 0.026, 2], [-0.2, 0.02, 3]]) L.p.push(S([x, 0.02 * Math.sign(x + 0.01), 0.17 + bump(i) - Math.abs(x) * 0.15], r, "hsVein"));
+    for (const [x, r, i] of [[0.06, 0.03, 0], [-0.05, 0.034, 1], [-0.15, 0.026, 2], [-0.2, 0.02, 3]]) if (!o.dmg || x > -0.1) L.p.push(S([x, 0.02 * Math.sign(x + 0.01), 0.17 + bump(i) - Math.abs(x) * 0.15], r, "hsVein"));
+    // o.dmg (broken, wound stage 2): the back half torn off (its two tail segments and their bumps), the stump glowing,
+    // and a gash bitten out of its back
+    if (o.dmg) { L.p.splice(3, 2); L.p.push(S([-0.15, 0, 0.08], 0.07, "hsVein"),E([-0.06, 0.04, 0.19], [0.09, 0.06, 0.05], "hsBlight", { R: rz(0.5), sub: 1, subm: "hsVein" })); }
     return {
       prims: L.p, r: 0.38, h: 0.34, k: 1,
       detail: (x, y, z, m) => (m === "hsBlight" && near([x, y, z], L.hc, L.hr * 1.1) ? cface([x - L.hc[0], y - L.hc[1], z - L.hc[2]], L.hr, { ex: 0.42, ey: 0.12, er: 0.2, eye: "hsVein", hi: false }) || m : m),
@@ -21281,8 +21284,12 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
   // Bark Beetle: a domed blight shell of bark plates split by a glowing seam, an obsidian horn tipped with
   // crystal; six legs walk in alternating tripods.
   model("ms_beetle", 2.0, (o) => {
-    const w = ph(o), hc = [0.2, 0, 0.13], p = [E([-0.03, 0, 0.17], [0.24, 0.18, 0.13], "hsShell", { k2: 0.02 }), E([-0.02, 0, 0.1], [0.22, 0.15, 0.06], "hsObsidian", { k2: 0.03 }), S(hc, 0.095, "hsObsidian", { k2: 0.03 })];
-    p.push(C(add(hc, [0.05, 0, 0.05]), add(hc, [0.14, 0, 0.2]), 0.045, 0.02, "hsObsidian", { k2: 0.015 }), C(add(hc, [0.14, 0, 0.2]), add(hc, [0.16, 0, 0.3]), 0.022, 0.004, "hsCrystal"));
+    // o.dmg (broken): the shell split in two halves pushed apart over a glowing seam, the horn snapped to a stub
+    const w = ph(o), hc = [0.2, 0, 0.13], dm = !!o.dmg, p = [E([-0.02, 0, 0.1], [0.22, 0.15, 0.06], "hsObsidian", { k2: 0.03 }), S(hc, 0.095, "hsObsidian", { k2: 0.03 })];
+    if (dm) for (const sd of [-1, 1]) p.push(E([-0.03, sd * 0.07, 0.16], [0.24, 0.11, 0.12], "hsShell", { R: rx(sd * 0.3), k2: 0.01 }));
+    else p.push(E([-0.03, 0, 0.17], [0.24, 0.18, 0.13], "hsShell", { k2: 0.02 }));
+    if (dm) p.push(E([-0.04, 0, 0.17], [0.2, 0.035, 0.08], "hsVein"), C(add(hc, [0.05, 0, 0.05]), add(hc, [0.1, 0.01, 0.12]), 0.045, 0.034, "hsObsidian", { k2: 0.015 }), S(add(hc, [0.1, 0.01, 0.12]), 0.026, "hsCrystal"));
+    else p.push(C(add(hc, [0.05, 0, 0.05]), add(hc, [0.14, 0, 0.2]), 0.045, 0.02, "hsObsidian", { k2: 0.015 }), C(add(hc, [0.14, 0, 0.2]), add(hc, [0.16, 0, 0.3]), 0.022, 0.004, "hsCrystal"));
     // glowing blight pores along the shell
     for (const [x, sd] of [[0.08, 1], [-0.04, -1], [-0.14, 1], [0.0, 1], [-0.1, -1]]) p.push(S([x, sd * 0.1, 0.17 + 0.08 * Math.cos(x * 6)], 0.022, "hsVein"));
     for (const sd of [-1, 1]) {
@@ -21296,7 +21303,7 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     return {
       prims: p, r: 0.34, h: 0.4, k: 1,
       detail: (x, y, z, m, nx, ny, nz) => {
-        if (m === "hsShell") { if (Math.abs(y) < 0.022 && z > 0.14) return "hsVein"; return nz3(x, y, z, 12, 4) > 0.6 ? "hsShellLt" : m; }
+        if (m === "hsShell") { if (!dm && Math.abs(y) < 0.022 && z > 0.14) return "hsVein"; return nz3(x, y, z, 12, 4) > 0.6 ? "hsShellLt" : m; }
         if (m === "hsObsidian" && near([x, y, z], hc, 0.105)) return cface([x - hc[0], y - hc[1], z - hc[2]], 0.095, { ex: 0.42, ey: 0.15, er: 0.2, eye: "hsVein", hi: false }) || m;
         return m;
       },
@@ -21307,8 +21314,11 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
   model("ms_moth", 2.0, (o) => {
     const w = ph(o), beat = 0.25 + 0.6 * (0.5 + 0.5 * Math.sin(w)), z0 = 0.45, hc = [0.17, 0, z0 + 0.04];
     const p = [E([-0.03, 0, z0], [0.14, 0.07, 0.075], "hsWingDk", { k2: 0.03 }), S(hc, 0.1, "hsWingDk", { k2: 0.03 })];
+    // o.dmg (broken): the near (+y) wings torn to a ragged stub and a shrunk hindwing, a glowing tear at the root
     for (const sd of [-1, 1]) {
-      p.push(E([0.02, sd * 0.19 * Math.cos(beat * 0.6), z0 + 0.06 + 0.12 * Math.sin(beat)], [0.14, 0.2, 0.024], "hsWingDk", { R: rx(sd * beat) }), E([-0.1, sd * 0.15 * Math.cos(beat * 0.6), z0 + 0.03 + 0.08 * Math.sin(beat)], [0.1, 0.14, 0.022], "hsWingDk", { R: rx(sd * (beat + 0.1)) }));
+      const torn = o.dmg && sd > 0, fw = torn ? [0.07, 0.08, 0.022] : [0.14, 0.2, 0.024], hw = torn ? [0.07, 0.09, 0.02] : [0.1, 0.14, 0.022];
+      p.push(E([0.02, sd * (torn ? 0.1 : 0.19) * Math.cos(beat * 0.6), z0 + 0.06 + (torn ? 0.06 : 0.12) * Math.sin(beat)], fw, "hsWingDk", { R: rx(sd * beat) }), E([-0.1, sd * (torn ? 0.1 : 0.15) * Math.cos(beat * 0.6), z0 + 0.03 + 0.08 * Math.sin(beat)], hw, "hsWingDk", { R: rx(sd * (beat + 0.1)) }));
+      if (torn) p.push(S([0.0, 0.07, z0 + 0.05], 0.03, "hsVein"));
       p.push(C(add(hc, [0.03, sd * 0.04, 0.08]), add(hc, [0.1, sd * 0.13, 0.2]), 0.008, 0.006, "hsWingDk"), S(add(hc, [0.1, sd * 0.13, 0.2]), 0.02, "hsGlowCyan"));
     }
     return {
@@ -21330,15 +21340,21 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
   model("ms_golem", 1.8, (o) => {
     const w = ph(o), bob = 0.02 * Math.abs(Math.sin(w)), hc = [0.14, 0.02, 0.66 + bob];
     const p = [E([-0.02, 0, 0.38 + bob], [0.24, 0.27, 0.25], "hsObsidian", { k2: 0.03 }), S([-0.04, 0, 0.56 + bob], 0.2, "hsObsidian", { k2: 0.06 }), S(hc, 0.13, "hsObsidian", { k2: 0.02 })];
+    // o.dmg (broken): the near (+y) shoulder boulder and its crystal knocked off, a glowing socket left, the cracks wider
+    const dm = !!o.dmg;
     for (const sd of [-1, 1]) {
-      const sw = 0.07 * Math.sin(w) * sd, lift = 0.03 * Math.max(0, Math.sin(w) * sd);
-      p.push(S([-0.02 - sw * 0.5, sd * 0.13, 0.08 + lift], 0.09, "hsObsidian", { k2: 0.02 }), S([0, sd * 0.3, 0.5 + bob], 0.1, "hsObsidian", { k2: 0.03 }));
+      const sw = 0.07 * Math.sin(w) * sd, lift = 0.03 * Math.max(0, Math.sin(w) * sd), off = dm && sd > 0;
+      p.push(S([-0.02 - sw * 0.5, sd * 0.13, 0.08 + lift], 0.09, "hsObsidian", { k2: 0.02 }));
+      if (!off) p.push(S([0, sd * 0.3, 0.5 + bob], 0.1, "hsObsidian", { k2: 0.03 }));
       p.push(C([0.02, sd * 0.33, 0.48 + bob], [0.1 + sw, sd * 0.36, 0.16 + bob], 0.075, 0.065, "hsObsidian", { k2: 0.02 }), S([0.12 + sw, sd * 0.36, 0.09 + bob], 0.085, "hsObsidian", { k2: 0.02 }));
-      p.push(C([-0.04, sd * 0.28, 0.56 + bob], [-0.1, sd * 0.36, 0.78 + bob], 0.045, 0.005, "hsCrystal"), C([-0.1, sd * 0.1, 0.7 + bob], [-0.16, sd * 0.14, 0.9 + bob], 0.04, 0.004, "hsCrystal"));
+      if (!off) p.push(C([-0.04, sd * 0.28, 0.56 + bob], [-0.1, sd * 0.36, 0.78 + bob], 0.045, 0.005, "hsCrystal"));
+      p.push(C([-0.1, sd * 0.1, 0.7 + bob], [-0.16, sd * 0.14, 0.9 + bob], 0.04, 0.004, "hsCrystal"));
     }
     p.push(E([0.2, 0.06, 0.4 + bob], [0.04, 0.07, 0.08], "hsVein", { R: rz(0.7) }));
+    if (dm) p.push(S([-0.01, 0.27, 0.55 + bob], 0.085, "hsObsidian", { sub: 1, subm: "hsVein" }));
     const face = (x, y, z) => (near([x, y, z], hc, 0.15) ? cface([x - hc[0], y - hc[1], z - hc[2]], 0.13, { ex: 0.36, ey: 0.02, er: 0.2, eye: "hsVein", hi: false }) : null);
-    return { prims: p, r: 0.46, h: 0.98, k: 1, detail: (x, y, z, m) => (m === "hsObsidian" ? face(x, y, z) || (Math.abs(nz3(x, y, z, 7, 5) - 0.5) < 0.025 ? "hsVein" : m) : m) };
+    const crack = dm ? 0.045 : 0.025;
+    return { prims: p, r: 0.46, h: 0.98, k: 1, detail: (x, y, z, m) => (m === "hsObsidian" ? face(x, y, z) || (Math.abs(nz3(x, y, z, 7, 5) - 0.5) < crack ? "hsVein" : m) : m) };
   }, 4);
 
   // Blight Spirit (boss): a hooded wraith with a cracked white mask, a crown of crystal horns, a tattered hem
@@ -21346,8 +21362,17 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
   model("ms_spirit", 1.6, (o) => {
     const w = ph(o), hc = [0.18, 0.1, 1.0]; // the mask turned toward the viewer, out of the hood
     const p = [E([0, 0, 0.72], [0.3, 0.29, 0.42], "hsWraith", { k2: 0.06 }), S([-0.05, -0.03, 1.08], 0.25, "hsWraith", { k2: 0.08 }), S(hc, 0.165, "hsMask", { k2: 0.01 })];
-    ring(12, (a, i) => { const r0 = [Math.cos(a) * 0.24, Math.sin(a) * 0.24, 0.45], r1 = [Math.cos(a + 0.12 * Math.sin(w + i)) * 0.4, Math.sin(a + 0.12 * Math.sin(w + i)) * 0.4, 0.1 + 0.05 * Math.sin(w + i * 1.7)]; p.push(C(r0, r1, 0.1, 0.025, i % 2 ? "hsWraith" : "hsBlight", { k2: 0.06 })); }); // a tattered skirt, rippling
-    ring(5, (a, i) => { const b = a * 0.5 - 1.0, base = [0.0 + Math.cos(b) * 0.04, Math.sin(b) * 0.2, 1.24], tip = add(base, [-0.04, Math.sin(b) * 0.12, 0.16 + 0.05 * (i % 2)]); p.push(C(base, tip, 0.035, 0.004, "hsCrystal")); });
+    // o.dmg (broken): a third of the hem torn away and the rest ragged, the mask cracked through
+    const dm = !!o.dmg;
+    ring(12, (a, i) => {
+      if (dm && i % 3 === 1) return;
+      const u = dm ? 0.55 + 0.35 * ((i * 0.618) % 1) : 1, r1r = 0.24 + 0.16 * u, r1z = 0.45 - (0.35 - 0.05 * Math.sin(w + i * 1.7)) * u;
+      const r0 = [Math.cos(a) * 0.24, Math.sin(a) * 0.24, 0.45], r1 = [Math.cos(a + 0.12 * Math.sin(w + i)) * r1r, Math.sin(a + 0.12 * Math.sin(w + i)) * r1r, r1z];
+      p.push(C(r0, r1, 0.1, 0.025, i % 2 ? "hsWraith" : "hsBlight", { k2: 0.06 }));
+    }); // a tattered skirt, rippling
+    ring(5, (a, i) => { const b = a * 0.5 - 1.0, base = [0.0 + Math.cos(b) * 0.04, Math.sin(b) * 0.2, 1.24], tip = add(base, [-0.04, Math.sin(b) * 0.12, 0.16 + 0.05 * (i % 2)]); p.push(dm && i === 3 ? C(base, add(base, [-0.01, Math.sin(b) * 0.03, 0.05]), 0.035, 0.03, "hsCrystal") : C(base, tip, 0.035, 0.004, "hsCrystal")); });
+    // (broken: a horn snapped to a stump, and a piece knocked out of the mask's brow, glowing behind)
+    if (dm) p.push(S(add(hc, [0.07, -0.09, 0.1]), 0.075, "hsMask", { sub: 1, subm: "hsVein" }));
     p.push(E([0.22, 0, 0.66], [0.04, 0.09, 0.11], "hsVein"));
     for (const sd of [-1, 1]) {
       const hz = 0.66 + 0.05 * Math.sin(w + sd), hp = [0.26, sd * 0.42, hz];
@@ -21361,7 +21386,7 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
         if (m === "hsMask") {
           const f = cface([x - hc[0], y - hc[1], z - hc[2]], 0.165, { ex: 0.36, ey: 0.08, er: 0.22, eye: "hsVein", hi: false, mouth: [0, -0.4, 0.16] });
           if (f) return f;
-          return Math.abs(nz3(x, y, z, 8, 3) - 0.5) < 0.02 ? "hsVein" : m;
+          return Math.abs(nz3(x, y, z, 8, 3) - 0.5) < (dm ? 0.045 : 0.02) ? "hsVein" : m;
         }
         if (m === "hsWraith" && z < 0.9 && Math.abs(nz3(x, y, z, 5, 7) - 0.5) < 0.018) return "hsVein";
         return m;
@@ -21386,6 +21411,9 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     const w = ph(o), sq = 0.02 * Math.sin(w), hc = [0.24 + sq, 0, 0.12], sc = [-0.05, 0, 0.23 + 0.008 * Math.sin(w + 1)];
     const p = [E([0.02, 0, 0.055], [0.27 + sq, 0.11, 0.06], "hsSnailBody", { k2: 0.03 }), S(hc, 0.085, "hsSnailBody", { k2: 0.04 }), E(sc, [0.18, 0.13, 0.18], "hsSnailShell", { k2: 0.02 }), S(add(sc, [0.03, 0, 0.0]), 0.07, "hsSnailShellLt")];
     for (const sd of [-1, 1]) { const tip = add(hc, [0.07 + 0.015 * Math.sin(w + sd), sd * 0.06, 0.15]); p.push(C(add(hc, [0.02, sd * 0.03, 0.05]), tip, 0.014, 0.01, "hsSnailBody"), S(tip, 0.022, "hsVein")); }
+    // o.dmg (broken): a chunk of the shell broken out of its top and near side, the glowing blight inside showing,
+    // and a shard of it fallen at its foot
+    if (o.dmg) p.push(E(add(sc, [-0.02, 0.1, 0.12]), [0.13, 0.1, 0.1], "hsSnailShell", { sub: 1, subm: "hsVein" }), E([-0.14, 0.15, 0.025], [0.05, 0.035, 0.02], "hsSnailShell", { R: rz(0.6) }));
     return {
       prims: p, r: 0.34, h: 0.42, k: 1,
       detail: (x, y, z, m) => {
@@ -21405,9 +21433,12 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
   // Bloat Mould: a swollen mould sack on a grub's little head, its pustules glowing and the sack breathing
   // as it crawls (the mites inside show as lumps).
   model("ms_bloat", 2.0, (o) => {
-    const w = ph(o), br = 1 + 0.06 * Math.sin(w), hc = [0.2, 0, 0.11];
-    const p = [E([-0.03, 0, 0.17], [0.2 * br, 0.18 * br, 0.17 / br], "hsMould", { k2: 0.04 }), S(hc, 0.085, "hsMouldLt", { k2: 0.04 })];
-    for (const [x, y, z, r] of [[0.02, 0.14, 0.24, 0.045], [-0.12, -0.1, 0.26, 0.05], [-0.08, 0.12, 0.08, 0.04], [0.06, -0.12, 0.2, 0.04], [-0.18, 0.04, 0.2, 0.04], [-0.04, 0, 0.33, 0.04]]) p.push(S([x * br, y * br, z], r * (1 + 0.15 * Math.sin(w + x * 20)), "hsMouldLt", { k2: 0.01 }));
+    // o.dmg (broken): the sack burst and sagging flat, half its pustules gone, glowing mould leaking into a
+    // puddle round it
+    const w = ph(o), dm = !!o.dmg, br = 1 + 0.06 * Math.sin(w), fl = dm ? 0.62 : 1, hc = [0.2, 0, 0.11];
+    const p = [E([-0.03, 0, 0.17 * fl], [0.2 * br * (2 - fl), 0.18 * br * (2 - fl) * 0.85, (0.17 / br) * fl], "hsMould", { k2: 0.04 }), S(hc, 0.085, "hsMouldLt", { k2: 0.04 })];
+    [[0.02, 0.14, 0.24, 0.045], [-0.12, -0.1, 0.26, 0.05], [-0.08, 0.12, 0.08, 0.04], [0.06, -0.12, 0.2, 0.04], [-0.18, 0.04, 0.2, 0.04], [-0.04, 0, 0.33, 0.04]].forEach(([x, y, z, r], i) => { if (!(dm && i % 2)) p.push(S([x * br * (2 - fl), y * br * (2 - fl), z * fl], r * (1 + 0.15 * Math.sin(w + x * 20)), "hsMouldLt", { k2: 0.01 })); });
+    if (dm) p.push(E([-0.02, 0, 0.008], [0.3, 0.26, 0.014], "hsMouldGlow"), E([0.0, 0.12, 0.16], [0.05, 0.035, 0.05], "hsMould", { sub: 1, subm: "hsMouldGlow" }), S([0.06, 0.2, 0.05 + 0.02 * Math.sin(w)], 0.018, "hsMouldGlow"));
     for (const sd of [-1, 1]) for (const x of [0.12, 0, -0.12]) p.push(C([x, sd * 0.12, 0.05], [x + 0.02 * Math.sin(w + x * 9), sd * 0.16, 0.0], 0.022, 0.012, "hsMouldDk"));
     return {
       prims: p, r: 0.3, h: 0.38, k: 1,
@@ -21432,12 +21463,16 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
   // Rot Mender: a hunched little mould shaman in a mossy cloak and a mushroom hat, swinging a staff with
   // a mint glow that heals; motes of it circle the mender.
   model("ms_mender", 2.0, (o) => {
-    const w = ph(o), bob = 0.015 * Math.abs(Math.sin(w)), hc = [0.06, 0, 0.36 + bob];
-    const p = [C([0, 0, 0.02], [0.02, 0, 0.3 + bob], 0.19, 0.1, "hsMould", { k2: 0.04 }), S(hc, 0.11, "hsMask", { k2: 0.02 }), E([0.03, 0, 0.5 + bob], [0.14, 0.14, 0.05], "hsMouldLt", { k2: 0.02 }), E([0.03, 0, 0.47 + bob], [0.11, 0.11, 0.015], "hsMouldGlow")];
-    const hand = [0.12, 0.14, 0.24 + bob], top = [0.16 + 0.04 * Math.sin(w), 0.18, 0.6 + bob];
-    p.push(S(hand, 0.04, "hsMould"), C([0.1, 0.17, 0.02], top, 0.014, 0.012, "hsBarkDk"), S(add(top, [0, 0, 0.04]), 0.045 * (1 + 0.12 * Math.sin(w * 2)), "hsGlowMint"));
+    // o.dmg (broken): the hat knocked askew and drooping, the staff snapped short with its glow guttering, one
+    // mote left
+    const w = ph(o), dm = !!o.dmg, bob = 0.015 * Math.abs(Math.sin(w)), hc = [0.06, 0, (dm ? 0.33 : 0.36) + bob];
+    const hat = dm ? { c: [0.02, -0.06, 0.45 + bob], R: rx(-0.5) } : { c: [0.03, 0, 0.5 + bob] };
+    const p = [C([0, 0, 0.02], [0.02, 0, (dm ? 0.27 : 0.3) + bob], 0.19, 0.1, "hsMould", { k2: 0.04 }), S(hc, 0.11, "hsMask", { k2: 0.02 }), E(hat.c, [0.14, 0.14, 0.05], "hsMouldLt", hat.R ? { R: hat.R, k2: 0.02 } : { k2: 0.02 }), E(add(hat.c, [0, dm ? 0.015 : 0, -0.03]), [0.11, 0.11, 0.015], "hsMouldGlow", hat.R ? { R: hat.R } : undefined)];
+    const hand = [0.12, 0.14, 0.24 + bob], top = dm ? [0.13 + 0.02 * Math.sin(w), 0.16, 0.36 + bob] : [0.16 + 0.04 * Math.sin(w), 0.18, 0.6 + bob];
+    p.push(S(hand, 0.04, "hsMould"), C([0.1, 0.17, 0.02], top, 0.014, 0.012, "hsBarkDk"), S(add(top, [0, 0, dm ? 0.015 : 0.04]), (dm ? 0.022 : 0.045) * (1 + 0.12 * Math.sin(w * 2)), "hsGlowMint"));
+    if (dm) p.push(C([0.2, 0.24, 0.015], [0.32, 0.18, 0.02], 0.013, 0.011, "hsBarkDk")); // the broken-off top on the ground
     for (const sd of [-1, 1]) p.push(E([0.02, sd * 0.11, 0.04], [0.06, 0.04, 0.03], "hsMouldDk"));
-    ring(3, (a) => { const b = a + w; p.push(S([Math.cos(b) * 0.28, Math.sin(b) * 0.28, 0.3 + 0.05 * Math.sin(b * 2)], 0.022, "hsGlowMint")); });
+    ring(dm ? 1 : 3, (a) => { const b = a + w; p.push(S([Math.cos(b) * 0.28, Math.sin(b) * 0.28, 0.3 + 0.05 * Math.sin(b * 2)], 0.022, "hsGlowMint")); });
     return {
       prims: p, r: 0.36, h: 0.72, k: 1,
       detail: (x, y, z, m) => {
@@ -21464,8 +21499,11 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
   // Root Mole: a furry mole with a pink star nose and big pale digging claws, roots and earth on its back,
   // paddling forward.
   model("ms_mole", 2.0, (o) => {
-    const w = ph(o), hc = [0.17, 0, 0.13], p = [E([-0.03, 0, 0.13], [0.22, 0.15, 0.13], "hsMoleFur", { k2: 0.04 }), S(hc, 0.1, "hsMoleFur", { k2: 0.05 })];
-    ring(6, (a) => p.push(E(add(hc, [0.1 + Math.cos(a) * 0.012, Math.sin(a) * 0.022, Math.cos(a) * 0.022]), [0.012, 0.018, 0.018], "kgRoseLt")));
+    // o.dmg (broken): the head hung low, the star nose knocked aside, the roots and clod torn off its back
+    // leaving a glowing scrape
+    const w = ph(o), dm = !!o.dmg, hc = dm ? [0.17, 0, 0.1] : [0.17, 0, 0.13], p = [E([-0.03, 0, 0.13], [0.22, 0.15, 0.13], "hsMoleFur", { k2: 0.04 }), S(hc, 0.1, "hsMoleFur", { k2: 0.05 })];
+    const nose = dm ? add(hc, [0.085, 0.045, -0.035]) : add(hc, [0.1, 0, 0]);
+    ring(6, (a, i) => { if (!(dm && i === 2)) p.push(E(add(nose, [Math.cos(a) * 0.012, Math.sin(a) * 0.022, Math.cos(a) * 0.022]), [0.012, 0.018, 0.018], "kgRoseLt")); });
     for (const sd of [-1, 1]) {
       const g = w + (sd > 0 ? 0 : Math.PI), paw = [0.16 + 0.05 * Math.sin(g), sd * 0.15, 0.03 + 0.025 * Math.max(0, Math.cos(g))];
       p.push(E(paw, [0.05, 0.04, 0.02], "hsMoleFurLt", { k2: 0.01 }));
@@ -21473,7 +21511,8 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       p.push(E([-0.14, sd * 0.12, 0.03], [0.05, 0.035, 0.025], "hsMoleFurLt"));
     }
     // roots and a clod of earth on its back
-    p.push(E([-0.07, 0.02, 0.25], [0.08, 0.07, 0.03], "kgBark"), C([-0.12, 0.0, 0.26], [-0.02, 0.06, 0.33], 0.01, 0.005, "kgStem"), C([-0.05, -0.03, 0.27], [0.02, -0.08, 0.31], 0.009, 0.004, "kgStem"));
+    if (dm) p.push(E([-0.07, 0.02, 0.255], [0.08, 0.06, 0.012], "hsVein"), C([-0.2, 0.17, 0.02], [-0.12, 0.22, 0.03], 0.009, 0.004, "kgStem"));
+    else p.push(E([-0.07, 0.02, 0.25], [0.08, 0.07, 0.03], "kgBark"), C([-0.12, 0.0, 0.26], [-0.02, 0.06, 0.33], 0.01, 0.005, "kgStem"), C([-0.05, -0.03, 0.27], [0.02, -0.08, 0.31], 0.009, 0.004, "kgStem"));
     return {
       prims: p, r: 0.3, h: 0.34, k: 1,
       detail: (x, y, z, m) => {
@@ -21492,12 +21531,15 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     for (const sd of [-1, 1]) {
       const eye = add(sc, [0.2, sd * 0.07, 0.14]);
       p.push(C(add(sc, [0.16, sd * 0.06, 0.06]), eye, 0.014, 0.012, "hsCrab"), S(eye, 0.03, "hsMouldGlow"));
-      // a big claw, opening and closing
+      // a big claw, opening and closing; o.dmg (broken): the near (+y) claw torn off at the elbow, a glowing
+      // stump left, and a crack across the shell
       const sh = add(sc, [0.12, sd * 0.24, -0.04]), el = [0.34, sd * 0.3, 0.2 + bob], cl = [0.46, sd * 0.24, 0.2 + bob], open = 0.25 + 0.2 * Math.sin(w + sd);
+      if (o.dmg && sd > 0) { const st = [0.27, 0.29, 0.17 + bob]; p.push(C(sh, st, 0.035, 0.032, "hsCrab"), S(st, 0.03, "hsVein")); continue; }
       p.push(C(sh, el, 0.035, 0.03, "hsCrab"), E(cl, [0.09, 0.05, 0.05], "hsCrab", { R: rz(-sd * 0.5) }));
       p.push(C(add(cl, [0.05, 0, 0.02]), add(cl, [0.13, -sd * 0.03, 0.02 + open * 0.15]), 0.025, 0.008, "hsLichenLt"), C(add(cl, [0.05, 0, -0.01]), add(cl, [0.13, -sd * 0.04, -0.01]), 0.022, 0.008, "hsLichenLt"));
     }
     tripods(p, [0.08, -0.02, -0.11, -0.19], 0.24, 0.42, 0.2 + bob, w * 2, "hsCrab", 0.02, 0.03);
+    if (o.dmg) p.push(C(add(sc, [-0.16, 0.08, 0.12]), add(sc, [0.06, 0.22, 0.08]), 0.024, 0.016, "hsCrab", { sub: 1, subm: "hsVein" }));
     return {
       prims: p, r: 0.52, h: 0.46, k: 1,
       detail: (x, y, z, m, nx, ny, nz) => {
@@ -21544,12 +21586,15 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     const p = [
       E(q(0, 0, 0.42), [0.2, 0.11, 0.11], "bcCrow", { k2: 0.03 }), E(q(0.08, 0, 0.39), [0.12, 0.09, 0.09], "bcCrow", { k2: 0.03 }), E(q(-0.04, 0, 0.5), [0.08, 0.05, 0.03], "hsBlight"),
       E(q(0.21, 0, 0.5), [0.09, 0.075, 0.08], "bcCrow", { k2: 0.02 }), C(q(0.28, 0, 0.5), q(0.42, 0, 0.465), 0.032, 0.008, "bcBone"),
-      E(q(-0.27, 0, 0.43), [0.12, 0.07, 0.02], "bcCrowDk"),
     ];
+    // o.dmg (broken): the tail shot away to a raw stump and the near (+y) wing's last flight feathers gone
+    const dm = !!o.dmg;
+    p.push(dm ? S(q(-0.19, 0, 0.43), 0.035, "hsBlight") : E(q(-0.27, 0, 0.43), [0.12, 0.07, 0.02], "bcCrowDk"));
     for (const s of [-1, 1]) {
-      p.push(S(q(0.26, s * 0.056, 0.53), 0.024, "bcEyeGreen"), C(q(-0.25, s * 0.03, 0.43), q(-0.42, s * 0.07, 0.42), 0.025, 0.012, "bcCrowDk"), C(q(0, s * 0.04, 0.34), q(0.04, s * 0.045, 0.27), 0.014, 0.01, "bcBone"));
+      p.push(S(q(0.26, s * 0.056, 0.53), 0.024, "bcEyeGreen"), C(q(0, s * 0.04, 0.34), q(0.04, s * 0.045, 0.27), 0.014, 0.01, "bcBone"));
+      if (!dm) p.push(C(q(-0.25, s * 0.03, 0.43), q(-0.42, s * 0.07, 0.42), 0.025, 0.012, "bcCrowDk"));
       p.push(E(wing(s, [-0.02, s * 0.25, 0.47], th), [0.15, 0.22, 0.026], "bcCrowDk", { R: rx(s * th), k2: 0.01 }), E(wing(s, [-0.04, s * 0.2, 0.495], th), [0.05, 0.06, 0.012], "hsBlight", { R: rx(s * th) }));
-      for (let i = 0; i < 5; i++) p.push(C(wing(s, [0.04 - i * 0.045, s * 0.36, 0.47], th), wing(s, [-0.02 - i * 0.06, s * (0.56 - i * 0.025), 0.455 - i * 0.004], th - lag), 0.03, 0.012, i % 2 ? "bcCrow" : "bcCrowDk"));
+      for (let i = 0; i < (dm && s > 0 ? 3 : 5); i++) p.push(C(wing(s, [0.04 - i * 0.045, s * 0.36, 0.47], th), wing(s, [-0.02 - i * 0.06, s * (0.56 - i * 0.025), 0.455 - i * 0.004], th - lag), 0.03, 0.012, i % 2 ? "bcCrow" : "bcCrowDk"));
       p.push(C(wing(s, [-0.1, s * 0.3, 0.45], th), wing(s, [-0.15, s * 0.34, 0.35], th), 0.02, 0.008, "bcHusk"), C(wing(s, [0.02, s * 0.42, 0.45], th), wing(s, [0.0, s * 0.45, 0.37], th), 0.014, 0.006, "bcHusk"));
     }
     return { prims: p, r: 0.6, h: 0.62, k: 1, detail: (x, y, z, m) => (m === "bcCrow" && nz3(x, y, z, 22, 3) > 0.66 ? "bcCrowDk" : m) };
@@ -22118,7 +22163,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.121.0", name: "Mossheart", commit: "5bdc730d" };
+  G.VERSION = { v: "0.122.0", name: "Mossheart", commit: "136fbae2" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -26237,6 +26282,14 @@ function MA_DSP() {
   // Its trait flipbooks (veiled, plated, regrowing) take the same count. Every model's walk is a loop over o.t,
   // frame 0 its contact pose, so frames 0, 2, 4, 6 of 8 are the 4-frame flipbook's.
   G.gaitFrames = (c) => ME.qn("gaitframes", 0) || (c && c.frames) || (ME.phoneLike() || (G.HERO_MAX || 64) <= 32 ? 4 : 8);
+  // D2 (docs/designs/2026-11-10-creature-swarm.md 5.3): a creature at wound stage 2 (hp <= a third) walks in its
+  // broken look, the kind's model with o.dmg (asset-set.js: a torn wing, a snapped horn, a claw gone, a glowing
+  // gash): 4 frames, desktops only (not on phones or ?heromax=32), ?dmglook=0 turns it off. Bosses get the stages
+  // too (5.1): the Blight Spirit's robe frays (5.3). Not the Mould Mother (her halfShell is her broken look), the
+  // Mould Mite or the Midge Swarm (too small to read). A trait's look (traitLook) wins over it.
+  G.DMG_KINDS = ["grub", "beetle", "moth", "golem", "spirit", "snail", "bloat", "mender", "mole", "lichen", "crow"];
+  const DMG_FRAMES = 4;
+  G.dmgOn = () => ME.qn("dmglook", 1) !== 0 && !ME.phoneLike() && (G.HERO_MAX || 64) > 32;
 
   // The level's dressing, before the bake: the Heart Tree takes the big maple's place (the road ends under
   // it), a blight rift opens where the road starts, and glowcaps grow on unbuildable cells beside the road.
@@ -26343,6 +26396,11 @@ function MA_DSP() {
       const o = { scale: k0(c.name) * c.size, fine: G.heroFine() }, n = G.gaitFrames(c);
       out["e_" + k + "_" + t] = t === "veiled" ? [c.name, Object.assign(o, { remap: G.VEIL_REMAP }), n] : [c.name + "_" + t, Object.assign(o, { look: G.Defs.ENEMIES[k].look || 1 }), n];
     }
+    // D2: each kind's broken look (wound stage 2), its own model with o.dmg, a 4-frame flipbook (G.dmgOn)
+    if (G.dmgOn()) for (const k of G.DMG_KINDS) {
+      const c = G.CREATURE_MODELS[k];
+      if (c && G.Defs.ENEMIES[k]) out["e_" + k + "_dmg"] = [c.name, { scale: k0(c.name) * c.size, fine: G.heroFine(), dmg: 1 }, DMG_FRAMES];
+    }
     // (only the plants the rules have, and the grafts' models, G.GRAFT_ART: a model may land before its plant)
     const grafts = new Set(Object.values(G.GRAFT_ART || {}).map((a) => a.model));
     for (const k in G.TOWER_MODELS) { if (!G.Defs.TOWERS[k] && !(G.Defs.UTILITY && G.Defs.UTILITY[k]) && !grafts.has(k)) continue; const c = G.TOWER_MODELS[k]; for (const lv of c.lvs || [1, 2, 3]) out["t_" + k + lv] = [c.name, { lv, scale: k0(c.name) * c.size, fine: G.heroFine(lv === 3) }, c.frames || FRAMES]; }
@@ -26376,6 +26434,8 @@ function MA_DSP() {
       // a creature's flipbook in a trait's look (veiled, plated, regrowing), or null for its own (Winged, or a
       // kind the trait doesn't fit)
       traitFrames: (kind, trait) => gf["e_" + kind + "_" + (trait === "regrowing" ? "regrow" : trait)] || null,
+      // D2: a kind's broken-look flipbook (wound stage 2), or null (phones, ?dmglook=0, a kind without one)
+      dmgFrames: (kind) => gf["e_" + kind + "_dmg"] || null,
       // the Heart Tree's flipbook per hurt stage (0 is the baked static's own)
       // grow > 0 (the living map's acts): that stage's three once added (addHeartGrow), else grow 0's
       heartFrames: (s0, grow = 0) => (grow && gf["heart_g" + grow + "_h0"] ? [0, 1, 2].map((h) => gf["heart_g" + grow + "_h" + h]) : [s0.frames, gf.heart1, gf.heart2]),
@@ -30007,7 +30067,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         const wob = n === 1 ? Math.sin(ph * Math.PI * 2) * 0.08 : 0;
         GA.pose(E, k, E.kindOf(k), ph, cm.flap, gp, cm.fwd - wob); bob *= gp.bob; // (body motion per gait: gait.js)
         this.wounds.turn[k] = wob + gp.yaw; // (its chips and flakes turn with it: wounds.js wear)
-        const fr = this.traitLook(E, k, MD, cm.frames), n2 = fr.frames.length;
+        // (at stage 2 its broken look, D2: art/models.js dmgFrames, 4 frames; a trait's look wins over it)
+        const fr = this.traitLook(E, k, MD, (ws === 2 && MD.dmgFrames && MD.dmgFrames(E.kindOf(k))) || cm.frames), n2 = fr.frames.length;
         const f = fr.frames[Math.floor((((ph % 1) + 1) % 1) * n2) % n2], fl = E.flash[k], sq = fl * 0.1, s = cm.scale, mk = this.marks(E, k) | fr.mark | (ws << G.MARK.WOUND_SHIFT);
         const g = gp.sc, sc = [s * (1 + sq) * g[0], s * (1 + sq) * g[1], s * (1 - sq) * g[2]];
         if (E.face[k]) {
