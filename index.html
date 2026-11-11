@@ -8497,7 +8497,8 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   // result, or of null where it failed (a prim that is not plain data, an error, a worker lost), and that variant
   // bakes on the main thread (a job's miss: what happens instead). The watchdog terminates a worker that holds jobs
   // and has sent nothing for ME.bakeJobMs (30 s by default; restarted on each answer, so it bounds one job; a held
-  // job's own ms, when longer, wins unless ME.bakeJobMs is set: a progressive full bake's, ME.bakeFullJobMs), and
+  // job's own ms, when longer, wins unless ME.bakeJobMs is set: a progressive full bake's, or any job baked above
+  // density 64 (a level-3 tower at 128), ME.bakeFullJobMs), and
   // every job it held bakes here. startMs, idleMs, busyMs: the workers' summed time from the probe to their first
   // job, between jobs (waiting for a post; not after the last) and in them. add(jobs, front) queues more (E4: a
   // progressive bake's full bakes once its upgrade starts, its finishing jobs with front: before those waiting),
@@ -8763,9 +8764,10 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       const name = L.variants[i].name, why = on ? notData(md, opts) : "off";
       if (why) { offWorker[name] = why; return; }
       const cost = md.prims.length * (md.r || 1) ** 2 * (md.h || 1) * md.k ** 3, q = { id: i, md: { prims: md.prims, k: md.k, r: md.r, h: md.h }, vs: ME.VS, cull: ME.sdf.cull, def, detail: !!md.detail };
-      if (!pv.has(i)) { jobs.push({ id: i, name, cost, q }); return; }
+      const slow = (d) => (ME.VS * d > 64 ? { ms: ME.bakeFullJobMs || 240000 } : {}); // above 64 (a 128 tower) a bake outlives the 30 s watchdog
+      if (!pv.has(i)) { jobs.push(Object.assign({ id: i, name, cost, q }, slow(vf))); return; }
       const kf = kfOf(vf, opts);
-      jobs.push({ id: i, name, cost: cost / kf ** 3, q: Object.assign({}, q, { md: Object.assign({}, q.md, { k: md.k / kf }), fullK: md.k, vf: kf, hollow: hollowOn() && ME.VS * vf > ME.POOL_HOLLOW }) });
+      jobs.push(Object.assign({ id: i, name, cost: cost / kf ** 3, q: Object.assign({}, q, { md: Object.assign({}, q.md, { k: md.k / kf }), fullK: md.k, vf: kf, hollow: hollowOn() && ME.VS * vf > ME.POOL_HOLLOW }) }, slow(vf / kf)));
       // (its own watchdog, ME.bakeFullJobMs: a hero model at full density can hold a worker past 30 s; the Heart
       // Tree's grown crown, ?heartgrow=3, did, and the 30 s one lost every worker and the full bakes queued after it)
       full.push({ id: nv + i, name, cost, ms: ME.bakeFullJobMs || 240000, q: Object.assign({}, q, { id: nv + i }), miss: "kept the coarse model" });
@@ -17613,6 +17615,8 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     moss: "MOSS", moss2: "MOSS", mound: "MOSS", mound2: "MOSS", sphag: "MOSS",
     maple: "FOLIAGE", leaf: "FOLIAGE", leaf2: "FOLIAGE", pine: "FOLIAGE", leafDry: "FOLIAGE", gingko: "FOLIAGE",
     rock: "ROCK", stone: "ROCK", pebble: "ROCK", pebble2: "ROCK", gravel: "ROCK", sett: "ROCK", sett2: "ROCK", sett3: "ROCK",
+    cfMossUnder: "MOSS", cfMossLedge: "MOSS", cfMossFoot: "MOSS",
+    cfRock1: "ROCK", cfRock2: "ROCK", cfRock3: "ROCK", cfJoint: "ROCK", cfShade: "ROCK", cfWet: "ROCK",
     bark: "BARK", wood: "BARK", water: "WATER",
     hide: "SKIN", snout: "SKIN", spirit: "SKIN", cap: "SKIN", stalk: "SKIN", shell: "SKIN", shellDark: "SKIN", paper: "SKIN",
   };
@@ -17674,6 +17678,56 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
   C.defaultMaterial = "stone";
   // grass tufts: the ground materials they grow on, and the blade materials
   C.grass = { ground: ["moss", "moss2", "maple", "mound", "mound2"], blade: "leaf2", blade2: "moss2", reed: "pine", dry: "leafDry" };
+  // Momiji's own look (Demo 1, the visual critic's fixes 2 and 3, report of 2026-11-10), on Momiji only, so
+  // Corn Moon and the other maps keep theirs. Its style is the generator's mf-valley, so the game puts these
+  // over it in G.dressLevel (Mossheart/src/art/models.js), not main.js's mapLight path.
+  //   look   fix 2's Art half: the board's bloom (0.85, the hd block's) and no exposure lift
+  //   ramps  fix 3: a deep emerald moss (hue ~130) whose top third goes pale mint, not warm yellow, and moss2
+  //          (the carpet's mottle, the drape's strands, the mound2 cushions) in the same family, a little
+  //          greyer. The act tints (weather-looks.js, acts.momiji I and II) aim at these ramps' 0.6 colours,
+  //          so their factors stay near neutral in hue
+  //   fix 5 (lamps): the ground lamps' paper (lanternPaper, the lane andon) and the water lanterns' candle
+  //          glowed at ~1.7x their ramp's top (#fff2cc, #fffbe8: shaders/light.js, emissive class), so their
+  //          faces bloomed white and read as eyes. Momiji's ramps end at a warm amber instead, and mats lower
+  //          their em gain (a GPU table: no rebake). The lamps' point lights (C.groundLamps) are unchanged.
+  //          critter-models.js's RAMPS and MATS only fill gaps, so Corn Moon keeps its lamps
+  //   fix 6 (cliff faces, cf*): the materials of Momiji's cliffFace recipe (Engine's #696 hook). Each is the
+  //          moss or rock ramp with a bias equal to the board's shade offset in its own cliff texture (vendor
+  //          gen/px.js, sideTexture "cliff"): shaders/light.js adds a material's bias to the shade, as px.js
+  //          adds its offset. Under the lip and the lobes -0.24, the lip's shadow -0.28, three blocks at
+  //          (id - 0.5)*0.22 - 0.06, joints -0.34, ledges -0.06, the foot moss -0.18, wet streaks -0.22
+  C.mapLight = Object.assign(C.mapLight || {}, {
+    momiji: {
+      look: { bloomK: 0.85, exposure: 1 },
+      ramps: {
+        moss: ["#11221b", "#1e4531", "#2a6a40", "#358f4a", "#49ac53", "#68be70", "#8bca91", "#afd7b2", "#d1e5d3"],
+        moss2: ["#17261e", "#264330", "#35623d", "#438046", "#5e9759", "#76ab72", "#92ba8f", "#aec9ac", "#cad9c9"],
+        lanternPaper: ["#d9822f", "#f5a94f", "#ffc878"],
+        candle: ["#e8902e", "#ffbd5e", "#ffd590"],
+      },
+      mats: {
+        lanternPaper: { em: 0.55, flat: 1 }, candle: { em: 0.6, flat: 1 },
+        cfMossUnder: { ramp: "moss", bias: -0.24 }, cfMossLedge: { ramp: "moss", bias: -0.06 }, cfMossFoot: { ramp: "moss", bias: -0.18 },
+        cfRock1: { ramp: "rock", bias: -0.17 }, cfRock2: { ramp: "rock", bias: -0.06 }, cfRock3: { ramp: "rock", bias: 0.05 },
+        cfJoint: { ramp: "rock", bias: -0.34 }, cfShade: { ramp: "rock", bias: -0.28 }, cfWet: { ramp: "rock", bias: -0.22 },
+      },
+    },
+  });
+  // Momiji's blades in the moss family (fix 3): leaf over moss, not leaf2 over moss2; reeds (fix 5) moss2,
+  // not the dark teal pine
+  C.mapGrass = Object.assign(C.mapGrass || {}, { "mf-valley": Object.assign({}, C.grass, { blade: "leaf", blade2: "moss", reed: "moss2" }) });
+  // fix 6: Momiji's cliff faces (Engine's #696, ME.cliffFaceFor), the board's mossy rock walls in the cf*
+  // materials above: a moss lip whose lower 0.4 goes to the darker under-moss, the lip's shadow band, rock
+  // blocks in three shades parted by dark joints with moss on about half the ledges, a foot of moss creeping
+  // up from the lower top and wet streaks. Keyed by the style id (mf-valley), as mapGrass is: ME.cliffFaceFor
+  // reads st.map.id, else st.id. No pack-wide C.cliffFace, so Corn Moon and the other maps keep plain faces
+  C.mapCliffFace = Object.assign(C.mapCliffFace || {}, {
+    "mf-valley": {
+      rock: ["cfRock1", "cfRock2", "cfRock3"], joint: "cfJoint", ledge: "cfMossLedge", lip: "moss", lipUnder: "cfMossUnder",
+      shade: "cfShade", foot: "cfMossFoot", wet: "cfWet", overhang: "cfMossUnder",
+      lipD: 0.12, lipK: 0.18, underK: 0.4, shadeD: 0.16, jointW: 0.06, ledgeK: 0.5, footD: 0.05, footK: 0.16, wetK: 0.8,
+    },
+  });
 
   // deco drawn as ray-marched volumes (trees, lanterns, the generator's sample towers) instead of being
   // stamped into the terrain; deco that walk the route instead
@@ -22543,7 +22597,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.123.0", name: "Mossheart", commit: "6468ee3f" };
+  G.VERSION = { v: "0.124.0", name: "Mossheart", commit: "47430756" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -25481,10 +25535,10 @@ function MA_DSP() {
 
   // The heroes' density, one rule for every creature, plant, wisp and the Heart Tree: 64 voxels per tile edge over
   // any terrain, under G.HERO_MAX (32 on phones), as a factor of the terrain's VS, drawn at 1 / fine. Scenery
-  // statics stay at the terrain's density. top: a level-3 plant, which bakes at G.HERO_MAX up to 128 when
-  // ?heromax lifts it past 64 (desktop only, menu.js; the vs128 study's H1: the other heroes wait for H2, the pool
-  // can't hold them all at 128). G.hero128Off: the pool's fallback put them back at 64 (main.js)
-  G.heroFine = (top) => Math.min(top && !G.hero128Off ? 128 : 64, G.HERO_MAX || 64) / (ME.VS || 32);
+  // statics stay at the terrain's density. top: a level-3 plant, which bakes at G.TOP_MAX, 128 by default on every device
+  // (menu.js; the vs128 study's H1, the user's default since 2026-11-11: the other heroes wait for H2, the pool
+  // can't hold them all at 128). G.hero128Off: the pool's fallback put them back at HERO_MAX (main.js)
+  G.heroFine = (top) => (top && !G.hero128Off ? Math.min(128, G.TOP_MAX || G.HERO_MAX || 64) : Math.min(64, G.HERO_MAX || 64)) / (ME.VS || 32);
 
   // What the game bakes. Creatures: size = world scale relative to the asset's own, fwd = the angle of the model's
   // forward (heads point +X), hover = how high the model already floats (in tiles, after scaling), gait = flipbook
@@ -26682,6 +26736,11 @@ function MA_DSP() {
   G.dressLevel = (st) => {
     const map = st.map, v1 = map.v === 1, deco = v1 ? (map.props = map.props || []) : st.deco, game = (v1 && map.game) || {};
     if (v1 && deco.some((d) => d && d[0] === "ms_rift")) return; // dressed already (a second bake of the same map)
+    // Momiji (the one generator map) takes its own look and ramps from ME.content.mapLight.momiji (Demo 1)
+    const mj = !v1 && ((ME.content && ME.content.mapLight) || {}).momiji;
+    if (mj && mj.look) st.look = Object.assign({}, st.look, mj.look);
+    if (mj && mj.ramps) st.ramps = Object.assign({}, st.ramps, mj.ramps);
+    if (mj && mj.mats) st.mats = Object.assign({}, st.mats, mj.mats);
     const path = v1 ? game.route[0] : map.path[0];
     // a point in tiles as [x, y, at] for a prop: its tile and the offsets from the tile's centre
     const r3 = (v) => Math.round(v * 1000) / 1000 + 0;
@@ -27383,9 +27442,9 @@ function MA_DSP() {
      capped at x6; terrain, grass and models, never the water); grassH the grass height (1); freeze the
      water's ice, 0 to 1. Acts blend over 4 s; ?act=N pins one. The palette moves one named material at a
      time (leaf, moss, grass, maple), never a hue shift over a whole ramp: a ramp-wide shift is what turned
-     the shaded sand banks crimson (the red band). The grass blades are leaf2 over moss2 (content/momiji.js,
-     C.grass); mound and mound2 follow moss and moss2. The Heart Tree's kgLeaf and the water stay their own:
-     the tree changes by its growth stages (ms_heart o.grow), not by tint. */
+     the shaded sand banks crimson (the red band). Momiji's grass blades are leaf over moss (content/momiji.js,
+     C.mapGrass["mf-valley"]); mound and mound2 follow moss and moss2. The Heart Tree's kgLeaf and the water
+     stay their own: the tree changes by its growth stages (ms_heart o.grow), not by tint. */
 (function () {
   const G = (window.MG = window.MG || {});
 
@@ -27473,12 +27532,14 @@ function MA_DSP() {
     acts: {
       momiji: [
         // I · Thaw: a morning after rain, young greens, pale moss, the grass still short
+        // (Demo 1: moss, moss2, mound, mound2 and leaf in I and II aim at Momiji's emerald ramps, content/momiji.js
+        // mapLight.momiji, near their 0.6 colours, so the factors stay near neutral in hue)
         { mood: "morning", grassH: 0.85,
-          pal: { moss: "#8db35a", moss2: "#a9c46c", mound: "#8db35a", mound2: "#a9c46c", sphag: "#b8b072",
-                 leaf: "#5e9a48", leaf2: "#8cc05e", maple: "#9cbc5a", gingko: "#b8d070", leafDry: "#9cb060" } },
+          pal: { moss: "#60ad6a", moss2: "#82bc7e", mound: "#60ad6a", mound2: "#82bc7e", sphag: "#b8b072",
+                 leaf: "#4a9a48", leaf2: "#8cc05e", maple: "#9cbc5a", gingko: "#b8d070", leafDry: "#9cb060" } },
         // II · Green Canopy: clear noon, deep greens, the grass tall
         { mood: "clear", grassH: 1.2,
-          pal: { moss: "#3c7f2e", moss2: "#5f9636", mound: "#3c7f2e", mound2: "#5f9636",
+          pal: { moss: "#2f7a40", moss2: "#4a9452", mound: "#2f7a40", mound2: "#4a9452",
                  leaf: "#2c6030", leaf2: "#4a8c36", maple: "#3f7a34", gingko: "#7aa83a", leafDry: "#6a8e3a" } },
         // III · Ember Leaves: golden hour, the maples crimson, the other leaves amber, the moss olive
         { mood: "golden", grassH: 1,
@@ -29177,8 +29238,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.st = new Uint8Array(N); this.uid = new Int32Array(N).fill(-1); this.next = new Float32Array(N); this.o = [0, 0, 0];
       this.turn = new Float32Array(N); // each creature's gait turn and wobble as last drawn (scene.js), so its chips leave the body as drawn
       this.budget = TRAIL_MAX; this.stats = { chips: 0, voxels: 0, flakes: 0, drips: 0, dropped: 0 };
+      this.wanted = new Set(); // the kinds this run has asked the progressive bake to upgrade first (MB.prog.want, as tombs.js)
     }
-    reset() { this.uid.fill(-1); this.st.fill(0); this.turn.fill(0); }
+    reset() { this.uid.fill(-1); this.st.fill(0); this.turn.fill(0); this.wanted.clear(); }
+    // the first creature of a kind at stage 2 this run: its broken look's full bake (lazy, main.js progLazy) next
+    want(E, k) {
+      const kind = E.kindOf(k), MB = this.view.MB;
+      if (this.wanted.has(kind)) return;
+      this.wanted.add(kind);
+      if (MB && MB.prog && MB.prog.want && MB.extraFrames && MB.extraFrames["e_" + kind + "_dmg"]) MB.prog.want("e_" + kind + "_dmg");
+    }
     // the stage of creature k as drawn (0 when off)
     stage(E, k) { return this.on ? G.woundStage(E.hp[k], E.maxHp[k]) : 0; }
     // the stage's gait on top of the walk: [phase, pitch, bob] (ph the walk's phase in cycles, bob its own)
@@ -29197,6 +29266,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       for (let k = 0; k < G.ENEMY_CAPACITY; k++) {
         if (!E.alive[k]) continue;
         const st = this.stage(E, k);
+        if (st === 2) this.want(E, k);
         if (this.uid[k] !== E.uid[k]) { this.uid[k] = E.uid[k]; this.st[k] = st; this.next[k] = Math.random() * FLAKE_S; continue; }
         const was = this.st[k];
         this.st[k] = st;
@@ -29213,7 +29283,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
     // the frame creature k wears and its model's scale, turn and centre
     wear(E, k, MD) {
-      const cm = MD.creature[E.kind[k]], fr = this.view.traitLook(E, k, MD, cm.frames);
+      const cm = MD.creature[E.kind[k]], fr = this.view.traitLook(E, k, MD, this.view.baseFrames(E, k, MD, this.stage(E, k)));
       const yaw = (E.face[k] ? 0 : E.yaw[k]) - cm.fwd + this.turn[k]; // (on a wall its frame holds the heading: scene.js)
       return { mi: fr.frames[0], s: cm.scale, c: Math.cos(yaw), sn: Math.sin(yaw) };
     }
@@ -30207,16 +30277,22 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       let [n, speed, life] = BURST[kind] || BURST.grub;
       const over = this.waterAt(p[0], p[1]), wet = over !== null ? [p[0], p[1], over] : this.waterNear(p[0], p[1], 1.2);
       if (over !== null) { speed *= 0.35; life = 9; } else if (wet) life *= 3;
-      if (over !== null || i < 0 || this.dieAs(kind, p, i, cm) === "burst") this.emitModel(cm.frames[0], p, Math.random() * TAU, { n, speed, life });
+      if (over !== null || i < 0 || this.dieAs(kind, p, i, cm) === "burst") this.emitModel(i < 0 ? cm.frames[0] : this.baseFrames(this.game.enemies, i, G.models)[0], p, Math.random() * TAU, { n, speed, life });
       if (wet) this.later.push([over !== null ? 0.05 : 0.35, wet, (SPLASH[kind] || 0.5) * (over !== null ? 1 : 0.5)]);
       const s = this.sandNear(p[0], p[1], 0.8);
       if (s) this.phys.dig(s, DIG[kind] || 0.1, { speed: 0.6 });
       if (D.ENEMIES[kind].boss) { this.phys.explode(p, 0.8, 260, { speed: 2.4, life: 6 }); this.slam(p[0], p[1], 3, 0); }
     }
+    // the frames creature k wears under its trait's look (traitLook): at wound stage 2 (wounds.js) its broken look, D2's
+    // art/models.js dmgFrames (4 frames), else its own. One rule for the draw, the chips and flakes (wounds.js wear) and
+    // its death (dieAs, burst): a creature dies as it last looked
+    baseFrames(E, k, MD, ws = this.wounds.stage(E, k)) {
+      return (ws === 2 && MD.dmgFrames && MD.dmgFrames(E.kindOf(k))) || MD.creature[E.kind[k]].frames;
+    }
     // a death's way (deaths.js), from the creature as drawn this frame: its trait's look, turn, scale and marks
     dieAs(kind, p, i, cm) {
       const E = this.game.enemies, def = D.ENEMIES[kind], c = E.ct[i], id = c >= 0 ? D.CTRAITS[c].id : null;
-      const fr = this.traitLook(E, i, G.models, cm.frames), mark = G.creatureMark(E.kind[i]) | fr.mark;
+      const fr = this.traitLook(E, i, G.models, this.baseFrames(E, i, G.models)), mark = G.creatureMark(E.kind[i]) | fr.mark;
       const flier = (def.fly > 0 || id === "winged") && !(E.groundT[i] > 0);
       const e = { kind, def, wall: !!E.face[i], plated: id === "plated", flier };
       return this.deaths.die(e, fr.frames[0], p, E.yaw[i] - cm.fwd, cm.scale, mark);
@@ -30447,8 +30523,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         const wob = n === 1 ? Math.sin(ph * Math.PI * 2) * 0.08 : 0;
         GA.pose(E, k, E.kindOf(k), ph, cm.flap, gp, cm.fwd - wob); bob *= gp.bob; // (body motion per gait: gait.js)
         this.wounds.turn[k] = wob + gp.yaw; // (its chips and flakes turn with it: wounds.js wear)
-        // (at stage 2 its broken look, D2: art/models.js dmgFrames, 4 frames; a trait's look wins over it)
-        const fr = this.traitLook(E, k, MD, (ws === 2 && MD.dmgFrames && MD.dmgFrames(E.kindOf(k))) || cm.frames), n2 = fr.frames.length;
+        // (at stage 2 its broken look, baseFrames; a trait's look wins over it)
+        const fr = this.traitLook(E, k, MD, this.baseFrames(E, k, MD, ws)), n2 = fr.frames.length;
         const f = fr.frames[Math.floor((((ph % 1) + 1) % 1) * n2) % n2], fl = E.flash[k], sq = fl * 0.1, s = cm.scale, mk = this.marks(E, k) | fr.mark | (ws << G.MARK.WOUND_SHIFT);
         const g = gp.sc, sc = [s * (1 + sq) * g[0], s * (1 + sq) * g[1], s * (1 - sq) * g[2]];
         if (E.face[k]) {
@@ -31021,14 +31097,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       // links change as plants come and go around the one in the inspector
       G.on("links", () => { if (this.inspected && $("inspector").classList.contains("show") && this.inspected.links) this.inspect(this.inspected); });
       // the counter warning (ctWarn): a strip over the meadow, gone on a tap for the rest of that wave; a plant
-      // set or sold redraws it and the almanac's warn chips (main.js redraws the waves on "waves")
+      // set or sold redraws it and the almanac's warn chips (main.js redraws the waves on the same two events; the view raises no rules event)
       const cw = (this.cwEl = document.createElement("div"));
       cw.id = "ctwarn"; cw.setAttribute("role", "alert");
       cw.addEventListener("pointerdown", (e) => e.stopPropagation());
       cw.addEventListener("click", (e) => { e.stopPropagation(); this.cwGone = this.cwWave; this.ctWarn(); });
       $("ui").appendChild(cw);
       this.cwWave = -1; this.cwGone = -1; this.cwCall = 0; this.cwPlan = null;
-      for (const ev of ["tower_placed", "tower_sold"]) G.on(ev, () => G.emit("waves"));
+      for (const ev of ["tower_placed", "tower_sold"]) G.on(ev, () => { if (this.hold) this.stale = true; else this.refresh(); });
       G.on("wave_start", () => { this.cwCall = performance.now() + CW_CALL_MS; this.spiltAt = S.spilt || 0; });
       // the cap (G1b, design 4.2): a brim line across the tube at S.cap() (refresh); dew over it is spilt,
       // droplets spraying from the bulb (at most one burst per SPILL_MS), and the wave's clear tells "+N spilt"
@@ -32813,7 +32889,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const b = e.target.closest("button,[data-peek]"); if (!b || b.disabled) return;
       const ds = b.dataset;
       if ("close" in ds) { this.sel = ""; this.peek = true; this.render(); }
-      else if ("peek" in ds) { this.peek = !this.peek; this.render(); }
+      // (the head folds the sheet on a phone only; a wide screen always shows it whole, so a click there changes nothing)
+      else if ("peek" in ds) { if (this.phone.matches) { this.peek = !this.peek; this.render(); } }
       else if (ds.chip) this.toggle(ds.chip);
       else if (ds.out) { this.pick = this.pick.filter((x) => x !== ds.out); this.sel = ds.out; this.render(); }
       else if (ds.show) { this.sel = this.sel === ds.show ? "" : ds.show; this.render(); }
@@ -33090,7 +33167,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const DEFAULTS = {
     numbers: true, // (combat numbers: HP beside the bars, damage rising off a hit; fx.js, hud.js foeTags)
     master: 0.7, music: 0.5, sfx: 0.7, ambience: 0.45, musicStyle: "mix",
-    quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, vs: 64, vsPicked: false, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, hints: true, hintsSeen: [], weather: "normal", wxPicked: false, levelSky: true, glass: "auto", res: mobile ? PHONE_RES : "full", resPicked: false, ui: mobile ? PHONE_UI : 1, uiPicked: false,
+    quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, vs: 64, vsPicked: false, top128: true, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, hints: true, hintsSeen: [], weather: "normal", wxPicked: false, levelSky: true, glass: "auto", res: mobile ? PHONE_RES : "full", resPicked: false, ui: mobile ? PHONE_UI : 1, uiPicked: false,
   };
   const MUSIC_STYLES = [["ambient", "Ambient"], ["drift", "Drift"], ["liquid", "Liquid"], ["mix", "Mix"]];
   // vs: the voxel density, Maximum (64) unless the player picked one (vsPicked; the device's cap still applies).
@@ -33136,6 +33213,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // those devices and 128 elsewhere: ?heromax=128 bakes the level-3 plants at 128 (the vs128 study's H1, G.heroFine).
   const HERO_CAP = Math.min(mobile || mem <= 4 ? 64 : 128, ME.qn("heromax", mobile || mem <= 4 ? 32 : 64));
   Object.defineProperty(G, "HERO_MAX", { configurable: true, get: () => ((ME.VS || 32) > 40 ? Math.max(HERO_CAP, ME.VS) : HERO_CAP) });
+  // and the densest a level-3 plant may bake (G.heroFine's top tier): 128 on every device, phones too (the user,
+  // 2026-11-11: "default towers, apply to mobile as well"), while every other model keeps HERO_MAX. Settings' "Level-3
+  // towers" Off (top128: false) puts them back under HERO_MAX, as does ?heromax= (the H1 checks' query: ?heromax=128
+  // lifts them on a desktop as before, ?heromax=64 holds them at 64). A pool that can't hold them sends them back to
+  // the device's HERO_MAX (main.js, G.hero128Off). A getter: boot is read below, before any bake asks.
+  Object.defineProperty(G, "TOP_MAX", { configurable: true, get: () => (boot.top128 !== false && !ME.params.has("heromax") ? Math.max(128, G.HERO_MAX) : G.HERO_MAX) });
   const VS_NAMES = { 8: "Chunky (8)", 12: "Coarse (12)", 16: "Standard (16)", 20: "Fine (20)", 24: "Superfine (24)", 32: "Extreme (32)", 40: "Ultimate (40)", 48: "Epic (48)", 64: "Maximum (64)" };
   G.vsChoices = () => ME.VS_LEVELS.filter((v) => v <= VS_MAX);
   // before the bake: the saved density, unless ?vs= pins one
@@ -33460,6 +33543,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         `<div class="note dim">Sets every graphics setting here at once (${presets().map((k) => { const p = presetSet(k); return PRESET_NAMES[k] + ": " + p.vs + ", " + (p.res === "full" ? "Full" : p.res + "x") + ", quality " + p.quality + (p.glass === false ? ", no glass" : "") + ", weather " + p.weather[0].toUpperCase() + p.weather.slice(1); }).join("; ")}). Ultra is the default. Custom once one is changed by hand.</div>` +
         choice("vs", "Voxel density", G.vsChoices().map((v) => [v, VS_NAMES[v] || String(v)])) +
         `<div class="note dim">Voxels per tile edge. Finer looks smoother and bakes longer (now ${vsNow}).${VS_MAX < 24 ? ` This device stops at ${VS_MAX}.` : VS_MAX > 24 ? " Extreme (32) bakes about twice as long as 24 the first time, then loads from the cache." + (VS_MAX > 32 ? " Above it, longer still, with a strong GPU and plenty of memory." : "") : ""}${mobile || mem <= 4 ? ` On this device the finer ones bake slowly; if a load fails, the next one ${mobile && mem < 8 ? `drops to ${mem <= 4 ? 16 : 24} (a level, from 24 or below)` : "steps down a level"}, and the one after tries this setting again.` : ""}</div>` + vsNote +
+        choice("top128", "Level-3 towers", [[true, "Fine (128)"], [false, "Like the rest"]]) +
+        `<div class="note dim">A plant grown to level 3 bakes at 128 voxels a tile edge, twice the rest, for its close-up look. Like the rest loads faster and uses less memory, on a slow phone.</div>` +
+        ((s.top128 !== false) !== (boot.top128 !== false) ? `<div class="note">Takes effect on reload. <button class="btn" data-a="reload">Reload now</button></div>` : "") +
         choice("res", "Resolution", [["full", "Full"], ["2", "2x"], ["1.5", "1.5x"], ["1", "1x"], ["0.75", "0.75x"]]) +
         `<div class="note dim">${resNote}</div>` +
         choice("quality", "Quality", [["low", "Low"], ["medium", "Medium"], ["high", "High"]]) +
@@ -36860,6 +36946,8 @@ function MG_SFX(L) {
   const canvas = document.getElementById("cv"), result = document.getElementById("result");
   const report = (o) => { result.textContent = typeof o === "string" ? o : JSON.stringify(o, null, 1); };
   G.devFlag = (name, def = 0) => ME.qn(name, def);
+  // the pool room the Heart Tree's grow bakes need, in bricks at hero density 64 (the boot's level-3 plants at 128 leave it)
+  const HEART_ROOM64 = 30000;
   try {
     const t0 = ME.now();
     ME.progress("starting WebGPU", 0.01);
@@ -36912,7 +37000,10 @@ function MG_SFX(L) {
     const ids = { sky: pal.id("sky"), water: pal.id("water"), fall: pal.id("fall"), maple: pal.id("maple") };
     // the bake options (the bake itself, or its cached parts, below)
     // (the wisps bake progressively too, E4: fine, so they'd add to READY; the small critters stay as they are)
+    // (the broken looks, D2's e_*_dmg, are lazy: a creature wears one only below a third of its HP, so their full bakes
+    // come last, after the ones every wave shows)
     const bakeOpts = { walkers: false, models: Object.assign(G.bakeList(), G.Tombs.bakeList()), progCritters: ["wispling"] };
+    bakeOpts.progLazy = Object.keys(bakeOpts.models).filter((k) => k.endsWith("_dmg"));
     // (and no progressive bake, E4, on a phone, the devices that cap at 32 (ME.phoneLike() is menu.js's test): at vs20
     // and vs24 the capped fine is still > 1, and the upgrade's higher peak would land on the phones the crash guard
     // has already stepped down to 24, the Architect's must-fix on #376. ?progressive=1 keeps it, for a check)
@@ -36963,19 +37054,31 @@ function MG_SFX(L) {
       // (the coarse grid copied: the model bake splats into it, and adds its splat again on a hit)
       ME.bakeCache.later(bkey, { palNames: pal.names.slice(), T: Object.assign({}, T, { groundAt: null, coarse: T.coarse.slice(), splat: undefined }), mesh, grass });
     }
-    // (?heromax=128, the vs128 study's H1: the level-3 plants bake at 128, G.heroFine. Where they don't fit the
-    // pool, they go back to 64 and the models bake again rather than the load dying; HERO128 says which it was)
+    // (the level-3 plants bake at 128 by default, G.TOP_MAX and G.heroFine (the vs128 study's H1, the user's default
+    // since 2026-11-11, phones too). Where they don't fit the pool, they go back to the device's HERO_MAX (64, 32 on a
+    // phone) and the models bake again rather than the load dying; HERO128 says which it was, and the cap it baked at)
     const at128 = () => Object.values(bakeOpts.models).filter((e) => e[1] && e[1].fine * ME.VS > 64).length;
-    const n128 = G.HERO_MAX > 64 ? at128() : 0;
+    const n128 = Math.max(G.HERO_MAX, G.TOP_MAX || 0) > 64 ? at128() : 0;
+    // The plants at 128 must also leave room for the Heart Tree's grow bakes during waves 10, 20 and 30
+    // (G.heartBakeList, G.models.addHeartGrow): a run may never lose the heart's growth to the towers. So their
+    // bake runs against the pool's budget less that room (ME.poolBudget, restored once it's done), and a bake
+    // that doesn't fit takes the fallback above. The room is one grow stage's three hurt stages over grow 0's
+    // (HEART_ROOM64, measured at hero density 64, the heart's density on a desktop) and scales with the heart's
+    // density squared. ?heartroom=N sets it, 0 for none.
+    const heartRoom = n128 ? (ME.params.has("heartroom") ? ME.qn("heartroom", 0) : Math.round(HEART_ROOM64 * (Math.min(64, G.HERO_MAX) / 64) ** 2)) : 0;
+    const pb0 = ME.poolBudget;
+    if (heartRoom) ME.poolBudget = Math.max(1, ME.poolBricks() - heartRoom);
     try {
       MB = await ME.bakeModels(T, st, pal, bakeOpts, early);
+      ME.poolBudget = pb0;
     } catch (e) {
+      ME.poolBudget = pb0;
       if (!n128 || !/volume pool needs/.test(e && e.message)) throw e;
-      ME.log("HERO128", { over: e.message });
+      ME.log("HERO128", { over: e.message, heartRoom });
       G.hero128Off = true; bakeOpts.models = Object.assign(G.bakeList(), G.Tombs.bakeList());
       MB = await ME.bakeModels(T, st, pal, bakeOpts);
     }
-    if (n128) ME.log("HERO128", { models128: n128, fallbacks: G.hero128Off ? n128 : 0, bricks: MB.stats.bricks, budget: MB.stats.budget, bakeMs: MB.stats.ms });
+    if (n128) ME.log("HERO128", { models128: n128, fallbacks: G.hero128Off ? n128 : 0, cap: G.hero128Off ? G.HERO_MAX : G.TOP_MAX, bricks: MB.stats.bricks, budget: ME.poolBricks(), heartRoom, bakeMs: MB.stats.ms });
     ME.log("MODELS", MB.stats); ME.stage("models");
     // The rules record (core/rules.js; progressive density, R1): the rules read every garden at vs16, whatever
     // the density the view draws at. At vs16 it is read off this bake (view/level.js). Above, off the engine's
@@ -37169,7 +37272,8 @@ function MG_SFX(L) {
       if (S.phase === G.Phase.WAVE) hud.showWaves(game.plan(S.wave), game.remaining(), game.plan(S.wave + 1));
       else hud.showWaves(game.plan(S.wave + 1), {}, game.plan(S.wave + 2));
     };
-    G.on("waves", refreshWaves); G.on("phase", refreshWaves);
+    // (a plant set or sold redraws them too: the counter warning and the almanac's warn chips read the garden)
+    for (const ev of ["waves", "phase", "tower_placed", "tower_sold"]) G.on(ev, refreshWaves);
     G.on("boons_offered", (e) => hud.showBoons(e.boons, (b) => game.chooseBoon(b)));
     G.on("game_over", (e) => { setSpeed(1); logRun("death"); hud.showGameOver(e.wave, e.best); });
     // (the selected plant's card follows the dew; inside a frame's update, once at its end: step)
