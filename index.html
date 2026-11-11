@@ -514,12 +514,13 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 .card .btn { width: 100%; height: 66px; font-size: calc(24px * var(--ts)); }
 /* the end-of-run summary on the game over card (hud.js summaryHtml) */
 /* a tall card scrolls inside (.cscroll), not itself: the skin grows its moss over the card's edge */
-.card.wide, #over .card { display: flex; flex-direction: column; max-height: calc(var(--vh) - 32px); }
-.card.wide > :not(.cscroll), #over .card > :not(.cscroll) { flex: none; }
+.card.wide, #over .card, #won .card { display: flex; flex-direction: column; max-height: calc(var(--vh) - 32px); }
+.card.wide > :not(.cscroll), #over .card > :not(.cscroll), #won .card > :not(.cscroll) { flex: none; }
 /* the game over veil stands over the tray (#tray, z-index 2), and its card keeps clear of the notch and the
    gesture bar: on a phone a long summary once ran the card under the dew tube and the seeds, hiding Plant anew */
-#over { z-index: 5; padding: calc(16px + var(--st)) calc(16px + var(--sr)) calc(16px + var(--sb)) calc(16px + var(--sl)); }
-#over .card { max-height: calc(var(--vh) - 32px - var(--st) - var(--sb)); }
+#over, #won { z-index: 5; padding: calc(16px + var(--st)) calc(16px + var(--sr)) calc(16px + var(--sb)) calc(16px + var(--sl)); }
+#over .card, #won .card { max-height: calc(var(--vh) - 32px - var(--st) - var(--sb)); }
+#won .card .btn + .btn { margin-top: 8px; }
 .cscroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .oversum { text-align: left; font-size: calc(15px * var(--ts)); margin: 0 0 16px; display: flex; flex-direction: column; gap: 10px; }
 .oversum .sh { display: inline-block; min-width: 5.5em; color: var(--moss); text-transform: uppercase; letter-spacing: 0.05em; font-size: calc(13px * var(--ts)); }
@@ -864,8 +865,8 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
   .card p { font-size: calc(16px * var(--ts)); margin: 0 0 10px; }
   .card .btn { height: 50px; font-size: calc(20px * var(--ts)); }
   .card.wide { max-height: calc(var(--vh) - 16px); width: calc(var(--vw) - 16px); }
-  #over { padding: calc(8px + var(--st)) calc(8px + var(--sr)) calc(8px + var(--sb)) calc(8px + var(--sl)); }
-  #over .card { max-height: calc(var(--vh) - 16px - var(--st) - var(--sb)); width: calc(var(--vw) - 16px - var(--sl) - var(--sr)); }
+  #over, #won { padding: calc(8px + var(--st)) calc(8px + var(--sr)) calc(8px + var(--sb)) calc(8px + var(--sl)); }
+  #over .card, #won .card { max-height: calc(var(--vh) - 16px - var(--st) - var(--sb)); width: calc(var(--vw) - 16px - var(--sl) - var(--sr)); }
   .btn.big { height: 46px; margin-bottom: 8px; font-size: calc(17px * var(--ts)); }
   .settabs { display: flex; flex: none; margin: 0 0 6px; }
   .settabs button { flex: 1; padding: 6px 4px; }
@@ -1199,6 +1200,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
   </div>
   <div id="boons" class="veil"><div class="col"><h2>The garden offers a gift</h2><div id="boonrow"></div><div id="boonbuy"><button id="reroll" class="btn"></button><button id="morepick" class="btn"></button></div></div></div>
   <div id="over" class="veil dark"><div class="panel card"><h2>The Heart Tree sleeps</h2><div class="cscroll"><p id="overtxt"></p><div id="oversum" class="oversum"></div><div id="overboard" class="lboard" style="display:none"></div></div><button id="again" class="btn pink">Plant anew</button></div></div>
+  <div id="won" class="veil dark"><div class="panel card"><h2>The grove is safe</h2><div class="cscroll"><p id="wontxt"></p><div id="wonsum" class="oversum"></div></div><button id="wongo" class="btn pink">Keep going</button><button id="wonnew" class="btn">Plant anew</button></div></div>
   <div class="help">drag pan · wheel zoom · Q/E turn · 1–5 seeds · space wave</div>
 </div>
 <div id="loading"><div class="box"><h1>Mossheart</h1><p>a cozy roguelike tower defence in a voxel bell jar</p><div id="track"><div id="bar"></div></div><div id="bartxt">loading</div></div></div>
@@ -5723,9 +5725,47 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
       let i = this.ids[name];
       if (i !== undefined) return i;
       i = this.names.length;
-      if (i > 255) throw new Error("more than 255 materials");
+      if (i > 255) return this.full(name);
       this.names.push(name); this.ids[name] = i;
       return i;
+    }
+    // ids are 8 bits (the pool's alpha), so the 256th material has no id of its own. It takes the id of a material
+    // already numbered on the same ramp, else the numbered material nearest its base colour of the same kind (a glow
+    // for a glow, else a lit one), else the default material's (else 1), and the load goes on with that material
+    // drawn in the stand-in's colours, where it used to die ("more than 255 materials"). One WARN per name (ME.log),
+    // and pal.over lists them: { name: the id it took }. A palette under 256 never comes here
+    full(name) {
+      const over = this.over || (this.over = {});
+      if (over[name] !== undefined) return over[name];
+      const ramp = this.mat(name).ramp, same = this.names.findIndex((n, j) => j && this.mat(n).ramp === ramp);
+      let i = same > 0 ? same : 0;
+      if (!i) try { i = this.nearest(name); } catch (e) { i = 0; } // a stand-in must never kill the load
+      if (!(i > 0)) i = this.ids[this.defaultName()] ?? 1;
+      over[name] = i;
+      const msg = `WARN palette full (256 materials): "${name}" drawn as "${this.names[i]}" (${Object.keys(over).length} over so far)`;
+      if (ME && ME.log) ME.log(msg); else console.warn(msg);
+      return i;
+    }
+    // the numbered material whose base colour (as build() takes it) is nearest name's, glow only for glow; 0 if none
+    base(name) {
+      const memo = this.bases || (this.bases = new Map());
+      if (memo.has(name)) return memo.get(name);
+      const M = this.mat(name), r = this.ramp(name), byName = (ME.content && ME.content.materialClass) || {};
+      const s0 = Math.min(1, Math.max(0, 0.6 + (M.bias || 0))), c = r[Math.round(s0 * (r.length - 1))];
+      const b = { c, glow: !!(M.em || (M.cls ?? CLS[byName[name]]) === CLS.EMISSIVE) };
+      memo.set(name, b);
+      return b;
+    }
+    nearest(name) {
+      const a = this.base(name);
+      let best = 0, bd = Infinity;
+      for (let j = 1; j < this.names.length; j++) {
+        const b = this.base(this.names[j]);
+        if (b.glow !== a.glow) continue;
+        const d = (a.c[0] - b.c[0]) ** 2 + (a.c[1] - b.c[1]) ** 2 + (a.c[2] - b.c[2]) ** 2;
+        if (d < bd) { bd = d; best = j; }
+      }
+      return best;
     }
     // the name id(undefined) takes (the bake workers number their materials by name, src/bake-models.js)
     defaultName() { return (ME.content && ME.content.defaultMaterial) ?? Object.keys(this.st.ramps || {})[0]; }
@@ -9523,7 +9563,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
 <script>/* ../MossheartEngine/src/grass.js */
 /* Grass bake: tufts of voxel blades on the moss carpet, drawn by the grass pass and bent by the wind.
    Thicker along lane edges, cliff feet and banks; reeds (taller, darker) where moss meets water.
-   A kind's grass is true (these tufts) or an option, { h, density, blade }: tall grass (the Corn Moon's E3).
+   A set's clump gathers the tufts at the lawns' edges (same count), its reedPond keeps reeds to wide water.
+   A kind's grass is true (these tufts) or an option, { h, density, blade }: tall grass (the Corn Moon's E3), an
+   even field of density tufts a tile with no reeds, outside clump.
    One vec4 per blade: x, y, z (ground), w = material << 12 | height in voxels (8 bits) << 4 | seed. */
 (function () {
   const ME = window.ME, P = window.PX;
@@ -9573,10 +9615,22 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     const BU = GR.budget || (tall ? ME.GRASS_TALL : null), budget = BU ? Math.round(BU[ME.phone && ME.phone() ? 1 : 0] * FT) : 0;
     const LIM = budget ? budget * 4 : CAP, keep = [];
     const geo = T.geo;
-    let out = [];
-    for (let cy = 0; cy < TL.H; cy++) for (let cx = 0; cx < TL.W; cx++) {
-      if (!TL.grass[cy * TL.W + cx] || (geo && Math.hypot(cx + 0.5 - geo.C, cy + 0.5 - geo.C) > geo.RI - 0.4)) continue;
-      const op = optAt(cy * TL.W + cx);
+    const lawn = (x, y) => on(x, y) && !!TL.grass[y * TL.W + x] && !(geo && Math.hypot(x + 0.5 - geo.C, y + 0.5 - geo.C) > geo.RI - 0.4);
+    // a tall blade's way to the board's rim, in tiles: the sides of its tile with no terrain beyond, and the round
+    // frame's edge; a gust bends a blade's tip up to about its height downwind, so a tall blade is no taller than
+    // that, or it leans out over the rim (Art, Corn Moon's tall grass at h 0.95: straw streaks over the dark rim)
+    const rimD = (cx, cy, px, py) => {
+      let d = Infinity;
+      if (recipe(cx - 1, cy) === null) d = Math.min(d, px - cx);
+      if (recipe(cx + 1, cy) === null) d = Math.min(d, cx + 1 - px);
+      if (recipe(cx, cy - 1) === null) d = Math.min(d, py - cy);
+      if (recipe(cx, cy + 1) === null) d = Math.min(d, cy + 1 - py);
+      if (geo) d = Math.min(d, geo.RI - Math.hypot(px - geo.C, py - geo.C));
+      return d;
+    };
+    const wetAt = (x, y) => recipe(x, y) === "water" || (on(x, y) && !!TL.wet && !!TL.wet[y * TL.W + x]);
+    // a tile's tufts before rounding: more beside lanes, water and cliffs, in fbm patches
+    const feed = (cx, cy) => {
       let lane = 0, water = 0, cliff = 0;
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const t = recipe(cx + dx, cy + dy);
@@ -9584,13 +9638,55 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
         if (t === "water" || (t !== null && TL.wet && TL.wet[(cy + dy) * TL.W + cx + dx])) water = 1;
         if (hgt(cx + dx, cy + dy) > hgt(cx, cy)) cliff = 1;
       }
-      const patch = P.fbm(cx * 0.35, cy * 0.35, 0, 77);
-      const n = Math.round((2 + 3 * lane + 4 * water + 3 * cliff) * (0.45 + patch) * (H(cx, cy, 0, 71) > 0.2 ? 1 : 0.3) * FT * (op ? op.density : 1));
+      // an option tile is an even field (density tufts a tile), so a tall-grass patch reads the same everywhere
+      const op = optAt(cy * TL.W + cx), patch = P.fbm(cx * 0.35, cy * 0.35, 0, 77);
+      return { lane, water, cliff, raw: op ? op.density * FT : (2 + 3 * lane + 4 * water + 3 * cliff) * (0.45 + patch) * (H(cx, cy, 0, 71) > 0.2 ? 1 : 0.3) * FT };
+    };
+    // clump (0-1, the set's; 0 or unset: off): the tufts gather at each lawn's edges (a lane, water, a cliff, a
+    // step or the lawn's end) and thin out towards its middle, falling by e^-d at d tiles in, so a terrace keeps
+    // open lawn; the map's count is kept (the critic's fix 5: the user asked for more grass at higher density)
+    const CL = Math.max(0, Math.min(1, +GR.clump || 0)), mulAt = new Float32Array(CL ? TL.W * TL.H : 0);
+    if (CL) {
+      const d = new Int32Array(TL.W * TL.H).fill(-1), q = [];
+      for (let y = 0; y < TL.H; y++) for (let x = 0; x < TL.W; x++) {
+        if (!lawn(x, y)) continue;
+        const z = hgt(x, y);
+        if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !lawn(x + dx, y + dy) || hgt(x + dx, y + dy) !== z)) { d[y * TL.W + x] = 0; q.push(y * TL.W + x); }
+      }
+      for (let h = 0; h < q.length; h++) {
+        const t = q[h], x = t % TL.W, y = (t - x) / TL.W;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const n = (y + dy) * TL.W + x + dx;
+          if (lawn(x + dx, y + dy) && d[n] < 0) { d[n] = d[t] + 1; q.push(n); }
+        }
+      }
+      let s0 = 0, s1 = 0;
+      for (let t = 0; t < d.length; t++) {
+        if (d[t] < 0 || optAt(t)) continue;
+        const x = t % TL.W, raw = feed(x, (t - x) / TL.W).raw;
+        mulAt[t] = 1 - CL + CL * Math.exp(-d[t]);
+        s0 += raw; s1 += raw * mulAt[t];
+      }
+      if (s1 > 0) for (let t = 0; t < mulAt.length; t++) mulAt[t] *= s0 / s1;
+    }
+    // reedPond (0-1, the set's; 0 or unset: reeds beside any water): reeds only where water fills at least that
+    // share of the 5 x 5 tiles around, so a pond keeps them and a one- or two-tile stream does not
+    const RP = +GR.reedPond || 0;
+    const pondAt = (cx, cy) => {
+      let w = 0;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (wetAt(cx + dx, cy + dy)) w++;
+      return w / 25 >= RP;
+    };
+    let out = [];
+    for (let cy = 0; cy < TL.H; cy++) for (let cx = 0; cx < TL.W; cx++) {
+      if (!lawn(cx, cy)) continue;
+      const op = optAt(cy * TL.W + cx), { water, cliff, raw } = feed(cx, cy);
+      const n = Math.round(CL && !op ? raw * mulAt[cy * TL.W + cx] : raw), reeds = !op && water && (!RP || pondAt(cx, cy));
       for (let k = 0; k < n; k++) {
         const r = (s) => H(cx * 31 + k, cy * 17 + s, 0, 73);
         // tufts lean towards the feature that feeds them
         const i0 = Math.floor((cx - O[0] + 0.1 + r(1) * 0.8) * VS), j0 = Math.floor((cy - O[1] + 0.1 + r(2) * 0.8) * VS);
-        const reed = water && r(3) > 0.35, blades = reed ? 4 + Math.floor(r(4) * 4) : 3 + Math.floor(r(4) * 3);
+        const reed = reeds && r(3) > 0.35, blades = reed ? 4 + Math.floor(r(4) * 4) : 3 + Math.floor(r(4) * 3);
         for (let b = 0; b < blades; b++) {
           const i = i0 + Math.round((H(i0, j0, b, 74) - 0.5) * 4 * KV), j = j0 + Math.round((H(i0, j0, b, 75) - 0.5) * 4 * KV);
           if (i < 1 || j < 1 || i >= NX - 1 || j >= NY - 1) continue;
@@ -9598,7 +9694,7 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
           if (kt < 1 || !ok.has(grid.at((kt - 1) * PLANE + col)) || grid.at(kt * PLANE + col)) continue;
           // a tall blade is 0.7-1 of its option's h; the others keep today's heights, capped at 15 voxels
           const hi = !reed && op && op.h > 0;
-          const hv = Math.max(1, Math.round(hi ? op.h * VS * (0.7 + 0.3 * H(i, j, b, 76)) : KV * (reed ? 6 + Math.floor(H(i, j, b, 76) * 7) : 2 + Math.floor(H(i, j, b, 76) * 4) + (cliff ? 1 : 0))));
+          const hv = Math.max(1, Math.round(hi ? Math.min(op.h * (0.7 + 0.3 * H(i, j, b, 76)), rimD(cx, cy, O[0] + (i + 0.5) / VS, O[1] + (j + 0.5) / VS)) * VS : KV * (reed ? 6 + Math.floor(H(i, j, b, 76) * 7) : 2 + Math.floor(H(i, j, b, 76) * 4) + (cliff ? 1 : 0))));
           const om = !reed && op && op.mats;
           const mat = reed ? M.reed : om ? om[Math.min(om.length - 1, Math.floor(H(i, j, b, 78) * om.length))] : H(i, j, b, 77) > 0.82 ? M.dry : H(i, j, b, 78) > 0.5 ? M.grass : M.grass2;
           out.push(O[0] + (i + 0.5) / VS, O[1] + (j + 0.5) / VS, O[2] + kt / VS, (mat << 12) | (Math.min(hi ? 255 : 15, hv) << 4) | Math.floor(H(i, j, b, 79) * 16));
@@ -11193,7 +11289,9 @@ body.calm .jar, body.calm .jar canvas { transition: none; }
     job(MB, mi, row, o, fly) {
       const want = Math.min(o.max ?? 8192, this.capacity);
       if (this.capacity - this.used < want && this.live() < this.used) this.compact();
-      const vox = ME.surfaceVoxels(MB, mi, Math.min(want, this.capacity - this.used), () => this.rng()), n = vox.length;
+      // (o.vox: a surface sample the caller kept, its first room voxels when the room is short: still uniform)
+      const room = Math.min(want, this.capacity - this.used);
+      const vox = o.vox ? (o.vox.length <= room ? o.vox : Object.assign(o.vox.slice(0, room), { surface: o.vox.surface })) : ME.surfaceVoxels(MB, mi, room, () => this.rng()), n = vox.length;
       if (!n) return null;
       const secs = o.secs ?? 1.6, travel = Math.min(secs, o.travel ?? 0.5), span = Math.max(0, secs - travel), radius = o.radius ?? 1.2, lift = fly ? o.lift ?? 0.3 : 0;
       const t0 = this.clock - (o.at ? o.at * secs : 0), end = t0 + secs, D = this.data, U = this.dataU, first = this.used;
@@ -22597,7 +22695,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.124.0", name: "Mossheart", commit: "47430756" };
+  G.VERSION = { v: "0.125.0", name: "Mossheart", commit: "6c86f38b" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -22640,6 +22738,12 @@ function MA_DSP() {
    Later waves add a trait that stacks one more resistance (or speed, or vitality) on every creature. */
 (function () {
   const G = (window.MG = window.MG || {});
+  // Demo 1 (docs/designs/2026-11-10-demo-1.md, the user 2026-11-11): the build for players outside the lab, on with
+  // ?demo=1 or on a page that sets window.MOSSHEART_DEMO before the scripts (?demo=0 turns it off there). Momiji
+  // Valley only (view/level.js), and the run is won once wave DEMO_WAVES is cleared (Game.waveCleared): "the grove
+  // is safe", then "keep going" into endless (view/hud.js showWon). English only, as the whole game is.
+  G.DEMO = (() => { const q = window.ME && window.ME.qn ? window.ME.qn("demo", -1) : -1; return q >= 0 ? q !== 0 : !!window.MOSSHEART_DEMO; })();
+  G.DEMO_NAME = "Mossheart: Momiji Valley (demo)"; G.DEMO_WAVES = 12;
 
   const D = (G.Defs = {});
   // elements by index; ELEMENT_TOWER is the first plant that deals each one (its colour is the element's)
@@ -23178,6 +23282,8 @@ function MA_DSP() {
     field: {}, corruption: 0, combat: 0, danger: 0,
     // a wave of this run was skipped (Game.skipWave): it keeps no best wave, here or on the board
     offBoard: false,
+    // the demo's last wave was cleared this run (G.DEMO; Game.waveCleared): the run log's `won`, kept in the save
+    won: false,
   });
   // the garden played (main.js): each keeps its own best wave and saved run (core/save.js), under the
   // plain keys for Momiji Valley and with ".<level id>" after them for the others
@@ -23210,7 +23316,7 @@ function MA_DSP() {
   S.newRun = (seed) => {
     S.seed = seed >>> 0;
     S.rng = G.rng(S.seed ^ 0x5eed);
-    S.dew = S.START_DEW; S.heartMax = S.START_HEART; S.heartHp = S.heartMax; S.wave = 0; S.intensity = 0; S.offBoard = false;
+    S.dew = S.START_DEW; S.heartMax = S.START_HEART; S.heartHp = S.heartMax; S.wave = 0; S.intensity = 0; S.offBoard = false; S.won = false;
     S.time = 0; S.dewRate = 0; S.dewT = 0; S.riteRate = 1; S.spilt = 0; S.capExtra = 0;
     S.field = {}; S.corruption = 0; S.combat = 0; S.danger = 0; S.boons = []; S.mods = {};
     G.emit("dew"); G.emit("heart"); G.emit("wave"); G.emit("mods");
@@ -24945,6 +25051,8 @@ function MA_DSP() {
       const interest = Math.min(S.mod("interest_cap"), Math.floor(S.dew * S.mod("interest"))) + Math.round(S.mod("dew_wave"));
       S.earnRaw(bonus + interest, "wave"); this.stats.dew += bonus + interest;
       G.emit("wave_clear", { wave: S.wave, dew: bonus + interest, interest, waves: n });
+      // the demo's win (G.DEMO): its last wave cleared, once a run; the run goes on (endless) after the card
+      if (G.DEMO && !S.won && S.wave >= G.DEMO_WAVES) { S.won = true; G.emit("won", { wave: S.wave }); }
       // Wild Growth: plants not yet fully grown grow a level for free
       // (by the wave number, so half a plant a wave is one every other wave, with nothing to save)
       const g = S.mod("grow_free");
@@ -25367,6 +25475,8 @@ function MA_DSP() {
         v: VERSION, level: [w.W, w.H, +w.len.toFixed(3), w.roads.length], saved: Date.now(),
         seed: S.seed, rng: S.rng.state(), wave: S.wave, dew: S.dew, heart: [S.heartHp, S.heartMax],
         boons: S.boons.slice(), best: S.best, loadout: S.pouch(),
+        // (the demo won: State.won; a save without it reads as not won, so no version bump)
+        won: S.won || undefined,
         phase: S.phase, offer: S.phase === P.CHOOSE_BOON && game.offer ? game.offer.map((o) => o.id) : null,
         // (the drafts still owed after this one, for waves called early: Game.owed)
         owed: S.phase === P.CHOOSE_BOON ? game.owed : 0,
@@ -25418,7 +25528,7 @@ function MA_DSP() {
         S.newRun(d.seed);
         S.rng.state(d.rng);
         S.wave = d.wave; S.dew = d.dew; S.heartHp = d.heart[0]; S.heartMax = d.heart[1];
-        S.boons = d.boons.slice(); S.rebuildMods(); S.best = Math.max(S.best, d.best || 0);
+        S.boons = d.boons.slice(); S.rebuildMods(); S.best = Math.max(S.best, d.best || 0); S.won = !!d.won;
         S.setPouch(loadoutOf(d));
         const w = game.world;
         // the acts turned by then: their cells open, roads wake, zones change (the Heart Tree's added vitality
@@ -28326,7 +28436,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // and the gardens still in the works: the terrarium screen shows them dimmed (their picture, if any, a
   // turntable sheet from Art), not playable yet
   G.LEVELS_SOON = {};
-  G.hasLevel = (id) => !!G.LEVELS[id] && (id === "momiji" || !!((window.ME.content && window.ME.content.maps) || {})[id]);
+  G.hasLevel = (id) => !!G.LEVELS[id] && (id === "momiji" || (!G.DEMO && !!((window.ME.content && window.ME.content.maps) || {})[id]));
+  // the demo (G.DEMO, core/defs.js): Momiji Valley only, nothing "in the works" on the terrarium screen, and its name
+  if (G.DEMO) { G.LEVELS = { momiji: Object.assign(G.LEVELS.momiji, { name: "Momiji Valley (demo)" }) }; document.title = G.DEMO_NAME; }
   G.pickLevel = (saved) => {
     const ME = window.ME, fixed = ME.qn("selftest", 0) || ME.qn("autoplay", 0);
     return [ME.q("level", ""), fixed ? "" : saved].find(G.hasLevel) || "momiji";
@@ -30025,6 +30137,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     constructor(app) {
       this.app = app; this.R = app.R; this.sim = app.sim; this.MB = app.MB; this.phys = app.phys;
       this.vfx = ME.qn("grow", 1) === 1 && app.vfx ? app.vfx : null; this.growMax = ME.phoneLike() ? GROW_MAX_PHONE : GROW_MAX;
+      // the grow-in's surface samples per model (growVox) and the seed last warmed (warmSeed); a swap that
+      // replaces models drops what was kept for them (this.vox too: voxelsOf)
+      this.growSample = new Map(); this.warmed = "";
+      const swapped = this.R.onSwap;
+      this.R.onSwap = (key, ids) => { for (const i of ids) { this.growSample.delete(i); this.vox.delete(i); } this.warmed = ""; if (swapped) swapped(key, ids); };
       this.fx = new G.Fx();
       this.boonFx = new G.BoonFx(this); // the boons' looks (boonfx.js)
       this.plantFx = new G.PlantFx(this); // the plants' looks beyond their models (plantfx.js)
@@ -30090,10 +30207,24 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (!fx || fx.capacity - fx.used < this.growMax) return a; // (a part-filled job would look sparse: the elastic one instead)
       const fr = G.models.towerFrames(modelKind(t), t.level), f = fr[0], k = 1 / this.MB.models[f].fine;
       const row = ME.affineOf(this.MB, f, t.X, t.Y, t.VZ, 0, false, G.LEVEL_SCALE[t.level - 1] * k);
-      const job = fx.grow(this.MB, f, row, { secs: GROW_S, travel: GROW_TRAVEL, max: this.growMax,
+      const job = fx.grow(this.MB, f, row, { secs: GROW_S, travel: GROW_TRAVEL, max: this.growMax, vox: this.growVox(f),
         done: () => { if (a.growing === job) { a.growing = null; a.bounce = 0; } } });
       if (job) { a.growing = job; a.age = 1; }
       return a;
+    }
+    // model f's surface sample for growIn (ME.surfaceVoxels: 90 to 500 ms for a plant at vs 40, and on the
+    // placement's frame it was the lag the user saw, 2026-11-11), made once per model and kept until a swap
+    // replaces the model (R.onSwap). warmSeed makes the picked seed's before it is planted.
+    growVox(f) {
+      let v = this.growSample.get(f);
+      if (!v) { v = ME.surfaceVoxels(this.MB, f, this.growMax); this.growSample.set(f, v); }
+      return v;
+    }
+    warmSeed() {
+      if (!this.vfx || !this.seed || this.seed === this.warmed) return;
+      this.warmed = this.seed;
+      const fr = G.models.towerFrames(this.seed, 1);
+      if (fr) this.growVox(fr[0]);
     }
 
     // a new run (on the same baked world)
@@ -30216,6 +30347,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
     // --- every simulation step (game time)
     update(dt) {
+      this.warmSeed();
       for (const a of this.anim.values()) {
         a.age += dt; a.recoil += dt; a.bounce += dt;
         const k = 1 - Math.exp(-dt * 8);
@@ -30987,6 +31119,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       G.Dismiss.add($("inspector"), { close: () => this.act.closeCard() });
       G.Dismiss.add($("boons"), { veil: true, panel: $("boons").querySelector(".col"), hit: ".boon", dir: "any", tab: "Choose a gift" });
       G.Dismiss.add($("over"), { veil: true, panel: $("over").querySelector(".card"), dir: "any", tab: "The Heart Tree sleeps" });
+      G.Dismiss.add($("won"), { veil: true, panel: $("won").querySelector(".card"), dir: "any", tab: "The grove is safe" });
       if (G.lockedView()) for (const id of ["turnl", "turnr"]) $(id).style.display = "none";
       $("turnl").addEventListener("click", () => this.act.turn(-1));
       $("turnr").addEventListener("click", () => this.act.turn(1));
@@ -31072,6 +31205,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         this.arm(null); this.act.sell();
       });
       $("again").addEventListener("click", () => this.act.restart());
+      $("wongo").addEventListener("click", () => this.hideWon());
+      $("wonnew").addEventListener("click", () => this.act.restart());
       // (the gifts screen redraws on the game's boons_offered after each: main.js)
       $("reroll").addEventListener("click", () => this.game.reroll());
       $("morepick").addEventListener("click", () => this.game.buyPick());
@@ -31344,7 +31479,15 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         (st.challenges ? `<div class="srow"><b class="sh">Challenges</b> ${st.challenges} met</div>` : "") +
         `<div class="srow"><b class="sh">Creatures</b> ${stopped} stopped${st.leaked ? ` · ${st.leaked} reached the Heart Tree` : ""}<div class="sd">${bars}</div></div>`;
     }
-    hideGameOver() { $("over").classList.remove("show"); G.Dismiss.untab($("over")); }
+    hideGameOver() { $("over").classList.remove("show"); G.Dismiss.untab($("over")); this.hideWon(); }
+    // Demo 1's win (G.DEMO: the grove kept safe through G.DEMO_WAVES waves, game.js "won"): the run's summary
+    // over the gifts the wave just earned; Keep going closes it onto them, Plant anew starts a new run
+    showWon(wave) {
+      $("wontxt").innerHTML = `You kept the grove safe for ${wave} waves.<br>The demo's valley is won; the garden will keep sending creatures if you stay.`;
+      $("wonsum").innerHTML = this.summaryHtml();
+      $("won").classList.add("show");
+    }
+    hideWon() { $("won").classList.remove("show"); G.Dismiss.untab($("won")); }
 
     // ------------------------------------------------------------------ the card (#inspector)
     // One card for a plant, the seed in hand, a creature and a gift (docs/designs/2026-11-04-hud-cards.md):
@@ -32560,7 +32703,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
     // the gardens in ring order: the playable ones (G.LEVELS's order), then those in the works
     ids() {
-      const look = (G.TURNTABLE_LOOK || {}).levels || {}, soon = Object.keys(G.LEVELS_SOON || {}).concat(Object.keys(look).filter((id) => look[id].soon));
+      const look = (G.TURNTABLE_LOOK || {}).levels || {}, soon = G.DEMO ? [] : Object.keys(G.LEVELS_SOON || {}).concat(Object.keys(look).filter((id) => look[id].soon));
       const play = Object.keys(G.LEVELS).filter(G.hasLevel);
       return play.concat(soon.filter((id, i) => !play.includes(id) && soon.indexOf(id) === i));
     }
@@ -33322,7 +33465,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       root.id = "menus";
       root.innerHTML = `
         <div id="title" class="veil menu void"><canvas class="stars"></canvas><div class="tjar"></div><div class="col">
-          <h1>Moss<em>heart</em></h1><p class="sub">a cozy roguelike tower defence in a voxel bell jar</p>
+          <h1>Moss<em>heart</em></h1><p class="sub">${G.DEMO ? "Momiji Valley · demo · a cozy roguelike tower defence" : "a cozy roguelike tower defence in a voxel bell jar"}</p>
           <button class="btn pink big" data-a="cont">Continue</button>
           <button class="btn big" data-a="jars">Terrariums</button>
           <button class="btn big" data-a="board">Leaderboard</button>
@@ -33645,8 +33788,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     { id: "plant", text: "Tap beside the path to see its reach. Tap again to plant.", spot: null, done: (t) => t.app.game.towers.length > 0 },
     { id: "almanac", text: "Tap the wave count up top: the Almanac shows the next wave.", spot: "wave", ok: true, done: (t) => t.app.hud.almOpen },
     { id: "wave", text: "Plant while you have dew, then tap Begin Wave.", spot: "wavebtn", done: () => S.wave > 0 },
-    { id: "after", text: "Tap a plant to grow or uproot it. Each wave ends with a gift.", spot: null, ok: true, secs: 9, done: () => S.phase === G.Phase.CHOOSE_BOON || S.phase === G.Phase.GAME_OVER },
+    { id: "after", tail: true, text: "Tap a plant to grow or uproot it. Each wave ends with a gift.", spot: null, ok: true, secs: 9, done: () => S.phase === G.Phase.CHOOSE_BOON || S.phase === G.Phase.GAME_OVER },
   ];
+  // Demo 1 (G.DEMO; docs/designs/2026-11-10-demo-1.md, "the first minute"): three short prompts before wave 1
+  // instead, where to plant, what dew is and what the Heart Tree is; they end as the normal tips do (not again)
+  const DEMO_STEPS = [
+    { id: "plant", text: "Pick a seed below, then tap beside the path twice to plant it.", spot: "seeds", done: (t) => t.app.game.towers.length > 0 },
+    { id: "dew", text: "Plants cost dew, the drop below. Each creature stopped and each wave cleared brings more.", spot: "dewgauge", ok: true, secs: 12, done: () => S.wave > 0 },
+    { id: "heart", text: "Creatures walk the path to the Heart Tree (its bar up top). Keep them off it, then tap Begin Wave.", spot: "heart", done: () => S.wave > 0 },
+  ];
+  if (G.DEMO) STEPS.splice(0, STEPS.length, ...DEMO_STEPS);
 
   class Tutorial {
     constructor(app) {
@@ -33676,7 +33827,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
     go(i) {
       this.step = i; this.t0 = performance.now();
-      const st = STEPS[i], n = STEPS.length - 1;
+      const st = STEPS[i], n = STEPS.filter((s) => !s.tail).length; // (a tail step is not counted)
       this.el.querySelector(".coachtxt").textContent = st.text;
       this.el.querySelector(".coachstep").textContent = i < n ? `${i + 1} / ${n}` : "";
       this.el.querySelector(".coachok").style.display = st.ok ? "" : "none";
@@ -37247,6 +37398,7 @@ function MG_SFX(L) {
     let mouseHover = false;
     const pickSeed = (kind) => {
       deselect(); pending = null; scene.seed = kind;
+      scene.warmSeed(); // (here too: scene.update takes no steps while paused, and pause, pick, place lagged; the Architect on #714)
       if (!mouseHover) scene.hover = null;
       else if (lastHover) { if (!hoverEv) requestAnimationFrame(hoverNow); hoverEv = lastHover; } // (a key or a card: the hover under a still mouse picks again, ground or leaves)
       if (kind && !S.canAfford(S.towerCost(D.TOWERS[kind].cost, kind))) hud.short(kind);
@@ -37276,6 +37428,7 @@ function MG_SFX(L) {
     for (const ev of ["waves", "phase", "tower_placed", "tower_sold"]) G.on(ev, refreshWaves);
     G.on("boons_offered", (e) => hud.showBoons(e.boons, (b) => game.chooseBoon(b)));
     G.on("game_over", (e) => { setSpeed(1); logRun("death"); hud.showGameOver(e.wave, e.best); });
+    G.on("won", (e) => { setSpeed(1); hud.showWon(e.wave); }); // (Demo 1: G.DEMO only)
     // (the selected plant's card follows the dew; inside a frame's update, once at its end: step)
     let cardStale = false;
     G.on("dew", () => { if (!selected) return; if (hud.hold) cardStale = true; else hud.inspect(selected); });
