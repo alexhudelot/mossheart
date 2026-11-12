@@ -527,6 +527,48 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 .oversum .sd { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px 8px; }
 .oversum .sk { white-space: nowrap; }
 .oversum svg { width: 1.1em; height: 1.1em; vertical-align: -0.2em; margin-right: 3px; }
+/* the end screens' top (hud.js endScreen, view/endscreen.js): the wave big, the best (a new one in blossom), the
+   run in one line, the tip and Try again, the next act's teaser ("???" until met), the highlights, the goals
+   ahead; the full summary under Run details, closed. Plant anew / Keep going stay below the scroll, so always in
+   reach on a phone */
+.eend { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 0 0 12px; text-align: center; }
+.ewave { display: flex; flex-direction: column; align-items: center; line-height: 1; }
+.ewave small { font-size: calc(13px * var(--ts)); color: var(--moss); text-transform: uppercase; letter-spacing: 0.08em; }
+.ewave b { font-size: calc(64px * var(--ts)); font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
+.ebest { font-size: calc(15px * var(--ts)); }
+.ebest small { opacity: 0.7; }
+.enew { display: inline-block; padding: 1px 9px; border-radius: 999px; background: var(--blossom); color: #fff; font-weight: 800; animation: enew 1.6s ease-in-out infinite alternate; }
+@keyframes enew { from { box-shadow: 0 0 0 #ed8ca800; } to { box-shadow: 0 0 10px #ed8ca8cc; } }
+.estats { font-size: calc(15px * var(--ts)); font-variant-numeric: tabular-nums; }
+.etip, .eagain { margin: 0; max-width: 34em; font-size: calc(14.5px * var(--ts)); font-weight: 500; line-height: 1.35; }
+.etip { padding: 7px 11px; border-radius: 10px; background: rgba(107, 153, 82, 0.14); text-align: left; }
+.etip > b { color: var(--moss); text-transform: uppercase; letter-spacing: 0.06em; font-size: calc(12px * var(--ts)); margin-right: 5px; }
+.eagain b { color: var(--dewc); }
+.etz { width: 100%; max-width: 34em; padding: 8px 11px; border-radius: 10px; border: 1.5px dashed #cdbf98; text-align: left; }
+.etz .eh { font-size: calc(15px * var(--ts)); }
+.etz small { opacity: 0.7; }
+.efoes { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.efoe { padding: 1px 9px; border-radius: 999px; background: rgba(205, 191, 152, 0.3); font-size: calc(13px * var(--ts)); white-space: nowrap; }
+.efoe.unmet { background: #38452e; color: #f3e8c8; letter-spacing: 0.04em; }
+.ehls { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.ehl { display: inline-flex; align-items: center; gap: 4px; padding: 1px 9px 1px 6px; border-radius: 8px; border: 1.5px solid var(--moss); font-size: calc(13px * var(--ts)); white-space: nowrap; }
+.ehl .picon { display: inline-flex; width: 1.1em; height: 1.1em; }
+.ehl .picon svg { width: 100%; height: 100%; }
+.ehls .gift { font-size: calc(13px * var(--ts)); padding: 1px 8px; }
+.ehooks { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; font-size: calc(13px * var(--ts)); font-weight: 500; opacity: 0.8; }
+.ehooks li::before { content: "› "; color: var(--moss); font-weight: 800; }
+.edet { margin: 0 0 12px; text-align: left; }
+.edet > summary { cursor: pointer; padding: 4px 0; color: var(--moss); font-size: calc(14px * var(--ts)); text-align: center; list-style-position: inside; }
+.edet[open] > summary { margin-bottom: 8px; }
+@media (max-width: 760px) {
+  .eend { gap: 6px; margin: 0 0 8px; }
+  .ewave { flex-direction: row; align-items: baseline; gap: 8px; }
+  .ewave b { font-size: calc(46px * var(--ts)); }
+  .etip, .eagain { font-size: calc(13.5px * var(--ts)); }
+  .etz { padding: 6px 9px; }
+  .ehooks { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .enew { animation: none; } }
 /* the online leaderboard (view/leaderboard.js): on the game over card (#overboard) and its own screen (#board,
    over the void with the wisplings). Rows ranked by wave, the player's own best in blossom */
 .lboard { text-align: left; font-size: calc(15px * var(--ts)); }
@@ -1223,8 +1265,8 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     <div id="trayrow"><div id="seeds"></div><button id="rites" class="btn" title="Rites: gathered every 3rd wave and with each boss; each works once"><span class="lb">✦</span><small>0/3</small></button><button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button></div>
   </div>
   <div id="boons" class="veil"><div class="col"><h2>The garden offers a gift</h2><div id="boonrow"></div><div id="boonbuy"><button id="reroll" class="btn"></button><button id="morepick" class="btn"></button></div></div></div>
-  <div id="over" class="veil dark"><div class="panel card"><h2>The Heart Tree sleeps</h2><div class="cscroll"><p id="overtxt"></p><div id="oversum" class="oversum"></div><div id="overboard" class="lboard" style="display:none"></div></div><button id="again" class="btn pink">Plant anew</button></div></div>
-  <div id="won" class="veil dark"><div class="panel card"><h2>The grove is safe</h2><div class="cscroll"><p id="wontxt"></p><div id="wonsum" class="oversum"></div></div><button id="wongo" class="btn pink">Keep going</button><button id="wonnew" class="btn">Plant anew</button></div></div>
+  <div id="over" class="veil dark"><div class="panel card"><h2>The Heart Tree sleeps</h2><div class="cscroll"><div id="overtop" class="eend"></div><details id="overdet" class="edet"><summary>Run details</summary><div id="oversum" class="oversum"></div></details><div id="overboard" class="lboard" style="display:none"></div></div><button id="again" class="btn pink">Plant anew</button></div></div>
+  <div id="won" class="veil dark"><div class="panel card"><h2>The grove is safe</h2><div class="cscroll"><div id="wontop" class="eend"></div><details id="wondet" class="edet"><summary>Run details</summary><div id="wonsum" class="oversum"></div></details></div><button id="wongo" class="btn pink">Keep going</button><button id="wonnew" class="btn">Plant anew</button></div></div>
   <div class="help">drag pan · wheel zoom · Q/E turn · 1–5 seeds · space wave</div>
 </div>
 <div id="loading"><div class="box"><h1>Mossheart</h1><p>a cozy roguelike tower defence in a voxel bell jar</p><div id="track"><div id="bar"></div></div><div id="bartxt">loading</div></div></div>
@@ -5123,7 +5165,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
       this.foc = null;
       if (this.box) return this.fitBox(this.box[0], this.box[1], w, h);
       this.zoom = Math.min(w / 37, h / 24.5);
-      this.pan = [0, -3.2];
+      this.pan = [0, -3.2]; this.pan0 = this.pan.slice(); // (pan0: the framing's pan, where the overlays anchor: Sky's rainbow)
     }
     // Frame the world box min..max (T.bounds) at the current turn, with a margin, and take the depth range
     // from it: X'+Y' about the centre stays within its xy radius times sqrt(2) at any turn, and Z within
@@ -5138,7 +5180,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
         x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy); r = Math.max(r, Math.hypot(x, y));
       }
       this.zoom = margin * Math.min(w / (x1 - x0), h / (y1 - y0));
-      this.pan = [(x0 + x1) / 2, -(y0 + y1) / 2];
+      this.pan = [(x0 + x1) / 2, -(y0 + y1) / 2]; this.pan0 = this.pan.slice();
       this.D0 = -Math.SQRT2 * r + min[2] - 2; this.D1 = Math.SQRT2 * r + max[2] + 6;
     }
     // centre the view on a world point (panOf: the pan that does it, at the current turn)
@@ -7879,12 +7921,14 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
   // the app's: the grid's ids are its ids (a material it hasn't yet is added, with a WARN: the draw's material
   // table doesn't know it). Returns { r, vs, grid, dims (the crop's voxels), origin (its corner, in vs voxels),
   // box (the region in the crop, for greedyMesh's opt.boxes), rect (the region in the map's grid at VS), d1, d2,
-  // bakeMs, MB }. baker (ME.hiBaker's, made with the same st and pal): the region comes from it (its workers, or
+  // bakeMs, postMs (the main thread's share, after the bake: the crop, the remap, the mips' slices), MB }. baker
+  // (ME.hiBaker's, made with the same st and pal): the region comes from it (its workers, or
   // its main thread), with no prelude of its own, and vs is the baker's
   ME.bakeRegionHi = async (st, pal, r, vs = 128, VS = ME.VS, baker = null) => {
     const t0 = ME.now(), n0 = pal.names.length;
     if (baker) vs = baker.vs;
     const res = baker ? await baker.bake(r, 16) : await ME.bakeTerrain(st, pal, { vs, only: r, serve: (region) => region(r, false, 16) });
+    const t1 = ME.now(); // (from here on the main thread: postMs)
     const g = BrickGrid.from(res.grid), [I0, I1, J0, J1] = res.M, S = g.table;
     // the names the region's fork added, in the app's palette
     const LUT = new Uint8Array(256).map((_, i) => i);
@@ -7911,7 +7955,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     return {
       r, vs, grid: c, dims: [c.NX, c.NY, c.NZ], origin: [x0, y0, K0 << 4], d1, d2,
       box: [R[0] - x0, R[1] - y0, R[2] - x0, R[3] - y0], rect: R.map((v) => Math.round(v * f)),
-      bakeMs: Math.round(ME.now() - t0), MB: +((c.table.byteLength + c.pool.byteLength + d1.byteLength + d2.byteLength) / 1048576).toFixed(1),
+      bakeMs: Math.round(ME.now() - t0), postMs: +(ME.now() - t1).toFixed(1), MB: +((c.table.byteLength + c.pool.byteLength + d1.byteLength + d2.byteLength) / 1048576).toFixed(1),
     };
   };
 
@@ -8580,8 +8624,10 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
   // E4: the pool bricks a progressive frame's full bake will take, [model, 2x-down copy], estimated from its fine-1
   // copy (cd its dims, at(x, y, z) a voxel's material) before the full bake exists: vf the density ratio, off the
   // fine-1 box's offset in its own voxels (a full voxel f is fine-1 voxel f / vf - off), fd the full dims, hollow
-  // whether the full model keeps its interior out of the pool. A full brick counts if a fine-1 voxel within one of
-  // its span is solid (a summed-volume table answers each brick in 8 reads); with hollow, not one away from the
+  // whether the full model keeps its interior out of the pool. A full brick counts if a fine-1 voxel within two full
+  // voxels of its span is solid (a summed-volume table answers each brick in 8 reads; one fine-1 voxel each way,
+  // as before, is up to 5 full voxels at a boot copy's kf 5 and counted ~1.5-2x the bricks; 2 full voxels keeps
+  // every smooth shape tried at 1.16x or over, test/node/estof.test.js); with hollow, not one away from the
   // volume's edge whose span two voxels out is all solid. 5% and 2 bricks over (a thin part the fine-1 copy lost).
   function estOf(cd, at, vf, off, fd, hollow) {
     const [cx, cy, cz] = cd, X = cx + 1, Y = cy + 1, sat = new Uint32Array(X * Y * (cz + 1));
@@ -8598,7 +8644,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
         let edge = false;
         for (let k = 0; k < 3; k++) {
           const lo = Math.floor((p[k] * bs) / vf - off[k]), hi = Math.ceil(Math.min(p[k] * bs + bs, fd[k]) / vf - off[k]);
-          a[k] = Math.min(cd[k], Math.max(0, lo - 1)); b[k] = Math.min(cd[k], Math.max(0, hi + 1));
+          a[k] = Math.min(cd[k], Math.max(0, Math.floor((p[k] * bs - 2) / vf - off[k]))); b[k] = Math.min(cd[k], Math.max(0, Math.ceil((Math.min(p[k] * bs + bs, fd[k]) + 2) / vf - off[k])));
           a2[k] = lo - 2; b2[k] = hi + 2;
           if (p[k] === 0 || p[k] === nb[k] - 1 || a2[k] < 0 || b2[k] > cd[k]) edge = true;
         }
@@ -9106,6 +9152,14 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
       C = base + big + small;
       sp = { groups: prog.length, frames: gOf.size, C, est: F.reduce((a, b) => a + b, 0), coarse: Cc.reduce((a, b) => a + b, 0), swaps: [], failed: [], doneAt: 0, ...(cut ? { lodCut: true } : {}) };
       const lim = Math.min(ME.poolMaxBricks(undefined, slabOf(C)), ME.poolBricks());
+      // (P4, move 1: under opts.boot the coarse copies are a boot density's, ~1/8 of the full models, and waiting for
+      // the full ones is what the boot copies are there to avoid. A bound over the limit sizes the pool at the limit
+      // when the copies plus the largest flipbook's full models fit in it: a swap with no room left fails as any
+      // other does (no room: a WARN, sp.failed) and that flipbook stays coarse)
+      if (C > lim && opts.boot && opts.boot < ME.VS && base + sp.coarse + Math.max(...F) <= lim) {
+        ME.log(`WARN BAKE progressive: its pool would peak at ${C} bricks (an upper bound), over the ${lim} it may hold: sized at ${lim}, a swap with no room stays coarse`);
+        sp.bound = C; sp.C = C = lim;
+      }
       if (C > lim) {
         ME.log(`WARN BAKE progressive: its pool would peak at ${C} bricks, over the ${lim} it may hold: the full models are waited for`);
         run.add(h.full);
@@ -14043,6 +14097,7 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
    Instances come from the Sim (sim.layers). */
 (function () {
   const ME = window.ME, W = ME.wgsl, GU = GPUTextureUsage, BU = GPUBufferUsage;
+  const STALL = Math.max(0, ME.qn("stall", 0) || 0), STALL_EVERY = Math.max(0.5, ME.qn("stallevery", 5) || 5); // (?stall: a check, R.stall)
   const PASSES = ["prep", "layers", "gbuffer", "lighting", "shafts", "forward", "bloom", "composite"];
   const BLEND_ALPHA = { color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" }, alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" } };
   const BLEND_ADD = { color: { srcFactor: "one", dstFactor: "one", operation: "add" }, alpha: { srcFactor: "one", dstFactor: "one", operation: "add" } };
@@ -15643,8 +15698,20 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       return b.nAdd;
     }
 
+    // ?stall=MS (a check): every ?stallevery= s (default 5) a frame blocks the main thread for MS ms, a busy wait
+    // like a long bake's tail or a GC, so the music's lookahead can be tested against it (stalls: how many so far)
+    stall(time) {
+      if (this.stallAt == null) this.stallAt = time + STALL_EVERY;
+      if (time < this.stallAt) return;
+      this.stallAt = time + STALL_EVERY;
+      const t0 = performance.now(); while (performance.now() - t0 < STALL) { /* blocked on purpose */ }
+      this.stalls = (this.stalls || 0) + 1;
+    }
+
     frame(cam, time, dt) {
       if (this.out) this.resize(this.out[0], this.out[1]); // a changed render scale (dynres, a setting) rebuilds the targets
+      this.cam = cam; // (the camera last drawn with: the 2D overlays project through it, Sky's rainbow)
+      if (STALL) this.stall(time);
       const d = this.dev, P = this.pl, S = this.S, sim = S.sim, s = this.set, g0 = this.g0, g1 = this.g1;
       if (this.tasks) this.runTasks(); // (R.addTask: a swap here writes the instances below)
       if (this.fading) this.fadeStep();
@@ -17420,6 +17487,24 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
   // level (the looks' rainbow.night lists them) or the Night mood; ME.WX.looks().rainbow replaces each one it has
   const RAINBOW = ["#ff5a4e", "#ff9a3c", "#ffe25a", "#7ee06a", "#5ab8ff", "#7a72ff", "#b46cff"], BOW_ALPHA = 0.16, BOW_WIDTH = 1;
   const MOONBOW = ["#e6dcd8", "#eae2d4", "#ecead0", "#dce8dc", "#d6e0ec", "#d8d8ec", "#ded6ea"], MOON_ALPHA = 0.1, NIGHT = [];
+  // Where the rainbow hangs on the w x h overlay: {x, y} the scene point at the screen's centre in the camera's
+  // framing (cam.pan0, set by fit and fitBox: the level's centre C on the ground, moved by that pan), through the
+  // renderer's last camera, and z the zoom against the default framing (scene.zoomIn, 1 there). So at the framing
+  // it is the overlay's centre, and a pan or zoom carries it with the ground. Without a camera yet (or a host
+  // without one): the overlay's centre and z 1, the old screen-fixed arc.
+  const bowAt = (R, scene, w, h) => {
+    const z = Math.min(20, Math.max(0.05, (scene && scene.zoomIn) || 1)), cam = R && R.cam, out = R && R.out;
+    if (!cam || !cam.matrices || !out || !out[0]) return { x: w / 2, y: h / 2, z };
+    const q = ME.m4.apply(cam.matrices(out[0], out[1]).vp, [cam.C[0], cam.C[1], 0]), p0 = cam.pan0 || [0, 0], k = w / out[0];
+    // (C on the ground is canvas px (w/2 - zoom pan.x, h/2 - zoom pan.y); the framing's centre is pan0 from it)
+    return { x: ((q[0] * 0.5 + 0.5) * out[0] + cam.zoom * p0[0]) * k, y: ((0.5 - q[1] * 0.5) * out[1] + cam.zoom * p0[1]) * (h / out[1]), z };
+  };
+  // the arc on a w x h overlay at that anchor: its centre, outer radius and band width (CSS px). At z 1 and the
+  // anchor in the middle it is the arc as it always was; zoom scales all of it about the anchor, like the ground.
+  const bowArc = (A, w, h, width) => ({
+    cx: A.x + w * 0.12 * A.z, cy: A.y + h * 0.58 * A.z, R0: Math.min(w, h * 1.6) * 0.62 * A.z,
+    bw: Math.max(1.5, Math.max(3, h * 0.011) * width * A.z),
+  });
   const bowLook = (dusk, level) => {
     const r = ME.WX.looks().rainbow || {}, moon = r.moon || {};
     const night = (r.night || NIGHT).includes(level) || dusk >= 0.9;
@@ -17767,9 +17852,10 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       // (a clear sky leaves the overlay alone: nothing to clear once it is empty)
       if (!this.parts.length && this.flash <= 0 && this.bow <= 0) { if (this.drawn) { ctx.clearRect(0, 0, w, h); this.drawn = false; } return; }
       ctx.clearRect(0, 0, w, h); this.drawn = true;
-      // the rainbow: a faint arc low over the far side of the scene, behind the particles
+      // the rainbow: a faint arc low over the far side of the scene, behind the particles. It belongs to the scene,
+      // not the screen: the camera's pan moves it and its zoom scales it about the level's centre (bowAt, bowArc)
       if (this.bow > 0) {
-        const b = bowLook(this.scene.dusk, this.at), cx = w * 0.62, cy = h * 1.08, R0 = Math.min(w, h * 1.6) * 0.62, bw = Math.max(3, h * 0.011) * b.width;
+        const b = bowLook(this.scene.dusk, this.at), { cx, cy, R0, bw } = bowArc(bowAt(this.R, this.scene, w, h), w, h, b.width);
         ctx.save(); ctx.globalAlpha = b.alpha * this.bow; ctx.lineWidth = bw;
         b.bands.forEach((col, i) => { ctx.strokeStyle = col; ctx.beginPath(); ctx.arc(cx, cy, R0 - i * bw, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke(); });
         ctx.restore();
@@ -17860,6 +17946,7 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
   }
   Sky.MOODS = MOODS;
   ME.Sky = Sky;
+  Sky.bowAt = bowAt; Sky.bowArc = bowArc; // (node tests: test/node/sky-rainbow.test.js)
 })();
 
 </script>
@@ -22751,9 +22838,12 @@ function MA_DSP() {
       this.voices = {}; for (const b in pools) this.voices[b] = [];
       this.stolen = 0; // voices that gave way to a new note (metering)
       this.ready = false; this.bpm = 72; this.clock = 0; this.nextStep = 0; this.step = 0; this.bar = 0; this.rate = 1; this.played = 0;
-      this.onStep = null; this.onBarEnd = null;
+      this.onStep = null; this.onBarEnd = null; this.onLate = null;
+      // (tick and drive: the audio clock drives the steps; see tick)
+      this.lateBars = !!opts.lateBars; this.maxGap = opts.maxGap ?? 1; this.maxAhead = opts.maxAhead ?? 1; this.aheadEase = opts.aheadEase ?? 10;
+      this.ahead = this.lookahead; this.lastCtx = null; this.late = 0; this.skipped = 0; this.gapMax = 0; this.driven = null;
     }
-    start(at = 0.1) { this.ready = true; this.clock = 0; this.nextStep = at; }
+    start(at = 0.1) { this.ready = true; this.clock = 0; this.nextStep = at; this.lastCtx = null; }
     // seconds per step (a 16th at 4 steps per beat)
     sixteenth() { return 60 / this.bpm / (this.stepsPerBar / 4); }
     // seconds of music clock until the next step of the grid
@@ -22786,12 +22876,52 @@ function MA_DSP() {
     advance(dt, speed = 1) {
       if (!this.ready) return;
       this.clock += dt * Math.max(speed, 0);
-      while (this.nextStep < this.clock + this.lookahead) {
+      while (this.nextStep < this.clock + this.reach) {
         if (this.onStep) this.onStep(this.step, this.nextStep);
         this.nextStep += this.sixteenth();
         if (++this.step === this.stepsPerBar) { this.step = 0; this.bar++; if (this.onBarEnd) this.onBarEnd(); }
       }
     }
+
+    // --- driven by the audio clock (tick, drive): the music doesn't wait on the frames
+    // tick(speed): moves the clock on by the AudioContext's time since the last tick (times speed) and schedules
+    // the steps inside the lookahead. Calling it again in the same instant does nothing, so a game can call it
+    // every frame and drive() call it every few ms as well. A gap longer than the notes scheduled ahead (the
+    // main thread blocked past the lookahead) has left the music silent for a while: the steps whose time has
+    // passed are dropped (skipped, onLate(step, t) for each; with opts.lateBars a bar line still goes to onStep,
+    // the song's turn) rather than all played at once, and the lookahead widens to cover a gap that long next
+    // time (ahead: up to opts.maxAhead s), easing back to the base over ~opts.aheadEase s.
+    // late: the gaps that dropped steps; gapMax: the longest gap seen (metering).
+    tick(speed = 1) {
+      if (!this.ready) return;
+      const now = this.mixer.ctx.currentTime, gap = this.lastCtx == null ? 0 : Math.max(0, Math.min(this.maxGap, now - this.lastCtx));
+      this.lastCtx = now;
+      if (gap <= 0) return;
+      if (gap > this.gapMax) this.gapMax = gap;
+      if (this.ahead > this.lookahead) this.ahead = this.lookahead + (this.ahead - this.lookahead) * Math.exp(-gap / this.aheadEase);
+      const reach = this.reach, m = gap * Math.max(speed, 0); // (m: the music time that went by)
+      if (m > reach) {
+        this.late++;
+        const on = this.onStep, bars = this.lateBars;
+        this.onStep = (st, t) => { if (bars && st === 0) { if (on) on(st, t); } else { this.skipped++; if (this.onLate) this.onLate(st, t); } };
+        try { this.advance(m - reach, 1); } finally { this.onStep = on; }
+        this.advance(reach, 1);
+      } else this.advance(m, 1);
+      // a gap this long again finds notes scheduled past it (with room for the timer's own lateness)
+      if (gap > 0.06) { const w = Math.min(this.maxAhead, gap * 1.5 + 0.05); if (w > this.ahead) { this.ahead = w; this.advance(0, 1); } }
+    }
+    // the window tick and advance schedule into: the lookahead, or wider for a while after a gap
+    get reach() { return Math.max(this.lookahead, this.ahead); }
+    // tick() every `ms` (default 25) on a timer at speed() (a function: the tape's speed, 0 holds the clock),
+    // so the steps get scheduled while frames are slow or rAF waits on the GPU. (A timer can't run while the
+    // main thread itself is blocked: the lookahead covers that.) Returns stop(); drive() again replaces it.
+    drive(speed = () => 1, ms = 25) {
+      this.undrive();
+      const id = setInterval(() => { try { this.tick(speed()); } catch (e) { this.undrive(); throw e; } }, ms);
+      this.driven = () => clearInterval(id);
+      return () => this.undrive();
+    }
+    undrive() { if (this.driven) { this.driven(); this.driven = null; } }
   }
   MA.Sequencer = Sequencer;
 })();
@@ -22866,7 +22996,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.132.0", name: "Mossheart", commit: "f1e35709" };
+  G.VERSION = { v: "0.134.0", name: "Mossheart", commit: "5d2b2826" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -23599,12 +23729,13 @@ function MA_DSP() {
     G.emit("heart");
     G.emit("heart_hit", { amount: n });
     if (S.heartHp === 0) {
+      const prev = S.best; // (the best before this run: the end screen marks a new one)
       if (!S.offBoard) {
         S.best = Math.max(S.best, S.wave);
         try { localStorage.setItem(S.levelKey(SAVE_KEY), String(S.best)); } catch (e) { /* storage blocked */ }
       }
       S.setPhase(G.Phase.GAME_OVER);
-      G.emit("game_over", { wave: S.wave, best: S.best });
+      G.emit("game_over", { wave: S.wave, best: S.best, prev });
     }
   };
   S.heartRatio = () => S.heartHp / Math.max(1, S.heartMax);
@@ -31334,6 +31465,155 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 })();
 
 </script>
+<script>/* src/view/endscreen.js */
+/* The end screens' content (#over when the Heart Tree falls, #won when the demo's valley is won), as plain data:
+   hud.js draws it. No DOM here, so the rules run under node (test/node/endscreen.test.js).
+     ctx(game, e)  the run as the rules read it: wave, best, prev (the best before this run), won, level, the
+                   stats, the pouch, the gifts at their levels, the rites held, the links, the creatures met
+     highlights    the top plant (most planted; ties go to the one whose element stopped more) and the top 3 gifts
+                   (by level, then rarity: fused > exquisite > legendary > epic > rare > common)
+     tip           one line from TIPS, the first whose rule holds, else the fallback. Never suggests Deepen
+                   (G.DEEPEN_ON is off: the user 2026-11-12)
+     hooks         what lies ahead: the best to beat, the next act, the demo's win, the fusions found, the next
+                   unmet creature; tryAgain picks the nearest one counted in waves
+     teaser        #over: the next act and the creatures it brings (named once met, "???" until then);
+                   #won or past the last act: the full game's other gardens and plants, unnamed
+   The creatures met are kept across runs (localStorage "mossheart.met"): every kind stopped or that reached the
+   Heart Tree. */
+(function () {
+  const G = window.MG, D = G.Defs;
+  const MET_KEY = "mossheart.met";
+  const RANK = { fused: 6, exquisite: 5, legendary: 4, epic: 3, rare: 2, common: 1 };
+  const sum = (o) => Object.values(o || {}).reduce((a, b) => a + b, 0);
+  const plantName = (k) => (D.TOWERS[k] ? D.TOWERS[k].name : k);
+  const foeName = (k) => (D.ENEMIES[k] ? D.ENEMIES[k].name : k);
+
+  // the wave a creature first comes: the four of the opening waves, the bosses on every fifth wave in turn,
+  // the rest from their `from` (a mite comes out of the first Bloat Mould)
+  const INTRO = { grub: 1, beetle: 2, moth: 3, golem: 4 };
+  function arrives(k) {
+    if (INTRO[k]) return INTRO[k];
+    const b = D.BOSSES.indexOf(k);
+    if (b >= 0) return 5 * (b + 1);
+    const e = D.ENEMIES[k];
+    if (!e) return Infinity;
+    if (e.from) return e.from;
+    for (const o in D.ENEMIES) if (D.ENEMIES[o].into === k && D.ENEMIES[o].from) return D.ENEMIES[o].from;
+    return Infinity;
+  }
+  const byArrival = () => D.ENEMY_ORDER.slice().sort((a, b) => arrives(a) - arrives(b));
+
+  // the creatures met, across runs
+  function met() { try { return new Set(JSON.parse(localStorage.getItem(MET_KEY) || "[]")); } catch (e) { return new Set(); } }
+  function remember(stats) {
+    const m = met();
+    for (const k of Object.keys(stats.kills || {}).concat(Object.keys(stats.leakedBy || {}))) if (D.ENEMIES[k]) m.add(k);
+    try { localStorage.setItem(MET_KEY, JSON.stringify([...m])); } catch (e) { /* storage blocked */ }
+    return m;
+  }
+
+  // the run, from the live game (e: the event's { wave, best, prev }, won: the demo's win)
+  function ctx(game, e, won) {
+    const S = G.state, st = game.stats;
+    const boons = D.BOONS.filter((b) => S.boonLevel(b.id) > 0).map((b) => ({ id: b.id, name: b.name, rarity: b.needs ? "fused" : b.rarity, level: Math.min(b.levels.length, S.boonLevel(b.id)), levels: b.levels.length }));
+    let links = 0;
+    for (const t of game.towers || []) links += (t.links || []).length;
+    const level = G.levelId || S.level || "momiji";
+    return {
+      wave: e.wave, best: e.best, prev: e.prev === undefined ? e.best : e.prev, won: !!won, level,
+      demo: !!G.DEMO, demoWaves: G.DEMO_WAVES || 20, actWaves: G.ACT_WAVES || 5, acts: D.LEVEL_ACTS[level] || [null],
+      stats: st, pouch: (S.pouch ? S.pouch().plants : null) || D.plantsOf(level), boons,
+      riteHeld: (game.riteHeld || []).length, links, met: remember(st), found: (S.found || []).length, fusions: D.FUSIONS.length,
+    };
+  }
+
+  function topPlant(c) {
+    const st = c.stats, el = (k) => st.byElement[D.ELEMENTS.indexOf(D.TOWERS[k] && D.TOWERS[k].element)] || 0;
+    const kinds = Object.keys(st.planted || {}).filter((k) => st.planted[k] > 0 && D.TOWERS[k] && !D.isUtil(k));
+    kinds.sort((a, b) => st.planted[b] - st.planted[a] || el(b) - el(a));
+    return kinds.length ? { kind: kinds[0], n: st.planted[kinds[0]] } : null;
+  }
+  function topGifts(c, n = 3) {
+    return c.boons.slice().sort((a, b) => b.level - a.level || (RANK[b.rarity] || 0) - (RANK[a.rarity] || 0)).slice(0, n);
+  }
+
+  // --- the tip: the first rule that holds
+  const pouchBest = (c, pred) => { const p = c.pouch.filter((k) => D.TOWERS[k] && !D.isUtil(k)); return p.filter(pred); };
+  // the pouch plant that hurts kind k most (its element's affinity), or null when none beats 1
+  function counter(c, k) {
+    const aff = (D.ENEMIES[k] && D.ENEMIES[k].affinity) || {};
+    let best = null, bm = 1;
+    for (const p of pouchBest(c, () => true)) { const m = aff[D.TOWERS[p].element] || 1; if (m > bm) { bm = m; best = p; } }
+    return best;
+  }
+  const TIPS = [
+    { id: "leak", when: (c) => { const lb = c.stats.leakedBy || {}, k = Object.keys(lb).sort((a, b) => lb[b] - lb[a])[0]; return k && lb[k] >= 2 && counter(c, k) ? k : null; },
+      text: (c, k) => `${foeName(k)} slipped through most. ${plantName(counter(c, k))} hits it hardest.` },
+    { id: "boss", when: (c) => Object.keys(c.stats.leakedBy || {}).find((k) => D.ENEMIES[k] && (D.ENEMIES[k].boss || k === "golem")) || null,
+      text: (c, k) => `${foeName(k)} reached the Heart Tree. Plant along its road early, and look in the almanac for what it fears.` },
+    { id: "fliers", when: (c) => { const n = Object.keys(c.stats.leakedBy || {}).filter((k) => D.ENEMIES[k] && D.ENEMIES[k].fly >= 0.5).reduce((a, k) => a + c.stats.leakedBy[k], 0); return n >= 2 ? n : null; },
+      text: (c) => { const p = pouchBest(c, () => true).sort((a, b) => D.TOWERS[b].range - D.TOWERS[a].range)[0]; return `Winged creatures fly straight to the tree. ${p ? plantName(p) + "'s long reach" : "Long reach"} catches them on the way.`; } },
+    { id: "rites", when: (c) => c.riteHeld > 0 || null, text: () => "You held a rite you never used. Spend it when a wave turns bad." },
+    { id: "dew", when: (c) => c.stats.peakDew >= 250 || null, text: () => "Dew piled up unspent. Plant sooner: a plant in the ground earns its keep from the next wave." },
+    { id: "grow", when: (c) => (c.wave >= 4 && !c.stats.grown) || null, text: () => "No plant grew this run. Tap a plant to grow it: a grown plant hits much harder." },
+    { id: "links", when: (c) => (sum(c.stats.planted) >= 4 && !c.links) || null, text: () => "Plants side by side can link and help each other. Try two together." },
+    { id: "mix", when: (c) => { const t = sum(c.stats.byElement), m = Math.max(...c.stats.byElement); return (t >= 30 && m / t > 0.7) || null; },
+      text: () => "Nearly every stop came from one element. Creatures shrug some off: mix your plants." },
+    { id: "reroll", when: (c) => (c.wave >= 6 && !c.stats.rerolls) || null, text: () => "Not keen on the gifts offered? Draw again for a little dew." },
+    { id: "challenge", when: (c) => (c.wave >= 8 && !c.stats.challenges) || null, text: () => "Each wave sets a dew challenge. Meet it for extra dew." },
+    { id: "almanac", when: (c) => (c.wave <= 5) || null, text: () => "The almanac shows what each creature fears. Open it before the next wave." },
+  ];
+  const FALLBACK = "Every garden plays differently: try a new spot for your first plants.";
+  function tip(c) {
+    for (const r of TIPS) { const v = r.when(c); if (v) return { id: r.id, text: r.text(c, v) }; }
+    return { id: "fallback", text: FALLBACK };
+  }
+
+  // --- what lies ahead
+  const actStart = (c, i) => 1 + i * c.actWaves; // act i (0-based) starts at this wave
+  function nextAct(c) {
+    for (let i = 1; i < c.acts.length; i++) if (actStart(c, i) > c.wave && c.acts[i]) return { i, name: c.acts[i].name, wave: actStart(c, i) };
+    return null;
+  }
+  function nextUnmet(c) {
+    for (const k of byArrival()) if (!c.met.has(k) && arrives(k) > c.wave && arrives(k) < Infinity) return { kind: k, wave: arrives(k) };
+    return null;
+  }
+  function hooks(c) {
+    const out = [];
+    if (c.prev >= c.wave) out.push({ id: "best", away: c.prev - c.wave + 1, text: `Reach wave ${c.prev + 1} to beat your best (${c.prev})` });
+    const a = nextAct(c);
+    if (a) out.push({ id: "act", away: a.wave - c.wave, text: `Act ${["", "I", "II", "III", "IV", "V"][a.i + 1]}, ${a.name}, begins at wave ${a.wave}` });
+    if (c.demo && !c.won && c.wave < c.demoWaves) out.push({ id: "win", away: c.demoWaves - c.wave, text: `Clear wave ${c.demoWaves} to win the valley` });
+    if (c.fusions) out.push({ id: "fusions", away: Infinity, text: `Fused gifts found: ${c.found} of ${c.fusions}` });
+    const u = nextUnmet(c);
+    if (u) out.push({ id: "creature", away: u.wave - c.wave, text: `A creature you haven't met comes at wave ${u.wave}` });
+    return out;
+  }
+  // the nearest goal, in waves: "Try again: <it>"
+  function tryAgain(c) {
+    const h = hooks(c).filter((x) => x.away > 0 && x.away < Infinity).sort((a, b) => a.away - b.away)[0];
+    return h ? h.text : null;
+  }
+
+  // --- the teaser
+  function teaser(c) {
+    const a = nextAct(c);
+    if (!c.won && a) {
+      const end = a.wave + c.actWaves - 1;
+      const foes = byArrival().filter((k) => arrives(k) >= a.wave && arrives(k) <= end).map((k) => ({ kind: k, name: c.met.has(k) ? foeName(k) : "???", met: c.met.has(k) }));
+      return { kind: "act", title: `Act ${["", "I", "II", "III", "IV", "V"][a.i + 1]}: ${a.name}`, wave: a.wave, foes };
+    }
+    // the full game: the other gardens and the plants this one doesn't grow
+    const gardens = Object.keys(G.LEVELS || {}).filter((id) => id !== c.level).length || 3;
+    const plants = D.TOWER_ORDER.filter((k) => !c.pouch.includes(k)).length;
+    return { kind: "game", title: c.demo ? "In the full game" : "Beyond this garden", gardens, plants };
+  }
+
+  G.EndScreen = { ctx, topPlant, topGifts, tip, hooks, tryAgain, teaser, arrives, met, remember, TIPS, FALLBACK, MET_KEY };
+})();
+
+</script>
 <script>/* src/view/hud.js */
 /* Touch-sized DOM HUD (port of Hud, hud.gd): vitality / dew / wave readouts, seed cards, the wave
    button, the plant inspector, the boon draft, the end-of-run card and the wave almanac: what the
@@ -31830,11 +32110,36 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       };
       set("reroll", "↻ Draw again", g.rerollCost(), rb);
       set("morepick", "+1 gift", g.pickCost(), pb);    }
-    showGameOver(wave, best) {
-      $("overtxt").innerHTML = `You tended the meadow for ${wave} waves.<br>Longest bloom: ${best}`;
-      $("oversum").innerHTML = this.summaryHtml();
+    showGameOver(wave, best, prev) {
+      this.endScreen("over", { wave, best, prev }, false);
       if (G.Leaderboard) G.Leaderboard.atGameOver($("overboard"), wave, this.game); // (the online board, when the build has one)
       $("over").classList.add("show");
+    }
+    // the end screens' top (G.EndScreen's rules, view/endscreen.js): the wave, the best (a new one marked), the run
+    // in one line, the tip and the nearest goal, the teaser, the highlights, the goals ahead; the full summary
+    // under Run details (closed)
+    endScreen(id, e, won) {
+      const E = G.EndScreen, c = E.ctx(this.game, e, won), st = c.stats, sum = (o) => Object.values(o || {}).reduce((a, b) => a + b, 0);
+      const fresh = c.wave > c.prev, nGifts = c.boons.length, tip = E.tip(c), again = won ? null : E.tryAgain(c), tz = E.teaser(c);
+      const plantChip = (k, n) => `<span class="ehl"><span class="picon" style="color:${ink(D.TOWERS[k].color)}">${icon("PLANT_ICONS", k) || ""}</span>${esc(D.TOWERS[k].name)} <small>×${n}</small></span>`;
+      const giftChip = (b) => `<span class="gift r-${b.rarity}" style="--bc:${ink(G.boonLook(b.id).color)}">${esc(b.name)}${b.levels > 1 ? " " + ROMAN[b.level] : ""}</span>`;
+      const tp = E.topPlant(c), tg = E.topGifts(c);
+      const teaser = tz.kind === "act"
+        ? `<div class="etz"><b class="eh">Next: ${esc(tz.title)}</b> <small>from wave ${tz.wave}</small><div class="efoes">${tz.foes.map((f) => `<span class="efoe${f.met ? "" : " unmet"}">${esc(f.name)}</span>`).join("") || `<span class="dim">the creatures you know, stronger</span>`}</div></div>`
+        : `<div class="etz"><b class="eh">${esc(tz.title)}</b><div class="efoes"><span class="efoe">${tz.gardens} more gardens</span><span class="efoe">${tz.plants} more plants</span><span class="efoe unmet">creatures you haven't met</span></div></div>`;
+      const hooks = E.hooks(c).filter((h) => h.text !== again);
+      $(id + "top").innerHTML =
+        `<div class="ewave"><small>${won ? "Waves kept" : "Wave"}</small><b>${c.wave}</b></div>` +
+        `<div class="ebest">${fresh ? `<span class="enew">New best!</span> ` : ""}Best: ${Math.max(c.best, c.wave)}${fresh && c.prev ? ` <small>(was ${c.prev})</small>` : ""}</div>` +
+        `<div class="estats">${sum(st.planted)} planted · ${sum(st.kills)} stopped · ${nGifts} gift${nGifts === 1 ? "" : "s"}</div>` +
+        `<p class="etip"><b>Tip</b> ${esc(tip.text)}</p>` +
+        (again ? `<p class="eagain">Try again: <b>${esc(again)}</b></p>` : "") +
+        teaser +
+        (tp || tg.length ? `<div class="ehls">${tp ? plantChip(tp.kind, tp.n) : ""}${tg.map(giftChip).join("")}</div>` : "") +
+        (hooks.length ? `<ul class="ehooks">${hooks.map((h) => `<li>${esc(h.text)}</li>`).join("")}</ul>` : "");
+      $(id + "sum").innerHTML = this.summaryHtml();
+      const det = $(id + "det");
+      if (det) det.open = false;
     }
     // the run in a few lines (the game's stats, kept in the save): the plants, the gifts, and the creatures
     // stopped, by the element of the blow that stopped them (a bar each, in the element's plant's colour)
@@ -31859,8 +32164,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     // Demo 1's win (G.DEMO: the grove kept safe through G.DEMO_WAVES waves, game.js "won"): the run's summary
     // over the gifts the wave just earned; Keep going closes it onto them, Plant anew starts a new run
     showWon(wave) {
-      $("wontxt").innerHTML = `You kept the grove safe for ${wave} waves.<br>The demo's valley is won; the garden will keep sending creatures if you stay.`;
-      $("wonsum").innerHTML = this.summaryHtml();
+      this.endScreen("won", { wave, best: Math.max(S.best || 0, wave), prev: S.best || 0 }, true);
       $("won").classList.add("show");
     }
     hideWon() { $("won").classList.remove("show"); G.Dismiss.untab($("won")); }
@@ -32534,7 +32838,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 (function () {
   const G = (window.MG = window.MG || {});
   const DEV_KEY = "mossheart.device", NICK_KEY = "mossheart.nickname", BEST_KEY = "mossheart.board", MINE_KEY = "mossheart.mine";
-  const TIMEOUT = 8000, TOP = 10, BOARD_TOP = 20;
+  const TIMEOUT = 8000, TOP = 10, BOARD_TOP = 20, AROUND = 2; // (AROUND: the game over card shows the own row and 2 either side)
   const GARDEN = /^(momiji|fernglass|cornmoon)$/, KEY = /^(all|momiji|fernglass|cornmoon)$/; // (the gardens the schema knows)
   const GARDENS = ["momiji", "fernglass", "cornmoon"];
   // the plants and creatures the proxy takes (server/vercel/lib/board.js: one not listed there fails the post)
@@ -32864,12 +33168,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // a list of rows, ranked as in sport (equal waves share a rank), the device's own row marked; with its
   // best below the list, that row after a gap. Each li carries its row's index (for its card)
   const li = (r, rank, own, all, i) => `<li class="${own ? "me" : ""}${rank >= 1 && rank <= 3 ? " r" + rank : ""}" data-i="${i}" tabindex="0" aria-expanded="false"><b class="rk">${rank || "–"}</b><span class="nm"><span class="nn">${esc(r.nickname)}${own ? ` <small>you</small>` : ""}</span>${recap(r, all)}</span><span class="wv">wave <b>${r.wave | 0}</b></span></li>`;
-  const listHtml = (rows, my, me, all) => {
-    let html = "", rank = 0;
-    rows.forEach((r, i) => {
-      if (i === 0 || r.wave !== rows[i - 1].wave) rank = i + 1;
-      html += li(r, rank, my(r), all, i);
-    });
+  // around (the game over card): only the own row and AROUND rows either side of it, gaps marking the rest
+  const listHtml = (rows, my, me, all, around) => {
+    const ranks = []; let rank = 0;
+    rows.forEach((r, i) => { if (i === 0 || r.wave !== rows[i - 1].wave) rank = i + 1; ranks.push(rank); });
+    const at = around ? rows.findIndex(my) : -1, from = at < 0 ? 0 : Math.max(0, at - around), to = at < 0 ? rows.length : Math.min(rows.length, at + around + 1);
+    let html = from > 0 ? `<li class="gap" aria-hidden="true">⋯</li>` : "";
+    for (let i = from; i < to; i++) html += li(rows[i], ranks[i], my(rows[i]), all, i);
+    if (to < rows.length) html += `<li class="gap" aria-hidden="true">⋯</li>`;
     if (me && me.row && !rows.some(my)) html += `<li class="gap" aria-hidden="true">⋯</li>` + li(me.row, me.rank, true, all, rows.length);
     return html;
   };
@@ -32884,16 +33190,18 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   };
   // fills el's .lblist and .lbstat with the board of a garden, or every garden's (key "all"); a newer fill
   // of the same el wins
-  const fill = async (el, key, n) => {
+  const fill = async (el, key, n, around) => {
     const tok = (el._lb = {}), list = el.querySelector(".lblist"), note = el.querySelector(".lbstat");
     if (note) note.textContent = "Reaching the board…";
-    const [t, me, my] = await Promise.all([top(key, n), mine(key), tag()]);
+    let [t, me, my] = await Promise.all([top(key, n), mine(key), tag()]);
     if (el._lb !== tok) return;
     const nk = nick();
     const own = (r) => (my ? r.tag === my : !!nk && r.nickname === nk && r.wave === bestOf(r.garden || key));
     if (!t.ok) { if (list) list.innerHTML = ""; if (note) note.textContent = say(t.why); return; }
     if (list) {
-      list.innerHTML = listHtml(t.rows, own, me, key === "all");
+      // (around: the own row not on the board, or no own row, shows the top TOP as before)
+      if (around && !t.rows.some(own)) t = { ok: t.ok, rows: t.rows.slice(0, TOP), why: t.why };
+      list.innerHTML = listHtml(t.rows, own, me, key === "all", around);
       list._rows = t.rows.concat(me && me.row ? [me.row] : []);
       list.onclick = (e) => { const l = e.target.closest("li[data-i]"); if (l) toggle(list, l); };
       list.onkeydown = (e) => { const l = e.target.closest("li[data-i]"); if (l && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.stopPropagation(); toggle(list, l); } };
@@ -32921,7 +33229,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       <p class="lbnote lbsay" role="status">${S.offBoard ? say("skipped") : best >= wave ? `Your best on the board in ${esc(gardenName(garden))}: wave ${best}.` : `Submit wave ${wave | 0} in ${esc(gardenName(garden))} to the board?`}</p>
       <ol class="lblist"></ol><p class="lbnote lbstat"></p>`;
     const form = el.querySelector(".lbform"), sayEl = el.querySelector(".lbsay");
-    fill(el, "all", TOP);
+    fill(el, "all", 100, AROUND);
     if (!form) return;
     const inp = form.querySelector("input"), btn = form.querySelector("button");
     // the game's keys (seeds, Q/E turn, Space) stay out of the field
@@ -32938,7 +33246,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         if (r.why === "notbest") keepBest(garden, wave);
         form.remove();
         sayEl.textContent = !r.ok ? say("notbest") : r.kept === false ? `Wave ${wave | 0} ranks ${r.rank} in ${gardenName(garden)}: the board keeps its first 100.` : `Wave ${wave | 0} is on the board, ${nk}${r.rank ? ` (rank ${r.rank} in ${gardenName(garden)})` : ""}.`;
-        fill(el, "all", TOP);
+        fill(el, "all", 100, AROUND);
       } else {
         btn.disabled = inp.disabled = false;
         sayEl.textContent = say(r.why);
@@ -36113,7 +36421,7 @@ function MG_SFX(L) {
     // keysPan, taps (lead delays), decks (two sets of sub-bus gains)
     constructor(mixer, mix) {
       this.mixer = mixer; this.mix = mix; this.seq = null; this.ready = false; this.intensity = 0;
-      this.lastCtx = -1; this.late = 0; this.skipped = 0; // (the audio clock last frame; the stalls past the lookahead, and the steps they dropped)
+      this.late = 0; this.skipped = 0; // (the stalls past the lookahead, and the steps they dropped: the sequencer's, copied in update)
       this.decks = mix.decks.map((g, k) => new Deck(this, "AB"[k], g)); this.live = null;
       this.cue = ""; this.want = "build"; this.holdUntil = 0; this.cueLog = []; this.turns = {};
       this.chord = SC.FIRST_CHORD; this.chordNotes = this.chord.notes;
@@ -36142,10 +36450,11 @@ function MG_SFX(L) {
     }
     // instruments: the instrument bank's items (name -> [base note, ...])
     start(instruments) {
-      const m = this.mixer, now = m.ctx.currentTime, q = (this.seq = new MA.Sequencer(m, instruments, POOL, { lookahead: LOOKAHEAD }));
+      const m = this.mixer, now = m.ctx.currentTime, q = (this.seq = new MA.Sequencer(m, instruments, POOL, { lookahead: LOOKAHEAD, lateBars: true }));
       q.onStep = (s, t) => this.onStep(s, t);
       q.onBarEnd = () => { for (const d of this.decks) d.sectionBar++; };
       q.start(0.1);
+      q.drive(() => this.tapeSpeed);
       this.ready = true;
       this.vinyl = G.devFlag && !G.devFlag("vinyl", 1) ? null : m.voice("vinyl", "MusicWash", VINYL.start, 1, 0, null, true);
       // fade the score in over four seconds
@@ -36267,24 +36576,17 @@ function MG_SFX(L) {
       this.breathe(now);
       if (ctl) this.tone(i, rot, now);
 
-      // The music clock follows the audio clock, not the frame's dt (capped at 0.1 s, which slowed the
-      // music under it at 10 fps and on every long frame). After a stall longer than the lookahead, the
-      // steps whose time has passed are dropped rather than all played at once.
-      let adt = this.lastCtx < 0 ? dt : Math.min(1, now - this.lastCtx);
-      this.lastCtx = now;
+      // The music clock follows the audio clock (MA.Sequencer tick), here and on its own 25 ms timer (drive,
+      // in start), so slow frames don't starve the steps. A stall longer than the lookahead drops the steps
+      // whose time has passed (bar lines still turn the song: lateBars) and widens the lookahead for a while.
+      this.late = q.late; this.skipped = q.skipped;
       if (this.tapeState === 2 && this.tapeSpeed === 0) {
         this.outroWait -= dt;
         if (this.outroWait > 0) return;
         // start the outro on a fresh bar, the music in
         this.tapeSpeed = 1; this.want = "over"; q.restartBar(); this.comeIn(now);
       }
-      if (adt > LOOKAHEAD) {
-        const on = q.onStep;
-        this.late++; q.onStep = (s, t) => { if (s === 0) on(s, t); else this.skipped++; }; // (bar lines still turn the song)
-        q.advance(adt - LOOKAHEAD, this.tapeSpeed);
-        q.onStep = on; adt = LOOKAHEAD;
-      }
-      q.advance(adt, this.tapeSpeed);
+      q.tick(this.tapeSpeed);
     }
 
     // the tone follows the cue (the outro's as soon as the run is lost), opening up with the intensity
@@ -37561,7 +37863,7 @@ function MG_SFX(L) {
     // (and no progressive bake, E4, on a phone, the devices that cap at 32 (ME.phoneLike() is menu.js's test): at vs20
     // and vs24 the capped fine is still > 1, and the upgrade's higher peak would land on the phones the crash guard
     // has already stepped down to 24, the Architect's must-fix on #376. ?progressive=1 keeps it, for a check)
-    if (ME.phoneLike() && !ME.params.has("progressive")) bakeOpts.progressive = false;
+    // (set below, with move 1: a boot-mode bake keeps it on a phone)
     // (and a phone's pool budget lifted from 65,536 bricks (ME.POOL_PHONE, 128 MB) to 98,304 (192 MB), the user's
     // "lift cap" for phones at 64: the garden at vs48 fills 38,656 bricks (75.5 MB), so vs64 needs ~69k, over the
     // old budget. The budget is a ceiling: the pool is sized to what the bake needs (~135 MB at 64). ?poolbudget= wins)
@@ -37589,6 +37891,12 @@ function MG_SFX(L) {
     let hit = (skey !== tkey && (await ME.bakeCache.get(skey))) || (await ME.bakeCache.get(tkey));
     const streaming = !hit && !ME.qn("selftest", 0) && !ME.qn("bench", 0) && ME.stream.wanted();
     const bkey = streaming ? ME.bakeCache.terrainKey(st, "", { vs: 16 }) : tkey; // (the boot terrain's record)
+    // (move 1: when streaming, the models first bake at the boot terrain's density, 16, and their full bakes run once
+    // the frames settle (P4, opts.boot, the engine's bake-models.js), so the first frame no longer waits on them;
+    // ?modelboot=0 for the old order. A phone keeps the progressive bake then: a boot copy is ~1/8 of a vs32 model, so
+    // the upgrade's peak stays within ~12.5% of the pool, not E4's fine-1 copies at 20-24 that turned it off above)
+    if (streaming && ME.qn("modelboot", 1) && ME.VS > 16) bakeOpts.boot = 16;
+    if (ME.phoneLike() && !ME.params.has("progressive") && !bakeOpts.boot) bakeOpts.progressive = false;
     if (streaming) hit = await ME.bakeCache.get(bkey);
     ME.stage("cache read");
     let T, mesh, MB, grass, early;
@@ -37852,7 +38160,7 @@ function MG_SFX(L) {
     // (a plant set or sold redraws them too: the counter warning and the almanac's warn chips read the garden)
     for (const ev of ["waves", "phase", "tower_placed", "tower_sold"]) G.on(ev, refreshWaves);
     G.on("boons_offered", (e) => hud.showBoons(e.boons, (b) => game.chooseBoon(b)));
-    G.on("game_over", (e) => { setSpeed(1); logRun("death"); hud.showGameOver(e.wave, e.best); });
+    G.on("game_over", (e) => { setSpeed(1); logRun("death"); hud.showGameOver(e.wave, e.best, e.prev); });
     G.on("won", (e) => { setSpeed(1); hud.showWon(e.wave); }); // (Demo 1: G.DEMO only)
     // (the selected plant's card follows the dew; inside a frame's update, once at its end: step)
     let cardStale = false;
