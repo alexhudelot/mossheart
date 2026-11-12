@@ -6730,7 +6730,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
   const fnv = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return (h >>> 0).toString(36); };
   const noWorkers = (why) => Object.assign(new Error("terrain stream: " + why), { noWorkers: true });
   // vs: the bake's own density; force: the terrain stream's bake (o.bg) takes the workers whether or not ?regions
-  // is on; n: how many (ME.hiBaker's o.workers), else ?terrainworkers= (2); at most one fewer than the cores
+  // is on; n: how many (ME.hiBaker's o.workers), else (0 or less, or none) ?terrainworkers= (2); at most one fewer than the cores
   const terrainWorkerN = (vs, force, n) => {
     if (typeof Worker === "undefined" || ME.bakeWorkers === false || !(force || ME.regionsOn(vs))) return 0;
     const hc = (typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 2;
@@ -10781,7 +10781,8 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
    a region's bake its main-thread steps (lay, crop, the remap) run sliced: a frame (ME.nextFrame) after every 6 ms
    of them, never one long task (each was 80-250 ms at vs128). o.phone (or ?c128phone=1 / 0)
    picks the set; unset, ME.phoneLike() does (a phone or tablet, or a device with 4 GB of memory or less). o.cap, o.keep, o.mb, o.workers and their URL keys still win over either set.
-   o.workers (?c128workers=): the hi baker's terrain workers, at most one fewer than the cores. A zoomed fill is bound by
+   o.workers (?c128workers=): the hi baker's terrain workers, at most one fewer than the cores. 0 or less
+   falls back to ?terrainworkers= (2). A zoomed fill is bound by
    the bakes (a quarter ~4.3 s at vs128 on a worker; Momiji's 5 regions, 20 quarters, ~45 s on 2), so a desktop
    takes 3; a phone keeps 2 (each worker holds the prelude's arrays).
    Step 2's units: a region goes up as its quarters (2x2 tiles of the hi grid each, ME.regionQuarter; an edge region
@@ -23584,7 +23585,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.142.0", name: "Mossheart", commit: "79ba1056" };
+  G.VERSION = { v: "0.144.0", name: "Mossheart", commit: "a88d0936" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -30880,6 +30881,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
    - at the act's turn they grow in after the puff: piece j at GROW_AT + j * STAGGER s, over GROW_S (0 -> 1.12 -> 1)
      a new or restored run sets them standing, silently
    - a plant on the cell: the pieces shrink to UNDER and lean out to RING_OUT, so they frame it
+   - the season's lawn (G2; the user, 2026-11-12: acts as seasons): a LAWN_SHARE of the open cells carries a flat
+     patch for the act's season (LAWN: fallen blossom in Act I, leaf litter in III and IV, Art's colours); at a turn
+     the old season's patches sink away and the new ones settle in from the Heart Tree outward; a plant on the cell
+     hides its patch. ?lawn=0 turns the lawn off
    Models: the generator's fern (leaf2) and ms_dressbloom below (leaf2 stems, sphag heads: gold in Act II's look),
    materials Momiji's look already sets (if sphag is new to its palette it adds one: since #712 a 256th is a
    stand-in, not a dead boot). Momiji only (a level with LEVEL_ACTS opens),
@@ -30907,23 +30912,57 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     return { prims, r: 0.2 * s, h: 0.42 * s, k: 1 };
   }, 1);
 
+  // the season's patches on the lawn (G2; the user, 2026-11-12: acts as seasons). A flat scatter of o.n small
+  // flakes (fallen petals, or leaves) over ~1 tile, mixed from o.mats (weights o.w, else even), each flake ~1 voxel
+  // thick at vs16 so it reads. Existing Momiji materials only (Art: the phone palette is near 255), coloured per act
+  // by Art's act looks (weather-looks.js): I blossom = maple (pink) + gingko (white); III litter = maple (crimson),
+  // leafDry (rust), leaf (orange), which IV turns to snowy lumps (maple white) with a few red leaves (leafDry)
+  const LAWN = {
+    blossom: { acts: [1], mats: ["maple", "gingko"], w: [0.6, 0.4], n: 10, leaf: false },
+    litter: { acts: [3, 4], mats: ["maple", "leafDry", "leaf"], w: [0.45, 0.35, 0.2], n: 9, leaf: true },
+  };
+  const LAWN_SHARE = 0.2, LAWN_SIZE = 1.1, LAWN_VARIANTS = 2; // (a fifth of the open lawn cells, two cuts each)
+  const pickMat = (o, u) => {
+    const m = o.mats, w = o.w || m.map(() => 1 / m.length);
+    for (let j = 0, acc = 0; j < m.length; j++) { acc += w[j]; if (u < acc) return m[j]; }
+    return m[m.length - 1];
+  };
+  ME.assetKit.model("ms_lawnpatch", 1, (o) => {
+    const s = o.sz || 1, prims = [], n = o.n || 9, leaf = !!o.leaf;
+    let h = (o.seed || 1) * 2654435761;
+    const rnd = () => { h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d); h ^= h >>> 12; return ((h >>> 0) % 10007) / 10007; };
+    for (let j = 0; j < n; j++) {
+      const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * 0.5 * s;
+      const len = (leaf ? 0.09 : 0.06) * s * (0.8 + 0.4 * rnd()), wid = len * (leaf ? 0.55 : 0.8);
+      prims.push(ME.assetKit.E([Math.cos(a) * r, Math.sin(a) * r, 0.02 * s], [len, wid, 0.035 * s], pickMat(o, rnd())));
+    }
+    return { prims, r: 0.6 * s, h: 0.06 * s, k: 1 };
+  }, 1);
   const hash = (n) => { let h = Math.imul(n ^ 0x9e3779b9, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
-  const on = () => ME.qn("dress", 1) !== 0;
+  const on = () => ME.qn("dress", 1) !== 0, lawnOn = () => ME.qn("lawn", 1) !== 0;
 
   class Dress {
     constructor(view) {
       this.view = view; this.app = view.app;
       this.on = on();
-      this.live = []; this.t = 0; this.game = null; this.stats = { pieces: 0, water: 0, drawn: 0 };
+      this.live = []; this.lawn = []; this.t = 0; this.game = null; this.stats = { pieces: 0, water: 0, drawn: 0, lawn: 0 };
     }
     // ME.bakeModels' entries (main.js adds them to G.bakeList's): two ferns and the bloom clump, at tile density
     // Only a level whose LEVEL_ACTS open cells in a DRESS act bakes them (not G.living: set later, in level.js)
+    // Any level with LEVEL_ACTS also bakes the lawn patches: LAWN_VARIANTS cuts of each LAWN kind (?lawn=0: none)
     static bakeList(levelId) {
       if (!on() || !window.MODELS.fern || ME.qn("acts", 1) === 0) return {};
       const acts = G.Defs && G.Defs.LEVEL_ACTS && G.Defs.LEVEL_ACTS[levelId || G.levelId];
-      if (!acts || !Object.keys(DRESS).some((n) => acts[n - 1] && acts[n - 1].open && acts[n - 1].open.length)) return {};
-      const M = window.MODELS, k = (name, o) => M[name](o).k;
+      if (!acts) return {};
+      const M = window.MODELS, k = (name, o) => M[name](o).k, out = {};
+      if (lawnOn()) for (const kind in LAWN) for (let v = 0; v < LAWN_VARIANTS; v++) {
+        const L = LAWN[kind], o = { seed: 7 + v * 13 + (kind === "litter" ? 101 : 0), sz: LAWN_SIZE, n: L.n, leaf: L.leaf, mats: L.mats, w: L.w };
+        o.scale = k("ms_lawnpatch", o);
+        out["lawn_" + kind + v] = ["ms_lawnpatch", o, 1];
+      }
+      if (!Object.keys(DRESS).some((n) => acts[n - 1] && acts[n - 1].open && acts[n - 1].open.length)) return out;
       return {
+        ...out,
         dress_fern: ["fern", { seed: 3, sz: 0.62 * SIZE, scale: k("fern", { seed: 3, sz: 0.62 * SIZE }) }, 1],
         dress_fern2: ["fern", { seed: 11, sz: 0.5 * SIZE, scale: k("fern", { seed: 11, sz: 0.5 * SIZE }) }, 1],
         dress_bloom: ["ms_dressbloom", { sz: SIZE, scale: k("ms_dressbloom", { sz: SIZE }) }, 1],
@@ -30931,14 +30970,43 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     }
     // a new run (scene.setGame): what its act has opened stands already
     reset(game) {
-      this.game = game; this.live.length = 0; this.t = 0;
+      this.game = game; this.live.length = 0; this.lawn.length = 0; this.t = 0;
       if (!this.on || !G.living || !game || !game.world.acts) return;
       this.place(game.world.act, true);
+      this.season(game.world.act, true);
     }
-    // the act's turn (acts.js): its cells dress, after the puff
+    // the act's turn (acts.js): its cells dress, after the puff; the lawn turns to the act's season
     turn(n) {
       if (!this.on || !G.living || !this.game) return;
       this.place(n, false);
+      this.season(n, false);
+    }
+    // the lawn at act n: the LAWN kinds of other acts fade out (die), act n's grow in on a LAWN_SHARE of the open
+    // cells (by the cell's hash, so the same cells every run), each patch off the cell's centre, yawed, on the
+    // ground, none over water; still: standing at once. A cell opened later (a turn's beds) gets its patch then
+    season(n, still) {
+      if (!lawnOn()) return;
+      const w = this.game.world, T = this.app.T, XF = this.view.MB && this.view.MB.extraFrames;
+      if (!XF) return;
+      for (const p of this.lawn) if (!LAWN[p.kind].acts.includes(n) && p.die === undefined) p.die = this.t;
+      for (const kind in LAWN) {
+        if (!LAWN[kind].acts.includes(n) || !XF["lawn_" + kind + "0"]) continue;
+        const have = new Set(this.lawn.filter((p) => p.kind === kind && p.die === undefined).map((p) => p.k));
+        for (let k = 0; k < w.W * w.H; k++) {
+          if (w.blocked[k] || have.has(k) || hash(k * 31 + 5) >= LAWN_SHARE) continue;
+          const cx = k % w.W, cy = Math.floor(k / w.W), [X, Y, Z] = w.viewCentre(cx, cy);
+          const x = X + (hash(k * 31 + 6) - 0.5) * 0.5, y = Y + (hash(k * 31 + 7) - 0.5) * 0.5;
+          if (this.view.waterAt && this.view.waterAt(x, y) !== null) continue;
+          const g = T.groundAt(x, y, Z + 1);
+          if (!(g > -90)) continue;
+          const v = (hash(k * 31 + 8) * LAWN_VARIANTS) | 0, key = XF["lawn_" + kind + v] ? "lawn_" + kind + v : "lawn_" + kind + "0";
+          // (a turn: they settle in from the Heart Tree outward, over ~2 s, after the puff)
+          const d = Math.hypot(cx - w.heart[0], cy - w.heart[1]) / Math.max(w.W, w.H);
+          this.lawn.push({ kind, k, cx, cy, key, x, y, z: g, yaw: hash(k * 31 + 9) * TAU, sc: 0.85 + 0.3 * hash(k * 31 + 10),
+            born: still ? -1e9 : this.t + GROW_AT + d * 2.4 + hash(k * 31 + 11) * 0.3, under: 0 });
+        }
+      }
+      this.stats.lawn = this.lawn.length;
     }
     // the pieces on every cell opened by an act in DRESS up to n not dressed yet; still: standing at once
     place(n, still) {
@@ -30969,19 +31037,35 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
     }
     update(dt) {
-      if (!this.on || !this.live.length || !(dt > 0)) return;
+      if (!this.on || !(this.live.length || this.lawn.length) || !(dt > 0)) return;
       this.t += dt;
       const game = this.view.game;
-      // a plant on the cell: ease to UNDER, out to RING_OUT (and back when it goes)
-      for (const p of this.live) {
+      // a plant on the cell: ease to UNDER, out to RING_OUT (and back when it goes); a lawn patch hides under it
+      for (const L of [this.live, this.lawn]) for (const p of L) {
         const want = game && game.towerAt(p.cx, p.cy) ? 1 : 0;
         if (p.under !== want) p.under = want > p.under ? Math.min(want, p.under + dt / EASE_S) : Math.max(want, p.under - dt / EASE_S);
+      }
+      // the last season's patches, gone once sunk
+      if (this.lawn.some((p) => p.die !== undefined && this.t - p.die > GROW_S)) {
+        this.lawn = this.lawn.filter((p) => p.die === undefined || this.t - p.die <= GROW_S);
+        this.stats.lawn = this.lawn.length;
       }
     }
     // the instance layer, before the plants (room: how many instances are left)
     write(sim, i, room) {
       const L = this.live, MB = this.view.MB, t = this.t;
       this.stats.drawn = 0;
+      // the lawn first: it grows flat out of the ground (0 -> 1, no overshoot), sinks when its season ends
+      for (let n = 0; n < this.lawn.length && room > 0; n++) {
+        const p = this.lawn[n], fr = MB.extraFrames[p.key];
+        if (!fr) continue;
+        const u = Math.min(1, (t - p.born) / GROW_S), g = p.die === undefined ? u : u * Math.max(0, 1 - (t - p.die) / GROW_S);
+        const e = p.under * p.under * (3 - 2 * p.under), k = g * g * (3 - 2 * g) * (1 - e);
+        if (k <= 0.02) continue;
+        const mi = fr[0], s = p.sc / (MB.models[mi].fine || 1);
+        sim.put(i++, mi, p.x, p.y, p.z, p.yaw, false, [s * (0.5 + 0.5 * k), s * (0.5 + 0.5 * k), s * k], [0, 0], 0, 0, 0, 0);
+        room--; this.stats.drawn++;
+      }
       if (!L.length) return i;
       for (let n = 0; n < L.length && room > 0; n++) {
         const p = L[n], fr = MB.extraFrames[p.key];
@@ -31018,7 +31102,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
      sparse light motes that hang and wander (a slow fall). A drift is foliage (phys.emitMat: foliage floats, the
      rest tumbles and heaps), so its materials are leaf-class ones. An act's look may set its own
      (G.WEATHER_LOOKS.acts[level][n - 1].drift = [materials, strength, { vx, vy, vz }], Art's), which wins
-   - the summer dress on the cells the act opened (view/dress.js)
+   - the summer dress on the cells the act opened (view/dress.js), and the season's patches on the lawn
+   - the season (G1; the user, 2026-11-12: acts as seasons): each act turn, and a fresh run's start, enters the
+     act's signature weather front once (FRONTS: I petals, III wind with leaves, IV snow), held through the act's
+     first wave (model.left = 1); after it the climate's own fronts take over. Dynamic weather only, never over a
+     ?wxfront= pin; a restored run keeps the weather it has. (Engine's per-act climate, E4, comes later.)
    A restored run (Save.restore re-emits "act" with restored: true, for the music) takes its act's state
    silently at scene.setGame: chip, grown tree, full growth, its drifts. ?drifts=0 turns the drifts off. */
 (function () {
@@ -31030,6 +31118,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // fall ({ vx, vy, vz } tiles/s over FALL). Act II's motes: gingko (lime gold in its look), else leafDry, slow.
   const FALL = { vx: 0.25, vy: 0.1, vz: -0.2 };
   const DRIFTS = { 2: [["gingko", "leafDry", "leaf2"], 0.22, { vx: 0.1, vy: 0.05, vz: -0.07 }], 3: [["maple"], 1], 4: [["snow", "ice", "frost"], 0.8] };
+  // each act's season front (ME.Weather fronts), entered once at its turn
+  const FRONTS = { 1: "petals", 3: "wind", 4: "snow" };
 
   class ActsView {
     constructor(view) {
@@ -31038,9 +31128,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.cap = this.phone ? DRIFT_PHONE : DRIFT_MAX;
       this.rate = this.cap / DRIFT_LIFE; // so the live drifts settle at the cap
       this.driftsOn = ME.qn("drifts", 1) !== 0;
-      this.game = null; this.act = 1; this.grow = null; this.drift = null; this.born = []; this.acc = 0;
+      this.game = null; this.act = 1; this.grow = null; this.drift = null; this.born = []; this.acc = 0; this.pend = "";
       this.toast = null; // the HUD's toast (main.js)
-      G.on("act", (e) => { if (this.game && this.view.game === this.game && !e.restored) this.turn(e.act, e.data); });
+      G.on("act", (e) => {
+        if (e.restored) { this.pend = ""; return; }
+        if (this.game && this.view.game === this.game) this.turn(e.act, e.data);
+      });
     }
     // a new run (scene.setGame), restored or not
     reset(game) {
@@ -31052,6 +31145,24 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.hideBanner();
       this.heartTo(this.act, false);
       this.drift = this.driftFor(this.act);
+      // a fresh run opens in Act I's season; a restored one (past its first wave) keeps the weather it has
+      this.pend = this.act === 1 && (S.wave | 0) <= 1 ? this.frontFor(1) : "";
+    }
+    // act n's season front, on a living run in the dynamic weather, or ""
+    frontFor(n) {
+      const f = FRONTS[n];
+      return f && G.living && this.game && this.game.world.acts && ME.WX && ME.WX.fronts()[f] ? f : "";
+    }
+    // the pending season front, once the sky is there (app.atmos comes after the first scene.setGame) and has
+    // followed this run (its follow enters the level's own front first, which this one then replaces)
+    season() {
+      const sky = this.app.atmos;
+      if (!sky || !sky.model) return;
+      const f = this.pend; this.pend = "";
+      if (sky.weather !== "dynamic" || ME.q("wxfront", "")) return;
+      sky.follow();
+      sky.model.enter(f); sky.model.left = 1; // (held through the act's first wave: weather.js waveStart)
+      sky.renderPanel();
     }
     // the growth field full (the act's look everywhere)
     full() {
@@ -31079,6 +31190,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.view.livingMap(true); // (the woken rift lit, the opened cells' props gone: scene.js)
       if (this.view.dress) this.view.dress.turn(n); // (and dressed for the act, after the puff: dress.js)
       this.drift = this.driftFor(n);
+      this.pend = this.frontFor(n);
     }
     // the Heart Tree at act n's grow stage (n - 1), if baked; burst: its crown's leaves fly first
     heartTo(n, burst) {
@@ -31102,18 +31214,20 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.R.setGrowth(B);
       if (k >= 1) { this.grow = null; this.full(); }
     }
-    // act n's drift: { mat, rate, name, v } or null; the act's look's own (Art's) first, else DRIFTS
+    // act n's drift: { mats, rate, name, v } or null; the act's look's own (Art's) first, else DRIFTS
     driftFor(n) {
       if (!this.driftsOn || !G.living) return null;
       const looks = (G.WEATHER_LOOKS && G.WEATHER_LOOKS.acts) || {}, look = (looks[G.levelId] || [])[n - 1];
       const d = (look && look.drift) || DRIFTS[n];
       if (!d || !d[0]) return null;
-      const ids = this.app.pal.ids, name = d[0].find((m) => ids[m]);
-      return name ? { mat: ids[name], rate: this.rate * (d[1] ?? 1), name, v: Object.assign({}, FALL, d[2]) } : null;
+      // (every listed material the palette has, one picked at random per leaf, so a drift mixes its colours)
+      const ids = this.app.pal.ids, names = d[0].filter((m) => ids[m]);
+      return names.length ? { mats: names.map((m) => ids[m]), rate: this.rate * (d[1] ?? 1), name: names.join("+"), v: Object.assign({}, FALL, d[2]) } : null;
     }
     update(dt) {
       if (!this.game) return;
       if (this.grow) this.stepGrow(dt);
+      if (this.pend) this.season();
       const d = this.drift;
       if (!d || !(dt > 0)) return;
       const now = performance.now() / 1000, born = this.born;
@@ -31124,7 +31238,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         this.acc -= 1;
         const life = DRIFT_LIFE * (0.7 + 0.6 * Math.random());
         const v = d.v; // (FALL's spread: vx +0..80%, vy +-150%)
-        this.phys.emitMat(Math.random() * w.W, Math.random() * w.H, z0 + Math.random() * 4, v.vx * (1 + 0.8 * Math.random()), v.vy * (1 + (Math.random() - 0.5) * 3), v.vz, d.mat, life);
+        this.phys.emitMat(Math.random() * w.W, Math.random() * w.H, z0 + Math.random() * 4, v.vx * (1 + 0.8 * Math.random()), v.vy * (1 + (Math.random() - 0.5) * 3), v.vz, d.mats[(Math.random() * d.mats.length) | 0], life);
         born.push(now + life);
       }
       if (born.length >= this.cap) this.acc = 0;
