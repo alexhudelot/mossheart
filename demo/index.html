@@ -952,6 +952,11 @@ body[data-menu]:not([data-menu=""]) #ui { visibility: hidden; }
 #title h1 em { font-style: normal; color: #b9dc8f; }
 #title .sub { text-align: left; max-width: 30ch; }
 #title .btn.big small { display: block; font-size: 0.62em; font-weight: 500; margin-top: 2px; }
+/* the demo's title (G.DEMO, view/menu.js): a taller Play, then How to play and Leaderboard as one small line of links */
+#title .btn.big.play { height: 72px; font-size: calc(26px * var(--ts)); }
+#title .links { display: flex; gap: 18px; margin: 4px 0 0; }
+#title .links .link { background: none; border: 0; padding: 6px 2px; color: #fffae6; font: inherit; font-size: calc(15px * var(--ts)); text-decoration: underline; text-underline-offset: 3px; opacity: 0.85; cursor: pointer; text-shadow: 0 1px 6px #1a260d; }
+#title .links .link:hover, #title .links .link:focus-visible { opacity: 1; }
 @media (max-width: 760px), (max-aspect-ratio: 4/5) {
   .jtop h2 { display: none; }
   #title .tjar .jar { left: 50%; top: 40%; width: 96%; }
@@ -4796,14 +4801,15 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
   // Let the page paint between bake steps, but only every ~40 ms (ME.tickMs): each real yield costs a frame, and
   // the bake calls this often. A message-channel post is not clamped like setTimeout. The terrain stream (stream.js)
   // bakes while the game plays, so it lowers ME.tickMs to a few ms for its time and sets ME.quiet, which keeps the
-  // bake's progress off the loading bar.
+  // bake's progress off the loading bar. ME.tick(ms): the same with its own interval in place of ME.tickMs (C128's
+  // region mesh, which then leaves the globals alone).
   const ch = new MessageChannel(), waiting = [];
   ch.port1.onmessage = () => waiting.shift()();
   let lastYield = 0;
   ME.tickMs = 40;
   ME.quiet = false;
-  ME.tick = () => {
-    if (performance.now() - lastYield < ME.tickMs) return Promise.resolve();
+  ME.tick = (ms = ME.tickMs) => {
+    if (performance.now() - lastYield < ms) return Promise.resolve();
     return new Promise((r) => { waiting.push(() => { lastYield = performance.now(); r(); }); ch.port2.postMessage(0); });
   };
   ME.progress = (label, f) => {
@@ -6791,6 +6797,14 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     return pool;
   };
 
+  // a map's cliff-face recipe: ME.content.mapCliffFace[its id] when its pack gives one (Momiji's, so Corn Moon
+  // keeps none), else ME.content.cliffFace, whole (no merge), as ME.grassFor. The terrain key hashes this
+  // (cache.js), so one map's recipe rebakes that map only
+  ME.cliffFaceFor = function (st) {
+    const C = ME.content || {}, id = st && (st.map && st.map.id !== undefined ? st.map.id : st.id);
+    return (C.mapCliffFace && id !== undefined && C.mapCliffFace[id]) || C.cliffFace;
+  };
+
   // o.vs: the density (ME.VS by default); o.rules: the rules' bake (P2, R1: ME.terrain16), the voxels, tops,
   // water and tiles only, whole (no regions), quiet (no progress bar, no map warnings), with no mips and no
   // coarse grid (T.mips, T.coarse, T.cdims, T.CPU null; T.stats.solid and .zTop null). In a terrain worker (P1c,
@@ -7012,6 +7026,62 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
       }
       return n;
     };
+    // Cliff faces (Demo 1, the critic's fix 6; off without a recipe (ME.cliffFaceFor), below its minVS and with
+    // ?cliff=0): a dry column within reach of a step face (a neighbour tile minDrop or more lower, a water
+    // tile at its level, found as roughen finds them) is painted from the lower top up to under its top
+    // voxels as a mossy rock wall, the reference boards' recipe (px.js sideTexture "cliff"): rock blocks on a
+    // cell grid along the face and up it (a material per block), dark joints, moss on the joints over a
+    // block (ledges), a moss lip under the top that turns into a darker underside, a shade band under the
+    // lip, moss creeping up from the foot, and wet streaks. Every material is the content's (Art); a role
+    // left out is skipped. Painted before roughen carves, at least 2 voxels past its rough, so the pits show
+    // rock. The overhang lobes of a painted column take overhang, if given.
+    const CF0 = ME.qn("cliff", 1) === 0 ? null : ME.cliffFaceFor(st);
+    const CF = CF0 && VS >= (CF0.minVS ?? 0) && CF0.rock && CF0.rock.length ? CF0 : null;
+    const cf = CF && (() => {
+      const m = (n) => (n === undefined || n === null ? 0 : id(n)), sc = CF.scale || [1.9, 3.2];
+      return {
+        rock: CF.rock.map(id), joint: m(CF.joint), ledge: m(CF.ledge), lip: m(CF.lip), under: m(CF.lipUnder), shade: m(CF.shade), foot: m(CF.foot), wet: m(CF.wet), lobe: m(CF.overhang),
+        reach: (CF.reach ?? 0.2) * VS, drop: Math.max(2, (CF.minDrop ?? 0.25) * VS), su: sc[0], sz: sc[1],
+        // the joints at least about a voxel wide (as a lane's paving), so they stay unbroken at any density
+        J: Math.max(CF.jointW ?? 0.06, (1.2 * Math.max(sc[0], sc[1])) / VS), ledgeK: CF.ledgeK ?? 0.5,
+        lipD: CF.lipD ?? 0.14, lipK: CF.lipK ?? 0.2, underK: CF.underK ?? 0.4, shadeD: CF.shadeD ?? 0.16,
+        footD: CF.footD ?? 0.05, footK: CF.footK ?? 0.16, wetK: CF.wetK ?? 0.85,
+        off: new Set(Object.keys(CF.kinds || {}).filter((k) => CF.kinds[k] === false)),
+      };
+    })();
+    let cfCols = 0;
+    const cliffFace = (Xw, Yw, tx, ty, kd, kEnd, bc, kB, keep, col) => {
+      if (kd.recipe === "layer" || kd.recipe === "water" || wetAt(tx, ty) || cf.off.has(kindName.get(kd))) return false;
+      const RD = EB ? Math.min(ebOf(kd)[1] * ebFr, 2 * AMAX) * VS : 0, reach = Math.max(cf.reach, RD > 0 ? RD + 2 : 0);
+      const fx = Xw - tx, fy = Yw - ty, sx = fx < 0.5 ? -1 : 1, sy = fy < 0.5 ? -1 : 1, dx = (sx < 0 ? fx : 1 - fx) * VS, dy = (sy < 0 ? fy : 1 - fy) * VS;
+      if (dx >= reach && dy >= reach) return false;
+      const kT = kOf(G.z[ty * G.W + tx]);
+      let kN = Infinity, d = Infinity, u = 0;
+      if (dx < reach) { const k = tileK(tx + sx, ty); if (kT - k >= cf.drop) { kN = k; d = dx; u = Yw; } }
+      if (dy < reach) { const k = tileK(tx, ty + sy); if (kT - k >= cf.drop) { kN = Math.min(kN, k); if (dy < d) { d = dy; u = Xw; } } }
+      if (kN === Infinity) return false;
+      undefer(bc);
+      // along the face: the lip's depth, the foot moss's height and the wet streaks (voxels)
+      const lipV = (cf.lipD + cf.lipK * P.fbm(u * 2.3, 0.5, 0, 131)) * VS, shV = lipV + cf.shadeD * VS, unV = lipV * (1 - cf.underK);
+      const footV = (cf.footD + cf.footK * P.fbm(u * 1.7, 1.5, 0, 137)) * VS;
+      const wetCol = cf.wet && P.noise(u * 9, 0.5, 0, 139) > cf.wetK, L = cf.rock.length;
+      for (let k = Math.max(kN, kB); k < kEnd - keep; k++) {
+        const q = k * BPL + bc;
+        if (!band[q]) continue;
+        const dz = kEnd - 1 - k;
+        let m = 0;
+        if (cf.lip && dz < lipV) m = cf.under && dz >= unV ? cf.under : cf.lip;
+        else if (cf.foot && k - kN < footV) m = cf.foot;
+        else {
+          const Zc = (O[2] + (k + 0.5) / VS) * cf.sz, s = P.cell2(u * cf.su, Zc, 149);
+          if ((cf.joint || cf.ledge) && s.f2 - s.f1 < cf.J) m = cf.ledge && s.y < Zc && P.noise(u * 5, Zc * 1.5, 0, 151) > cf.ledgeK ? cf.ledge : cf.joint;
+          if (!m) m = cf.shade && dz < shV ? cf.shade : wetCol ? cf.wet : cf.rock[Math.min(L - 1, Math.floor(s.id * L))];
+        }
+        band[q] = m;
+      }
+      if (cf.lobe && lobe[col]) lobe[col] = cf.lobe;
+      return true;
+    };
     // laneWave: a column within 2 amp of the border between a lane tile (the lane recipe or a game.lane kind)
     // and a dry tile of another sort whose tops differ by maxDz voxels at most takes the top material of the
     // neighbour where the warp's wave (the same noise, at amp) would carry it across, either way: into w =
@@ -7213,6 +7283,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
             const dz = kEnd - 1 - k;
             band[k * BPL + bc] = layer ? (dz < layer + extra ? mTop : kd.under) : dz === 0 || (two && dz === 1) ? mTop : dr && dz <= dd && !bed ? (n1 > 0.7 ? dr[1] : dr[0]) : kd.under;
           }
+          if (cf && !sk && !layer && !bed && cliffFace(Xw, Yw, cx, cy, kd, kEnd, bc, kB, two ? 2 : 1, col) && own(i, j)) cfCols++;
           if (EB) { const n = roughen(Xw, Yw, cx, cy, kd, kEnd, bc, kB); if (own(i, j)) ebCarved += n; }
           if (jar && !VJ) for (let k = kEnd; k < kD; k++) band[k * BPL + bc] = 0; // beds carved below the drum top
           // a box's skirt: the outer faces of the map's edge tiles, under their top voxel, in one material
@@ -7583,12 +7654,15 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
           };
           // the content and the map as the bake reads them (no functions: the litter trees come in the plan)
           const ct = pick(CT, ["kinds", "edgeRound", "edgeBreak", "sand", "groundLamps", "volumeDeco", "defaultMaterial", "modelScale"]);
+          // the map's own cliff-face recipe, resolved here (the worker's map may carry no id)
+          const cfr = ME.cliffFaceFor(st);
+          if (cfr) ct.cliffFace = cfr;
           if ("terrain" in CT) ct.terrain = Object.fromEntries(Object.entries(TR).filter(([, v]) => typeof v !== "function"));
           if ("walkers" in CT) ct.walkers = keys(CT.walkers);
           const sw = pick(st, ["map", "deco", "clip", "glassZt", "strata", "spill"]), dn = Object.keys(st.ramps || {})[0];
           sw.ramps = dn === undefined ? {} : { [dn]: 1 };
           const QN = {};
-          for (const k of ["regions", "edgebreak"]) if (ME.params && ME.params.has(k)) QN[k] = ME.qn(k, 0);
+          for (const k of ["regions", "edgebreak", "cliff"]) if (ME.params && ME.params.has(k)) QN[k] = ME.qn(k, 0);
           for (const s of stamps) if (!s.md) s.md = modelOf(s.name, s.o);
           const plan = { trees, mdT: mdT.map((md) => ({ k: md.k, r: md.r, h: md.h, prims: md.prims, detail: !!md.detail })), key: mdK, lampZ: lamps.map((l) => l.Z), names: pal.names, ids: pal.ids };
           const mp = st.map || {}, fnW = typeof mp.waterD === "function";
@@ -7756,7 +7830,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
 
     // Walkable ground: first solid voxel scanning down from zFrom.
 
-    const stats = { dims: [NX, NY, NZ], solid: RULES ? null : solid, wetCols, lobes, props: propCount, lanterns: lights.length, stampedVoxels: stamped, water: water.length, falls: falls.length, flooded: G.flood ? water.filter((w) => fullAt(w.x, w.y)).length : 0, edgeBreak: EB ? Object.assign({ cols: ebCols, carved: ebCarved }, LW ? { waved: lwCols } : null) : null, zTop: RULES ? null : O[2] + (kMax + 1) / VS, mipMs, ms: Math.round(ME.now() - t0) };
+    const stats = { dims: [NX, NY, NZ], solid: RULES ? null : solid, wetCols, lobes, props: propCount, lanterns: lights.length, stampedVoxels: stamped, water: water.length, falls: falls.length, flooded: G.flood ? water.filter((w) => fullAt(w.x, w.y)).length : 0, edgeBreak: EB ? Object.assign({ cols: ebCols, carved: ebCarved }, LW ? { waved: lwCols } : null) : null, cliffFace: cf ? { cols: cfCols } : null, zTop: RULES ? null : O[2] + (kMax + 1) / VS, mipMs, ms: Math.round(ME.now() - t0) };
     if (regions) stats.regions = regions; // regions mode only: the whole path's stats keep their keys
     if (st.area) stats.area = { area: st.area.slice(), box: { o: O.slice(), size: B.size.slice() } }; // a slice's (W0)
     // bounds: the world box in tiles; frame: the map's (jar or box); geo: the jar's measures (null in a box)
@@ -7980,12 +8054,16 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
    stops at their edges, and each region is its own run of quads (mesh.regions: its first quad, its quads, its box
    and its meshing ms; mesh.meshMs, either way: the boxes' meshing, the sort left out). A snap's index range is
    then the regions front to back, each one's quads front to back, in 16-bit indices; its parts (snaps[k].parts)
-   are [region, base vertex, first index, count] a draw, so a region the view misses is left out (passes.js). */
+   are [region, base vertex, first index, count] a draw, so a region the view misses is left out (passes.js).
+   Quiet (ME.quiet, the terrain stream, or opt.quiet, C128's region in play): no progress on the loading bar, and a
+   yield (ME.tick(opt.tickMs)) offered every slice, row and sort part, so a region is never one long task. The
+   quads are the same either way. */
 (function () {
   const ME = window.ME;
 
   ME.greedyMesh = async function (T, opt = {}) {
     const t0 = ME.now(), { grid, NX, NY, NZ } = T, PLANE = NX * NY;
+    const quiet = ME.quiet || !!opt.quiet, tick = () => ME.tick(opt.tickMs), progress = (l, f) => { if (!quiet) ME.progress(l, f); };
     const rt = opt.rt ?? ((T.stats && T.stats.regions && T.stats.regions.rt) || 0);
     // the boxes meshed, [x0, y0, x1, y1] in voxel columns: the regions in their order (row by row), or the map
     // (opt.boxes: these boxes only, as regions; W1 meshes one region of a cropped grid, its ring read as neighbours)
@@ -8041,6 +8119,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     // read) over the rest; outside the grid is air. A skipped stretch of a mask stays zero: merge clears what it takes
     const { table, pool, BX, BY } = grid, cls = new Uint8Array(table.length);
     for (let b = 0; b < table.length; b++) {
+      if (quiet && (b & 65535) === 0) await tick();
       const e = table[b];
       if (e < 256) { cls[b] = e ? 1 : 0; continue; }
       const I = b % BX, J = Math.floor(b / BX) % BY, K = Math.floor(b / grid.BXY), s = (e - 256) * 4096;
@@ -8068,13 +8147,13 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     const meshBox = async (X0, Y0, X1, Y1, whole) => {
       const W = X1 - X0, H = Y1 - Y0, IA = X0 >> 4, IB = (X1 + 15) >> 4, JA = Y0 >> 4, JB = (Y1 + 15) >> 4;
       const read = (k, dst) => { if (whole) grid.plane(k, dst); else for (let j = Y0; j < Y1; j++) grid.row(j, k, X0, X1, dst, (j - Y0) * W); };
-      const step = whole || ME.quiet; // the terrain stream (ME.quiet) yields inside a region too
+      const step = whole || quiet; // quiet (the terrain stream, C128) yields inside a region too, every slice
 
       // +z faces: slice planes between z = s-1 and s
       let below = pa, cur = pb;
       if (kLo > 0) read(kLo - 1, below); else below.fill(0);
       for (let s = kLo; s <= kHi + 1; s++) {
-        if (step && (s & 15) === 0) { ME.progress("meshing tops " + s, 0.36 + 0.04 * ((s - kLo) / ZN)); await ME.tick(); }
+        if (step && (quiet || (s & 15) === 0)) { progress("meshing tops " + s, 0.36 + 0.04 * ((s - kLo) / ZN)); await tick(); }
         if (s < NZ) read(s, cur); else cur.fill(0);
         let any = false;
         const Ka = s > 0 ? (s - 1) >> 4 : -1, Kb = s < NZ ? s >> 4 : -1;
@@ -8089,15 +8168,16 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
       // x faces: mask over (y, z) per slice s. A slab of XS slices is filled in one pass along the voxel rows
       // (reading the grid column-wise per slice was cache-hostile), then merged slice by slice; the slab's
       // masks are reused (merge leaves them zero). All NX + 1 slices at once was 2 bytes a voxel (~600 MB at vs40).
-      if (step) { ME.progress("meshing x sides", 0.4); await ME.tick(); }
+      if (step) { progress("meshing x sides", 0.4); await tick(); }
       const SL = H * ZN, SE = X1 === NX ? NX : X1 - 1;
       for (let s0 = X0; s0 <= SE; s0 += XS) {
-        if (step) { ME.progress("meshing x sides " + s0, 0.4 + 0.04 * (s0 / NX)); await ME.tick(); }
+        if (step) { progress("meshing x sides " + s0, 0.4 + 0.04 * (s0 / NX)); await tick(); }
         const s1 = Math.min(SE, s0 + XS - 1), r0 = Math.max(0, s0 - 1), r1 = Math.min(NX, s1 + 1);
         xany.fill(0);
         // a row of bricks all air, or all solid away from the grid's x ends, has no x face in this slab
         const I0 = r0 >> 4, I1 = (r1 - 1) >> 4, inner = s0 > 0 && s1 < NX;
         for (let z = 0; z < ZN; z++) for (let J = JA; J < JB; J++) {
+          if (quiet && J === JA) await tick();
           const b0 = (((z + kLo) >> 4) * BY + J) * BX;
           let c0 = 0, c1 = 0;
           for (let I = I0; I <= I1; I++) { const c = cls[b0 + I]; if (c === 0) c0++; else if (c === 1) c1++; }
@@ -8114,6 +8194,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
           }
         }
         for (let s = s0; s <= s1; s++) {
+          if (quiet) await tick();
           if (xany[s - s0]) merge(xm.subarray((s - s0) * SL, (s - s0 + 1) * SL), H, ZN, (i, j, w, h, c) => {
             const z0 = j + kLo, z1 = z0 + h, y0 = Y0 + i, y1 = y0 + w;
             if (c > 0) emit(0, c, [s, y0, z0], [s, y1, z0], [s, y1, z1], [s, y0, z1]);
@@ -8146,7 +8227,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
       if (Y0 > 0) { skips(Y0, sk); rowRuns(Y0 - 1, ya, (n) => !sk[n]); } else ya.fill(0);
       const SY = Y1 === NY ? NY : Y1 - 1;
       for (let s = Y0; s <= SY; s++) {
-        if (step && (s & 31) === 0) { ME.progress("meshing y sides " + s, 0.44 + 0.04 * (s / NY)); await ME.tick(); }
+        if (step && (quiet || (s & 31) === 0)) { progress("meshing y sides " + s, 0.44 + 0.04 * (s / NY)); await tick(); }
         let any = false;
         skips(s, sk); skips(s + 1, sn);
         if (s < NY) rowRuns(s, yb, (n) => !(sk[n] && sn[n])); else yb.fill(0);
@@ -8172,7 +8253,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
 
     const starts = [], bms = []; // bms: each box's meshing time (a whole map's includes its yields to the page)
     for (let r = 0; r < boxes.length; r++) {
-      if (byR) { ME.progress("meshing region " + (r + 1) + "/" + boxes.length, 0.36 + 0.12 * (r / boxes.length)); await ME.tick(); }
+      if (byR) { progress("meshing region " + (r + 1) + "/" + boxes.length, 0.36 + 0.12 * (r / boxes.length)); await tick(); }
       starts.push(nq);
       const tb = ME.now();
       await meshBox(boxes[r][0], boxes[r][1], boxes[r][2], boxes[r][3], !byR);
@@ -8181,7 +8262,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     starts.push(nq);
 
     // Per-snap visible quads, sorted front to back by rotated depth (X'+Y'+Z).
-    ME.progress("sorting quads per snap", 0.49); await ME.tick();
+    progress("sorting quads per snap", 0.49); await tick();
     const snaps = [], lists = [];
     let total = 0;
     if (!byR) {
@@ -8207,7 +8288,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     // By regions: each region with quads, its box (x0, y0, z0, x1, y1, z1 in voxels, from its vertices)
     const regions = [];
     for (let r = 0; r < boxes.length; r++) {
-      if (ME.quiet) await ME.tick(); // (the terrain stream: no long task in the sort either)
+      if (quiet) await tick(); // (the terrain stream: no long task in the sort either)
       const q0 = starts[r], q1 = starts[r + 1];
       if (q1 === q0) continue;
       const b = [65535, 65535, 65535, 0, 0, 0];
@@ -8225,9 +8306,10 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
       const rk = regions.map(({ box: b }) => ((c + s) * (b[0] + b[3]) + (c - s) * (b[1] + b[4]) + b[2] + b[5]) / 2);
       const order = regions.map((R, n) => n).sort((a, b) => rk[b] - rk[a]), list = [];
       for (const n of order) {
-        if (ME.quiet) await ME.tick();
+        if (quiet) await tick();
         const R = regions[n], qe = R.q0 + R.quads;
         for (let c0 = R.q0; c0 < qe; c0 += CH) {
+          if (quiet) await tick();
           const ids = [];
           for (let q = c0, c1 = Math.min(qe, c0 + CH); q < c1; q++) if (vis[DIR[q]]) ids.push(q);
           if (!ids.length) continue;
@@ -8239,7 +8321,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     const IDX = new Uint16Array(total * 6);
     let o = 0;
     for (let k = 0; k < 4; k++) {
-      if (ME.quiet) await ME.tick();
+      if (quiet) await tick();
       const parts = new Uint32Array(lists[k].length * 4), first = o;
       lists[k].forEach(([n, c0, arr], p) => {
         const f = o;
@@ -8735,6 +8817,16 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
   // bakes' CPU would make that freeze longer): ME.PROG_SETTLE ms of frames, none longer than ME.PROG_HITCH ms, or
   // ME.PROG_SETTLE_MAX ms after R's first frame at the latest.
   ME.PROG_SETTLE = 1500; ME.PROG_HITCH = 100; ME.PROG_SETTLE_MAX = 10000;
+  // that wait, a task for R.addTask: it returns (and o.settle holds, frame by frame) the ms from its first frame to
+  // the settle. R.settled() runs one from R.init: the game waits on it for work it can leave behind its first frames
+  ME.settleGen = function* (o = {}) {
+    for (let t0 = ME.now(), last = t0, calm = 0; calm < ME.PROG_SETTLE && last - t0 < ME.PROG_SETTLE_MAX; ) {
+      yield "frame";
+      const n = ME.now(), d = n - last;
+      last = n; calm = d > ME.PROG_HITCH ? 0 : calm + d; o.settle = Math.round(n - t0);
+    }
+    return o.settle || 0;
+  };
   const progOn = (opts = {}) => opts.progressive !== false && ME.progressive !== false && ME.qn("progressive", 1) !== 0 && !opts.focus && workersOn(opts);
   const hollowOn = () => ME.poolHollow !== false && ME.qn("hollow", 1) !== 0;
   // the factor a progressive frame's first bake is drawn at: its fine (a fine-1 copy) or, under opts.boot, VS x
@@ -8814,9 +8906,9 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
   // starts them (once R's frames settle) or the fallback asks for them, so the boot has the workers for its own jobs
   // and the CPU to itself once they are done.
   // opts.cache (E3): the workers' answers read from and kept in the bake cache (ME.bakeCache.modelCache), read while
-  // the workers start; a job it answers is not posted, and the workers end when it answers them all (and no
-  // progressive flipbook needs them). Without workers, a progressive frame's stored fine-1 answer is not taken (the
-  // frame then bakes here at full density).
+  // the workers start; a job it answers is not posted, and the workers end when it answers them all (and neither a
+  // progressive flipbook nor the copies need them: prep, in ME.bakeModels). Without workers, a progressive frame's
+  // stored fine-1 answer is not taken (the frame then bakes here at full density).
   function launch(L, pal, opts) {
     const def = defOf(pal), mds = modelsOf(L.variants), offWorker = {}, jobs = [], on = workersOn(opts), nv = L.variants.length;
     const prog = progOf(L, mds, opts), pv = new Map(prog.flatMap((g, n) => g.vs.map((i) => [i, n]))), full = []; // pv: frame -> its group
@@ -8840,7 +8932,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     const start = jobs.length ? startWorkers(Math.min(Math.max(1, Math.floor(ME.bakeWorkerMax || ME.qn("bakeworkers", 0) || 4)), Math.max(1, (navigator.hardwareConcurrency || 2) - 1), jobs.length)) : Promise.resolve([]);
     h.ready = Promise.all([start, read]).then(([ws]) => {
       if (h.done) { for (const w of ws) w.terminate(); return; }
-      if (ws.length && mc && !full.length && jobs.every((j) => mc.has(j.q))) { for (const w of ws) w.terminate(); ws = []; }
+      if (ws.length && mc && !full.length && opts.lod === false && !hollowOn() && jobs.every((j) => mc.has(j.q))) { for (const w of ws) w.terminate(); ws = []; }
       if (ws.length) { h.ws = ws; h.run = runJobs(ws, jobs, undefined, mc); h.res = h.run.out; return; }
       for (const j of jobs) { const r = mc && !pv.has(j.id) && mc.hit(j.q); if (r) h.res.set(j.id, Promise.resolve(r)); else offWorker[j.name] = "no workers"; }
     });
@@ -8929,7 +9021,10 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
         }
         vols.push(vx);
       }
-    } finally { if (!prog) h.cancel(); else h.done = true; } // a progressive bake keeps the workers (MB.prog), and an early.cancel() leaves them
+    } catch (e) { h.cancel(); throw e; }
+    // a progressive bake keeps the workers (MB.prog), and an early.cancel() leaves them; one without ends them once
+    // the copies are built (prep, below)
+    if (prog) h.done = true;
 
     // every volume's 2x-down copy (halfOf), packed after them; none when the pool could not hold them all
     const tl = ME.now();
@@ -8939,16 +9034,49 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     const setEmi = () => { if (pal.mat) pal.names.forEach((n, i) => { if (i) { const M = pal.mat(n); emi[i] = M.em || M.cls === ME.CLS.EMISSIVE || byName[n] === "EMISSIVE" ? 1 : 0; } }); };
     setEmi();
     // the copies (halfOf, ties by rk), and the interior bricks of the fine models (ME.POOL_HOLLOW; a coarse model of
-    // a progressive bake is VS x fine / kf to the tile edge) and of their copies, which stay out of the pool
+    // a progressive bake is VS x fine / kf to the tile edge) and of their copies, which stay out of the pool. Move 2
+    // of the boot deferral (2026-11-12): built on the bake's workers (finishOf, ids 3 x nv + i, in order: the queue is empty by then)
+    // while they live, a copy of each volume's bricks sent (its own stay here), ME.PREP_INFLIGHT bytes out at most;
+    // a job no worker answered is built here, as it all is without workers. Byte-identical either way (the same
+    // functions on the same bricks).
     const hollow = hollowOn(), kept = (l) => l.chunks.length - (l.inner ? l.inner.n : 0);
+    const chunksOf = (buf, n) => Array.from({ length: n }, (_, k) => buf.subarray(k * 2048, k * 2048 + 2048));
     let lods, hollowMs = 0;
-    const prep = (rk) => {
-      lods = opts.lod === false ? [] : vols.map((v) => halfOf(v, emi, rk));
-      const th = ME.now();
-      vols.forEach((v, i) => { v.inner = hollow && (VS * v.fine) / (v.kf || 1) > ME.POOL_HOLLOW ? innerOf(v) : null; if (lods[i]) lods[i].inner = v.inner ? innerOf(lods[i]) : null; });
-      hollowMs += ME.now() - th;
+    const pst = { workers: 0, here: 0 };
+    const prep = async (rk) => {
+      const L = opts.lod !== false, hol = (v) => hollow && (VS * v.fine) / (v.kf || 1) > ME.POOL_HOLLOW, out = vols.map(() => null);
+      const here = (i) => {
+        const v = vols[i], l = L ? halfOf(v, emi, rk) : null, th = ME.now();
+        v.inner = hol(v) ? innerOf(v) : null;
+        if (l) l.inner = v.inner ? innerOf(l) : null;
+        hollowMs += ME.now() - th; pst.here++; out[i] = l;
+      };
+      const took = (i, f) => {
+        if (!f) { here(i); return; }
+        const v = vols[i];
+        v.inner = f.inner ? { is: f.inner, n: f.ninner } : null;
+        out[i] = f.lod ? { dims: f.lod.dims, bmap: f.lod.bmap, chunks: chunksOf(f.lod.buf, f.lod.nb), nsolid: f.lod.nsolid, inner: f.lod.inner ? { is: f.lod.inner, n: f.lod.ninner } : null } : null;
+        pst.workers++;
+      };
+      const live = run && ws.length && (L || hollow) ? run : null, cap = ME.PREP_INFLIGHT || 64 << 20, pend = [];
+      let inflight = 0;
+      const next = async () => { const p = pend.shift(); inflight -= p.bytes; const f = await p.f; live.out.delete(3 * nv + p.i); took(p.i, f); }; // (out holds no copy: a progressive bake keeps run)
+      for (let i = 0; i < vols.length; i++) {
+        const v = vols[i];
+        if (!live || (!L && !hol(v))) { here(i); continue; }
+        const nb = v.chunks.length, bytes = nb * 2048;
+        while (pend.length && inflight + bytes > cap) await next();
+        const buf = new Uint8Array(bytes);
+        v.chunks.forEach((c, k) => buf.set(c, k * 2048));
+        const id = 3 * nv + i, q = { finish: true, id, buf, nb, bmap: v.bmap.slice(), dims: v.dims, hollow: hol(v), lod: L, emi, rk };
+        live.add([{ id, name: v.name, q, tr: [q.buf.buffer, q.bmap.buffer], miss: "finished on the main thread" }]);
+        pend.push({ i, bytes, f: live.out.get(id) }); inflight += bytes;
+      }
+      while (pend.length) await next();
+      lods = L ? out : [];
     };
-    prep();
+    // (a bake without progressive flipbooks ends its workers once its own are built)
+    try { await prep(); } finally { if (!prog) h.cancel(); }
     // E4: a progressive bake's pool, sized once (no new texture while it upgrades) to its peak C: the models that
     // never change, then at group g's upgrade the full models up to g (estimated: vx.est) and the coarse ones from g
     // on (g's are drawn until its swap has faded). Its slots are reused (the upgrade: used, lw). The copies stay or
@@ -8987,8 +9115,8 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
           const vx = r ? drive(takeIn(r, md, list)) : sparse(recIds(list, () => ME.voxelizeModel(md, VS, pal, { focus: !!opts.focus })));
           vx.md = md; vx.name = variants[i].name; vx.fine = vf; vols[i] = vx;
         }
-        run.stop(); prog = null; sp.fallback = true;
-        setEmi(); prep(rankOf(lists, n0));
+        try { setEmi(); await prep(rankOf(lists, n0)); } finally { run.stop(); prog = null; }
+        sp.fallback = true;
       }
     }
     if (!prog && vols.reduce((a, v) => a + kept(v), 0) + lods.reduce((a, l) => a + kept(l), 0) > ME.poolBricks()) lods = [];
@@ -9162,7 +9290,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     const models = vols.map((v, i) => ({ name: v.name, base: v.base, dims: v.dims, box: v.box, lo: v.lo, hi: v.hi, k: v.md.k, fine: v.fine, ...(v.kf ? { kf: v.kf } : {}), h: (v.md.h * v.md.k) / v.fine, r: (v.md.r * v.md.k) / v.fine, lod: lods.length ? i : -1 }));
     // bricks: the pool's; budget: ME.poolBricks(); fill: their share of it (%); hollow: the interior bricks kept out of it (models
     // and copies), the models' ones in MB.inner, the ms to find them; slab: S; mapMB: the brick map's texture
-    const stats = { variants: vols.length, layout: [AX, AY, AZ], bricks: nb, budget, fill: +((nb / budget) * 100).toFixed(1), hollow: { bricks: hollowN, inner: inner ? inner.mats.length / 512 : 0, ms: Math.round(hollowMs) }, slab: PB, pool: [PX, PY, PZ], poolMB: +((pool.byteLength / 1048576).toFixed(1)), mapMB: +((bricks.byteLength / 1048576).toFixed(1)), solid, surface: vols.reduce((a, v) => a + v.surf, 0), lights: lights.length, lod: { models: lods.length, bricks: lodBricks }, lodMs: Math.round(lodMs), workers: ws.length, inWorkers, offWorker, early: how, startMs: run ? Math.round(run.startMs) : 0, idleMs: run ? Math.round(run.idleMs) : 0, busyMs: run ? Math.round(run.busyMs) : 0, readyMs: Math.round(readyMs), waitMs: Math.round(waitMs), hereMs: Math.round(hereMs), takeMs: Math.round(takeMs), ms: Math.round(ME.now() - t0), ...(sp ? { prog: sp } : {}) };
+    const stats = { variants: vols.length, layout: [AX, AY, AZ], bricks: nb, budget, fill: +((nb / budget) * 100).toFixed(1), hollow: { bricks: hollowN, inner: inner ? inner.mats.length / 512 : 0, ms: Math.round(hollowMs) }, slab: PB, pool: [PX, PY, PZ], poolMB: +((pool.byteLength / 1048576).toFixed(1)), mapMB: +((bricks.byteLength / 1048576).toFixed(1)), solid, surface: vols.reduce((a, v) => a + v.surf, 0), lights: lights.length, lod: { models: lods.length, bricks: lodBricks }, lodMs: Math.round(lodMs), prep: pst, workers: ws.length, inWorkers, offWorker, early: how, startMs: run ? Math.round(run.startMs) : 0, idleMs: run ? Math.round(run.idleMs) : 0, busyMs: run ? Math.round(run.busyMs) : 0, readyMs: Math.round(readyMs), waitMs: Math.round(waitMs), hereMs: Math.round(hereMs), takeMs: Math.round(takeMs), ms: Math.round(ME.now() - t0), ...(sp ? { prog: sp } : {}) };
     const MB = { atlas: pool, adims: [PX, PY, PZ], bricks, bdims: [BX, BY, BZ], inner, models, lods: lods.map((l) => ({ base: l.base, dims: l.dims, lo: l.lo, hi: l.hi })), statics, walkerTypes, walkerFrames, critterFrames, extraFrames, lights, stats };
     MB.voxel = ME.brickVoxel(MB);
     if (prog) MB.prog = progOf2();
@@ -9200,12 +9328,8 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
         // palN: the materials R's tables hold (the app built them from pal after the bake)
         let ok = true, palN = pal.names.length;
         try {
-          // the frames settle first (ME.PROG_SETTLE above; sp.settle: the ms it took)
-          for (let t0 = ME.now(), last = t0, calm = 0; calm < ME.PROG_SETTLE && last - t0 < ME.PROG_SETTLE_MAX; ) {
-            yield "frame";
-            const n = ME.now(), d = n - last;
-            last = n; calm = d > ME.PROG_HITCH ? 0 : calm + d; sp.settle = Math.round(n - t0);
-          }
+          // the frames settle first (ME.settleGen above; sp.settle: the ms it took)
+          yield* ME.settleGen(sp);
           if (cancelled) { ok = false; return; }
           // then the full bakes (launch), one a worker: a frame's finishing job, put first in the queue, then goes
           // to the first worker done, not behind the full bakes already posted (ME.bakeJobDepth of them)
@@ -9916,7 +10040,9 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
       const v1 = st.map && st.map.v !== undefined, kinds = {};
       if (v1 && C && C.kinds) for (const n of Object.values(st.map.legend || {})) if (n !== null && C.kinds[n]) kinds[n] = C.kinds[n];
       const gs = C && (ME.grassFor ? ME.grassFor(st) : C.grass);
-      const content = C ? JSON.stringify([C.terrain, kinds, C.defaultMaterial, gs, C.critters, C.walkers, C.groundLamps, C.edgeRound, ME.qn("edgebreak", 1) === 0 ? null : C.edgeBreak, C.sand], src) : "";
+      // a map's cliff-face recipe (bake-terrain.js): only a map that has one grows its key
+      const cfr = C && (ME.cliffFaceFor ? ME.cliffFaceFor(st) : C.cliffFace);
+      const content = C ? JSON.stringify([C.terrain, kinds, C.defaultMaterial, gs, C.critters, C.walkers, C.groundLamps, C.edgeRound, ME.qn("edgebreak", 1) === 0 ? null : C.edgeBreak, C.sand].concat(cfr && ME.qn("cliff", 1) !== 0 ? [cfr] : []), src) : "";
       // a map with tall grass (a kind's grass option, or a set's budget) bakes fewer blades on a phone (grass.js)
       const tall = Object.values(kinds).some((k) => k.grass && typeof k.grass === "object") || !!(gs && gs.budget);
       const dev = tall && ME.phone && ME.phone() ? "|phone" : "";
@@ -11698,6 +11824,18 @@ struct GO { @location(0) a: vec4f, @location(1) n: vec4f };
   return o;
 }
 fn dens3(t: vec3f, lod: f32) -> f32 { return textureSampleLevel(dens, lin, t / u.dims.xyz, lod).r; }
+// the face normal bent by the occupancy gradient: tetrahedral, 4 taps instead of 6 central differences (same
+// scale: 2h per axis), h voxels out, from density mip hl. w: 1 when the gradient turned away from the face (the
+// bend fell back to the face normal), else 0
+fn bendN(tv: vec3f, fnm: vec3f, h: f32, hl: f32) -> vec4f {
+  let ka = vec3f(1.0, -1.0, -1.0); let kb = vec3f(-1.0, -1.0, 1.0); let kc = vec3f(-1.0, 1.0, -1.0); let kd = vec3f(1.0);
+  let g = (ka * dens3(tv + ka * h, hl) + kb * dens3(tv + kb * h, hl) + kc * dens3(tv + kc * h, hl) + kd * dens3(tv + kd * h, hl)) * 0.5;
+  let gl = length(g);
+  if (gl <= 0.01) { return vec4f(fnm, 0.0); }
+  let n = normalize(mix(fnm, -g / gl, u.look2.x * sstep(0.01, 0.08, gl)));
+  if (dot(n, fnm) < 0.2) { return vec4f(fnm, 1.0); }
+  return vec4f(n, 0.0);
+}
 fn faceN(d: u32) -> vec3f {
   switch d {
     case 0u: { return vec3f(1.0, 0.0, 0.0); }
@@ -11712,25 +11850,25 @@ fn faceN(d: u32) -> vec3f {
   let fnm = faceN(i.dm & 7u);
   let tv = (i.w - u.grid.xyz) * u.grid.w;
   let vox = floor(tv - fnm * 0.5);
-  // tetrahedral gradient: 4 taps instead of 6 central differences (same scale: 2h per axis). Fix 8 (Demo 1):
-  // R.set.bevelT (u.look8.x, tiles) sets h in tiles, so the shoulders keep their width at any density, read from
-  // the density mip whose texel matches (the base is half res: a texel is 2 voxels); 0 keeps 0.87 voxel at mip 0
+  // Fix 8 (Demo 1): R.set.bevelT (u.look8.x, tiles) sets h in tiles, so the shoulders keep their width at any
+  // density, read from the density mip whose texel matches (the base is half res: a texel is 2 voxels); 0 keeps
+  // 0.87 voxel at mip 0
   var h = 0.87; var hl = 0.0;
   let bw = u.look8.x * u.grid.w;
   if (bw > 0.0) { h = bw; hl = max(0.0, log2(bw * 0.5)); }
-  let ka = vec3f(1.0, -1.0, -1.0); let kb = vec3f(-1.0, -1.0, 1.0); let kc = vec3f(-1.0, 1.0, -1.0); let kd = vec3f(1.0);
-  let g = (ka * dens3(tv + ka * h, hl) + kb * dens3(tv + kb * h, hl) + kc * dens3(tv + kc * h, hl) + kd * dens3(tv + kd * h, hl)) * 0.5;
-  var n = fnm;
-  let gl = length(g);
-  if (gl > 0.01) {
-    n = normalize(mix(fnm, -g / gl, u.look2.x * sstep(0.01, 0.08, gl)));
-    if (dot(n, fnm) < 0.2) { n = fnm; }
-  }
+  let nb = bendN(tv, fnm, h, hl);
+  var n = nb.xyz;
+  // a step much lower than the shoulders' width (a 1-voxel lip, a meandered tile border): the wide taps reach past
+  // it on both sides and see flat ground, so its riser kept its flat side normal and its AO taps skimmed the floor
+  // below, a hard dark line on flat moss (Art, #693's shots). Such a face takes the 1-voxel rounding and the AO
+  // reach of bevelT 0 instead (lowStep)
+  var lowStep = false;
+  if (bw > 0.0 && nb.w > 0.5) { n = bendN(tv, fnm, 0.87, 0.0).xyz; lowStep = true; }
   // contact AO: two taps along n, at 2.2 and 5 voxels (mips 0 and 1); R.set.aoT (u.look8.y) sets the far one in
   // tiles (the near one at 0.44 of it), each from the mip a texel of which is about its reach / 2.5
   var d1 = 2.2; var d2 = 5.0; var l1 = 0.0; var l2 = 1.0;
   let aw = u.look8.y * u.grid.w;
-  if (aw > 0.0) { d1 = 0.44 * aw; d2 = aw; l1 = max(0.0, log2(d1 / 2.5)); l2 = max(0.0, log2(d2 / 2.5)); }
+  if (aw > 0.0 && !lowStep) { d1 = 0.44 * aw; d2 = aw; l1 = max(0.0, log2(d1 / 2.5)); l2 = max(0.0, log2(d2 / 2.5)); }
   let o1 = dens3(tv + n * d1, l1);
   let o2 = dens3(tv + n * d2, l2);
   let ao = clamp(1.0 - 1.1 * max(0.0, o1 - 0.04) - 0.9 * max(0.0, o2 - 0.03), 0.12, 1.0);
@@ -12565,7 +12703,8 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   let b = (u.ivp * vec4f(ndc, max(d, 0.0), 1.0)).xyz;
   let dz = b.z - a.z;
   // R.set.shaftOut (u.look9.x > 0): the beams go on past the glass, up along the sun for shaftOut tiles above the
-  // canopy plane, in air of density shaftOutK fading to 0 at their top; inside the frame they stay as before
+  // canopy plane, in air of density shaftOutK fading to 0 at their top; inside the frame they stay as before, and
+  // outside it below the canopy plane (the void beside the diorama) there is no air
   let past = u.look9.x > 0.0;
   let zt = u.canopy3.x + select(0.0, u.look9.x * u.sun.z, past);
   var t0 = 0.0; var t1 = 1.0;
@@ -12587,7 +12726,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
       let haze = exp(-max(0.0, p.z - u.canopy3.z) / u.canopy3.y);
       if (!past || (tt >= fr.x && tt <= fr.y && p.z <= u.canopy3.x)) {
         I += c * streak * haze * textureSampleLevel(sunV, lin, sunUVW(p), 0.0).r;
-      } else { // past the glass: no sun volume out there
+      } else if (p.z > u.canopy3.x) { // above the glass: no sun volume up there; beside the jar, below its top, the void stays dark
         let taper = 1.0 - clamp((p.z - u.canopy3.x) / max(zt - u.canopy3.x, 1e-3), 0.0, 1.0);
         I += c * streak * max(haze, u.look9.y * taper);
       }
@@ -13892,6 +14031,9 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
      pick(px, py, cam, o)  the terrain voxel or instance under a canvas pixel, on the CPU (o: terrain,
                         instances: false to skip one; accept(layer, index) to skip some instances)
      addTask(gen)    CPU work spread over the frames, a few ms each (a progressive bake's upgrade runs on it)
+     settled()       a promise of the ms R's first frames took to settle (ME.settleGen: the wait a progressive
+                     bake's full bakes take), counted from R.init's first frame: the hook for work the game can
+                     leave behind them (Mossheart's rules record, before the first wave)
      prepHi(), hiAdd(h, mesh, o), hiStep(bytes), hiFade(n, f), hiDrop(n), hiClear()  terrain regions at a
                      second density over the base mesh, faded on the dither (W2: ME.C128 drives them); onCarve(cells)
                      hears each carve first
@@ -14469,6 +14611,7 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
         this.qBusy = false;
       }
       for (const L of this.layers) L.init(this);
+      this.settled(); // (from here: its wait counts from the first frame)
       // a progressive bake's upgrade (ME.bakeModels: the full-density models after the coarse ones), over the frames
       if (MB.prog && !MB.prog.started) { MB.prog.started = true; this.addTask(MB.prog.gen(this)); }
       if (MB.extra) MB.extra.R = this; // (MB.extra.bake installs over this renderer's frames)
@@ -14505,6 +14648,10 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     // (a step longer than the budget runs to its end: max says how long the longest frame's share was).
     addTask(gen) {
       return new Promise((res, rej) => (this.tasks || (this.tasks = [])).push({ gen, res, rej, wait: false, v: undefined, e: null }));
+    }
+    // the frames settled (R.settled in the API above): one wait, shared by every caller
+    settled() {
+      return this._settled || (this._settled = ME.settleGen ? this.addTask(ME.settleGen()) : Promise.resolve(0));
     }
     runTasks() {
       const ts = this.tasks;
@@ -18880,7 +19027,8 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
                             tiles cmmeadown, cmmeadow, cmmeadowa, cmmeadowr (the pasture in four autumn bands,
                             olive by the gate, gold, amber, then rust down by the ditch) and cmstubble (hay
                             rows); cmcorn (furrowed loam under
-                            the corn), cmtallgrass, cmpatch (the pumpkin patch's dark soil), cmpen (the pen's
+                            the corn), cmtallgrass (the engine's tall blades: its grass option) and cmtallknoll
+                            (the same ground on the knoll, its tufts props), cmpatch (the pumpkin patch's dark soil), cmpen (the pen's
                             straw), cmgarden (the garden's rows), cmditch (the ditch's still, dark water)
      window.MODELS          stamps cm_gate (two stone pillars and a timber gate; o.swing, the side it opens to,
                             o.open 0-1), cm_bridge, cm_fence, cm_hay, cm_leaves (fallen leaves; o.n), cm_leafpile
@@ -18994,7 +19142,13 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     // under the corn: loam with a furrow of dead weeds down each tile (a stripe along x); under the tall grass,
     // the browner straw; the pumpkin patch's soil
     cmcorn: { recipe: "layer", top: "cmLoam", stripe: { mat: "cmMeadow2", width: 0.2 }, depth: 0.1, under: "rock" },
-    cmtallgrass: { recipe: "carpet", grass: true, top: "cmMeadow2", mottle: "cmMeadow", litter: "cmLitter", drape: ["cmMeadow", "cmMeadow2"], overhang: "cmMeadow", under: "rock" },
+    // the tall grass is the engine's blades (the kind's grass option: 10 tufts a tile, 0.67-0.95 tall as the tufts
+    // were, two in three the pale of their top thirds and one gold: the tune that matched the props at play zoom),
+    // not cm_tallgrass props any more (decide 082d02d, the user: "Let the grass move go"); on the west shelf, under
+    // the apple tree's knoll (cm_knoll, a prop the blades would grow up through), the same ground keeps its tufts
+    // as props: cmtallknoll
+    cmtallgrass: { recipe: "carpet", grass: { h: 0.95, density: 10, blade: ["cmGrassTip", "cmGrass", "cmGrassTip"] }, top: "cmMeadow2", mottle: "cmMeadow", litter: "cmLitter", drape: ["cmMeadow", "cmMeadow2"], overhang: "cmMeadow", under: "rock" },
+    cmtallknoll: { recipe: "carpet", grass: true, top: "cmMeadow2", mottle: "cmMeadow", litter: "cmLitter", drape: ["cmMeadow", "cmMeadow2"], overhang: "cmMeadow", under: "rock" },
     cmpatch: { recipe: "layer", top: "cmPatch", mottle: "cmLoam", mottleK: 0.3, depth: 0.15, under: "rock" },
     // the sheep pen's trodden straw bedding over turf, and the kitchen garden's dark rows with grass between
     cmpen: { recipe: "layer", top: "cmStraw", mottle: "cmMeadow2", mottleK: 0.4, depth: 0.1, under: "rock" },
@@ -19007,7 +19161,7 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
   });
   // the wall's banks are laid and keep straight lines; the meadow and the tall grass sprawl like the moss
   CT.edgeRound = Object.assign(CT.edgeRound || {}, { kinds: Object.assign((CT.edgeRound && CT.edgeRound.kinds) || {}, { cmwall: 0.05 }) });
-  if (CT.edgeBreak) CT.edgeBreak.kinds = Object.assign(CT.edgeBreak.kinds || {}, { cmwall: 0, cmmeadown: 0.15, cmmeadow: 0.15, cmmeadowa: 0.15, cmmeadowr: 0.15, cmtallgrass: 0.15 });
+  if (CT.edgeBreak) CT.edgeBreak.kinds = Object.assign(CT.edgeBreak.kinds || {}, { cmwall: 0, cmmeadown: 0.15, cmmeadow: 0.15, cmmeadowa: 0.15, cmmeadowr: 0.15, cmtallgrass: 0.15, cmtallknoll: 0.15 });
 
   // ---------------------------------------------------------------- models
   // a jack-o'-lantern's face on a surface facing +x (y across, dz up from the middle, s the pumpkin's size):
@@ -19390,7 +19544,7 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
   // The NE corn block on the top rise is now the sheep pen, the low corn in the south-east the kitchen garden.
   //   _ outside   # wall   : track   o . a r pasture, olive on the top field, gold-olive in the middle, amber on
   //   the low field, russet past the ditch (build tiles)   s hay rows (build tiles)   c corn   g tall grass
-  //   p pumpkin patch   ~ ditch   n sheep pen   k kitchen garden
+  //   t tall grass on the knoll (its tufts props)   p pumpkin patch   ~ ditch   n sheep pen   k kitchen garden
   CT.maps = CT.maps || {};
   CT.maps.cornmoon = {
     v: 1, id: "cornmoon", W: 24, H: 24, hStep: 0.5, floor: -3,
@@ -19404,13 +19558,13 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     ],
     kind: [
       "_______####::####_______", "______##sss::ooo##______", "_____##osss::oonn##_____", "____##:::::::oonnn##____",
-      "___##o:::::::oonnnn##___", "__##oo::ooooooonnnno##__", "_##...::.............##_", "##gg..:::::::::::::.cc##",
-      "#ggg..:::::::::::::.ccc#", "#gggsssssscccc...::.ccc#", "#gggsssssscccc...::.ccc#", "#aaa::::::::::::::::::::",
+      "___##o:::::::oonnnn##___", "__##oo::ooooooonnnno##__", "_##...::.............##_", "##tt..:::::::::::::.cc##",
+      "#ttt..:::::::::::::.ccc#", "#tttsssssscccc...::.ccc#", "#tttsssssscccc...::.ccc#", "#aaa::::::::::::::::::::",
       "#aaa::::::::::::::::::::", "#aaa::sssssssssaaaaaggg#", "#aaa:::::::::aakkkkkggg#", "#aaa:::::::::aakkkkkggg#",
       "##aasssssss::aaagggggg##", "_##a~~~~~~~~~~~~~~~~g##_", "__##rrrrrrr::rrrggrg##__", "___##gppprrrrrrrrgg##___",
       "____##ppprrrrrrrgg##____", "_____##grrrrrrrrg##_____", "______##rrrrrrrr##______", "_______##########_______",
     ],
-    legend: { _: null, "#": "cmwall", ":": "cmtrack", o: "cmmeadown", ".": "cmmeadow", a: "cmmeadowa", r: "cmmeadowr", s: "cmstubble", c: "cmcorn", g: "cmtallgrass", p: "cmpatch", "~": "cmditch", n: "cmpen", k: "cmgarden" },
+    legend: { _: null, "#": "cmwall", ":": "cmtrack", o: "cmmeadown", ".": "cmmeadow", a: "cmmeadowa", r: "cmmeadowr", s: "cmstubble", c: "cmcorn", g: "cmtallgrass", t: "cmtallknoll", p: "cmpatch", "~": "cmditch", n: "cmpen", k: "cmgarden" },
     // the ditch along row 17, wide enough to fill its tiles
     water: [{ seg: [4.5, 17.5, 19.5, 17.5], r: 0.48 }],
     props: [
@@ -19423,12 +19577,11 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       ["cm_corn", { seed: 3, w: 2 }, 20, 7, { dx: 0.5, dy: 0.5, rot: 2 }], ["cm_corn", { seed: 1, w: 1 }, 22, 8, { rot: 0 }],
       ["cm_corn", { seed: 1, w: 2 }, 10, 9, { dx: 0.5, dy: 0.5, rot: 2 }], ["cm_corn", { seed: 2, w: 2 }, 12, 9, { dx: 0.5, dy: 0.5 }], ["cm_corn", { seed: 1, w: 2 }, 20, 9, { dx: 0.5, dy: 0.5, rot: 2 }],
       ["cm_corn", { seed: 2, w: 1 }, 22, 9, { rot: 2 }],
-      // the tall gold grass, unturned so it all leans downwind (more along the wall's foot, below)
+      // the tall gold grass on the knoll's shelf (t), unturned so it all leans downwind (more along the wall's
+      // foot, below); the rest of it (g) is the engine's blades, cmtallgrass's grass option
       ["cm_tallgrass", { seed: 1, w: 1 }, 2, 7], ["cm_tallgrass", { seed: 3, w: 1 }, 3, 7], ["cm_tallgrass", { seed: 4, w: 1 }, 3, 8], ["cm_tallgrass", { seed: 2, w: 1 }, 1, 8],
-      ["cm_tallgrass", { seed: 3, w: 1 }, 3, 9], ["cm_tallgrass", { seed: 3, w: 1 }, 3, 10], ["cm_tallgrass", { seed: 4, w: 2 }, 20, 13, { dx: 0.5, dy: 0.5 }],
-      ["cm_tallgrass", { seed: 3, w: 2 }, 20, 15, { dx: 0.5, dy: 0.5 }], ["cm_tallgrass", { seed: 4, w: 1 }, 22, 15],
+      ["cm_tallgrass", { seed: 3, w: 1 }, 3, 9], ["cm_tallgrass", { seed: 3, w: 1 }, 3, 10],
       ["cm_tallgrass", { seed: 1, w: 1 }, 1, 9], ["cm_tallgrass", { seed: 2, w: 1 }, 2, 9], ["cm_tallgrass", { seed: 4, w: 1 }, 1, 10], ["cm_tallgrass", { seed: 1, w: 1 }, 2, 10],
-      ["cm_tallgrass", { seed: 2, w: 1 }, 22, 13],
       // the sheep pen on the top field's rise where the corn was: straw bedding, a fence along its open sides,
       // four sheep asleep (one a lamb), a water trough and a lantern on a pole
       ["cm_fence", { seed: 4 }, 15, 2, { dx: -0.45, rot: 1 }], ["cm_fence", { seed: 1 }, 15, 2, { dy: -0.45 }],
@@ -19520,20 +19673,19 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     }
   })();
   // the yellow grass meadows (the user: "a lot of yellow grass that waves in wind"): the pasture tiles out of
-  // reach of the path (4.5 tiles or more from every road and the Heart Tree's leg) are tall grass now, one
-  // tuft each; the same four seeds, so no new bricks, only instances on the existing sway
-  (function () {
-    const m = CT.maps.cornmoon;
-    [[16, 16], [17, 16], [18, 16], [19, 16], [20, 17], [16, 18], [17, 18], [19, 18], [5, 19], [17, 19], [18, 19],
-      [16, 20], [17, 20], [7, 21], [16, 21]].forEach(([x, y]) => m.props.push(["cm_tallgrass", { seed: 1 + ((x * 3 + y) % 4), w: 1 }, x, y]));
-  })();
+  // reach of the path (4.5 tiles or more from every road and the Heart Tree's leg) are tall grass (g), the
+  // engine's blades now. These cells held a tall tuft prop before the grass moved to the kind (with the four SE
+  // static tufts' cells), so the verge and undergrowth passes still count them as taken: the same verges lean
+  // the same way and the same tiles get their thin grass or big shrub
+  const TALL = ["21,14", "21,16", "22,15", "22,13", "16,16", "17,16", "18,16", "19,16", "20,17", "16,18", "17,18",
+    "19,18", "5,19", "17,19", "18,19", "16,20", "17,20", "7,21", "16,21"];
   // grass verges along the path: on about one in seven track tiles beside the pasture, hay, corn or tall grass at the same
   // height, a tuft leaning out over that side (anchored on the track, so no build tile is taken; the creatures
   // walk the track's middle line, a tile away); clear of the gates, the stairs and any tile with a prop
   (function () {
     const m = CT.maps.cornmoon, K = m.kind, Hh = m.h, at = (x, y) => (K[y] && K[y][x]) || "_", stairs = ["6,6", "7,6", "17,11", "18,11"];
-    const V = chars([...m.game.build, "cmtallgrass", "cmcorn"]);
-    const used = new Set(m.props.map((p) => Math.floor(p[2] + 0.5 + ((p[4] && p[4].dx) || 0)) + "," + Math.floor(p[3] + 0.5 + ((p[4] && p[4].dy) || 0))));
+    const V = chars([...m.game.build, "cmtallgrass", "cmtallknoll", "cmcorn"]);
+    const used = new Set([...TALL, ...m.props.map((p) => Math.floor(p[2] + 0.5 + ((p[4] && p[4].dx) || 0)) + "," + Math.floor(p[3] + 0.5 + ((p[4] && p[4].dy) || 0)))]);
     for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
       if (at(x, y) !== ":" || stairs.includes(x + "," + y) || Math.hypot(x + 0.5 - 12, y + 0.5 - 12) > 11.2) continue;
       if ((y <= 2 && Math.abs(x - 11.5) <= 2.5) || (x >= 21 && Math.abs(y - 11.5) <= 2.5)) continue;
@@ -19552,9 +19704,9 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
   // placement zones stay as they were; clear of the gates and the stairs
   (function () {
     const m = CT.maps.cornmoon, K = m.kind, Hh = m.h, at = (x, y) => (K[y] && K[y][x]) || "_", stairs = ["6,6", "7,6", "17,11", "18,11"], N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-    const B = chars(m.game.build), V = chars([...m.game.build, "cmtallgrass", "cmcorn"]);
+    const B = chars(m.game.build), V = chars([...m.game.build, "cmtallgrass", "cmtallknoll", "cmcorn"]);
     const cell = (d) => Math.floor(d[2] + 0.5 + ((d[4] && d[4].dx) || 0)) + "," + Math.floor(d[3] + 0.5 + ((d[4] && d[4].dy) || 0));
-    const used = new Set(m.props.map(cell)), put = (d) => { const c = cell(d), [x, y] = c.split(",").map(Number); if (!B.includes(at(x, y)) || used.has(c)) m.props.push(d); };
+    const used = new Set([...TALL, ...m.props.map(cell)]), put = (d) => { const c = cell(d), [x, y] = c.split(",").map(Number); if (!B.includes(at(x, y)) || used.has(c)) m.props.push(d); };
     const gate = (x, y) => (y <= 2 && Math.abs(x - 11.5) <= 2.5) || (x >= 21 && Math.abs(y - 11.5) <= 2.5) || stairs.includes(x + "," + y);
     const SH = [{ seed: 1, leaf: "cmAppleLeaf" }, { seed: 2, leaf: "cmAmber" }, { seed: 3, leaf: "cmScarlet" }], shrub = (x, y, dx, dy) => put(["cm_shrub", SH[(x * 2 + y) % 3], x, y, { dx, dy }]);
     [[{ seed: 8, leaf: "cmAmber", fruit: false }, 6, 2, 0.25, 0.25], [{ seed: 3, fruit: false }, 17, 2, -0.25, 0.25], [{ seed: 6, fruit: false }, 2, 6, 0.25, 0.25],
@@ -19568,7 +19720,7 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
       const k = at(x, y), hs = P.hash(x, y, 14, 3), s = 1 + (P.hash(x, y, 15, 3) < 0.5 ? 0 : 1), off = (i) => ({ dx: (P.hash(x, y, 16, i) - 0.5) * 0.6, dy: (P.hash(x, y, 17, i) - 0.5) * 0.6 });
       if (Math.hypot(x + 0.5 - 12, y + 0.5 - 12) > 11.2 || gate(x, y) || used.has(x + "," + y)) continue;
-      if (k === "g") {
+      if (k === "g" || k === "t") {
         // a big shrub reaches ~0.67 from its foot: its nudge points away from any build tile among its 8
         // neighbours, each axis on its own (plots on both sides of an axis: no nudge on it), so it keeps off the plots
         if (P.hash(x, y, 18, 3) < 0.4) {
@@ -19626,7 +19778,7 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       const k = at(x, y), hs = P.hash(x, y, 22, 3);
       if (!ok(x, y) || used.has(x + "," + y)) continue;
       const wallByField = k === "#" && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !"#_".includes(at(x + dx, y + dy)));
-      if (("gnpk".includes(k) && (hs < 0.4 || (hs < 0.75 && roomy(x, y)))) || (wallByField && hs < 0.16)) pile(x, y, (P.hash(x, y, 23, 3) - 0.5) * 0.3, (P.hash(x, y, 24, 3) - 0.5) * 0.3, 2);
+      if (("gtnpk".includes(k) && (hs < 0.4 || (hs < 0.75 && roomy(x, y)))) || (wallByField && hs < 0.16)) pile(x, y, (P.hash(x, y, 23, 3) - 0.5) * 0.3, (P.hash(x, y, 24, 3) - 0.5) * 0.3, 2);
     }
   })();
 
@@ -22715,7 +22867,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.131.0", name: "Mossheart", commit: "accb5d51" };
+  G.VERSION = { v: "0.133.0", name: "Mossheart", commit: "f1e35709" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -22763,7 +22915,10 @@ function MA_DSP() {
   // Valley only (view/level.js), and the run is won once wave DEMO_WAVES is cleared (Game.waveCleared): "the grove
   // is safe", then "keep going" into endless (view/hud.js showWon). English only, as the whole game is.
   G.DEMO = (() => { const q = window.ME && window.ME.qn ? window.ME.qn("demo", -1) : -1; return q >= 0 ? q !== 0 : !!window.MOSSHEART_DEMO; })();
-  G.DEMO_NAME = "Mossheart: Momiji Valley (demo)"; G.DEMO_WAVES = 12;
+  G.DEMO_NAME = "Mossheart: Momiji Valley (demo)"; G.DEMO_WAVES = 20;
+  // an act's length in waves (the user 2026-11-12: "act change every 5 rounds"): Act I to wave 5, Act II to 10, Act III to
+  // 15, Act IV after (World.actAt); each closes on its boss (every fifth wave, D.BOSSES)
+  G.ACT_WAVES = 5;
 
   const D = (G.Defs = {});
   // elements by index; ELEMENT_TOWER is the first plant that deals each one (its colour is the element's)
@@ -23130,6 +23285,15 @@ function MA_DSP() {
   // Momiji's (11.92 against 12.09; tools/sim.html, seeds 1-100 to wave 40).
   D.LEVEL_EASE = { fernglass: [0.2, 8], cornmoon: [0.5, 24] };
   D.levelHp = (level, wave) => { const e = D.LEVEL_EASE[level]; return e ? 1 - e[0] * Math.max(0, 1 - (wave - 1) / e[1]) : 1; };
+  // The demo's Acts III and IV eased (G.DEMO only; the full game keeps its curve): [r, n] takes the creatures'
+  // vitality times r for each wave past n, up to the demo's last wave (G.DEMO_WAVES), held there in endless.
+  // Untuned, no bot run of Momiji seeds 1-20 reached wave 20 (median fall 13); with 0.92 and DEMO_MEND 1, 7 of 20 reach it and
+  // 5 clear it (the boss, at 0.43 of its vitality, still fells 2). tools/sim.html ?demo=1&demoease=r tries another.
+  D.DEMO_EASE = [0.92, 10];
+  D.demoHp = (wave) => { const e = D.DEMO_EASE; return G.DEMO && e && e[0] > 0 ? Math.pow(e[0], Math.max(0, Math.min(wave, G.DEMO_WAVES) - e[1])) : 1; };
+  // ...and at the turn into each of those acts the Heart Tree mends this share of its whole (most runs reached wave 11 with a
+  // fifth of their heart left and fell by 13 however weak the creatures were). tools/sim.html ?demomend=f tries another.
+  D.DEMO_MEND = 1;
   // The plants each garden grows (State.plants: its seed bar and digit keys, the bot, and the gifts drafted
   // there), five with every element among them; a garden not listed grows all eight. A plant of another
   // garden still stands and grows where a save has it. tools/sim.html ?plants= tries another set (all: every plant).
@@ -23144,7 +23308,7 @@ function MA_DSP() {
   // what each plant is for, read by the seed pouch's tips (view/pouch.js): single (focuses one creature), area (hits a
   // crowd), slow, support
   D.ROLES = { thorn: ["single"], sun: ["single"], puff: ["area", "slow"], wisp: ["area"], briar: ["area", "slow"], toad: ["area"], moon: ["support"], lily: ["single"] };
-  // The living map (docs/designs/2026-11-10-living-map.md): a garden's acts, one per ten waves, the first as
+  // The living map (docs/designs/2026-11-10-living-map.md): a garden's acts, one per G.ACT_WAVES waves, the first as
   // the garden loads (null). An act turns at the build phase after the boss that closes the act before it
   // (Game.actTurn) and can open ground (open: cells; freeze: boxes whose water freezes into ground), wake a
   // second road's split (wake: a World split row, only where the garden has that road), widen the
@@ -23157,7 +23321,7 @@ function MA_DSP() {
     momiji: [
       null,
       { name: "Green Canopy", open: [[12, 4], [13, 4], [13, 5], [16, 12], [17, 12], [16, 13]], heart: 1 },
-      { name: "Ember Leaves", wake: [1, 21, 3, 2], heart: 1, heartwood: 4 },
+      { name: "Ember Leaves", wake: [1, 2 * G.ACT_WAVES + 1, 3, 2], heart: 1, heartwood: 4 },
       { name: "Lantern Night", freeze: [[6, 17, 13, 21]], heart: 1, dewbank: false },
     ],
   };
@@ -23717,8 +23881,9 @@ function MA_DSP() {
         if (water) for (let v = -1; v <= 1 && !zone[i]; v++) for (let u = -1; u <= 1; u++) { const xx = x + u, yy = y + v; if (xx >= 0 && yy >= 0 && xx < W && yy < H && water[at(xx, yy)]) { zone[i] = 3; break; } }
       }
     }
-    // the act of a wave: Act I to wave 10, Act II to 20, Act III to 30, then the last act (1 on a garden with none)
-    actAt(wave) { return this.acts ? Math.min(this.acts.length, 1 + Math.floor(Math.max(0, wave - 1) / 10)) : 1; }
+    // the act of a wave: G.ACT_WAVES waves each (5: Act I to wave 5, Act II to 10, Act III to 15), then the last act
+    // (1 on a garden with none)
+    actAt(wave) { return this.acts ? Math.min(this.acts.length, 1 + Math.floor(Math.max(0, wave - 1) / (G.ACT_WAVES || 10))) : 1; }
     // whether cell index k takes a plant in act n (the rules' blocked, or opened by then: Save.fits)
     openIn(k, n) { return !this.blocked[k] || this.opens.get(k) <= n; }
     // the rules move on to act n (a build phase only: Game.actTurn, Save.restore): its cells open, a woken road
@@ -24735,6 +24900,10 @@ function MA_DSP() {
   // screen (back to 1 on the next), an extra gift's over the whole run (the sim tunes them: ?sinkramp=)
   G.SINKS = { reroll: 1.5, pick: 1.5 };
   const DEEPEN_COST = G.DEEPEN_COST = 150; // (a link deepened: Game.deepen)
+  // Deepen is off for now (the user 2026-11-12: "remove reinforce link upgrade for now"): no button, the bot skips
+  // it, Game.deepen refuses. The code and the save fields stay; a save with deepened pairs keeps them (relink still
+  // doubles those links). true turns it back on
+  G.DEEPEN_ON = false;
   G.EARLY = { pay: 2, pow: 1.5 };
   // a plant moved (Game.move): this share of the dew in it, +0.5% a wave up to the max, never under the min
   G.MOVE = { share: 0.2, max: 0.35, min: 10 };
@@ -24975,7 +25144,7 @@ function MA_DSP() {
     addWave() {
       S.nextWave();
       const p = this.plan(S.wave);
-      this.streams.push({ wave: S.wave, queue: p.spawns.slice(), timer: 0.8, hpMult: D.hpScale(S.wave) * D.levelHp(S.level, S.wave), trait: p.trait });
+      this.streams.push({ wave: S.wave, queue: p.spawns.slice(), timer: 0.8, hpMult: D.hpScale(S.wave) * D.levelHp(S.level, S.wave) * D.demoHp(S.wave), trait: p.trait });
       this.running++;
     }
     announce() {
@@ -25034,6 +25203,7 @@ function MA_DSP() {
       const turned = w.toAct(w.actAt(S.wave + 1));
       if (!turned.length) return;
       for (const a of turned) if (a && a.heart) { S.heartMax += 2 * a.heart; S.healHeart(2 * a.heart); }
+      if (G.DEMO && D.DEMO_MEND > 0 && S.wave >= D.DEMO_EASE[1] && S.wave < G.DEMO_WAVES) S.healHeart(Math.round(D.DEMO_MEND * S.heartMax)); // the demo's Acts III-IV start mended (D.DEMO_MEND)
       this.blight.floor(D.ACT_SCAR * (w.act - 1));
       G.emit("act", { act: w.act, data: w.acts[w.act - 1] });
     }
@@ -25137,6 +25307,7 @@ function MA_DSP() {
     // the link of plant t worth deepening, as { link, other }: a partner pair not deepened yet whose link is
     // not deepened on one of the two (on both first); null if none
     deepenable(t) {
+      if (!G.DEEPEN_ON) return null;
       let best = null, most = 0;
       for (const l of t.links) {
         if (this.deep.has(this.pairKey(t, l.other))) continue;
@@ -25146,6 +25317,7 @@ function MA_DSP() {
       return best;
     }
     deepenBlocked(t) {
+      if (!G.DEEPEN_ON) return "Deepen is off";
       if (S.phase === G.Phase.GAME_OVER) return "The garden has fallen";
       if (!this.deepenable(t)) return t.links.length ? "Deepened" : "No links";
       return S.dew < DEEPEN_COST ? "Not enough dew" : "";
@@ -33262,7 +33434,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       else if ("back" in ds) this.back();
       else if ("begin" in ds) this.begin();
     }
-    back() { this.menu.show("jars", "title"); }
+    back() { this.menu.show(G.DEMO ? "title" : "jars", "title"); } // (the demo has no terrarium screen)
     begin() {
       if (this.pick.length < 5) return;
       G.state.rememberPouch(this.id, { plants: this.pick, util: this.util });
@@ -33684,11 +33856,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       root.innerHTML = `
         <div id="title" class="veil menu void"><canvas class="stars"></canvas><div class="tjar"></div><div class="col">
           <h1>Moss<em>heart</em></h1><p class="sub">${G.DEMO ? "Momiji Valley · demo · a cozy roguelike tower defence" : "a cozy roguelike tower defence in a voxel bell jar"}</p>
-          <button class="btn pink big" data-a="cont">Continue</button>
+          ${G.DEMO
+          // (the demo's title: what a first-time player needs, Play straight into Momiji and Settings, the rest one small line)
+          ? `<button class="btn pink big play" data-a="cont">Play</button>
+          <button class="btn big" data-a="settings">Settings</button>
+          <p class="links"><button class="link" data-a="howto">How to play</button><button class="link" data-a="board">Leaderboard</button></p>`
+          : `<button class="btn pink big" data-a="cont">Continue</button>
           <button class="btn big" data-a="jars">Terrariums</button>
           <button class="btn big" data-a="board">Leaderboard</button>
           <button class="btn big" data-a="settings">Settings</button>
-          <button class="btn big" data-a="howto">How to play</button>
+          <button class="btn big" data-a="howto">How to play</button>`}
         </div></div>
         <div id="jars" class="veil menu void" tabindex="-1" aria-label="Choose a terrarium"></div>
         <div id="pouch" class="veil menu void" tabindex="-1" aria-label="Choose your seeds"></div>
@@ -33748,7 +33925,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 
     inRun() { const g = this.app.game; return !!g && (G.state.wave > 0 || g.towers.length > 0) && G.state.phase !== G.Phase.GAME_OVER; }
     // whether there is a title screen: only with a run somewhere (the one in play, or a garden's save)
-    hasTitle() { return this.inRun() || !!this.terr.latest(); }
+    hasTitle() { return !!G.DEMO || this.inRun() || !!this.terr.latest(); }
     show(name, from) {
       for (const id of ["title", "jars", "pouch", "pause", "settings", "howto", "board"]) $(id).classList.toggle("show", id === name);
       if (name === "settings" || name === "howto" || name === "jars" || name === "board") this.back = from || this.open || "pause";
@@ -33766,9 +33943,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         // with no run (after a game over) Play opens the terrariums
         const l = this.terr.latest(), T = $("title"), id = l ? l.id : G.levelId;
         const c = T.querySelector('[data-a="cont"]'), j = T.querySelector('[data-a="jars"]');
-        c.style.display = l ? "" : "none";
-        if (l) c.innerHTML = `Continue <small>${this.terr.info(l.id).name} · wave ${l.run.wave}${l.run.skipped ? " · off the board" : ""}</small>`;
-        j.innerHTML = l ? "Terrariums" : "Play"; j.classList.toggle("pink", !l);
+        const cont = l ? `Continue <small>${this.terr.info(l.id).name} · wave ${l.run.wave}${l.run.skipped ? " · off the board" : ""}</small>` : "";
+        // (the demo has no terrarium screen: its one big button plays, Continue with a run saved)
+        if (G.DEMO) c.innerHTML = cont || "Play";
+        else {
+          c.style.display = l ? "" : "none";
+          if (l) c.innerHTML = cont;
+          j.innerHTML = l ? "Terrariums" : "Play"; j.classList.toggle("pink", !l);
+        }
         const tj = T.querySelector(".tjar");
         if (!tj.firstChild || tj.firstChild.dataset.id !== id) { tj.innerHTML = ""; const b = G.Terrariums.jarEl(id, 0.15); b.tabIndex = -1; b.setAttribute("aria-hidden", "true"); tj.appendChild(b); }
       }
@@ -33783,7 +33965,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     action(a) {
       // cont: the run played last (a reload when it is in another garden); start: the garden that is up, its
       // run going on or else its save
-      if (a === "cont") { const l = this.terr.latest(); if (l && l.id !== G.levelId) this.go(l.id, "resume"); else if (l) this.action("start"); else this.show("jars", "title"); }
+      if (a === "cont") { const l = this.terr.latest(); if (l && l.id !== G.levelId) this.go(l.id, "resume"); else if (l) this.action("start"); else if (G.DEMO) this.go(G.levelId, "begin"); else this.show("jars", "title"); }
       else if (a === "start" && !this.inRun() && this.saved()) { this.act.continueRun(); this.show(""); }
       else if (a === "start" || a === "resume") this.show("");
       else if (a === "restart") { this.act.restart(); this.show(""); }
@@ -34009,11 +34191,13 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     { id: "after", tail: true, text: "Tap a plant to grow or uproot it. Each wave ends with a gift.", spot: null, ok: true, secs: 9, done: () => S.phase === G.Phase.CHOOSE_BOON || S.phase === G.Phase.GAME_OVER },
   ];
   // Demo 1 (G.DEMO; docs/designs/2026-11-10-demo-1.md, "the first minute"): three short prompts before wave 1
-  // instead, where to plant, what dew is and what the Heart Tree is; they end as the normal tips do (not again)
+  // instead, where to plant, what dew is and what the Heart Tree is, then (in wave 1) the goal and that the run goes on after
+  // the win (the user 2026-11-12: "demo should allow infinite mode / continue after win"); they end as the normal tips do (not again)
   const DEMO_STEPS = [
     { id: "plant", text: "Pick a seed below, then tap beside the path twice to plant it.", spot: "seeds", done: (t) => t.app.game.towers.length > 0 },
     { id: "dew", text: "Plants cost dew, the drop below. Each creature stopped and each wave cleared brings more.", spot: "dewgauge", ok: true, secs: 12, done: () => S.wave > 0 },
     { id: "heart", text: "Creatures walk the path to the Heart Tree (its bar up top). Keep them off it, then tap Begin Wave.", spot: "heart", done: () => S.wave > 0 },
+    { id: "goal", tail: true, text: `Hold out to wave ${G.DEMO_WAVES} to win the valley. Then keep going: the run goes on as long as the Heart Tree stands.`, spot: "wave", ok: true, secs: 10, done: () => S.phase === G.Phase.CHOOSE_BOON || S.phase === G.Phase.GAME_OVER },
   ];
   if (G.DEMO) STEPS.splice(0, STEPS.length, ...DEMO_STEPS);
 
@@ -36668,11 +36852,12 @@ function MG_SFX(L) {
         if (l) this.bed.push({ l, db, tide });
       };
       if (this.solo === 3) { this.water = []; this.trees = []; this.moss = []; return; }
-      for (const p of feet) bed("waterfall", p, -13);
+      // (falls and streams sit behind the music and the sound effects: 6 dB under their first mix, the Ambience slider as it was)
+      for (const p of feet) bed("waterfall", p, -19);
       const levels = new Map();
       for (const w of T.water) { const k = Math.round(w.z * 2); if (!levels.has(k)) levels.set(k, []); levels.get(k).push(w); }
       this.water = [];
-      for (const ws of levels.values()) { const n = ws.length, p = [ws.reduce((a, w) => a + w.x, 0) / n + 0.5, ws.reduce((a, w) => a + w.y, 0) / n + 0.5, ws[0].z]; this.water.push(p); bed("stream", p, -20); }
+      for (const ws of levels.values()) { const n = ws.length, p = [ws.reduce((a, w) => a + w.x, 0) / n + 0.5, ws.reduce((a, w) => a + w.y, 0) / n + 0.5, ws[0].z]; this.water.push(p); bed("stream", p, -26); }
       this.windTide = newTide();
       this.wind = this.mixer.voice("wind", "Ambience", -24 + tideDb(this.windTide), 1, 0, null, true);
       const cr = app.critters;
@@ -37119,6 +37304,7 @@ function MG_SFX(L) {
     // links deepened, the ones that double for both plants first, while each leaves dew to build with
     deepen() {
       const g = this.game;
+      if (!G.DEEPEN_ON) return; // (off for now: game.js)
       if (this.hooks.deepen === "boss" && (S.wave === 0 || S.wave % 5)) return;
       for (let n = 0; n < 20; n++) {
         let best = null, most = 0;
