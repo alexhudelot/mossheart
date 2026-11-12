@@ -14919,7 +14919,8 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       const vd = look.backdrop === "void", ns = vd ? ME.VOID_SKY : ME.NIGHT_SKY, c3 = (v, d) => (Array.isArray(v) && v.length >= 3 ? [+v[0], +v[1], +v[2]] : d);
       this.key = look.sunCol ? c3(look.sunCol, [1, 1, 1]).concat(1) : [1, 1, 1, 0];
       this.key2 = c3(look.ambCol, this.key.slice(0, 3)).concat(vd ? 2 : look.backdrop === "night" ? 1 : 0);
-      this.sky = c3(look.skyTop, ns.skyTop).concat(vd ? look.clouds ?? ns.clouds : look.stars ?? ns.stars);
+      this.keyBase = this.key; this.key2Base = this.key2; // the level's own (setAct's o.light goes over them, null restores)
+      this.sky =c3(look.skyTop, ns.skyTop).concat(vd ? look.clouds ?? ns.clouds : look.stars ?? ns.stars);
       this.sky2 = c3(look.skyLow, ns.skyLow).concat(vd ? look.horizon ?? ns.horizon : look.moon ?? ns.moon);
       this.sky3 = c3(look.mist, ME.VOID_SKY.mist).concat(look.islets ?? ME.VOID_SKY.islets);
       this.set0 = Object.assign({}, this.set);
@@ -15810,10 +15811,18 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     }
     // The act's look (a living map's season, ME.Sky's acts): o.mats a Float32Array(256 * 4) of rgb multipliers per
     // material id with w 1 where one applies (null: none), o.freeze 0..1 (the water's ice), o.grassH (blade height),
-    // o.cover and o.wet 0..1: floors under Weather 2's snow cover and wet (the shader reads the larger).
+    // o.cover and o.wet 0..1: floors under Weather 2's snow cover and wet (the shader reads the larger), o.light
+    // { key, key2 } (linear rgb): the key light's colour in full light and in shade over the level's own sunCol and
+    // ambCol (R.keyBase, R.key2Base; null: the level's own again).
     setAct(o) {
       this.dev.queue.writeBuffer(this.matBuf, 256 * 8 * 4, o.mats || (this.actZero || (this.actZero = new Float32Array(256 * 4))));
       this.actFreeze = o.freeze || 0; this.actGrassH = o.grassH ?? 1; this.actCover = o.cover || 0; this.actWet = o.wet || 0;
+      const L = o.light;
+      if (!L) { this.key = this.keyBase; this.key2 = this.key2Base; return; }
+      const k = this.keyAct || (this.keyAct = [1, 1, 1, 1]), k2 = this.key2Act || (this.key2Act = [1, 1, 1, 0]);
+      for (let c = 0; c < 3; c++) { k[c] = L.key[c]; k2[c] = L.key2[c]; }
+      k2[3] = this.key2Base[3]; // the backdrop's mode stays the level's
+      this.key = k; this.key2 = k2;
     }
     setCells(bytes) { const m = this.S.st.map; this.dev.queue.writeTexture({ texture: this.cellTex }, bytes, { bytesPerRow: m.W * 4 }, [m.W, m.H]); }
 
@@ -18016,7 +18025,10 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
                   (any other pick, or a ?mood= pin, keeps its own); set, light settings over the base; pal,
                   { <palette material>: "#rrggbb" or [r, g, b] (0-255) }, the colour each one is lit at
                   (R.setAct: a factor on its own, where the growth field has spread, R.setGrowth); grassH, the
-                  grass height (1); freeze, the water's ice (0 to 1); climate, { weights, calm, boss, rare } over
+                  grass height (1); freeze, the water's ice (0 to 1); cover and wet, the weather's floors
+                  (0 to 1, snow already lying, ground already wet); sunCol and ambCol, the key light's colour
+                  (linear rgb) in full light and in shade over the level's own (ambCol unset: the act's sunCol,
+                  else the level's; R.setAct's light); climate, { weights, calm, boss, rare } over
                   the level's climate under Dynamic (or those four on the act itself: ME.WX.actClimate; weather.js
                   setAct: weights and rare merged, 0 takes one out; calm and boss replace). A new act blends over
                   ACT_BLEND s (a new run or level snaps); its climate starts once the front showing has run its
@@ -18298,16 +18310,17 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     // this frame's mood and base with the run's act: the act's mood (if the player's pick lets it) and its set
     // over that mood's base, blended from what showed when the act changed (ACT_BLEND s, smoothstep; numbers
     // blend, the rest switch at once; a new run or level snaps); the renderer gets the tints, the grass height,
-    // the ice and the weather's floors (a.cover: snow already lying, a.wet: ground already wet; 0..1, Weather 2
-    // only adds to them) while they change (never without an act). Returns { mk, base }
+    // the ice, the weather's floors (a.cover: snow already lying, a.wet: ground already wet; 0..1, Weather 2
+    // only adds to them) and the key light (a.sunCol, a.ambCol: actLight) while they change (never without an
+    // act). Returns { mk, base }
     actShown(run, dt) {
       const n = this.actPin || run.act | 0, list = n > 0 ? this.host.acts(run.level) : null, a = (list && list[n - 1]) || null;
       const own = this.mood === "auto" || this.mood === this.host.mood(run.level) || (!!this.sky && this.mood === this.sky.mood); // (the level setup's mood is the level's own)
       const mk = a && MOODS[a.mood] && own && !this.moodPin ? a.mood : this.moodNow;
-      const to = { base: a && a.set ? Object.assign(this.base(mk), a.set) : this.base(mk), mats: a ? this.actMats(a) : null, grassH: (a && a.grassH) ?? 1, freeze: (a && a.freeze) || 0, cover: (a && a.cover) || 0, wet: (a && a.wet) || 0 };
+      const to = { base: a && a.set ? Object.assign(this.base(mk), a.set) : this.base(mk), mats: a ? this.actMats(a) : null, grassH: (a && a.grassH) ?? 1, freeze: (a && a.freeze) || 0, cover: (a && a.cover) || 0, wet: (a && a.wet) || 0, light: a ? this.actLight(a) : null };
       const key = a ? n : 0, B = this.actAt, sh = this.actNow;
       if (!B || B.id !== run.id || B.level !== run.level) this.actAt = { id: run.id, level: run.level, key, t: ACT_BLEND };
-      else if (B.key !== key) this.actAt = { id: run.id, level: run.level, key, t: 0, from: { base: sh.base, mats: sh.mats && sh.mats.slice(), grassH: sh.grassH, freeze: sh.freeze, cover: sh.cover, wet: sh.wet } };
+      else if (B.key !== key) this.actAt = { id: run.id, level: run.level, key, t: 0, from: { base: sh.base, mats: sh.mats && sh.mats.slice(), grassH: sh.grassH, freeze: sh.freeze, cover: sh.cover, wet: sh.wet, light: sh.light && { key: sh.light.key.slice(), key2: sh.light.key2.slice() } } };
       const A = this.actAt; A.t += dt;
       let now = to;
       if (A.t < ACT_BLEND && A.from) {
@@ -18323,15 +18336,38 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
             mats[i + 3] = 1;
           }
         }
-        now = { base, mats, grassH: lerp(f.grassH, to.grassH), freeze: lerp(f.freeze, to.freeze), cover: lerp(f.cover, to.cover), wet: lerp(f.wet, to.wet), blending: true };
+        // (the key light: the level's own stands in for an act without colours)
+        let light = null;
+        if (f.light || to.light) {
+          const o = this.lightOwn(), x = f.light || o, y = to.light || o, L = this.lightBuf || (this.lightBuf = { key: [0, 0, 0], key2: [0, 0, 0] });
+          for (let c = 0; c < 3; c++) { L.key[c] = lerp(x.key[c], y.key[c]); L.key2[c] = lerp(x.key2[c], y.key2[c]); }
+          light = L;
+        }
+        now = { base, mats, grassH: lerp(f.grassH, to.grassH), freeze: lerp(f.freeze, to.freeze), cover: lerp(f.cover, to.cover), wet: lerp(f.wet, to.wet), light, blending: true };
       }
       this.actNow = now;
       // (the renderer: every frame of a blend, then once as it settles or when the target's tints change)
-      const R = this.R, S = this.actSent || (this.actSent = { mats: null, grassH: 1, freeze: 0, cover: 0, wet: 0 });
-      if (R.setAct && (now.blending || now.mats !== S.mats || now.grassH !== S.grassH || now.freeze !== S.freeze || now.cover !== S.cover || now.wet !== S.wet)) {
-        R.setAct(now); S.mats = now.mats; S.grassH = now.grassH; S.freeze = now.freeze; S.cover = now.cover; S.wet = now.wet;
+      const R = this.R, S = this.actSent || (this.actSent = { mats: null, grassH: 1, freeze: 0, cover: 0, wet: 0, light: null });
+      if (R.setAct && (now.blending || now.mats !== S.mats || now.grassH !== S.grassH || now.freeze !== S.freeze || now.cover !== S.cover || now.wet !== S.wet || now.light !== S.light)) {
+        R.setAct(now); S.mats = now.mats; S.grassH = now.grassH; S.freeze = now.freeze; S.cover = now.cover; S.wet = now.wet; S.light = now.light;
       }
       return { mk, base: now.base };
+    }
+    // an act's key light for R.setAct: { key, key2 } (linear rgb), its sunCol in full light and its ambCol in shade
+    // (ambCol unset: the act's sunCol, else the level's shade colour; sunCol unset: the level's), or null (neither:
+    // the level's own light); kept per act
+    actLight(a) {
+      if (!a.sunCol && !a.ambCol) return null;
+      if (this.lightOf === a) return this.lightV;
+      const o = this.lightOwn(), c3 = (v) => (Array.isArray(v) && v.length >= 3 ? [+v[0], +v[1], +v[2]] : null);
+      this.lightOf = a; this.lightV = { key: c3(a.sunCol) || o.key, key2: c3(a.ambCol) || c3(a.sunCol) || o.key2 };
+      return this.lightV;
+    }
+    // the level's own key light as the shader shows it (R.keyBase, R.key2Base): white in full light and in shade
+    // when the level sets no sunCol
+    lightOwn() {
+      const k = this.R.keyBase, k2 = this.R.key2Base, on = !!k && k[3] > 0;
+      return { key: on ? k.slice(0, 3) : [1, 1, 1], key2: on && k2 ? k2.slice(0, 3) : [1, 1, 1] };
     }
     // an act's tints for R.setAct: each pal material's factor, the act's colour over the material's own (its
     // table colour, linear), capped at ACT_MAX; kept until the act or the palette's table changes
@@ -23631,7 +23667,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.152.0", name: "Mossheart", commit: "533c5b51" };
+  G.VERSION = { v: "0.154.0", name: "Mossheart", commit: "292a8d5c" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
