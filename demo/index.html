@@ -23632,7 +23632,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.151.0", name: "Mossheart", commit: "a93e696b" };
+  G.VERSION = { v: "0.153.0", name: "Mossheart", commit: "533c5b51" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -26603,7 +26603,7 @@ function MA_DSP() {
 
   // The heroes' density, one rule for every creature, plant, wisp and the Heart Tree: 64 voxels per tile edge over
   // any terrain, under G.HERO_MAX (32 on phones), as a factor of the terrain's VS, drawn at 1 / fine. Scenery
-  // statics stay at the terrain's density. top: a level-3 plant, which bakes at G.TOP_MAX, 128 by default on every device
+  // statics stay at the terrain's density. top: a plant at any level (the user, 2026-11-11: "every device"), at G.TOP_MAX, 128 by default
   // (menu.js; the vs128 study's H1, the user's default since 2026-11-11: the other heroes wait for H2, the pool
   // can't hold them all at 128). G.hero128Off: the pool's fallback put them back at HERO_MAX (main.js)
   G.heroFine = (top) => (top && !G.hero128Off ? Math.min(128, G.TOP_MAX || G.HERO_MAX || 64) : Math.min(64, G.HERO_MAX || 64)) / (ME.VS || 32);
@@ -27588,7 +27588,7 @@ function MA_DSP() {
     // HI and wth's floor follow dv, the density the plant bakes at (VS x o.fine; the vs128 study's H0, decide
     // a70bcad A); WK and WT, the wisplings' size at the play zoom, stay on ME.VS
     const build = (kind, o) => {
-      const vs = ME.VS || 32, dv = vs * (o.fine ?? G.heroFine(o.lv === 3));
+      const vs = ME.VS || 32, dv = vs * (o.fine ?? G.heroFine(!!o.lv));
       HI = o.hi ?? (dv >= 128 ? 3 : dv >= 32 ? 2 : dv >= 24 ? 1 : 0); chips = 0; wi = (kind.charCodeAt(0) * 3 + kind.length) % 8;
       WVS = dv; WK = Math.min(2.2, Math.max(1, (28 / vs) ** 0.85)); WT = vs < 24 ? 1.2 : 1;
       const hi = HI, L = Math.max(1, Math.min(3, o.lv || 2)), s = LS[L - 1], p = [], F = [], D = [];
@@ -27910,7 +27910,7 @@ function MA_DSP() {
     }
     // (only the plants the rules have, and the grafts' models, G.GRAFT_ART: a model may land before its plant)
     const grafts = new Set(Object.values(G.GRAFT_ART || {}).map((a) => a.model));
-    for (const k in G.TOWER_MODELS) { if (!G.Defs.TOWERS[k] && !(G.Defs.UTILITY && G.Defs.UTILITY[k]) && !grafts.has(k)) continue; const c = G.TOWER_MODELS[k]; for (const lv of c.lvs || [1, 2, 3]) out["t_" + k + lv] = [c.name, { lv, scale: k0(c.name) * c.size, fine: G.heroFine(lv === 3) }, c.frames || FRAMES]; }
+    for (const k in G.TOWER_MODELS) { if (!G.Defs.TOWERS[k] && !(G.Defs.UTILITY && G.Defs.UTILITY[k]) && !grafts.has(k)) continue; const c = G.TOWER_MODELS[k]; for (const lv of c.lvs || [1, 2, 3]) out["t_" + k + lv] = [c.name, { lv, scale: k0(c.name) * c.size, fine: G.heroFine(true) }, c.frames || FRAMES]; }
     for (const h of [1, 2]) out["heart" + h] = [G.HEART_MODEL.name, heartO(h, HEART_GROW0), FRAMES]; // its crown's sway, as stage 0's
     out.rift0 = ["ms_rift", Object.assign(riftO(), { dim: true }), 1]; // a rift asleep (G.models.riftAt)
     return out;
@@ -31953,6 +31953,12 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         this.plantsDrawn.push(t);
         const sc = this.plantScale(t, a);
         const mk = modelKind(t), fr = MD.towerFrames(mk, t.level), f = fr[Math.floor((((time * 1.1 + a.phase) % 1) + 1) % 1 * fr.length) % fr.length];
+        // (#711: a plant on the map: its full bake next, once, as tombs.js does for a stone; a graft bakes level 3 only)
+        if (this.MB.prog && this.MB.prog.want) {
+          if (this.wantMB !== this.MB) { this.wantMB = this.MB; this.wantT = new Set(); }
+          const wk = this.MB.extraFrames["t_" + mk + t.level] ? "t_" + mk + t.level : "t_" + mk + 3;
+          if (!this.wantT.has(wk)) { this.wantT.add(wk); this.MB.prog.want(wk); }
+        }
         const sway = Math.sin(time * 0.9 + a.phase) * 0.025, k = 1 / this.MB.models[f].fine; // (a fine plant is drawn at 1/fine)
         sim.put(i++, f, t.X, t.Y, t.VZ, 0, false, [sc[0] * k, sc[1] * k, sc[2] * k], [a.lean[0] + sway, a.lean[1] - sway * 0.5], 1, 0, (t === sel ? MARK.SELECTED : 0) | G.plantMark(mk), 0);
       }
@@ -35037,7 +35043,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   // those devices and 128 elsewhere: ?heromax=128 bakes the level-3 plants at 128 (the vs128 study's H1, G.heroFine).
   const HERO_CAP = Math.min(mobile || mem <= 4 ? 64 : 128, ME.qn("heromax", mobile || mem <= 4 ? 32 : 64));
   Object.defineProperty(G, "HERO_MAX", { configurable: true, get: () => ((ME.VS || 32) > 40 ? Math.max(HERO_CAP, ME.VS) : HERO_CAP) });
-  // and the densest a level-3 plant may bake (G.heroFine's top tier): 128 on every device, phones too (the user,
+  // and the densest a plant (any level) may bake (G.heroFine's top tier): 128 on every device, phones too (the user,
   // 2026-11-11: "default towers, apply to mobile as well"), while every other model keeps HERO_MAX. Settings' "Level-3
   // towers" Off (top128: false) puts them back under HERO_MAX, as does ?heromax= (the H1 checks' query: ?heromax=128
   // lifts them on a desktop as before, ?heromax=64 holds them at 64). A pool that can't hold them sends them back to
@@ -35378,8 +35384,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         `<div class="note dim">Sets every graphics setting here at once (${presets().map((k) => { const p = presetSet(k); return PRESET_NAMES[k] + ": " + p.vs + ", " + (p.res === "full" ? "Full" : p.res + "x") + ", quality " + p.quality + (p.glass === false ? ", no glass" : "") + ", weather " + p.weather[0].toUpperCase() + p.weather.slice(1); }).join("; ")}). Ultra is the default. Custom once one is changed by hand.</div>` +
         choice("vs", "Voxel density", G.vsChoices().map((v) => [v, VS_NAMES[v] || String(v)])) +
         `<div class="note dim">Voxels per tile edge. Finer looks smoother and bakes longer (now ${vsNow}).${VS_MAX < 24 ? ` This device stops at ${VS_MAX}.` : VS_MAX > 24 ? " Extreme (32) bakes about twice as long as 24 the first time, then loads from the cache." + (VS_MAX > 32 ? " Above it, longer still, with a strong GPU and plenty of memory." : "") : ""}${mobile || mem <= 4 ? ` On this device the finer ones bake slowly; if a load fails, the next one ${mobile && mem < 8 ? `drops to ${mem <= 4 ? 16 : 24} (a level, from 24 or below)` : "steps down a level"}, and the one after tries this setting again.` : ""}</div>` + vsNote +
-        choice("top128", "Level-3 towers", [[true, "Fine (128)"], [false, "Like the rest"]]) +
-        `<div class="note dim">A plant grown to level 3 bakes at 128 voxels a tile edge, twice the rest, for its close-up look. Like the rest loads faster and uses less memory, on a slow phone.</div>` +
+        choice("top128", "Towers", [[true, "Fine (128)"], [false, "Like the rest"]]) +
+        `<div class="note dim">Plants bake at 128 voxels a tile edge, twice the rest, for their close-up look. Like the rest loads faster and uses less memory, on a slow phone.</div>` +
         ((s.top128 !== false) !== (boot.top128 !== false) ? `<div class="note">Takes effect on reload. <button class="btn" data-a="reload">Reload now</button></div>` : "") +
         choice("res", "Resolution", [["full", "Full"], ["2", "2x"], ["1.5", "1.5x"], ["1", "1x"], ["0.75", "0.75x"]]) +
         `<div class="note dim">${resNote}</div>` +
@@ -38853,6 +38859,9 @@ function MG_SFX(L) {
     // come last, after the ones every wave shows)
     const bakeOpts = { walkers: false, models: Object.assign(G.bakeList(), G.Tombs.bakeList(), G.Dress.bakeList(levelId)), progCritters: ["wispling"] };
     bakeOpts.progLazy = Object.keys(bakeOpts.models).filter((k) => k.endsWith("_dmg"));
+    // (#711: the plants' full bakes first, level 1 first, then 2 and 3: costliest first had left level 1 last, still
+    // at the boot copies' density minutes after READY; scene.js moves a planted one's to the front)
+    bakeOpts.progFirst = Object.keys(bakeOpts.models).filter((k) => /^t_.*\d$/.test(k)).sort((a, b) => a.slice(-1) - b.slice(-1));
     // (and no progressive bake, E4, on a phone, the devices that cap at 32 (ME.phoneLike() is menu.js's test): at vs20
     // and vs24 the capped fine is still > 1, and the upgrade's higher peak would land on the phones the crash guard
     // has already stepped down to 24, the Architect's must-fix on #376. ?progressive=1 keeps it, for a check)
@@ -38909,7 +38918,7 @@ function MG_SFX(L) {
       // (the coarse grid copied: the model bake splats into it, and adds its splat again on a hit)
       ME.bakeCache.later(bkey, { palNames: pal.names.slice(), T: Object.assign({}, T, { groundAt: null, coarse: T.coarse.slice(), splat: undefined }), mesh, grass });
     }
-    // (the level-3 plants bake at 128 by default, G.TOP_MAX and G.heroFine (the vs128 study's H1, the user's default
+    // (the plants, every level, bake at 128 by default, G.TOP_MAX and G.heroFine (the vs128 study's H1, the user's default
     // since 2026-11-11, phones too). Where they don't fit the pool, they go back to the device's HERO_MAX (64, 32 on a
     // phone) and the models bake again rather than the load dying; HERO128 says which it was, and the cap it baked at)
     const at128 = () => Object.values(bakeOpts.models).filter((e) => e[1] && e[1].fine * ME.VS > 64).length;
