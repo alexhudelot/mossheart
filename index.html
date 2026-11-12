@@ -23631,7 +23631,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.148.0", name: "Mossheart", commit: "17991dda" };
+  G.VERSION = { v: "0.150.0", name: "Mossheart", commit: "a93e696b" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -28621,9 +28621,12 @@ function MA_DSP() {
     // whole ramp: the red-band rule). The ground's litter is the maple material (content/momiji.js), so it
     // follows: fallen blossom in I, red leaves in III, buried in IV.
     // White and blossom pink need the act cap at x32 (sky.js ACT_MAX, Engine's #722, E1): at the old x6 dark moss
-    // stopped at pale mint and maple red at apricot. Still waiting on the engine (requested 2026-11-12, through
-    // Holodeck): cover and wet are each act's floor for the snow cover and the wet ground (E2, E3); weights and
-    // calm are each act's climate over the garden's below (E4). The engine ignores the four until then.
+    // stopped at pale mint and maple red at apricot. cover and wet are each act's floor for the snow cover and
+    // the wet ground (sky.js actShown, E2 and E3: live). weights, calm, boss and rare are each act's climate, the
+    // whole season (E4, Engine's #732): the engine merges an act's weights and rare over the garden's
+    // (climates.momiji above, a 0 taking one out), so each act zeroes the garden's fronts that are out of season;
+    // its calm and boss replace the garden's. Until E4 is on main, an act's season front (Game's acts.js FRONTS)
+    // holds only through the act's first wave, and then the garden's year-round climate picks the fronts again.
     acts: {
       momiji: [
         // I · Spring: a fresh morning after rain. The maples in pink blossom and the gingkos in white, the young
@@ -28635,7 +28638,11 @@ function MA_DSP() {
           pal: { moss: "#3f9a52", moss2: "#5eaa62", mound: "#3f9a52", mound2: "#5eaa62", sphag: "#a4b05a",
                  leaf: "#58ac4a", leaf2: "#a8d86a", maple: "#f4b4c6", gingko: "#fbeef2", leafDry: "#e89ab4",
                  cfMossUnder: "#22663a", cfMossFoot: "#22663a", cfMossLedge: "#2e8446" },
-          weights: { showers: 3, petals: 3, mistmorn: 2, clear: 2, rain: 1.5, overcast: 1 }, calm: ["petals", "mistmorn"],
+          // spring's weather: showers, the odd spring thunderstorm (its one heavy front, for the escalation); no
+          // snow, no gales; the petal storm (off in the garden's climate) comes back as spring's rare front
+          weights: { showers: 3, petals: 3, mistmorn: 2, clear: 2, rain: 1.5, overcast: 1, storm: 0.6,
+                     wind: 0, fog: 0, gale: 0, snow: 0, blizzard: 0 }, calm: ["petals", "mistmorn"],
+          rare: { petalstorm: 1, thundersnow: 0, sleet: 0 },
           // the petal drift (Game's view/acts.js reads it): blossom off the maples, light and slow, a third of the
           // cap since it runs through Demo 1's first ten waves
           drift: [["maple", "gingko"], 0.35, { vx: 0.18, vy: 0.08, vz: -0.1 }] },
@@ -28653,7 +28660,10 @@ function MA_DSP() {
           pal: { moss: "#2f8a62", moss2: "#4a9070", mound: "#2f8a62", mound2: "#4a9070", sphag: "#ccb440",
                  leaf: "#1f6a4c", leaf2: "#3a9c5c", maple: "#2e7c4e", gingko: "#7cb040", leafDry: "#8a9a3c",
                  cfMossUnder: "#186841", cfMossFoot: "#186841", cfMossLedge: "#217d49" },
-          weights: { clear: 4, overcast: 1, wind: 1, showers: 1, storm: 0.8 }, calm: ["clear"] },
+          // summer's weather: mostly clear, a summer storm now and then; no rain days, mist, fog, gales or snow
+          weights: { clear: 4, overcast: 1, wind: 1, showers: 1, storm: 0.8,
+                     rain: 0, mistmorn: 0, fog: 0, gale: 0, snow: 0, blizzard: 0 }, calm: ["clear"],
+          rare: { thundersnow: 0, sleet: 0 } },
         // III · Autumn: a bright low afternoon sun, the whole canopy ablaze, maples crimson, the other leaves
         // orange and amber, gingkos gold, rust on the dry ones; the moss olive and amber, the mounds russet
         // cushions of fallen leaves, the lawn strewn with red; the canopy thinning (less leaf shadow), the wind up
@@ -28666,7 +28676,10 @@ function MA_DSP() {
           pal: { moss: "#8c8030", moss2: "#a8862e", mound: "#9a4a22", mound2: "#b86a2a", sphag: "#c08a40",
                  leaf: "#e2581a", leaf2: "#f59a22", maple: "#e02a1c", gingko: "#ffc21e", leafDry: "#b8442a",
                  cfMossUnder: "#54501e", cfMossFoot: "#54501e", cfMossLedge: "#6e6630" },
-          weights: { wind: 4, gale: 1.5, overcast: 2, clear: 2, rain: 1, fog: 0.8, storm: 0.6 }, calm: ["wind", "clear"],
+          // autumn's weather: wind and gales for the leaves, grey days, fog; no snow yet (sleet stays a rare front)
+          weights: { wind: 4, gale: 1.5, overcast: 2, clear: 2, rain: 1, fog: 0.8, storm: 0.6,
+                     showers: 0, mistmorn: 0, snow: 0, blizzard: 0 }, calm: ["wind", "clear"],
+          rare: { thundersnow: 0 },
           // the heavy leaf drift: crimson maple at the full rate, blown faster and further than DRIFTS' fall
           drift: [["maple", "leafDry"], 1, { vx: 0.45, vy: 0.15, vz: -0.26 }] },
         // IV · Winter: a snowy dusk, the lanterns lit. Snow on the moss, the mounds and the ledges; the leaves
@@ -28677,7 +28690,11 @@ function MA_DSP() {
           pal: { moss: "#e6ecf0", moss2: "#f4f6f8", mound: "#e6ecf0", mound2: "#f4f6f8", sphag: "#d8dcd8",
                  leaf: "#5a504a", leaf2: "#eef2f6", maple: "#e2e8ee", gingko: "#eceff2", leafDry: "#a4433a",
                  cfMossUnder: "#7e8c94", cfMossFoot: "#a8b4bc", cfMossLedge: "#e0e6ec" },
-          weights: { snow: 4, blizzard: 1, overcast: 1.5, fog: 1, clear: 1 }, calm: ["snow", "clear"] },
+          // winter's weather: snow, grey and still; no rain, storms or wind fronts, and the boss wave brings a
+          // blizzard in place of the garden's thunderstorm
+          weights: { snow: 4, blizzard: 1, overcast: 1.5, fog: 1, clear: 1,
+                     wind: 0, showers: 0, rain: 0, storm: 0, mistmorn: 0, gale: 0 }, calm: ["snow", "clear"],
+          boss: "blizzard", rare: { sunshower: 0, goldenhaze: 0 } },
       ],
     },
   };
