@@ -22695,7 +22695,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.126.0", name: "Mossheart", commit: "6c86f38b" };
+  G.VERSION = { v: "0.128.0", name: "Mossheart", commit: "7ca2d20d" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -27647,10 +27647,19 @@ function MA_DSP() {
         { mood: "morning", grassH: 0.85,
           pal: { moss: "#60ad6a", moss2: "#82bc7e", mound: "#60ad6a", mound2: "#82bc7e", sphag: "#b8b072",
                  leaf: "#4a9a48", leaf2: "#8cc05e", maple: "#9cbc5a", gingko: "#b8d070", leafDry: "#9cb060" } },
-        // II · Green Canopy: clear noon, deep greens, the grass tall
-        { mood: "clear", grassH: 1.2,
-          pal: { moss: "#2f7a40", moss2: "#4a9452", mound: "#2f7a40", mound2: "#4a9452",
-                 leaf: "#2c6030", leaf2: "#4a8c36", maple: "#3f7a34", gingko: "#7aa83a", leafDry: "#6a8e3a" } },
+        // II · Green Canopy: high summer under a closed canopy. Its own hue family, deep jade and teal (hue ~155,
+        // against Act I's mint and yellow-green ~127), in deep shade broken by hot gold sun flecks: more and
+        // brighter flecks (fleckAt, fleckK, hotK), denser leaf shadow in the pools (leafA, leafB), the sun higher
+        // and from the other side (sunEl, sunAz: the shadows swing at the turn), a warmer haze, the grass tallest.
+        // The terraces' cliff moss (cfMoss*, #702) follows the jade: each is moss times its own table colour over
+        // moss's, so the ledges keep their step from the lawn. (the user, 2026-11-11: "act 2 environment should be
+        // more differentiated vs act 1")
+        { mood: "clear", grassH: 1.3,
+          set: { shade: 0.36, pool: 0.7, fleckAt: 0.58, fleckK: 0.62, hotK: 2.2, leafA: 0.72, leafB: 0.5,
+                 shaftK: 0.32, bloomK: 1.15, haze: 0.12, exposure: 1.04, sunEl: 14, sunAz: 25, windK: 1.2, gust: 0.6 },
+          pal: { moss: "#2f8a62", moss2: "#4a9070", mound: "#2f8a62", mound2: "#4a9070", sphag: "#c2b84a",
+                 leaf: "#1f6a4c", leaf2: "#3a9c5c", maple: "#2e7c4e", gingko: "#7cb040", leafDry: "#8a9a3c",
+                 cfMossUnder: "#186841", cfMossFoot: "#186841", cfMossLedge: "#217d49" } },
         // III · Ember Leaves: golden hour, the maples crimson, the other leaves amber, the moss olive
         { mood: "golden", grassH: 1,
           pal: { moss: "#6e7c32", moss2: "#8e8a40", mound: "#6e7c32", mound2: "#8e8a40", sphag: "#a88a4c",
@@ -29898,6 +29907,139 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 })();
 
 </script>
+<script>/* src/view/dress.js */
+/* The summer dress on the cells an act opens (the living map; Art's backlog, "Act II more distinct", Game's half).
+   Act II's puff (scene.livingMap) clears the six scrub cells of their props and leaves bare moss: here they dress
+   for summer instead, so the opened beds read as new growth, not as holes. View only, drawn in the instance
+   layer before the plants (scene.writeInstances), so the plants' pick mapping (plantsFrom) is untouched.
+   - per opened cell of an act in DRESS: PIECES pieces (a fern, a bloom clump, a second fern or bloom by the
+     cell's hash) round its edge at RING tiles from the centre, so a plant has the middle; yawed and sized by
+     the hash, on the ground (T.groundAt), none over water
+   - at the act's turn they grow in after the puff: piece j at GROW_AT + j * STAGGER s, over GROW_S (0 -> 1.12 -> 1)
+     a new or restored run sets them standing, silently
+   - a plant on the cell: the pieces shrink to UNDER and lean out to RING_OUT, so they frame it
+   Models: the generator's fern (leaf2) and ms_dressbloom below (leaf2 stems, sphag heads: gold in Act II's look),
+   materials Momiji's look already sets (if sphag is new to its palette it adds one: since #712 a 256th is a
+   stand-in, not a dead boot). Momiji only (a level with LEVEL_ACTS opens),
+   living runs only. ?dress=0 turns it off. */
+(function () {
+  const G = window.MG, ME = window.ME, AK = ME.assetKit, TAU = Math.PI * 2;
+  const DRESS = { 2: true }; // the acts whose opened cells dress (Act II · Green Canopy)
+  const PIECES = 3, RING = 0.33, RING_OUT = 0.4, UNDER = 0.72, SIZE = 1.4; // (SIZE: the pieces over their first cut, read at play zoom)
+  const GROW_AT = 0.7, STAGGER = 0.22, GROW_S = 0.9, EASE_S = 0.4;
+
+  // a clump of three summer blooms: leafy stems, round gold heads (sphag), each head a cushion with a ring of petals.
+  // Sized for vs12/16: heads ~1.5 voxels across at vs16, the clump ~0.4 tiles tall (x SIZE in the bake).
+  AK.model("ms_dressbloom", 1, (o) => {
+    const s = o.sz || 1, prims = [];
+    const stems = [[0, 0, 0.36], [0.09, 0.06, 0.27], [-0.07, 0.08, 0.22]];
+    for (const [x, y, z] of stems) {
+      prims.push(AK.C([0, 0, 0], [x * s, y * s, z * s], 0.024 * s, 0.018 * s, "leaf2"));
+      prims.push(AK.E([x * 0.45 * s, y * 0.45 * s + 0.03 * s, z * 0.4 * s], [0.06 * s, 0.03 * s, 0.018 * s], "leaf2"));
+      prims.push(AK.E([x * s, y * s, z * s + 0.01 * s], [0.06 * s, 0.06 * s, 0.035 * s], "sphag", { k2: 0.01 * s }));
+      for (let p = 0; p < 5; p++) {
+        const a = (p / 5) * TAU;
+        prims.push(AK.S([x * s + Math.cos(a) * 0.065 * s, y * s + Math.sin(a) * 0.065 * s, z * s - 0.005 * s], 0.035 * s, "sphag"));
+      }
+    }
+    return { prims, r: 0.2 * s, h: 0.42 * s, k: 1 };
+  }, 1);
+
+  const hash = (n) => { let h = Math.imul(n ^ 0x9e3779b9, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+  const on = () => ME.qn("dress", 1) !== 0;
+
+  class Dress {
+    constructor(view) {
+      this.view = view; this.app = view.app;
+      this.on = on();
+      this.live = []; this.t = 0; this.game = null; this.stats = { pieces: 0, water: 0, drawn: 0 };
+    }
+    // ME.bakeModels' entries (main.js adds them to G.bakeList's): two ferns and the bloom clump, at tile density
+    // Only a level whose LEVEL_ACTS open cells in a DRESS act bakes them (not G.living: set later, in level.js)
+    static bakeList(levelId) {
+      if (!on() || !window.MODELS.fern || ME.qn("acts", 1) === 0) return {};
+      const acts = G.Defs && G.Defs.LEVEL_ACTS && G.Defs.LEVEL_ACTS[levelId || G.levelId];
+      if (!acts || !Object.keys(DRESS).some((n) => acts[n - 1] && acts[n - 1].open && acts[n - 1].open.length)) return {};
+      const M = window.MODELS, k = (name, o) => M[name](o).k;
+      return {
+        dress_fern: ["fern", { seed: 3, sz: 0.62 * SIZE, scale: k("fern", { seed: 3, sz: 0.62 * SIZE }) }, 1],
+        dress_fern2: ["fern", { seed: 11, sz: 0.5 * SIZE, scale: k("fern", { seed: 11, sz: 0.5 * SIZE }) }, 1],
+        dress_bloom: ["ms_dressbloom", { sz: SIZE, scale: k("ms_dressbloom", { sz: SIZE }) }, 1],
+      };
+    }
+    // a new run (scene.setGame): what its act has opened stands already
+    reset(game) {
+      this.game = game; this.live.length = 0; this.t = 0;
+      if (!this.on || !G.living || !game || !game.world.acts) return;
+      this.place(game.world.act, true);
+    }
+    // the act's turn (acts.js): its cells dress, after the puff
+    turn(n) {
+      if (!this.on || !G.living || !this.game) return;
+      this.place(n, false);
+    }
+    // the pieces on every cell opened by an act in DRESS up to n not dressed yet; still: standing at once
+    place(n, still) {
+      const w = this.game.world, T = this.app.T, XF = this.view.MB && this.view.MB.extraFrames;
+      if (!w.opens || !XF || !XF.dress_fern) return;
+      const have = new Set(this.live.map((p) => p.k));
+      let c = 0; // (the cells, in order: each a little after the last)
+      for (const [k, act] of w.opens) {
+        if (act > n || !DRESS[act] || have.has(k)) continue;
+        const cx = k % w.W, cy = Math.floor(k / w.W), [X, Y, Z] = w.viewCentre(cx, cy);
+        const a0 = hash(k * 7 + 1) * TAU, kinds = ["dress_fern", "dress_bloom", hash(k * 7 + 2) < 0.5 ? "dress_fern2" : "dress_bloom"];
+        for (let j = 0; j < PIECES; j++) {
+          const key = XF[kinds[j]] ? kinds[j] : "dress_fern";
+          const a = a0 + (j / PIECES) * TAU + (hash(k * 7 + 3 + j) - 0.5) * 0.7;
+          const r = RING * (0.85 + 0.3 * hash(k * 7 + 9 + j));
+          const x = X + Math.cos(a) * r, y = Y + Math.sin(a) * r;
+          if (this.view.waterAt && this.view.waterAt(x, y) !== null) { this.stats.water++; continue; }
+          const g = T.groundAt(x, y, Z + 1);
+          if (!(g > -90)) continue;
+          this.live.push({
+            k, cx, cy, key, x, y, z: g, a, ox: Math.cos(a), oy: Math.sin(a),
+            yaw: hash(k * 13 + j) * TAU, sc: 0.85 + 0.3 * hash(k * 17 + j),
+            born: still ? -1e9 : this.t + GROW_AT + c * 0.12 + j * STAGGER, under: 0,
+          });
+          this.stats.pieces++;
+        }
+        have.add(k); c++;
+      }
+    }
+    update(dt) {
+      if (!this.on || !this.live.length || !(dt > 0)) return;
+      this.t += dt;
+      const game = this.view.game;
+      // a plant on the cell: ease to UNDER, out to RING_OUT (and back when it goes)
+      for (const p of this.live) {
+        const want = game && game.towerAt(p.cx, p.cy) ? 1 : 0;
+        if (p.under !== want) p.under = want > p.under ? Math.min(want, p.under + dt / EASE_S) : Math.max(want, p.under - dt / EASE_S);
+      }
+    }
+    // the instance layer, before the plants (room: how many instances are left)
+    write(sim, i, room) {
+      const L = this.live, MB = this.view.MB, t = this.t;
+      this.stats.drawn = 0;
+      if (!L.length) return i;
+      for (let n = 0; n < L.length && room > 0; n++) {
+        const p = L[n], fr = MB.extraFrames[p.key];
+        if (!fr) continue;
+        const u = (t - p.born) / GROW_S;
+        if (u <= 0) continue;
+        const grow = u >= 1 ? 1 : u < 0.7 ? (1.12 * u) / 0.7 : 1.12 - (0.12 * (u - 0.7)) / 0.3;
+        const e = p.under * p.under * (3 - 2 * p.under), push = (RING_OUT - RING) * e;
+        const mi = fr[0], f = 1 / (MB.models[mi].fine || 1), s = p.sc * f * (1 - (1 - UNDER) * e);
+        const sz = s * grow, sx = s * Math.min(1, 0.4 + 0.6 * grow);
+        sim.put(i++, mi, p.x + p.ox * push, p.y + p.oy * push, p.z, p.yaw, false, [sx, sx, sz], [0, 0], 0, 0, 0, 0);
+        room--; this.stats.drawn++;
+      }
+      return i;
+    }
+  }
+  G.Dress = Dress;
+})();
+
+</script>
 <script>/* src/view/acts.js */
 /* The living map's act turn, as the player sees it (G-L2; design docs/designs/2026-11-10-living-map.md 3.5, 9):
    - the banner "Act II · Green Canopy" in the HUD's card style for BANNER_MS, and one hint line on what changed
@@ -29910,7 +30052,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
    - the Heart Tree: a burst of its crown, and its grown model when that grow stage is baked
      (G.models.heartFrames(s, act - 1); ?heartgrow=N bakes one at boot), else it keeps its own
    - drifts (L5): the act's leaves or snow falling over the garden, at most DRIFT_MAX live (DRIFT_PHONE on a
-     phone), all cleared at the next turn (phys.clear, in the build phase)
+     phone), all cleared at the next turn (phys.clear, in the build phase). Act II's is summer's, not leaves:
+     sparse light motes that hang and wander (a slow fall). A drift is foliage (phys.emitMat: foliage floats, the
+     rest tumbles and heaps), so its materials are leaf-class ones. An act's look may set its own
+     (G.WEATHER_LOOKS.acts[level][n - 1].drift = [materials, strength, { vx, vy, vz }], Art's), which wins
+   - the summer dress on the cells the act opened (view/dress.js)
    A restored run (Save.restore re-emits "act" with restored: true, for the music) takes its act's state
    silently at scene.setGame: chip, grown tree, full growth, its drifts. ?drifts=0 turns the drifts off. */
 (function () {
@@ -29918,8 +30064,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const ROMAN = ["", "I", "II", "III", "IV", "V"];
   const BANNER_MS = 3200, HINT_DELAY = 1400, GROW_S = 2;
   const DRIFT_MAX = 1500, DRIFT_PHONE = 600, DRIFT_LIFE = 30;
-  // each act's drift: the materials to try (the first in the palette), and its strength (0..1 of the rate)
-  const DRIFTS = { 2: [["leaf2", "leaf"], 0.35], 3: [["maple"], 1], 4: [["snow", "ice", "frost"], 0.8] };
+  // each act's drift: the materials to try (the first in the palette), its strength (0..1 of the rate), and its
+  // fall ({ vx, vy, vz } tiles/s over FALL). Act II's motes: gingko (lime gold in its look), else leafDry, slow.
+  const FALL = { vx: 0.25, vy: 0.1, vz: -0.2 };
+  const DRIFTS = { 2: [["gingko", "leafDry", "leaf2"], 0.22, { vx: 0.1, vy: 0.05, vz: -0.07 }], 3: [["maple"], 1], 4: [["snow", "ice", "frost"], 0.8] };
 
   class ActsView {
     constructor(view) {
@@ -29967,6 +30115,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       } else this.full();
       this.heartTo(n, true);
       this.view.livingMap(true); // (the woken rift lit, the opened cells' props gone: scene.js)
+      if (this.view.dress) this.view.dress.turn(n); // (and dressed for the act, after the puff: dress.js)
       this.drift = this.driftFor(n);
     }
     // the Heart Tree at act n's grow stage (n - 1), if baked; burst: its crown's leaves fly first
@@ -29991,13 +30140,14 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.R.setGrowth(B);
       if (k >= 1) { this.grow = null; this.full(); }
     }
-    // act n's drift: { mat, rate } or null
+    // act n's drift: { mat, rate, name, v } or null; the act's look's own (Art's) first, else DRIFTS
     driftFor(n) {
       if (!this.driftsOn || !G.living) return null;
-      const d = DRIFTS[n];
-      if (!d) return null;
+      const looks = (G.WEATHER_LOOKS && G.WEATHER_LOOKS.acts) || {}, look = (looks[G.levelId] || [])[n - 1];
+      const d = (look && look.drift) || DRIFTS[n];
+      if (!d || !d[0]) return null;
       const ids = this.app.pal.ids, name = d[0].find((m) => ids[m]);
-      return name ? { mat: ids[name], rate: this.rate * d[1], name } : null;
+      return name ? { mat: ids[name], rate: this.rate * (d[1] ?? 1), name, v: Object.assign({}, FALL, d[2]) } : null;
     }
     update(dt) {
       if (!this.game) return;
@@ -30011,7 +30161,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       while (this.acc >= 1 && born.length < this.cap) {
         this.acc -= 1;
         const life = DRIFT_LIFE * (0.7 + 0.6 * Math.random());
-        this.phys.emitMat(Math.random() * w.W, Math.random() * w.H, z0 + Math.random() * 4, 0.25 + Math.random() * 0.2, 0.1 + (Math.random() - 0.5) * 0.3, -0.2, d.mat, life);
+        const v = d.v; // (FALL's spread: vx +0..80%, vy +-150%)
+        this.phys.emitMat(Math.random() * w.W, Math.random() * w.H, z0 + Math.random() * 4, v.vx * (1 + 0.8 * Math.random()), v.vy * (1 + (Math.random() - 0.5) * 3), v.vz, d.mat, life);
         born.push(now + life);
       }
       if (born.length >= this.cap) this.acc = 0;
@@ -30149,6 +30300,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.deaths = new G.Deaths(this); // how each one dies (deaths.js)
       this.creatureFx = new G.CreatureFx(this); // the deeper creatures' looks (creaturefx.js)
       this.tombs = new G.Tombs(this); // where the creatures fell (tombs.js)
+      this.dress = new G.Dress(this); // the summer dress on the cells an act opens (dress.js)
       this.acts = new G.ActsView(this); // the living map's act turns (acts.js)
       this.gait = new G.Gait(this); this.gaitPose = { sc: [1, 1, 1], sh: [0, 0], roll: 0, yaw: 0, bob: 1, jx: 0, jy: 0 }; // body motion per gait (gait.js)
       this.game = null; this.anim = new Map();
@@ -30249,6 +30401,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.upload = new Uint8Array(b.w * b.h);
       for (const t of game.towers) this.anim.set(t, this.newAnim());
       this.fx.reset(w); this.boonFx.reset(); this.plantFx.reset(); this.creatureFx.reset(); this.tombs.reset(); this.acts.reset(game); this.gait.reset();
+      this.dress.reset(game);
       if (this.openProps) for (const p of this.openProps) p.gone = null; // (the pots stood again: livingMap sets each anew)
       this.livingMap(false);
       b.dirty = true;
@@ -30354,7 +30507,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         a.lean[0] += (a.leanTo[0] - a.lean[0]) * k; a.lean[1] += (a.leanTo[1] - a.lean[1]) * k;
         a.leanTo[0] *= Math.exp(-dt * 1.5); a.leanTo[1] *= Math.exp(-dt * 1.5);
       }
-      this.fx.update(dt, this.game && this.game.enemies); this.boonFx.update(dt); this.plantFx.update(dt); this.creatureFx.update(dt); this.tombs.update(dt); this.acts.update(dt);
+      this.fx.update(dt, this.game && this.game.enemies); this.boonFx.update(dt); this.plantFx.update(dt); this.creatureFx.update(dt); this.tombs.update(dt); this.dress.update(dt); this.acts.update(dt);
       this.updateSand(dt); this.breakPots(dt); this.deaths.update(dt);
       this.heartKick = Math.max(0, this.heartKick - dt * 1.6);
       this.wounds.update(dt);
@@ -30620,6 +30773,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         const fr = r.frames[r.lit > 0 ? 1 : 0], p = r.place, mi = fr[Math.floor((((time * 1.1 + r.phase) % 1) + 1) % 1 * fr.length) % fr.length], f = 1 / this.MB.models[mi].fine;
         sim.put(i++, mi, p.X, p.Y, p.Z, p.rot ? (p.rot * Math.PI) / 2 : 0, p.flip, [f, f, f], [0, 0], 0, 0, 0, 0);
       }
+      // the summer dress on the opened cells (dress.js), before the plants
+      i = this.dress.write(sim, i, this.MB.statics.length + sim.capacity - i - 160);
       // (the plants as drawn this frame, from the layer's instance plantsFrom: cellAt maps an R.pick hit back to its plant)
       this.plantsFrom = i - i0; this.plantsDrawn.length = 0;
       for (const t of game.towers) {
@@ -37153,7 +37308,7 @@ function MG_SFX(L) {
     // (the wisps bake progressively too, E4: fine, so they'd add to READY; the small critters stay as they are)
     // (the broken looks, D2's e_*_dmg, are lazy: a creature wears one only below a third of its HP, so their full bakes
     // come last, after the ones every wave shows)
-    const bakeOpts = { walkers: false, models: Object.assign(G.bakeList(), G.Tombs.bakeList()), progCritters: ["wispling"] };
+    const bakeOpts = { walkers: false, models: Object.assign(G.bakeList(), G.Tombs.bakeList(), G.Dress.bakeList(levelId)), progCritters: ["wispling"] };
     bakeOpts.progLazy = Object.keys(bakeOpts.models).filter((k) => k.endsWith("_dmg"));
     // (and no progressive bake, E4, on a phone, the devices that cap at 32 (ME.phoneLike() is menu.js's test): at vs20
     // and vs24 the capped fine is still > 1, and the upgrade's higher peak would land on the phones the crash guard
@@ -37217,7 +37372,26 @@ function MG_SFX(L) {
     // (HEART_ROOM64, measured at hero density 64, the heart's density on a desktop) and scales with the heart's
     // density squared. ?heartroom=N sets it, 0 for none.
     const heartRoom = n128 ? (ME.params.has("heartroom") ? ME.qn("heartroom", 0) : Math.round(HEART_ROOM64 * (Math.min(64, G.HERO_MAX) / 64) ** 2)) : 0;
-    const pb0 = ME.poolBudget;
+    const pb0 = ME.poolBudget, palN = pal.names.length; // (the terrain's and the grass's materials: the fallback keeps those)
+    const over0 = new Set(Object.keys(pal.over || {})); // (#712: a name past 255 takes a stand-in id, listed in pal.over)
+    // The 128 tier's materials are dropped before the fallback numbers its own: kept, the 128 tier's ids and the
+    // 64 tier's on top of them went past 255 on a phone (Momiji, the user's Android, 2026-11-11; Engine's
+    // diagnosis). Nothing holds the dropped ids: the renderer isn't up and the 128 bake's volumes are let go. Its
+    // stand-ins go too (pal.over): one taken during the 128 bake could name an id the 64 bake numbers again.
+    // The coarse occupancy as it was before the 128 bake splats its trees in (T.coarse, T.splat): restored before
+    // the 64 bake splats its own, or the trees shade twice (restored, not subtracted: the splat caps at 255)
+    const coarse0 = n128 && T.coarse ? T.coarse.slice() : null, splat0 = T.splat;
+    // mb: the 128 bake that succeeded but took stand-ins; its progressive workers (MB.prog) end before the rebake
+    const fallback = (over, mb) => {
+      if (mb && mb.prog) mb.prog.cancel();
+      if (coarse0) { T.coarse.set(coarse0); T.splat = splat0; }
+      const dropped = pal.names.length - palN, standIns = Object.keys(pal.over || {}).filter((n) => !over0.has(n));
+      for (const n of pal.names.splice(palN)) delete pal.ids[n];
+      for (const n of standIns) delete pal.over[n];
+      ME.log("HERO128", { over, heartRoom, matsDropped: dropped, standIns: standIns.length, mats: palN - 1 });
+      G.hero128Off = true; bakeOpts.models = Object.assign(G.bakeList(), G.Tombs.bakeList(), G.Dress.bakeList(levelId));
+      return ME.bakeModels(T, st, pal, bakeOpts);
+    };
     if (heartRoom) ME.poolBudget = Math.max(1, ME.poolBricks() - heartRoom);
     try {
       MB = await ME.bakeModels(T, st, pal, bakeOpts, early);
@@ -37225,12 +37399,15 @@ function MG_SFX(L) {
     } catch (e) {
       ME.poolBudget = pb0;
       if (!n128 || !/volume pool needs/.test(e && e.message)) throw e;
-      ME.log("HERO128", { over: e.message, heartRoom });
-      G.hero128Off = true; bakeOpts.models = Object.assign(G.bakeList(), G.Tombs.bakeList());
-      MB = await ME.bakeModels(T, st, pal, bakeOpts);
+      MB = await fallback(e.message);
     }
-    if (n128) ME.log("HERO128", { models128: n128, fallbacks: G.hero128Off ? n128 : 0, cap: G.hero128Off ? G.HERO_MAX : G.TOP_MAX, bricks: MB.stats.bricks, budget: ME.poolBricks(), heartRoom, bakeMs: MB.stats.ms });
+    // Past 255 materials the bake no longer throws (#712): a name takes a stand-in of the nearest colour. At 128
+    // that is a wrong colour the 64 tier may not need, so it falls back as a pool failure does (the Architect)
+    if (n128 && !G.hero128Off && Object.keys(pal.over || {}).some((n) => !over0.has(n))) MB = await fallback("more than 255 materials", MB);
+    if (n128) ME.log("HERO128", { models128: n128, fallbacks: G.hero128Off ? n128 : 0, cap: G.hero128Off ? G.HERO_MAX : G.TOP_MAX, bricks: MB.stats.bricks, budget: ME.poolBricks(), heartRoom, bakeMs: MB.stats.ms, mats: pal.names.length - 1 });
     ME.log("MODELS", MB.stats); ME.stage("models");
+    // the progressive full-density bakes can take stand-ins after the check above (refreshPalette): logged at its end
+    if (MB.prog && MB.prog.upgraded) MB.prog.upgraded.then((ok) => ME.log("PALETTE after the upgrade", { ok, mats: pal.names.length - 1, over: Object.keys(pal.over || {}) }));
     // The rules record (core/rules.js; progressive density, R1): the rules read every garden at vs16, whatever
     // the density the view draws at. At vs16 it is read off this bake (view/level.js). Above, off the engine's
     // vs16 bake of the same map (ME.terrain16, with no palette, so this bake's material ids stay as they are)
