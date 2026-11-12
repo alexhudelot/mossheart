@@ -6730,11 +6730,11 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
   const fnv = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return (h >>> 0).toString(36); };
   const noWorkers = (why) => Object.assign(new Error("terrain stream: " + why), { noWorkers: true });
   // vs: the bake's own density; force: the terrain stream's bake (o.bg) takes the workers whether or not ?regions
-  // is on
-  const terrainWorkerN = (vs, force) => {
+  // is on; n: how many (ME.hiBaker's o.workers), else ?terrainworkers= (2); at most one fewer than the cores
+  const terrainWorkerN = (vs, force, n) => {
     if (typeof Worker === "undefined" || ME.bakeWorkers === false || !(force || ME.regionsOn(vs))) return 0;
     const hc = (typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 2;
-    return Math.max(0, Math.min(Math.round(ME.qn("terrainworkers", 2)), hc - 1));
+    return Math.max(0, Math.min(Math.round(n > 0 ? n : ME.qn("terrainworkers", 2)), hc - 1));
   };
   // what the bake reads of PX, at a few points (strataAt: the three textures and above the top)
   const pxProbe = (P) => {
@@ -6925,7 +6925,8 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
   // (with or without ?regions), none of them on the main thread, the coarse grid a tile row at a time; it throws
   // an error with .noWorkers where it would bake a region here. o.hold (W1, ME.hiBaker): quiet, the map up to its
   // regions (the lamps' heights, the workers started and checked as for the regions bake, with or without
-  // ?regions), then no region: it returns a baker that bakes a region at a time when asked (baker below).
+  // ?regions), then no region: it returns a baker that bakes a region at a time when asked (baker below); o.workers:
+  // its pool's size (ME.hiBaker's, C128's), else ?terrainworkers=
   // o.onRegion(done, N), a bake by regions: called with the regions laid so far, before each region and once all N
   // are (the stream's progress, ME.stream.progress)
   ME.bakeTerrain = async function (st, pal, o = {}) {
@@ -7528,7 +7529,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
       // #548 note C: a region's grid (and a lamp's) is a window of the bricks its columns C reach, not the map's
       const bwin = (c) => [c[0] >> 4, (c[2] + 15) >> 4, c[1] >> 4, (c[3] + 15) >> 4];
       // P1c: the workers start (and boot) during the lamp pre-pass; a worker takes the lamps' heights from the plan
-      const nw = o.serve ? 0 : terrainWorkerN(VS, !!(o.bg || o.hold)), pool = nw > 0 ? terrainPool(nw, o.jobMs) : null;
+      const nw = o.serve ? 0 : terrainWorkerN(VS, !!(o.bg || o.hold), o.hold ? o.workers : 0), pool = nw > 0 ? terrainPool(nw, o.jobMs) : null;
       if (o.bg && !pool) throw noWorkers("no terrain workers");
       // o.only (W1, a single region's bake): only the lamps within 3 tiles of region o.only get their heights (a
       // lamp's stamp reaches less than 1.5 tiles); the others' stamps are clipped out of it
@@ -8022,7 +8023,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     R.forEach(({ rect: c }, n) => { const x = c[2] - c[0] > rt / 2, y = c[3] - c[1] > rt / 2; ex[4 * n] = 1; ex[4 * n + 1] = x; ex[4 * n + 2] = y; ex[4 * n + 3] = x && y; });
     return ex;
   };
-  ME.hiBaker = (st, pal, vs = 128, o = {}) => ME.bakeTerrain(st, pal, { vs, hold: true, here: o.here, gap: o.gap, jobMs: o.jobMs || (vs >= 64 ? 240000 : 0) });
+  ME.hiBaker = (st, pal, vs = 128, o = {}) => ME.bakeTerrain(st, pal, { vs, hold: true, here: o.here, gap: o.gap, jobMs: o.jobMs || (vs >= 64 ? 240000 : 0), workers: o.workers });
   // C128's mesh worker: a worker of its own (terrainWorkerSrc, no init: it only meshes), so a region's greedy mesh runs
   // at full speed off the main thread and not behind a terrain worker's bakes. null where no worker starts.
   // mesh(grid, box) sends a copy of the grid (its table and used pool sliced, the copies transferred: the grid stays
@@ -10774,12 +10775,15 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
    phone: cap too): past that the least recently seen at fade 0 go (R.hiDrop). Edits (R.carve's cells, R.onCarve) mirror into each resident
    region; a changed one re-meshes (one every o.remeshMs at most) and goes up again staged, the old one drawn until
    then. The physics stays at the base density (W3 owns a carve path at the second density).
-   A phone runs it with smaller numbers (ME.C128.PHONE: cap 6, keep 6, mb 1) than a desktop (ME.C128.DESK: 12,
-   cap, 3; it was cap + 8, and 20 resident regions took 0.6 GB of GPU at vs40). The phone's cap was 4, but at its
+   A phone runs it with smaller numbers (ME.C128.PHONE: cap 6, keep 6, mb 1, workers 2) than a desktop (ME.C128.DESK:
+   12, cap, 3, 3; it was cap + 8, and 20 resident regions took 0.6 GB of GPU at vs40). The phone's cap was 4, but at its
    closest zoom Momiji's view needs 5 regions, so C128 never came on (#727's probe); 6 keeps its resident 6. After
    a region's bake its main-thread steps (lay, crop, the remap) run sliced: a frame (ME.nextFrame) after every 6 ms
    of them, never one long task (each was 80-250 ms at vs128). o.phone (or ?c128phone=1 / 0)
-   picks the set; unset, ME.phoneLike() does (a phone or tablet, or a device with 4 GB of memory or less). o.cap, o.keep, o.mb and their URL keys still win over either set.
+   picks the set; unset, ME.phoneLike() does (a phone or tablet, or a device with 4 GB of memory or less). o.cap, o.keep, o.mb, o.workers and their URL keys still win over either set.
+   o.workers (?c128workers=): the hi baker's terrain workers, at most one fewer than the cores. A zoomed fill is bound by
+   the bakes (a quarter ~4.3 s at vs128 on a worker; Momiji's 5 regions, 20 quarters, ~45 s on 2), so a desktop
+   takes 3; a phone keeps 2 (each worker holds the prelude's arrays).
    Step 2's units: a region goes up as its quarters (2x2 tiles of the hi grid each, ME.regionQuarter; an edge region
    has fewer), each baked, meshed, sent and faded on its own (key 4n + q; R.hiAdd, hiFade, hiDrop), so the first
    one shows about four times sooner. The plan, cap, keep and evict stay over base regions: a region is had once all
@@ -10851,7 +10855,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
   };
   // the numbers by device: a phone keeps fewer 128 regions resident (each one's density and mesh on the GPU, its
   // bake on the CPU) and sends less a frame
-  const PHONE = { cap: 6, keep: 6, mb: 1 }, DESK = { cap: 12, keep: 12, mb: 3 };
+  const PHONE = { cap: 6, keep: 6, mb: 1, workers: 2 }, DESK = { cap: 12, keep: 12, mb: 3, workers: 3 };
   // o.phone, else ?c128phone= (1 or 0), else ME.phoneLike()
   const phone = (o = {}) => {
     if (o.phone !== undefined) return !!o.phone;
@@ -10869,7 +10873,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
       this.o = {
         cap, vs: o.vs ?? ME.qn("c128vs", 128), keep: o.keep ?? ME.qn("c128keep", cap + D.keep - D.cap), mb: o.mb ?? ME.qn("c128mb", D.mb),
         fadeMs: o.fadeMs ?? 400, restMs: o.restMs ?? 500, remeshMs: o.remeshMs ?? 300, meshTickMs: o.meshTickMs ?? 4,
-        quarters: o.quarters ?? ME.qn("c128q", 1) > 0,
+        quarters: o.quarters ?? ME.qn("c128q", 1) > 0, workers: o.workers ?? ME.qn("c128workers", D.workers),
       };
       this.alive = false; this.off = ""; this.recs = new Map(); this.gen = 0; this.mesh = null;
       this.baker = null; this.bakerP = null; this.inflight = 0; this.meshQ = Promise.resolve();
@@ -10984,7 +10988,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     startBaker() {
       if (this.bakerP) return;
       const { st, pal } = this.app, tb = ME.now(), g = this.gen;
-      this.bakerP = Promise.all([ME.hiBaker(st, pal, this.o.vs, { here: false, gap: ME.nextFrame }), this.app.R.prepHi()]).then(([b]) => {
+      this.bakerP = Promise.all([ME.hiBaker(st, pal, this.o.vs, { here: false, gap: ME.nextFrame, workers: this.o.workers }), this.app.R.prepHi()]).then(([b]) => {
         if (!this.alive || g !== this.gen) { b.stop(); this.bakerP = null; return; }
         this.st.preMs = Math.round(ME.now() - tb);
         if (!b.workers) { b.stop(); this.off = "workers"; this.warn("workers", "no terrain workers: off (a region would bake on the main thread)"); return; }
@@ -11088,7 +11092,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     }
 
     stats() {
-      const S = this.st, a =(v) => (v.length ? { avg: Math.round(v.reduce((x, y) => x + y, 0) / v.length), max: Math.max(...v) } : null);
+      const S = this.st, a = (v) => (v.length ? { avg: Math.round(v.reduce((x, y) => x + y, 0) / v.length), max: Math.max(...v) } : null);
       let ready = 0, cpu = 0, gpu = 0;
       const part = new Set(), full = new Set();
       for (const rec of this.recs.values()) {
@@ -13196,6 +13200,17 @@ fn voidSky(fc: vec2f, uv: vec2f) -> vec3f {
   if (aux < 1000.0 && cls != 3u) {
     let at = mats[512u + mat];
     if (at.w > 0.0) { col *= mix(vec3f(1.0), at.rgb, at.w * growthAt(p.xy)); }
+  }
+  // snow lying (Weather 2's cover, at least the act's: Renderer.setAct): the up-facing ground and the models' tops
+  // where the sky reaches (sv.g) go white, patchy at a light cover, every top under a full one; lit by the shade
+  // (blue where it is low) so the key light below tints it; none under water, on the sim's instances or emitters
+  if (aux < 1000.0 && cls != 3u && u.weather2.y > 0.0) {
+    var dry = true;
+    if (u.water2.y > 0.5 && all(wc >= vec2i(0)) && all(wc < vec2i(u.water2.zw))) { dry = wlev[u32(wc.y * i32(u.water2.z) + wc.x)] <= p.z; }
+    let cv = u.weather2.y; let f = 0.7 * vnoise(p.xy * 0.9 + 3.7) + 0.3 * vnoise(p.xy * 5.3 + 1.9);
+    let snowK = select(0.0, 1.0, dry) * sstep(0.45, 0.85, n.z) * sstep(0.1, 0.6, sv.g) * sstep(-0.08, 0.08, cv * 1.25 - 0.1 - f);
+    let sc = mix(vec3f(0.5, 0.6, 0.78), vec3f(0.95, 0.97, 1.0), sstep(0.15, 1.0, s)) * min(1.1, 0.55 + 0.6 * s);
+    col = mix(col, sc, snowK * 0.92);
   }
   col *= 1.0 + max(0.0, s - 0.9) * u.look5.z; // R.set.hotK (1.8)
   // a level's key light (look.sunCol, look.ambCol): the key's colour where it reaches, the ambient's in its shade
@@ -15793,10 +15808,11 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       this.dev.queue.writeTexture({ texture: this.fieldTex }, F, { bytesPerRow: this.fieldDims[0] * 2 }, this.fieldDims);
     }
     // The act's look (a living map's season, ME.Sky's acts): o.mats a Float32Array(256 * 4) of rgb multipliers per
-    // material id with w 1 where one applies (null: none), o.freeze 0..1 (the water's ice), o.grassH (blade height).
+    // material id with w 1 where one applies (null: none), o.freeze 0..1 (the water's ice), o.grassH (blade height),
+    // o.cover and o.wet 0..1: floors under Weather 2's snow cover and wet (the shader reads the larger).
     setAct(o) {
       this.dev.queue.writeBuffer(this.matBuf, 256 * 8 * 4, o.mats || (this.actZero || (this.actZero = new Float32Array(256 * 4))));
-      this.actFreeze = o.freeze || 0; this.actGrassH = o.grassH ?? 1;
+      this.actFreeze = o.freeze || 0; this.actGrassH = o.grassH ?? 1; this.actCover = o.cover || 0; this.actWet = o.wet || 0;
     }
     setCells(bytes) { const m = this.S.st.map; this.dev.queue.writeTexture({ texture: this.cellTex }, bytes, { bytesPerRow: m.W * 4 }, [m.W, m.H]); }
 
@@ -15973,10 +15989,11 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       set4(u, O.misc2, fno % 64, 18, E.base, s.bloomAt);
       set4(u, O.look4, st.light.spriteK ?? 1, s.mottle, this.pcount.spray, this.sprayAt);
       set4(u, O.field, st.map.W, st.map.H, this.fieldRes, this.actFreeze || 0);
-      // the weather (zeros without one): the channels, wet and cover, the fog's floor and the clearings
+      // the weather (zeros without one): the channels, wet and cover (at least the act's: setAct), the fog's floor
+      // and the clearings
       const wv = Wx.cur, on = Wx.active;
       set4(u, O.weather, on ? wv.rain : 0, on ? wv.snow : 0, on ? wv.fog : 0, Wx.flashV);
-      set4(u, O.weather2, Wx.wet, Wx.cover, wc, on ? wv.fogHeight : 0);
+      set4(u, O.weather2, Math.max(Wx.wet, this.actWet || 0), Math.max(Wx.cover, this.actCover || 0), wc, on ? wv.fogHeight : 0);
       set4(u, O.weather3, on ? Wx.base() : 0, on ? wv.fogLow : 0, on ? wv.petals : 0, on ? wv.wind : 0);
       u.set(Wx.clear, O.wclear);
       if (this.rainLayers == null) this.rainLayers = ME.phone && ME.phone() ? 1 : ME.compat ? 2 : 3; // (read once; a probe may set it)
@@ -18093,8 +18110,9 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
   };
   const NO_RUN = { id: null, level: "", build: false, over: false, life: 1 }, none = () => {};
   const HOST = { key: "me.sky", seed: () => 1, run: () => NO_RUN, on: none, mood: none, setup: none, acts: (level) => (ME.WX.looks().acts || NO_KEYS)[level] || null, uiScale: () => 1 };
-  // the acts (host.acts): the blend's length (s), and a material's factor cap (a dark material lit at a pale colour)
-  const ACT_BLEND = 4, ACT_MAX = 6;
+  // the acts (host.acts): the blend's length (s), and a material's factor cap: high enough that a dark material
+  // (bark, moss) can be lit at an act's snow white or blossom pink (Art's seasons, E1), still finite on a black one
+  const ACT_BLEND = 4, ACT_MAX = 32;
   const ss = (x) => x * x * (3 - 2 * x);
   const rgb255 = (c) => (Array.isArray(c) ? c : String(rgbOf(c)).split(",").map(Number));
 
@@ -18232,16 +18250,17 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     // ------------------------------------------------------------------ the acts (host.acts)
     // this frame's mood and base with the run's act: the act's mood (if the player's pick lets it) and its set
     // over that mood's base, blended from what showed when the act changed (ACT_BLEND s, smoothstep; numbers
-    // blend, the rest switch at once; a new run or level snaps); the renderer gets the tints, the grass height
-    // and the ice while they change (never without an act). Returns { mk, base }
+    // blend, the rest switch at once; a new run or level snaps); the renderer gets the tints, the grass height,
+    // the ice and the weather's floors (a.cover: snow already lying, a.wet: ground already wet; 0..1, Weather 2
+    // only adds to them) while they change (never without an act). Returns { mk, base }
     actShown(run, dt) {
       const n = this.actPin || run.act | 0, list = n > 0 ? this.host.acts(run.level) : null, a = (list && list[n - 1]) || null;
       const own = this.mood === "auto" || this.mood === this.host.mood(run.level) || (!!this.sky && this.mood === this.sky.mood); // (the level setup's mood is the level's own)
       const mk = a && MOODS[a.mood] && own && !this.moodPin ? a.mood : this.moodNow;
-      const to = { base: a && a.set ? Object.assign(this.base(mk), a.set) : this.base(mk), mats: a ? this.actMats(a) : null, grassH: (a && a.grassH) ?? 1, freeze: (a && a.freeze) || 0 };
+      const to = { base: a && a.set ? Object.assign(this.base(mk), a.set) : this.base(mk), mats: a ? this.actMats(a) : null, grassH: (a && a.grassH) ?? 1, freeze: (a && a.freeze) || 0, cover: (a && a.cover) || 0, wet: (a && a.wet) || 0 };
       const key = a ? n : 0, B = this.actAt, sh = this.actNow;
       if (!B || B.id !== run.id || B.level !== run.level) this.actAt = { id: run.id, level: run.level, key, t: ACT_BLEND };
-      else if (B.key !== key) this.actAt = { id: run.id, level: run.level, key, t: 0, from: { base: sh.base, mats: sh.mats && sh.mats.slice(), grassH: sh.grassH, freeze: sh.freeze } };
+      else if (B.key !== key) this.actAt = { id: run.id, level: run.level, key, t: 0, from: { base: sh.base, mats: sh.mats && sh.mats.slice(), grassH: sh.grassH, freeze: sh.freeze, cover: sh.cover, wet: sh.wet } };
       const A = this.actAt; A.t += dt;
       let now = to;
       if (A.t < ACT_BLEND && A.from) {
@@ -18257,13 +18276,13 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
             mats[i + 3] = 1;
           }
         }
-        now = { base, mats, grassH: lerp(f.grassH, to.grassH), freeze: lerp(f.freeze, to.freeze), blending: true };
+        now = { base, mats, grassH: lerp(f.grassH, to.grassH), freeze: lerp(f.freeze, to.freeze), cover: lerp(f.cover, to.cover), wet: lerp(f.wet, to.wet), blending: true };
       }
       this.actNow = now;
       // (the renderer: every frame of a blend, then once as it settles or when the target's tints change)
-      const R = this.R, S = this.actSent || (this.actSent = { mats: null, grassH: 1, freeze: 0 });
-      if (R.setAct && (now.blending || now.mats !== S.mats || now.grassH !== S.grassH || now.freeze !== S.freeze)) {
-        R.setAct(now); S.mats = now.mats; S.grassH = now.grassH; S.freeze = now.freeze;
+      const R = this.R, S = this.actSent || (this.actSent = { mats: null, grassH: 1, freeze: 0, cover: 0, wet: 0 });
+      if (R.setAct && (now.blending || now.mats !== S.mats || now.grassH !== S.grassH || now.freeze !== S.freeze || now.cover !== S.cover || now.wet !== S.wet)) {
+        R.setAct(now); S.mats = now.mats; S.grassH = now.grassH; S.freeze = now.freeze; S.cover = now.cover; S.wet = now.wet;
       }
       return { mk, base: now.base };
     }
@@ -18514,7 +18533,7 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     }
   }
   Sky.MOODS = MOODS;
-  ME.Sky = Sky;
+  ME.Sky = Sky; Sky.ACT_MAX = ACT_MAX;
   Sky.bowAt = bowAt; Sky.bowArc = bowArc; // (node tests: test/node/sky-rainbow.test.js)
 })();
 
@@ -23565,7 +23584,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.140.0", name: "Mossheart", commit: "3b5c3add" };
+  G.VERSION = { v: "0.142.0", name: "Mossheart", commit: "79ba1056" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -28396,6 +28415,28 @@ function MA_DSP() {
   };
   G.GRAFT_ART = {};
   for (const id in GRAFT) { const [model, color, color2, puddle] = GRAFT[id]; G.GRAFT_ART[id] = { model, color, color2, puddle }; }
+
+  // --- the plants' effect badges (view/effects.js, the user 2026-11-12: "buff and nerf icons on towers"), read as
+  // G.EFFECT_ICONS[id]: the three placement zones (Defs.ZONES), Bloom Burst, a graft, Ancient Grove, and the
+  // stand-in for a gift with no icon of its own. Drawn for 12-14 px: the kit's 24 x 24 grid in currentColor, a
+  // 2-wide line (1 px at 12 px), one wash per icon and no detail under 2 units, so each reads by its outline.
+  const fx = (body) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+  G.EFFECT_ICONS = {
+    // Heartwood (hits harder near the Heart Tree): a tree whose crown is a heart
+    heartwood: fx(`<path d="M12 14.5C5.5 11 3.6 6.8 6.4 4.2C8.3 2.6 10.8 3.4 12 5.6C13.2 3.4 15.7 2.6 17.6 4.2C20.4 6.8 18.5 11 12 14.5Z" ${W}/><path d="M12 14.5V21M8.5 21H15.5"/>`),
+    // Overlook (reaches further from above the road): a ledge, and its reach arcing far down to the road
+    overlook: fx(`<path d="M3 21V10.5H9.5L11 13.5V21" ${W}/><path d="M14.5 21H21"/><path d="M7 7C12.5 3 18 5 20.5 11.5"/><path d="M20.5 11.5L21.2 7.6M20.5 11.5L16.9 9.9"/>`),
+    // Dewbank (fires faster beside the water): a dewdrop over a ripple
+    dewbank: fx(`<path d="M12 2.8C15 7 16.8 9.6 16.8 12.2A4.8 4.8 0 0 1 7.2 12.2C7.2 9.6 9 7 12 2.8Z" ${W}/><path d="M3 20.2C5.2 18.6 7.4 18.6 9.6 20.2S14 21.8 16.2 20.2 19.8 18.6 21 19.4"/>`),
+    // Bloom Burst (a rite: every plant attacks faster for a while): a five-petal bloom flung wide open
+    bloom: fx(`${[0, 72, 144, 216, 288].map((a) => `<ellipse cx="12" cy="6.8" rx="3" ry="4" transform="rotate(${a} 12 12)" ${W}/>`).join("")}<circle cx="12" cy="12" r="2" ${S}/>`),
+    // a graft: a scion bound onto its stock, the binding two bands across the joint
+    graft: fx(`<path d="M12 21V12.5C12 8.6 14.6 5.8 18.6 4.4"/><path d="M12 12.5C11.4 9.8 9 7.6 5.6 7"/><path d="M18.6 4.4C19.6 7.6 17.6 9.6 15 9.2C15 6.8 16.4 5.2 18.6 4.4Z" ${W}/><path d="M9.6 13.6L14.4 12M9.6 16.4L14.4 14.8"/>`),
+    // Ancient Grove (fully grown plants hit harder): three trees, the old one in the middle
+    grove: fx(`<circle cx="12" cy="7" r="4" ${W}/><path d="M12 11V21"/><circle cx="4.2" cy="14.6" r="2.4" ${W}/><path d="M4.2 17V21"/><circle cx="19.8" cy="14.6" r="2.4" ${W}/><path d="M19.8 17V21"/>`),
+    // a gift with no icon of its own: a seed sprouting two leaves
+    gift: fx(`<ellipse cx="12" cy="17.2" rx="4.6" ry="3.6" ${W}/><path d="M12 13.6V8.8"/><path d="M12 9.6C9.4 9.8 6.9 8.2 6.3 5C9.4 4.6 11.4 6.6 12 9.6Z" ${W}/><path d="M12 8.8C12.4 5.8 14.5 3.6 17.7 3.8C17.4 7 15 8.8 12 8.8Z" ${W}/>`),
+  };
 })();
 
 </script>
@@ -32044,26 +32085,16 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
    Pooled divs in #floats (as hud.foeTags); the rows' html is rebuilt only when an effect may have changed (the
    events in DIRTY, and Bloom Burst starting or ending), and each frame only moves them (transform, set when the
    rounded pixel changes). Shown in the build and wave phases. Settings "Effect icons" (G.effectIcons) or ?fx=0
-   turn them off. Icons: the HUD's own (links, gifts, plant icons); zones, Bloom Burst and grafts have
-   Art's G.EFFECT_ICONS (#731), the placeholders (PH) until it lands. */
+   turn them off. Icons: the HUD's own (links, gifts, plant icons); zones, Bloom Burst, grafts, Ancient
+   Grove and a gift with no icon of its own have Art's G.EFFECT_ICONS (#731). */
 (function () {
   const G = window.MG, D = G.Defs, S = G.state;
   const SHOW = 3, LIFT = 0.28;
   const ROMAN = ["", "I", "II", "III"];
   const DIRTY = ["links", "mods", "rites", "phase", "act", "tower_upgraded", "tower_placed", "tower_sold", "tower_moved", "tower_grafted"];
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const svg = (body) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
-  // placeholders (Art's list: zones x3, Bloom Burst, graft)
-  const PH = {
-    heartwood: svg('<path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/>'),
-    overlook: svg('<path d="M4 18l8-12 8 12"/><path d="M8 18h8"/>'),
-    dewbank: svg('<path d="M12 3c3 5 6 8 6 11a6 6 0 0 1-12 0c0-3 3-6 6-11z"/>'),
-    bloom: svg('<circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/>'),
-    graft: svg('<path d="M12 3l2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2z"/>'),
-    grove: svg('<path d="M12 21v-6"/><path d="M12 3l6 9H6z"/><path d="M12 8l5 7H7z"/>'),
-  };
-  // Art's icons (#731, G.EFFECT_ICONS in boons.js) when loaded, else the placeholders
-  const IC = (id) => (G.EFFECT_ICONS && G.EFFECT_ICONS[id]) || PH[id];
+  // Art's icons (#731, G.EFFECT_ICONS in art/boons.js, which index.html loads before this file)
+  const IC = (id) => G.EFFECT_ICONS[id];
   const ZONE_INK = { heartwood: "#ff9a6a", overlook: "#f6dd73", dewbank: "#7fd0ff" };
   const FX_Q = window.ME.qn("fx", 1) !== 0, on = () => G.effectIcons !== false && FX_Q;
 
@@ -32091,7 +32122,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       if (!L || !L.mods) continue;
       let hit = false;
       for (const k in L.mods) { if (k.endsWith("_all") || [...kinds].some((kd) => k.endsWith("_" + kd))) { hit = true; break; } }
-      if (hit) add({ icon: (G.boonIcon && G.boonIcon(id)) || (G.EFFECT_ICONS && G.EFFECT_ICONS.gift) || "❀", name: b.name + (b.levels.length > 1 ? " " + ROMAN[lv] : ""), nerf: !!b.nerf });
+      if (hit) add({ icon: (G.boonIcon && G.boonIcon(id)) || IC("gift"), name: b.name + (b.levels.length > 1 ? " " + ROMAN[lv] : ""), nerf: !!b.nerf });
     }
     if (t.level >= D.MAX_LEVEL && S.mod("grove") > 0) add({ icon: IC("grove"), name: "Ancient Grove", ink: "#9fd36a" });
     out.sort((a, b) => (b.nerf ? 1 : 0) - (a.nerf ? 1 : 0));
