@@ -23585,7 +23585,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.144.0", name: "Mossheart", commit: "a88d0936" };
+  G.VERSION = { v: "0.146.0", name: "Mossheart", commit: "7c5493cb" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -28522,16 +28522,19 @@ function MA_DSP() {
       sleet: { name: "Sleet", rare: 0.02, cloud: [0.85, 1], rain: [0.15, 0.25], snow: [0.15, 0.25], wind: [0.3, 0.6], gust: [0.4, 0.7] },
     },
 
-    // Momiji is the maple garden: a bit of everything, wind with leaves a touch more often, snow rare.
+    // Momiji is the maple garden: a bit of everything, wind with leaves a touch more often, snow rare. Blossom is
+    // spring's alone (the seasons): Act I enters the petals front at its turn (Game's view/acts.js FRONTS) and
+    // drifts petals, so the garden's own weather has no petals and no petal storm, which carried pink into summer.
     // Fernglass leans to mist, drizzle and showers. Corn Moon (the user: "default nighttime with moon shafts
     // and slight wind, going into thunderstorms based on action") opens on a clear moonlit night with a breeze
     // (calm, so newRun and every build phase drift back to it) and builds with the waves: the heavy share the
     // escalation raises is mostly storm, and a boss wave brings the thunderstorm. No snow, fog or blossom there.
     climates: {
       momiji: {
-        weights: { clear: 3, overcast: 2, wind: 2, showers: 2, rain: 1.5, storm: 0.6, mistmorn: 1, fog: 0.6, gale: 0.4, snow: 0.5, blizzard: 0.15, petals: 1.5 },
-        calm: ["clear", "petals", "mistmorn"],
+        weights: { clear: 3, overcast: 2, wind: 2, showers: 2, rain: 1.5, storm: 0.6, mistmorn: 1, fog: 0.6, gale: 0.4, snow: 0.5, blizzard: 0.15 },
+        calm: ["clear", "mistmorn"],
         boss: "storm",
+        rare: { petalstorm: 0 },
       },
       fernglass: {
         weights: { mistmorn: 3, fog: 1.8, drizzlemist: 2.5, showers: 2, rain: 1, storm: 0.5, overcast: 1.5, clear: 1, gale: 0.2, petals: 0.4 },
@@ -28565,43 +28568,70 @@ function MA_DSP() {
     },
 
     // The living map's acts (A-L1). Momiji's year in four acts, one per stretch of waves (Game: world.js,
-    // D.LEVEL_ACTS). The maples carry the story: young green in the thaw, deep green under the canopy, crimson
-    // and amber at golden hour, and still red under the first frost. The moss goes pale, deep, olive and then
-    // frosted. Targets are colours, not factors, so they hold whichever palette table the garden loads. Under
-    // the x6 cap the frost on the darkest moss stops a little short of white, a pale sage, which the snow front
-    // tops up.
-    // The weather of each act (design L2: thaw rain, sun showers, gusts with falling leaves, a snow front) waits on
-    // per-act climate weights in the engine's weather.js. Until then the climate below runs all year.
+    // D.LEVEL_ACTS), each one season, unmistakable at a glance (the user, 2026-11-12: "acts need more dramatic
+    // shifts, such as seasons"): spring blossom, high summer, autumn ember, winter snow. The maples carry the
+    // story: pink blossom, deep jade, crimson, then snow-laden. Targets are colours, not factors, so they hold
+    // whichever palette table the garden loads; each is one material's own target (never a hue shift over a
+    // whole ramp: the red-band rule). The ground's litter is the maple material (content/momiji.js), so it
+    // follows: fallen blossom in I, red leaves in III, buried in IV.
+    // White and blossom pink need the act cap at x32 (sky.js ACT_MAX, Engine's #722, E1): at the old x6 dark moss
+    // stopped at pale mint and maple red at apricot. Still waiting on the engine (requested 2026-11-12, through
+    // Holodeck): cover and wet are each act's floor for the snow cover and the wet ground (E2, E3); weights and
+    // calm are each act's climate over the garden's below (E4). The engine ignores the four until then.
     acts: {
       momiji: [
-        // I · Thaw: a morning after rain, young greens, pale moss, the grass still short
+        // I · Spring: a fresh morning after rain. The maples in pink blossom and the gingkos in white, the young
+        // leaves lime, the moss dark and saturated with wet, the grass still short, the canopy thin.
         // (Demo 1: moss, moss2, mound, mound2 and leaf in I and II aim at Momiji's emerald ramps, content/momiji.js
         // mapLight.momiji, near their 0.6 colours, so the factors stay near neutral in hue)
-        { mood: "morning", grassH: 0.85,
-          pal: { moss: "#60ad6a", moss2: "#82bc7e", mound: "#60ad6a", mound2: "#82bc7e", sphag: "#b8b072",
-                 leaf: "#4a9a48", leaf2: "#8cc05e", maple: "#9cbc5a", gingko: "#b8d070", leafDry: "#9cb060" } },
+        { mood: "morning", grassH: 0.85, wet: 0.5,
+          set: { shade: 0.44, leafA: 0.5, haze: 0.14, bloomK: 1.2, exposure: 1.06, sunEl: 10, sunAz: -25 },
+          pal: { moss: "#3f9a52", moss2: "#5eaa62", mound: "#3f9a52", mound2: "#5eaa62", sphag: "#a4b05a",
+                 leaf: "#58ac4a", leaf2: "#a8d86a", maple: "#f4b4c6", gingko: "#fbeef2", leafDry: "#e89ab4",
+                 cfMossUnder: "#22663a", cfMossFoot: "#22663a", cfMossLedge: "#2e8446" },
+          weights: { showers: 3, petals: 3, mistmorn: 2, clear: 2, rain: 1.5, overcast: 1 }, calm: ["petals", "mistmorn"],
+          // the petal drift (Game's view/acts.js reads it): blossom off the maples, light and slow, a third of the
+          // cap since it runs through Demo 1's first ten waves
+          drift: [["maple", "gingko"], 0.35, { vx: 0.18, vy: 0.08, vz: -0.1 }] },
         // II · Green Canopy: high summer under a closed canopy. Its own hue family, deep jade and teal (hue ~155,
         // against Act I's mint and yellow-green ~127), in deep shade broken by hot gold sun flecks: more and
         // brighter flecks (fleckAt, fleckK, hotK), denser leaf shadow in the pools (leafA, leafB), the sun higher
         // and from the other side (sunEl, sunAz: the shadows swing at the turn), a warmer haze, the grass tallest.
         // The terraces' cliff moss (cfMoss*, #702) follows the jade: each is moss times its own table colour over
         // moss's, so the ledges keep their step from the lawn. (the user, 2026-11-11: "act 2 environment should be
-        // more differentiated vs act 1")
+        // more differentiated vs act 1"). Seasons: high summer, a touch hotter than #718 (the sun higher, hotter
+        // and more flecks, a heat haze, the dry moss sun-bleached).
         { mood: "clear", grassH: 1.3,
-          set: { shade: 0.36, pool: 0.7, fleckAt: 0.58, fleckK: 0.62, hotK: 2.2, leafA: 0.72, leafB: 0.5,
-                 shaftK: 0.32, bloomK: 1.15, haze: 0.12, exposure: 1.04, sunEl: 14, sunAz: 25, windK: 1.2, gust: 0.6 },
-          pal: { moss: "#2f8a62", moss2: "#4a9070", mound: "#2f8a62", mound2: "#4a9070", sphag: "#c2b84a",
+          set: { shade: 0.36, pool: 0.7, fleckAt: 0.58, fleckK: 0.7, hotK: 2.6, leafA: 0.72, leafB: 0.5,
+                 shaftK: 0.32, bloomK: 1.2, haze: 0.14, exposure: 1.06, sunEl: 20, sunAz: 25, windK: 1.2, gust: 0.6 },
+          pal: { moss: "#2f8a62", moss2: "#4a9070", mound: "#2f8a62", mound2: "#4a9070", sphag: "#ccb440",
                  leaf: "#1f6a4c", leaf2: "#3a9c5c", maple: "#2e7c4e", gingko: "#7cb040", leafDry: "#8a9a3c",
-                 cfMossUnder: "#186841", cfMossFoot: "#186841", cfMossLedge: "#217d49" } },
-        // III · Ember Leaves: golden hour, the maples crimson, the other leaves amber, the moss olive
-        { mood: "golden", grassH: 1,
-          pal: { moss: "#6e7c32", moss2: "#8e8a40", mound: "#6e7c32", mound2: "#8e8a40", sphag: "#a88a4c",
-                 leaf: "#c4862c", leaf2: "#a49a42", maple: "#cc3424", gingko: "#f0bc2c", leafDry: "#b07c36" } },
-        // IV · Lantern Night: dusk with the night's shafts, frost on the moss and grass, the red leaves kept,
-        // the pond frozen
-        { mood: "dusk", set: { shaftK: 0.3, bloomK: 1.25 }, grassH: 0.7, freeze: 1,
-          pal: { moss: "#9fb0a2", moss2: "#c4d0c8", mound: "#9fb0a2", mound2: "#c4d0c8", sphag: "#bcc0b0",
-                 leaf: "#4c6458", leaf2: "#b4c4ba", maple: "#a82c26", gingko: "#c8a450", leafDry: "#a8a898" } },
+                 cfMossUnder: "#186841", cfMossFoot: "#186841", cfMossLedge: "#217d49" },
+          weights: { clear: 4, overcast: 1, wind: 1, showers: 1, storm: 0.8 }, calm: ["clear"] },
+        // III · Autumn: a bright low afternoon sun, the whole canopy ablaze, maples crimson, the other leaves
+        // orange and amber, gingkos gold, rust on the dry ones; the moss olive and amber, the mounds russet
+        // cushions of fallen leaves, the lawn strewn with red; the canopy thinning (less leaf shadow), the wind up
+        // for the leaf drift. The pines stay evergreen, the one cool note against the fire. (Not the golden mood:
+        // its dusk dimmed the crimson to brown in the first shots; cosy with a low warm sun from the side keeps
+        // the colours lit, and the targets sit brighter and more saturated to read in the shade too.)
+        { mood: "cosy", grassH: 1,
+          set: { sunEl: 6, sunAz: 50, shade: 0.42, pool: 0.7, shaftK: 0.38, haze: 0.12, bloomK: 1.2, exposure: 1.08,
+                 leafA: 0.45, windK: 1.3, gust: 0.7 },
+          pal: { moss: "#8c8030", moss2: "#a8862e", mound: "#9a4a22", mound2: "#b86a2a", sphag: "#c08a40",
+                 leaf: "#e2581a", leaf2: "#f59a22", maple: "#e02a1c", gingko: "#ffc21e", leafDry: "#b8442a",
+                 cfMossUnder: "#54501e", cfMossFoot: "#54501e", cfMossLedge: "#6e6630" },
+          weights: { wind: 4, gale: 1.5, overcast: 2, clear: 2, rain: 1, fog: 0.8, storm: 0.6 }, calm: ["wind", "clear"],
+          // the heavy leaf drift: crimson maple at the full rate, blown faster and further than DRIFTS' fall
+          drift: [["maple", "leafDry"], 1, { vx: 0.45, vy: 0.15, vz: -0.26 }] },
+        // IV · Winter: a snowy dusk, the lanterns lit. Snow on the moss, the mounds and the ledges; the leaves
+        // bare dark twigs with snow on the crowns (leaf2, maple, gingko), the last red leaves kept (leafDry);
+        // the grass buried to stubble, the pond frozen, the canopy's shadow thin; the snowfall is Game's DRIFTS
+        { mood: "dusk", grassH: 0.45, freeze: 1, cover: 0.85,
+          set: { shaftK: 0.3, bloomK: 1.25, leafA: 0.4, haze: 0.15, windK: 0.8 },
+          pal: { moss: "#e6ecf0", moss2: "#f4f6f8", mound: "#e6ecf0", mound2: "#f4f6f8", sphag: "#d8dcd8",
+                 leaf: "#5a504a", leaf2: "#eef2f6", maple: "#e2e8ee", gingko: "#eceff2", leafDry: "#a4433a",
+                 cfMossUnder: "#7e8c94", cfMossFoot: "#a8b4bc", cfMossLedge: "#e0e6ec" },
+          weights: { snow: 4, blizzard: 1, overcast: 1.5, fog: 1, clear: 1 }, calm: ["snow", "clear"] },
       ],
     },
   };
