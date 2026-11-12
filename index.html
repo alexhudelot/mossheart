@@ -4853,6 +4853,14 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     if (performance.now() - lastYield < ms) return Promise.resolve();
     return new Promise((r) => { waiting.push(() => { lastYield = performance.now(); r(); }); ch.port2.postMessage(0); });
   };
+  // the next frame (a task after it), so the short slices of a background job land between frames (C128's region,
+  // after its bake: lay, crop, the remap, sliced every 6 ms). A hidden page's frames stop, so 100 ms at most
+  ME.nextFrame = () => new Promise((r) => {
+    let done = false;
+    const go = () => { if (!done) { done = true; setTimeout(r, 0); } };
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(go);
+    setTimeout(go, 100);
+  });
   ME.progress = (label, f) => {
     if (ME.quiet) return;
     const bar = document.getElementById("bar"), txt = document.getElementById("bartxt");
@@ -6422,6 +6430,16 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     },
   };
 
+  // a job in short steps (a generator, a yield between them) run at once (drain), or sliced: a gap (C128:
+  // ME.nextFrame) awaited once a slice has run ms or more, so a long main-thread step of a region in play is many
+  // short tasks (W1's lay and crop at vs128 were 80-250 ms tasks each, 2026-11-12)
+  const drain = (it) => { let r; while (!(r = it.next()).done); return r.value; };
+  const sliced = async (it, gap, ms = 6) => {
+    let t = performance.now(), r;
+    while (!(r = it.next()).done) if (performance.now() - t >= ms) { await gap(); t = performance.now(); }
+    return r.value;
+  };
+
   // ---- The terrain grid (T.grid): NX x NY x NZ material ids in bricks of 16^3 cells, of which only the
   // mixed ones hold their cells (a dense grid was a byte a cell: 433 MB at vs40). table: per brick, 0 all
   // air, 1..255 every cell that material, 256 + n mixed, its cells at slot n of pool (4096 bytes, x fastest,
@@ -6546,10 +6564,11 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
       return this.used++;
     }
     // the mixed bricks over cells lo..hi (inclusive) whose cells in the grid are all one material go back to
-    // uniform, their slots to the free list
-    compact(lo, hi) {
+    // uniform, their slots to the free list (compacting: the same, a yield after each row of bricks)
+    compact(lo, hi) { drain(this.compacting(lo, hi)); }
+    *compacting(lo, hi) {
       const P = this.pool;
-      for (let K = lo[2] >> 4; K <= hi[2] >> 4; K++) for (let J = lo[1] >> 4; J <= hi[1] >> 4; J++) for (let I = lo[0] >> 4; I <= hi[0] >> 4; I++) {
+      for (let K = lo[2] >> 4; K <= hi[2] >> 4; K++) for (let J = lo[1] >> 4; J <= hi[1] >> 4; J++, yield) for (let I = lo[0] >> 4; I <= hi[0] >> 4; I++) {
         const b = this.ix(I, J, K), e = this.table[b];
         if (e < 256) continue;
         const s = (e - 256) * 4096, n0 = Math.min(16, this.NX - I * 16), n1 = Math.min(16, this.NY - J * 16), n2 = Math.min(16, this.NZ - K * 16), v = P[s];
@@ -6582,16 +6601,21 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
       }
     }
     // a grid of bricks I0..I1-1 x J0..J1-1 x K0..K1-1 of this one (W1, a region at a second density): uniform
-    // bricks as they are, the mixed ones' slots copied (the pool made once)
-    crop(I0, I1, J0, J1, K0, K1) {
+    // bricks as they are, the mixed ones' slots copied (the pool made once; cropping: the same, a yield after
+    // each layer of bricks and each 256 slots copied)
+    crop(I0, I1, J0, J1, K0, K1) { return drain(this.cropping(I0, I1, J0, J1, K0, K1)); }
+    *cropping(I0, I1, J0, J1, K0, K1) {
       const c = new BrickGrid(Math.min(this.NX, I1 << 4) - (I0 << 4), Math.min(this.NY, J1 << 4) - (J0 << 4), Math.min(this.NZ, K1 << 4) - (K0 << 4));
       const S = this.table, T = c.table, mix = [];
-      for (let K = K0; K < K1; K++) for (let J = J0; J < J1; J++) for (let I = I0; I < I1; I++) {
+      for (let K = K0; K < K1; K++, yield) for (let J = J0; J < J1; J++) for (let I = I0; I < I1; I++) {
         const e = S[this.ix(I, J, K)], b = c.ix(I - I0, J - J0, K - K0);
         if (e < 256) T[b] = e; else { T[b] = 256 + mix.length; mix.push(e - 256); }
       }
       c.pool = new Uint8Array(mix.length * 4096); c.used = mix.length;
-      mix.forEach((s, n) => c.pool.set(this.pool.subarray(s * 4096, s * 4096 + 4096), n * 4096));
+      for (let n = 0; n < mix.length; n++) {
+        c.pool.set(this.pool.subarray(mix[n] * 4096, mix[n] * 4096 + 4096), n * 4096);
+        if ((n & 255) === 255) yield;
+      }
       return c;
     }
     // the first solid cell's k in column (i, j) from kFrom down (air bricks skipped), -1 if none (a column
@@ -6700,7 +6724,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     });
   };
   // the worker's source: PX's parts the bake reads (with px.js's closure: clamp, hash, fade, noise, CELL), an ME
-  // of its own, then sdf.js, palette.js, this file and terrainServe
+  // of its own, then sdf.js, palette.js, this file, greedy.js (once loaded: C128's mesh worker), meshJob and terrainServe
   const terrainWorkerSrc = () => {
     const s = (f) => String(window.PX[f]);
     return [
@@ -6710,17 +6734,43 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
       "const CELL = { f1: 0, f2: 0, x: 0, y: 0, z: 0, id: 0 }; P.cell2 = " + s("cell2") + "; P.strataAt = " + s("strataAt") + "; window.PX = P;",
       "const ME = window.ME = { now: () => performance.now(), tick: () => Promise.resolve(), progress: () => {}, log: () => {}, qn: (k, d) => d, VS: 16, content: {}, VOLUME_DECO: new Set() };",
       "window.MODELS = {};",
-      "(" + ME.sdf.module + ")();", "(" + ME.Palette.module + ")();", "(" + terrainModule + ")();", "(" + terrainServe + ")();",
+      "(" + ME.sdf.module + ")();", "(" + ME.Palette.module + ")();", "(" + terrainModule + ")();",
+      ME.greedyMesh && ME.greedyMesh.module ? "(" + ME.greedyMesh.module + ")();" : "",
+      "const meshJob = " + meshJob + ";", "(" + terrainServe + ")();",
     ].join("\n");
+  };
+  // a mesh worker's job (ME.meshWorker; run in the worker, from its source, or here by the node tests): q.grid (a
+  // BrickGrid's fields, its buffers sent) meshed over q.box at full speed (not quiet: nothing else runs there). Gives
+  // { m (greedyMesh's mesh, its verts trimmed), transfer (m's buffers) }
+  const meshJob = async (q) => {
+    const g = ME.BrickGrid.from(q.grid);
+    const out = await ME.greedyMesh({ grid: g, NX: g.NX, NY: g.NY, NZ: g.NZ, stats: {} }, { boxes: [q.box] });
+    const m = Object.assign({}, out, { verts: out.verts.slice() });
+    return { m, transfer: [m.verts.buffer, m.index.buffer].concat(m.snaps.filter((p) => p.parts).map((p) => p.parts.buffer)) };
+  };
+  // a region's answer from its worker, [message, transfer]: the grid's and the arrays' buffers transferred, and the
+  // deferred entries (12 numbers each, a plain Array as region() builds them) as a Float64Array, transferred too
+  // (every value kept). Cloned as an Array they took the main thread 130-190 ms to read at vs128, a long task a
+  // region (#742's trace); lay and layG only index them.
+  ME.regionPost = (r, res) => {
+    const gr = res.grid, E = (res.entries = Float64Array.from(res.entries));
+    return [{ r, res }, [gr.table.buffer, gr.pool.buffer, gr.free.buffer, res.d1.buffer, res.d2.buffer, res.top.buffer, E.buffer]];
   };
   // the worker's side (runs there, from its source): { probe } -> { probe }; { init } -> { ready, digest, check }
   // (check: its probe bake of init.check's boxes; or { err }); { job: r } -> { r, res } with res's buffers transferred, { r, full } or { r, err }, in order.
-  // W1's baker adds ring (the region's ring, 16) and keep (the map's state put back after: region's keep)
+  // W1's baker adds ring (the region's ring, 16) and keep (the map's state put back after: region's keep).
+  // { mesh: id, grid, box } (ME.meshWorker) -> { mesh: id, m } with m's buffers transferred, or { mesh: id, err }
   const terrainServe = () => {
     let region = null, chain = Promise.resolve();
     self.onmessage = (e) => {
       const m = e.data;
       if (m.probe) { postMessage({ probe: ME.bakeTerrain.pxProbe(window.PX) }); return; }
+      if (m.mesh) {
+        chain = chain.then(async () => {
+          try { const j = await meshJob(m); postMessage({ mesh: m.mesh, m: j.m }, j.transfer); } catch (er) { postMessage({ mesh: m.mesh, err: String((er && er.stack) || er) }); }
+        });
+        return;
+      }
       if (m.init) {
         const I = m.init;
         ME.VS = I.VS; ME.content = I.CT; ME.qn = (k, d) => (k in I.QN ? I.QN[k] : d); ME.VOLUME_DECO = new Set(I.vdeco); ME.sdf.cull = I.cull; window.MODELS = I.models; ME.gridCheck = !!I.gc;
@@ -6734,8 +6784,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
       const r = m.job;
       chain = chain.then(async () => {
         try {
-          const res = await region(r, true, m.ring || 1, null, !!m.keep), gr = res.grid;
-          postMessage({ r, res }, [gr.table.buffer, gr.pool.buffer, gr.free.buffer, res.d1.buffer, res.d2.buffer, res.top.buffer]);
+          postMessage(...ME.regionPost(r, await region(m.at >= 0 ? m.at : r, true, m.ring || 1, m.rb || null, !!m.keep)));
         } catch (er) { postMessage(er && er.full ? { r, full: true } : { r, err: String((er && er.stack) || er) }); }
       });
     };
@@ -7527,27 +7576,36 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
         }
       };
       // lay(res, [I0, I1, J0, J1]): res's grid in the map's palette (PAL: a region baking here meanwhile has pal
-      // forked), its deferred details made, compacted over those bricks
-      const lay = (res, [I0, I1, J0, J1]) => {
+      // forked), its deferred details made, compacted over those bricks. layG: the same in short steps (a yield
+      // between them; W1's baker with o.gap runs it sliced)
+      const layG = function* (res, [I0, I1, J0, J1]) {
         const rg = BrickGrid.from(res.grid), E = res.entries, nE = E.length / 12;
         // the entries whose cell is still 255, before the renumbering (a fork's own ids stay under 255)
         const live = new Uint8Array(nE), ids = new Uint8Array(nE), LUT = new Uint8Array(256).map((_, i) => i);
-        for (let e = 0; e < nE; e++) live[e] = rg.get(E[e * 12 + 1], E[e * 12 + 2], E[e * 12 + 3]) === 255 ? 1 : 0;
+        for (let e = 0; e < nE; e++) {
+          live[e] = rg.get(E[e * 12 + 1], E[e * 12 + 2], E[e * 12 + 3]) === 255 ? 1 : 0;
+          if ((e & 4095) === 4095) yield;
+        }
         let same = true;
         res.names.forEach((n, i) => { LUT[res.base + i] = PAL.id(n); if (LUT[res.base + i] !== res.base + i) same = false; });
         for (let e = 0, o = 0; e < nE; e++, o += 12) {
           const m0 = res.mats[E[o + 7]], m = mdT[E[o]].detail(E[o + 4], E[o + 5], E[o + 6], m0, E[o + 8], E[o + 9], E[o + 10], E[o + 11]) || m0;
           ids[e] = PAL.id(m || (ME.content || {}).defaultMaterial);
+          if ((e & 1023) === 1023) yield;
         }
         if (!same) {
           const T = rg.table, P = rg.pool;
           for (let b = 0; b < T.length; b++) if (T[b] < 256) T[b] = LUT[T[b]];
-          for (let i = 0, n = rg.used * 4096; i < n; i++) P[i] = LUT[P[i]];
+          for (let a = 0, n = rg.used * 4096; a < n; a += 1 << 20, yield) for (let i = a, z = Math.min(n, a + (1 << 20)); i < z; i++) P[i] = LUT[P[i]];
         }
-        for (let e = 0; e < nE; e++) if (live[e]) rg.put(E[e * 12 + 1], E[e * 12 + 2], E[e * 12 + 3], ids[e]);
-        rg.compact([I0 << 4, J0 << 4, 0], [Math.min(NX, I1 << 4) - 1, Math.min(NY, J1 << 4) - 1, NZ - 1]);
+        for (let e = 0; e < nE; e++) {
+          if (live[e]) rg.put(E[e * 12 + 1], E[e * 12 + 2], E[e * 12 + 3], ids[e]);
+          if ((e & 4095) === 4095) yield;
+        }
+        yield* rg.compacting([I0 << 4, J0 << 4, 0], [Math.min(NX, I1 << 4) - 1, Math.min(NY, J1 << 4) - 1, NZ - 1]);
         return rg;
       };
+      const lay = (res, I) => drain(layG(res, I));
       const take = (res) => {
         const tk = ME.now(), rg = lay(res, res.I), [I0, I1, J0, J1] = res.I, R = res.R;
         const [ax, ay, aw, ah, bx, by, bw, bh] = res.cb, w = R[2] - R[0];
@@ -7627,20 +7685,24 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
       // here forks the palette). The same r asked twice while it bakes gives the same promise. stop() ends the
       // workers; stats: { workers (the pool's start, as regions.workers), live, took, here, lost }. mayHere false
       // (o.here, C128): never here; where it would bake a region here, bake(r) rejects with an error with .noWorkers
+      // bake(r, ring, q) (C128's quarter units): q 0..3 bakes only quarter q of region r (2 x 2 tiles, ME.regionQuarter's
+      // columns, qx = q & 1, qy = q >> 1), its record's R that quarter's; an empty quarter (at the map's edge) rejects
       const baker = (pl, wk, fits, mayHere) => {
         const busy = new Map();
         let here = Promise.resolve(), stopped = false, took = 0, inHere = 0;
-        const local = (r, ring) => {
-          const p = here.then(() => region(r, DEF(), ring, null, true).catch((e) => { if (!e.full) throw e; return region(r, false, ring, null, true); }));
+        const local = (r, ring, Rb) => {
+          const p = here.then(() => region(r, DEF(), ring, Rb, true).catch((e) => { if (!e.full) throw e; return region(r, false, ring, Rb, true); }));
           here = p.catch(() => {});
           return p;
         };
-        const one = async (r, ring) => {
+        const one = async (r, ring, q, Rb) => {
+          // the pool keys its jobs and answers: a quarter's key is past the regions' (N + 4r + q)
           let res = null, why = "no live terrain worker";
+          const key = q >= 0 ? N + 4 * r + q : r;
           if (pl && pl.live()) {
-            pl.job(r, { ring, keep: true });
+            pl.job(key, q >= 0 ? { ring, keep: true, at: r, rb: Rb } : { ring, keep: true });
             let m;
-            while ((m = pl.answer(r)) === undefined) { if (stopped) throw new Error("W1: the baker was stopped"); await pl.wait(1000); }
+            while ((m = pl.answer(key)) === undefined) { if (stopped) throw new Error("W1: the baker was stopped"); await pl.wait(1000); }
             if (m && m.res && fits(m.res)) { res = m.res; took++; }
             else {
               why = m && m.err ? "its worker: " + m.err.split("\n")[0] : m ? "its record would take the palette past 255" : "its worker was lost";
@@ -7649,23 +7711,29 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
           }
           if (stopped) throw new Error("W1: the baker was stopped");
           if (!res && !mayHere) throw Object.assign(new Error("W1: region " + r + " not baked (" + why + "; none on the main thread)"), { noWorkers: true });
-          if (!res) { res = await local(r, ring); inHere++; }
-          const rg = lay(res, res.M);
+          if (!res) { res = await local(r, ring, Rb); inHere++; }
+          // o.gap (C128): a frame after the answer, then the lay sliced (a frame every 6 ms of it: a long step at vs128)
+          if (o.gap) await o.gap();
+          const rg = o.gap ? await sliced(layG(res, res.M), o.gap) : lay(res, res.M);
           return Object.assign({}, res, { grid: rg.record(), base: PAL.names.length, names: [], entries: [], mats: [] });
         };
         return {
           vs: VS, n: N, size: [NRX, NRY], workers: pl ? pl.ws.filter((w) => !w.lost).length : 0,
-          bake: (r, ring = 16) => {
+          bake: (r, ring = 16, q = -1) => {
             if (!(r >= 0 && r < N) || r !== Math.floor(r)) return Promise.reject(new Error("W1: no region " + r + " (0.." + (N - 1) + ")"));
             if (stopped) return Promise.reject(new Error("W1: the baker was stopped"));
-            // (the pool keys its answers by r: another ring for the same r waits for the one baking)
-            const b = busy.get(r);
+            const Rb = q >= 0 ? ME.regionQuarter(r, q, NRX, RT, NX, NY) : null;
+            if (q >= 0 && !Rb) return Promise.reject(new Error("W1: region " + r + " has no quarter " + q));
+            // (the pool keys its answers by r and q: another ring for the same one waits for the one baking)
+            const k = q >= 0 ? N + 4 * r + q : r, b = busy.get(k);
             if (b && b.ring === ring) return b.p;
-            const p = (b ? b.p.catch(() => {}) : Promise.resolve()).then(() => one(r, ring));
-            busy.set(r, { ring, p });
-            p.catch(() => {}).then(() => { if (busy.get(r) && busy.get(r).p === p) busy.delete(r); });
+            const p = (b ? b.p.catch(() => {}) : Promise.resolve()).then(() => one(r, ring, q, Rb));
+            busy.set(k, { ring, p });
+            p.catch(() => {}).then(() => { if (busy.get(k) && busy.get(k).p === p) busy.delete(k); });
             return p;
           },
+          // quarters(r): the quarters q region r has (1 to 4: fewer where the map's edge cuts it)
+          quarters: (r) => [0, 1, 2, 3].filter((q) => ME.regionQuarter(r, q, NRX, RT, NX, NY)),
           stop: () => { stopped = true; if (pl) pl.stop(); },
           get stats() { return { workers: wk, live: pl ? pl.ws.filter((w) => !w.lost).length : 0, took, here: inHere, lost: pl ? pl.why.slice() : [] }; },
         };
@@ -7911,8 +7979,58 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
   // stop(), stats }; pass it to ME.bakeRegionHi. The baker keeps its workers (and the prelude's arrays) until
   // stop(). pal: the app's, as ME.bakeRegionHi's. o.here false: no region bakes here (baker.bake rejects, with
   // .noWorkers, where it would). o.jobMs: the workers' watchdog (ME.bakeJobMs wins); by default 4 min at vs >= 64,
-  // where a region takes 20-70 s (C128's slot, 2026-11-10: at 30 s both workers were lost mid-bake), else 30 s
-  ME.hiBaker = (st, pal, vs = 128, o = {}) => ME.bakeTerrain(st, pal, { vs, hold: true, here: o.here, jobMs: o.jobMs || (vs >= 64 ? 240000 : 0) });
+  // where a region takes 20-70 s (C128's slot, 2026-11-10: at 30 s both workers were lost mid-bake), else 30 s.
+  // o.gap: an async function the baker awaits between the main thread's steps of a region (C128: ME.nextFrame)
+  // C128's quarter units: quarter q (qx = q & 1, qy = q >> 1) of region r of a regions bake (NRX regions a row of
+  // RT columns, the grid NX x NY): its columns [i0, j0, i1, j1], split at half the region rounded down to a brick
+  // (16), or null where the map's edge leaves it empty
+  ME.regionQuarter = (r, q, NRX, RT, NX, NY) => {
+    const i0 = (r % NRX) * RT, j0 = Math.floor(r / NRX) * RT, i1 = Math.min(NX, i0 + RT), j1 = Math.min(NY, j0 + RT), h = (RT >> 5) << 4;
+    const R = [q & 1 ? i0 + h : i0, q >> 1 ? j0 + h : j0, q & 1 ? i1 : Math.min(i1, i0 + h), q >> 1 ? j1 : Math.min(j1, j0 + h)];
+    return R[2] > R[0] && R[3] > R[1] ? R : null;
+  };
+  // the quarters the base regions R (a mesh's regions, each { rect: [x0, y0, x1, y1] } in its columns, rt of them a
+  // region) have, as ME.regionQuarter's: ex[4n + q] 1 where region n has quarter q (its rect wider, or deeper, than
+  // half a region for the second column, or row)
+  ME.hiQuarters = (R, rt) => {
+    const ex = new Uint8Array(4 * R.length);
+    R.forEach(({ rect: c }, n) => { const x = c[2] - c[0] > rt / 2, y = c[3] - c[1] > rt / 2; ex[4 * n] = 1; ex[4 * n + 1] = x; ex[4 * n + 2] = y; ex[4 * n + 3] = x && y; });
+    return ex;
+  };
+  ME.hiBaker = (st, pal, vs = 128, o = {}) => ME.bakeTerrain(st, pal, { vs, hold: true, here: o.here, gap: o.gap, jobMs: o.jobMs || (vs >= 64 ? 240000 : 0) });
+  // C128's mesh worker: a worker of its own (terrainWorkerSrc, no init: it only meshes), so a region's greedy mesh runs
+  // at full speed off the main thread and not behind a terrain worker's bakes. null where no worker starts.
+  // mesh(grid, box) sends a copy of the grid (its table and used pool sliced, the copies transferred: the grid stays
+  // here, for the edits) and gives greedyMesh's mesh, as greedyMesh({ grid, ... }, { boxes: [box] }) gives it here;
+  // it rejects on the worker's error, once the worker is lost and after stop(). One job at a time, in order.
+  // stats: { n, ms (ask to answer, summed), sendMs (the copy and post here, summed), lost }
+  ME.meshWorker = () => {
+    let w = null, url = null, dead = null, next = 1;
+    const wait = new Map(), st = { n: 0, ms: 0, sendMs: 0, lost: null };
+    try { url = URL.createObjectURL(new Blob([terrainWorkerSrc()], { type: "text/javascript" })); w = new Worker(url); } catch (e) { if (url) URL.revokeObjectURL(url); return null; }
+    const fail = (why) => { if (!dead) dead = why; for (const f of wait.values()) f.reject(new Error(dead)); wait.clear(); };
+    w.onmessage = (e) => {
+      const d = e.data, f = d && wait.get(d.mesh);
+      if (!f) return;
+      wait.delete(d.mesh);
+      if (d.err) f.reject(new Error("mesh worker: " + d.err.split("\n")[0])); else f.resolve(d.m);
+    };
+    w.onerror = (e) => { if (e && e.preventDefault) e.preventDefault(); st.lost = "mesh worker lost: " + ((e && e.message) || "error"); fail(st.lost); };
+    return {
+      mesh(grid, box) {
+        if (dead) return Promise.reject(new Error(dead));
+        const t0 = ME.now(), id = next++, table = grid.table.slice(), pool = grid.pool.slice(0, grid.used * 4096);
+        const q = { mesh: id, box: Array.from(box), grid: { NX: grid.NX, NY: grid.NY, NZ: grid.NZ, win: grid.win ? grid.win.slice() : null, table, pool, used: grid.used, free: Int32Array.from(grid.free) } };
+        const p = new Promise((resolve, reject) => wait.set(id, { resolve, reject }));
+        w.postMessage(q, [table.buffer, pool.buffer]);
+        st.sendMs += ME.now() - t0;
+        return p.then((m) => { st.n++; st.ms += ME.now() - t0; return m; });
+      },
+      stop() { fail("mesh worker stopped"); if (w) w.terminate(); w = null; if (url) URL.revokeObjectURL(url); url = null; },
+      get stats() { return { n: st.n, ms: Math.round(st.ms), sendMs: Math.round(st.sendMs), lost: st.lost }; },
+    };
+  };
+  ME.meshWorker.job = meshJob;
 
   // W1: region r of the regions bake (4 x 4 tiles) at a second density
   // vs, apart from the map's terrain, on the main thread. Its grid is cropped to its bricks with one brick round
@@ -7921,15 +8039,22 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
   // the app's: the grid's ids are its ids (a material it hasn't yet is added, with a WARN: the draw's material
   // table doesn't know it). Returns { r, vs, grid, dims (the crop's voxels), origin (its corner, in vs voxels),
   // box (the region in the crop, for greedyMesh's opt.boxes), rect (the region in the map's grid at VS), d1, d2,
-  // bakeMs, postMs (the main thread's share, after the bake: the crop, the remap, the mips' slices), MB }. baker
-  // (ME.hiBaker's, made with the same st and pal): the region comes from it (its workers, or
-  // its main thread), with no prelude of its own, and vs is the baker's
-  ME.bakeRegionHi = async (st, pal, r, vs = 128, VS = ME.VS, baker = null) => {
-    const t0 = ME.now(), n0 = pal.names.length;
+  // bakeMs, MB }. baker (ME.hiBaker's, made with the same st and pal): the region comes from it (its workers, or
+  // its main thread), with no prelude of its own, and vs is the baker's. o.gap: an async function awaited between
+  // its main-thread steps (C128: ME.nextFrame, so no frame holds more than one of them). o.q (0..3, with a baker
+  // only; C128's quarter units): quarter q of the region (baker.bake's), its box and rect the quarter's; q in the result
+  // (-1: the whole region)
+  ME.bakeRegionHi = async (st, pal, r, vs = 128, VS = ME.VS, baker = null, o = {}) => {
+    const t0 = ME.now(), n0 = pal.names.length, gap = o.gap || (() => null), q = o.q >= 0 ? o.q : -1;
+    if (q >= 0 && !baker) throw new Error("W1: a quarter (o.q) needs a baker");
+    // a long step (the crop, the remap) run sliced with o.gap (a frame every 6 ms of it), else at once
+    const run = (it) => (o.gap ? sliced(it, o.gap) : drain(it));
     if (baker) vs = baker.vs;
-    const res = baker ? await baker.bake(r, 16) : await ME.bakeTerrain(st, pal, { vs, only: r, serve: (region) => region(r, false, 16) });
-    const t1 = ME.now(); // (from here on the main thread: postMs)
+    const res = baker ? await (q >= 0 ? baker.bake(r, 16, q) : baker.bake(r, 16)) : await ME.bakeTerrain(st, pal, { vs, only: r, serve: (region) => region(r, false, 16) });
+    const t1 = ME.now();
+    await gap();
     const g = BrickGrid.from(res.grid), [I0, I1, J0, J1] = res.M, S = g.table;
+    await gap();
     // the names the region's fork added, in the app's palette
     const LUT = new Uint8Array(256).map((_, i) => i);
     let same = true;
@@ -7942,18 +8067,18 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
       if (e !== 0) K1 = Math.max(K1, K + 1);
     }
     K0 = Math.max(0, Math.min(K0, K1) - 1); K1 = Math.min(g.BZ, K1 + 1);
-    const c = g.crop(I0, I1, J0, J1, K0, K1);
-    if (!same) {
+    const c = await run(g.cropping(I0, I1, J0, J1, K0, K1));
+    if (!same) await run((function* () {
       const T = c.table, P = c.pool;
       for (let b = 0; b < T.length; b++) if (T[b] < 256) T[b] = LUT[T[b]];
-      for (let i = 0; i < P.length; i++) P[i] = LUT[P[i]];
-    }
+      for (let a = 0; a < P.length; a += 1 << 20, yield) for (let i = a, z = Math.min(P.length, a + (1 << 20)); i < z; i++) P[i] = LUT[P[i]];
+    })());
     // the mips' z rows of the crop's bricks (8 a brick at the first level, 4 at the second)
     const [, , aw, ah, , , bw, bh] = res.cb, MZ = res.d1.length / (aw * ah), LZ = res.d2.length / (bw * bh);
     const d1 = res.d1.slice(K0 * 8 * aw * ah, Math.min(MZ, K1 * 8) * aw * ah), d2 = res.d2.slice(K0 * 4 * bw * bh, Math.min(LZ, K1 * 4) * bw * bh);
     const x0 = I0 << 4, y0 = J0 << 4, R = res.R, f = VS / vs;
     return {
-      r, vs, grid: c, dims: [c.NX, c.NY, c.NZ], origin: [x0, y0, K0 << 4], d1, d2,
+      r, q, vs, grid: c, dims: [c.NX, c.NY, c.NZ], origin: [x0, y0, K0 << 4], d1, d2,
       box: [R[0] - x0, R[1] - y0, R[2] - x0, R[3] - y0], rect: R.map((v) => Math.round(v * f)),
       bakeMs: Math.round(ME.now() - t0), postMs: +(ME.now() - t1).toFixed(1), MB: +((c.table.byteLength + c.pool.byteLength + d1.byteLength + d2.byteLength) / 1048576).toFixed(1),
     };
@@ -8102,6 +8227,8 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
    yield (ME.tick(opt.tickMs)) offered every slice, row and sort part, so a region is never one long task. The
    quads are the same either way. */
 (function () {
+  // greedyModule: the mesher alone (it reads only ME), also run in C128's mesh worker (bake-terrain.js, ME.meshWorker)
+  const greedyModule = function () {
   const ME = window.ME;
 
   ME.greedyMesh = async function (T, opt = {}) {
@@ -8375,6 +8502,9 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     }
     return { verts: V.subarray(0, nq * 16), index: IDX, snaps, quads: nq, regions, rt, meshMs: +bms.reduce((s, x) => s + x, 0).toFixed(1), ms: Math.round(ME.now() - t0) };
   };
+  };
+  greedyModule();
+  window.ME.greedyMesh.module = greedyModule;
 })();
 
 </script>
@@ -10582,6 +10712,357 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
       return true;
     },
   });
+})();
+
+</script>
+<script>/* ../MossheartEngine/src/c128.js */
+/* W2, C128 (docs/designs/2026-11-08-whole-game-128.md): the terrain's regions in view at a second density (128
+   by default) when the view is close, baked as the camera comes to them and dropped as it leaves.
+
+     const c = new ME.C128({ R, st, pal, T, phys, cam }); c.start();   ... c.stop();
+
+   The rule: with the regions in view (R.cullRegions' regionOut) at most o.cap (?c128cap=, 12), those regions go up
+   at o.vs (?c128vs=, 128), centre first (regionD); once the camera has rested for o.restMs their ring (the bake
+   grid's 8 neighbours) follows, nearest first and only as far as o.keep leaves room past the view (so a resting
+   camera bakes nothing more once that is resident). Nothing is cancelled: a region asked for bakes to the end and stays resident.
+   Each region: ME.hiBaker's bake (its workers; none and C128 stays off with a WARN, no main-thread bakes in play),
+   the edits so far replayed into it (ME.mirrorRegion over phys.orig), greedyMesh one region at a time on a mesh
+   worker of its own (ME.meshWorker: a copy of the grid sent, the grid kept here for the edits; ?c128meshworker=0,
+   no worker or its error: here, quiet, a yield offered every slice and every o.meshTickMs at most, the globals left
+   alone), then R.hiAdd staged and o.mb MB of its density a frame (R.hiStep), drawn once all of it is up. An edit
+   while a region meshes marks it dirty, so it re-meshes once in. Fades run o.fadeMs (400 ms) on P3b's dither: up when in view and on, down when on goes off (the view
+   widened past the cap) or the region left the view. o.keep regions stay resident at most (a desktop: cap, a
+   phone: cap too): past that the least recently seen at fade 0 go (R.hiDrop). Edits (R.carve's cells, R.onCarve) mirror into each resident
+   region; a changed one re-meshes (one every o.remeshMs at most) and goes up again staged, the old one drawn until
+   then. The physics stays at the base density (W3 owns a carve path at the second density).
+   A phone runs it with smaller numbers (ME.C128.PHONE: cap 6, keep 6, mb 1) than a desktop (ME.C128.DESK: 12,
+   cap, 3; it was cap + 8, and 20 resident regions took 0.6 GB of GPU at vs40). The phone's cap was 4, but at its
+   closest zoom Momiji's view needs 5 regions, so C128 never came on (#727's probe); 6 keeps its resident 6. After
+   a region's bake its main-thread steps (lay, crop, the remap) run sliced: a frame (ME.nextFrame) after every 6 ms
+   of them, never one long task (each was 80-250 ms at vs128). o.phone (or ?c128phone=1 / 0)
+   picks the set; unset, ME.phoneLike() does (a phone or tablet, or a device with 4 GB of memory or less). o.cap, o.keep, o.mb and their URL keys still win over either set.
+   Step 2's units: a region goes up as its quarters (2x2 tiles of the hi grid each, ME.regionQuarter; an edge region
+   has fewer), each baked, meshed, sent and faded on its own (key 4n + q; R.hiAdd, hiFade, hiDrop), so the first
+   one shows about four times sooner. The plan, cap, keep and evict stay over base regions: a region is had once all
+   its quarters are asked for, and an evicted one drops all of them. o.quarters (?c128q=0: off) bakes whole regions.
+   stats(): { phone, on, quarters, view, resident (regions), units (quarters), ready (units), regionsReady, inflight,
+   baked, failed, bakeMs, meshMs, readyMs, firstAt, upMs, preMs, cpuMB, gpuMB, edits, remesh, frames, mesher ("worker"
+   or "main"), meshWorker (its stats) } (bakeMs, meshMs, readyMs: { avg, max }; meshMs from the ask to the mesh, the
+   worker's queue included; readyMs a unit's ask to drawn; firstAt the page time the first unit was drawn).
+   The pure parts (order, plan, evict, ring, hasAll, wantKeys, byRegion) are ME.C128.* for the node tests. */
+(function () {
+  const ME = window.ME;
+
+  // ids sorted by dist[id], nearest first (W2's order: the view's centre first)
+  const order = (ids, dist) => ids.slice().sort((a, b) => dist[a] - dist[b] || a - b);
+  // the regions to ask for: on when 0 < view.length <= cap; then those in view not yet had (has(n)), in order, and
+  // once resting the ring's, cut to the room keep leaves past the view (nearest first): a ring past keep would be
+  // evicted and asked for again every frame. ring: the ring kept (had or wanted), which evict leaves alone.
+  const plan = ({ view, ring = [], cap, keep = Infinity, resting, has }) => {
+    const on = view.length > 0 && view.length <= cap, want = [], kept = [];
+    if (on) {
+      for (const n of view) if (!has(n)) want.push(n);
+      if (resting) {
+        const room = Math.max(0, keep - view.length);
+        for (const n of ring) {
+          if (kept.length >= room) break;
+          if (view.includes(n) || kept.includes(n)) continue;
+          kept.push(n);
+          if (!has(n)) want.push(n);
+        }
+      }
+    }
+    return { on, want, ring: kept };
+  };
+  // recs: [{ n, seen, fade, busy }]; the ones to drop to keep `keep` at most: the least recently seen, at fade 0,
+  // not busy (baking, meshing, going up) and not in view
+  const evict = (recs, keep, inView) => {
+    const over = recs.length - keep;
+    if (over <= 0) return [];
+    return recs.filter((r) => r.fade <= 0 && !r.busy && !inView(r.n)).sort((a, b) => a.seen - b.seen).slice(0, over).map((r) => r.n);
+  };
+  // step 2's units: a base region n's quarters (2x2 tiles of the hi grid each) are keys 4n + q; ex[4n + q] says
+  // whether quarter q exists (ME.hiQuarters; an edge region has fewer). has(n): every one of n's has a record.
+  // wantKeys: the quarter keys of plan's want (in its order, q 0..3 within a region) with no record yet.
+  const hasAll = (n, ex, has) => { for (let q = 0; q < 4; q++) if (ex[4 * n + q] && !has(4 * n + q)) return false; return true; };
+  const wantKeys = (want, ex, has) => {
+    const out = [];
+    for (const n of want) for (let q = 0; q < 4; q++) if (ex[4 * n + q] && !has(4 * n + q)) out.push(4 * n + q);
+    return out;
+  };
+  // recs by quarter ([{ n, seen, fade, busy }]) to one per base region for evict: seen and fade their max, busy if
+  // any is (a region's quarters go together)
+  const byRegion = (recs) => {
+    const m = new Map();
+    for (const r of recs) {
+      const g = m.get(r.n);
+      if (!g) m.set(r.n, { n: r.n, seen: r.seen, fade: r.fade, busy: r.busy });
+      else { g.seen = Math.max(g.seen, r.seen); g.fade = Math.max(g.fade, r.fade); g.busy = g.busy || r.busy; }
+    }
+    return [...m.values()];
+  };
+  // the bake regions around r on a grid of size [NRX, NRY] (8 neighbours, the grid's edge clipped)
+  const ring = (r, size) => {
+    const [NX, NY] = size, x = r % NX, y = Math.floor(r / NX), out = [];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const u = x + dx, v = y + dy;
+      if ((dx || dy) && u >= 0 && v >= 0 && u < NX && v < NY) out.push(v * NX + u);
+    }
+    return out;
+  };
+  // the numbers by device: a phone keeps fewer 128 regions resident (each one's density and mesh on the GPU, its
+  // bake on the CPU) and sends less a frame
+  const PHONE = { cap: 6, keep: 6, mb: 1 }, DESK = { cap: 12, keep: 12, mb: 3 };
+  // o.phone, else ?c128phone= (1 or 0), else ME.phoneLike()
+  const phone = (o = {}) => {
+    if (o.phone !== undefined) return !!o.phone;
+    const q = ME.qn("c128phone", -1);
+    if (q >= 0) return q > 0;
+    if (typeof ME.phoneLike === "function") return ME.phoneLike();
+    return typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+  };
+
+  class C128 {
+    constructor(app, o = {}) {
+      this.app = app;
+      this.phone = phone(o);
+      const D = this.phone ? PHONE : DESK, cap = o.cap ?? ME.qn("c128cap", D.cap);
+      this.o = {
+        cap, vs: o.vs ?? ME.qn("c128vs", 128), keep: o.keep ?? ME.qn("c128keep", cap + D.keep - D.cap), mb: o.mb ?? ME.qn("c128mb", D.mb),
+        fadeMs: o.fadeMs ?? 400, restMs: o.restMs ?? 500, remeshMs: o.remeshMs ?? 300, meshTickMs: o.meshTickMs ?? 4,
+        quarters: o.quarters ?? ME.qn("c128q", 1) > 0,
+      };
+      this.alive = false; this.off = ""; this.recs = new Map(); this.gen = 0; this.mesh = null;
+      this.baker = null; this.bakerP = null; this.inflight = 0; this.meshQ = Promise.resolve();
+      this.camSig = ""; this.camT = 0; this.on = false; this.view = []; this.warned = new Set();
+      this.st = { baked: 0, failed: 0, bakeMs: [], meshMs: [], readyMs: [], postMs: [], mirrorMs: [], addMs: [], firstAt: undefined, upMs: 0, preMs: undefined, edits: 0, remesh: 0, frames: 0, ms: 0, maxMs: 0 };
+      this.lastRemesh = 0; this.tPrev = 0;
+    }
+    warn(k, m) { if (!this.warned.has(k)) { this.warned.add(k); ME.log("WARN C128: " + m); } }
+
+    start() {
+      if (this.alive) return this;
+      if (this.phone) ME.log(`C128: phone numbers (cap ${this.o.cap}, keep ${this.o.keep}, ${this.o.mb} MB a frame)`);
+      const { R } = this.app, T = R.S.T;
+      if (!T.stats || !T.stats.regions || !R.S.mesh.regions) { this.off = "regions"; this.warn("regions", "needs a terrain by regions (?regions=1)"); return this; }
+      this.alive = true;
+      R.onCarve = (cells) => this.onCarve(cells);
+      const self = this;
+      this.task = R.addTask((function* () { while (self.alive) { self.step(); yield "frame"; } })());
+      this.task.catch(() => { this.alive = false; });
+      return this;
+    }
+    stop() {
+      const { R } = this.app;
+      this.alive = false; this.gen++;
+      if (R.onCarve) R.onCarve = null;
+      if (this.baker) this.baker.stop();
+      if (this.mw) this.mw.stop();
+      this.baker = null; this.bakerP = null; this.mw = undefined;
+      this.recs.clear(); R.hiClear();
+    }
+
+    // the base mesh's regions and the bake grid, again when the terrain was swapped (old records dropped)
+    sync() {
+      const { R } = this.app, T = R.S.T, mesh = R.S.mesh;
+      if (mesh === this.mesh) return true;
+      // (a new terrain: the baker's prelude was the old one's)
+      if (this.mesh && this.baker) { this.baker.stop(); this.baker = null; this.bakerP = null; }
+      this.gen++; this.recs.clear(); this.mesh = mesh;
+      if (!mesh.regions || !T.stats || !T.stats.regions) { this.n2r = null; return false; }
+      const rs = T.stats.regions, NRX = rs.size[0], rt = rs.rt;
+      this.size = rs.size;
+      this.n2r = Int32Array.from(mesh.regions, (g) => Math.floor(g.rect[1] / rt) * NRX + Math.floor(g.rect[0] / rt));
+      this.r2n = new Map();
+      this.n2r.forEach((r, n) => this.r2n.set(r, n));
+      // each region's quarters (o.quarters off: one unit, key 4n, the whole region)
+      if (this.o.quarters) this.ex = ME.hiQuarters(mesh.regions, rt);
+      else { this.ex = new Uint8Array(4 * mesh.regions.length); for (let n = 0; n < mesh.regions.length; n++) this.ex[4 * n] = 1; }
+      return true;
+    }
+
+    step() {
+      const t0 = ME.now(), { R, cam } = this.app, o = this.o;
+      const dt = this.tPrev ? Math.min(100, t0 - this.tPrev) : 0;
+      this.tPrev = t0;
+      if (this.off || !this.sync() || !this.n2r) return;
+      const out = R.regionOut, D = R.regionD;
+      if (!out || !D || out.length !== this.n2r.length) return;
+      // the view, centre first, and whether the camera rests
+      const view = [];
+      for (let n = 0; n < out.length; n++) if (!out[n]) view.push(n);
+      this.view = order(view, D);
+      const sig = cam ? [cam.pan[0], cam.pan[1], cam.zoom, cam.theta].map((v) => v.toFixed(4)).join() : "";
+      if (sig !== this.camSig) { this.camSig = sig; this.camT = t0; }
+      const resting = t0 - this.camT >= o.restMs && !(cam && cam.turning);
+      const inView = new Set(this.view);
+      let rg = [];
+      if (resting) {
+        const s = new Set();
+        for (const n of this.view) for (const r of ring(this.n2r[n], this.size)) { const m = this.r2n.get(r); if (m !== undefined && !inView.has(m)) s.add(m); }
+        rg = order([...s], D);
+      }
+      const has = (k) => this.recs.has(k), ex = this.ex;
+      const p = plan({ view: this.view, ring: rg, cap: o.cap, keep: o.keep, resting, has: (n) => hasAll(n, ex, has) });
+      const kept = new Set(p.ring);
+      this.on = p.on;
+      // (a stream's crossfade swaps the mesh under us: nothing new until it ends)
+      if (p.on && !R.tfade) {
+        if (!this.baker) this.startBaker();
+        else {
+          // (asks only while a worker lives: C128 never bakes a region on the main thread)
+          const lw = this.baker.stats.live;
+          if (!lw) return this.shut("workers", "every terrain worker was lost: off (" + this.baker.stats.lost.join("; ") + ")");
+          for (const k of wantKeys(p.want, ex, has)) { if (this.inflight >= lw) break; this.ask(k >> 2, o.quarters ? k & 3 : -1); }
+        }
+      }
+      // fades, seen, install
+      const df = o.fadeMs > 0 ? dt / o.fadeMs : 1;
+      for (const rec of this.recs.values()) {
+        const seen = inView.has(rec.n);
+        if (seen) rec.seen = t0;
+        const H = R.his && R.his.get(rec.key);
+        if (!H || !(H.ready || H.prev)) continue;
+        const to = p.on && seen ? 1 : 0;
+        if (H.fade !== to) R.hiFade(rec.key, H.fade + Math.sign(to - H.fade) * Math.min(df, Math.abs(to - H.fade)));
+        rec.fade = H.fade;
+      }
+      if (R.his) R.hiStep(o.mb * 1048576);
+      for (const rec of this.recs.values()) if (rec.state === "up" && rec.H && rec.H.ready) {
+        rec.state = "in"; this.st.upMs = Math.max(this.st.upMs, rec.H.upMs);
+        if (rec.t0 !== undefined) { this.st.readyMs.push(Math.round(t0 - rec.t0)); rec.t0 = undefined; }
+        if (this.st.firstAt === undefined) this.st.firstAt = Math.round(t0);
+      }
+      // edits: one changed region re-meshed at a time, every remeshMs at most
+      if (t0 - this.lastRemesh >= o.remeshMs) for (const rec of this.recs.values()) if (rec.dirty && rec.state === "in") { this.lastRemesh = t0; this.remesh(rec); break; }
+      // the LRU, over base regions: an evicted region's quarters all go
+      const recs = byRegion([...this.recs.values()].map((r) => ({ n: r.n, seen: r.seen, fade: r.fade, busy: r.state !== "in" && r.state !== "fail" })));
+      for (const n of evict(recs, o.keep, (n) => inView.has(n) || kept.has(n))) for (let q = 0; q < 4; q++) if (this.recs.delete(4 * n + q)) R.hiDrop(4 * n + q);
+      const d = ME.now() - t0;
+      this.st.frames++; this.st.ms += d; if (d > this.st.maxMs) this.st.maxMs = d;
+    }
+
+    startBaker() {
+      if (this.bakerP) return;
+      const { st, pal } = this.app, tb = ME.now(), g = this.gen;
+      this.bakerP = Promise.all([ME.hiBaker(st, pal, this.o.vs, { here: false, gap: ME.nextFrame }), this.app.R.prepHi()]).then(([b]) => {
+        if (!this.alive || g !== this.gen) { b.stop(); this.bakerP = null; return; }
+        this.st.preMs = Math.round(ME.now() - tb);
+        if (!b.workers) { b.stop(); this.off = "workers"; this.warn("workers", "no terrain workers: off (a region would bake on the main thread)"); return; }
+        this.baker = b;
+      }, (e) => { this.off = "baker"; this.warn("baker", "the baker failed: " + (e && e.message)); });
+    }
+
+    // off for good (k: this.off): the baker stopped, the regions dropped (the map's terrain shows again)
+    shut(k, m) {
+      this.off = k; this.warn(k, m);
+      if (this.baker) { this.lost = this.baker.stats.lost; this.baker.stop(); this.baker = null; }
+      if (this.mw) { this.mw.stop(); this.mw = null; }
+      for (const n of this.recs.keys()) this.app.R.hiDrop(n);
+      this.recs.clear(); this.gen++;
+    }
+
+    // region n's quarter q (-1: the whole region, key 4n): bake, replay the edits, mesh, install staged
+    ask(n, q = -1) {
+      const { R, st, pal, phys } = this.app, T = R.S.T, g = this.gen, r = this.n2r[n], key = 4 * n + Math.max(0, q);
+      const rec = { n, q, key, r, state: "bake", h: null, H: null, seen: ME.now(), t0: ME.now(), fade: 0, dirty: false };
+      this.recs.set(key, rec);
+      this.inflight++;
+      const live = () => this.alive && g === this.gen && this.recs.get(key) === rec;
+      ME.bakeRegionHi(st, pal, r, this.o.vs, T.VS, this.baker, { gap: ME.nextFrame, q })
+        .then((h) => {
+          this.inflight--;
+          if (!live()) return;
+          this.st.baked++; this.st.bakeMs.push(h.bakeMs); this.st.postMs.push(h.postMs);
+          if (phys && phys.orig && phys.orig.size) this.st.mirrorMs.push(ME.mirrorRegion(h, T, phys.orig).ms);
+          rec.h = h; rec.state = "mesh"; rec.dirty = false;
+          return this.meshInstall(rec, live);
+        }, (e) => { this.inflight--; throw e; })
+        .catch((e) => {
+          if (!live()) return;
+          rec.state = "fail"; this.st.failed++;
+          this.warn("fail" + key, "region " + n + (q >= 0 ? " quarter " + q : "") + " (bake " + r + "): " + (e && e.message));
+          if (rec.H) R.hiDrop(key);
+        });
+    }
+    // greedyMesh on the queue (one region at a time; on the mesh worker, else here quiet: a yield every
+    // o.meshTickMs, never one long task), then R.hiAdd staged
+    meshInstall(rec, live) {
+      const { R } = this.app, h = rec.h;
+      const p = this.meshQ.then(async () => {
+        if (!live()) return;
+        const t0 = ME.now();
+        const m = await this.meshOf(h);
+        if (!m) return;
+        this.st.meshMs.push(Math.round(ME.now() - t0));
+        if (!live() || R.S.mesh !== this.mesh) return;
+        const t1 = ME.now();
+        rec.H = R.hiAdd(h, m, { staged: true });
+        this.st.addMs.push(+(ME.now() - t1).toFixed(1));
+        rec.state = "up";
+      });
+      this.meshQ = p.catch(() => {});
+      return p;
+    }
+    // region h's mesh: on the mesh worker (made on the first; ?c128meshworker=0 or none: here, quiet). A worker's
+    // error or loss: a WARN, the worker stopped and this and every later mesh here. null once C128 stopped
+    async meshOf(h) {
+      if (this.mw === undefined) this.mw = ME.qn("c128meshworker", 1) && typeof Worker !== "undefined" && ME.meshWorker ? ME.meshWorker() : null;
+      if (this.mw) {
+        try { return await this.mw.mesh(h.grid, h.box); } catch (e) {
+          if (!this.alive || this.off) return null;
+          this.lostMw = this.mw.stats; this.mw.stop(); this.mw = null;
+          this.warn("meshworker", (e && e.message) + ": meshing on the main thread");
+        }
+      }
+      return ME.greedyMesh({ grid: h.grid, NX: h.dims[0], NY: h.dims[1], NZ: h.dims[2], stats: {} }, { boxes: [h.box], quiet: true, tickMs: this.o.meshTickMs });
+    }
+    remesh(rec) {
+      const g = this.gen;
+      rec.dirty = false; rec.state = "mesh"; this.st.remesh++;
+      this.meshInstall(rec, () => this.alive && g === this.gen && this.recs.get(rec.key) === rec).catch((e) => {
+        rec.state = "in"; this.warn("remesh", "re-mesh failed: " + (e && e.message));
+      });
+    }
+    // R.carve's cells (base indices): into each resident region; a changed one re-meshes
+    onCarve(cells) {
+      const { R, phys } = this.app, T = R.S.T;
+      if (!phys || !phys.orig) return;
+      this.st.edits++;
+      for (const rec of this.recs.values()) {
+        if (!rec.h) continue; // (still baking: orig replays into it once baked)
+        if (ME.mirrorRegion(rec.h, T, phys.orig, cells).n > 0) rec.dirty = true;
+      }
+    }
+
+    stats() {
+      const S = this.st, a = (v) => (v.length ? { avg: Math.round(v.reduce((x, y) => x + y, 0) / v.length), max: Math.max(...v) } : null);
+      let ready = 0, cpu = 0, gpu = 0;
+      const part = new Set(), full = new Set();
+      for (const rec of this.recs.values()) {
+        if (rec.h) cpu += rec.h.MB;
+        if (rec.H) { gpu += rec.H.MB; if (rec.H.ready) ready++; }
+        full.add(rec.n);
+        if (!(rec.H && rec.H.ready)) part.add(rec.n);
+      }
+      let regionsReady = 0;
+      if (this.ex) for (const n of full) if (!part.has(n) && hasAll(n, this.ex, (k) => this.recs.has(k))) regionsReady++;
+      const pm = typeof performance !== "undefined" && performance.memory;
+      return {
+        phone: this.phone, on: this.on, off: this.off || undefined, quarters: this.o.quarters, view: this.view.length, resident: full.size, units: this.recs.size, ready, regionsReady, inflight: this.inflight,
+        baked: S.baked, failed: S.failed, bakeMs: a(S.bakeMs), meshMs: a(S.meshMs), readyMs: a(S.readyMs), firstAt: S.firstAt, upMs: S.upMs, preMs: S.preMs,
+        // the main thread's shares of a region (one task each, so a frame's spike): after the bake, the edits' replay, R.hiAdd
+        postMs: a(S.postMs), mirrorMs: a(S.mirrorMs), addMs: a(S.addMs),
+        cpuMB: +cpu.toFixed(1), gpuMB: +gpu.toFixed(1), edits: S.edits, remesh: S.remesh,
+        frames: S.frames, stepMs: S.frames ? +(S.ms / S.frames).toFixed(3) : 0, stepMax: +S.maxMs.toFixed(2),
+        heapMB: pm ? Math.round(pm.usedJSHeapSize / 1048576) : undefined,
+        baker: this.baker ? this.baker.stats : undefined, lost: this.lost,
+        mesher: this.mw ? "worker" : this.mw === null ? "main" : undefined, meshWorker: this.mw ? this.mw.stats : this.lostMw,
+      };
+    }
+  }
+  Object.assign(C128, { order, plan, evict, ring, phone, PHONE, DESK, hasAll, wantKeys, byRegion });
+  ME.C128 = C128;
 })();
 
 </script>
@@ -14087,7 +14568,7 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
      settled()       a promise of the ms R's first frames took to settle (ME.settleGen: the wait a progressive
                      bake's full bakes take), counted from R.init's first frame: the hook for work the game can
                      leave behind them (Mossheart's rules record, before the first wave)
-     prepHi(), hiAdd(h, mesh, o), hiStep(bytes), hiFade(n, f), hiDrop(n), hiClear()  terrain regions at a
+     prepHi(), hiAdd(h, mesh, o), hiStep(bytes), hiFade(key, f), hiDrop(key), hiClear()  terrain regions at a
                      second density over the base mesh, faded on the dither (W2: ME.C128 drives them); onCarve(cells)
                      hears each carve first
      weather         an ME.WeatherMix: setWeather(kind, k, s) or weather.mix(vector, s) eases clouds, wind and
@@ -15495,8 +15976,11 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     // others, through terrainOld and a fade buffer by base region, this.hiUnder). Each region has its own density
     // texture and grid uniform (h.origin in its voxels, h.vs of them a unit, then the fade: W.terrainHi); the
     // materials are the map's (h's palette was mapped into it). Needs a mesh by regions with a region of h.rect.
-    // this.his: base region -> its record; this.hiState by base region: 1 drawn at the second density only, 2 under
-    // a fade (drawSnap leaves both), null with none.
+    // this.his: key -> its record, the key 4n + q for quarter q of base region n (C128's units: h.q from
+    // ME.bakeRegionHi's o.q) and 4n for a whole region (h.q -1, its quarters all of it); this.hiState by base region:
+    // 1 drawn at the second density only (each of its quarters up at fade 1), 2 under a fade (any at a fade over 0;
+    // the fade buffer by quarter, so a quarter up and its neighbour not each show their own), null with none. Don't
+    // add a region's quarters and the whole region together (a quarter added drops the whole one).
     // prepHi(): the pipelines (terrainHi, and the fade's: prepFade), a promise; hiAdd needs them
     prepHi() {
       if (!this.plHiP) {
@@ -15507,25 +15991,32 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       return this.plHiP;
     }
     // region h (mesh: its mesh) over its base region at o.fade (default 0, or the fade of the one it replaces). Its
-    // density goes up now, or with o.staged a few z layers at a time (hiStep: W2's install, a few MB a frame); it
+    // mesh and density go up now, or with o.staged a piece at a time (hiStep: W2's install, a few MB a frame); it
     // draws once all of it is up. A region already there is replaced: the old one draws (at the new one's fade)
-    // until the new one is up (an edit's re-mesh, W2). Returns its record { n, fade, ready, MB, quads, upMs }
+    // until the new one is up (an edit's re-mesh, W2). Returns its record { n, q, key, fade, ready, MB, quads, upMs }
     hiAdd(h, mesh, o = {}) {
-      const d = this.dev, T = this.S.T, R = this.S.mesh.regions;
+      const d = this.dev, T = this.S.T, R = this.S.mesh.regions, q = h.q >= 0 ? h.q : -1, c = h.rect;
       if (!this.plHi) throw new Error("hiAdd: no pipeline yet (await R.prepHi())");
-      const n = R ? R.findIndex((g) => g.rect.every((v, a) => v === h.rect[a])) : -1;
+      // a whole region: the base region of its rect; a quarter: the one its rect is in
+      const n = !R ? -1 : q < 0 ? R.findIndex((g) => g.rect.every((v, a) => v === c[a])) : R.findIndex((g) => g.rect[0] <= c[0] && g.rect[1] <= c[1] && c[2] <= g.rect[2] && c[3] <= g.rect[3]);
       if (n < 0) throw new Error("hiAdd: no base region at " + h.rect + (R ? "" : " (a mesh not by regions)"));
-      const his = this.his || (this.his = new Map()), old = his.get(n), [cw, ch, cz] = h.dims, dims = [cw >> 1, ch >> 1, cz >> 1];
+      const his = this.his || (this.his = new Map()), key = 4 * n + Math.max(0, q);
+      if (q >= 0 && his.has(4 * n) && his.get(4 * n).q < 0) this.hiDrop(4 * n);
+      if (q < 0) for (let k = 1; k < 4; k++) this.hiDrop(4 * n + k);
+      const old = his.get(key), [cw, ch, cz] = h.dims, dims = [cw >> 1, ch >> 1, cz >> 1];
       const tex = d.createTexture({ label: "density hi", format: "r8unorm", dimension: "3d", size: dims, mipLevelCount: 2, usage: GU.TEXTURE_BINDING | GU.COPY_DST });
       const iv = 1 / h.vs, fade = Math.min(1, Math.max(0, o.fade ?? (old ? old.fade : 0)));
       const u = new Float32Array([T.O[0] + h.origin[0] * iv, T.O[1] + h.origin[1] * iv, T.O[2] + h.origin[2] * iv, h.vs, cw, ch, cz, h.vs / T.VS, fade, 0, 0, 0]);
       const ubuf = d.createBuffer({ label: "grid hi", size: u.byteLength, usage: BU.UNIFORM | BU.COPY_DST });
       d.queue.writeBuffer(ubuf, 0, u);
+      // staged, the mesh goes up in pieces too (before the density): a vs128 region's is tens of MB, and one
+      // mapped copy of it held a frame for hundreds of ms (#727's probe)
+      const st = !!o.staged, buf = (a, use, label) => st ? d.createBuffer({ label, size: Math.max(16, Math.ceil(a.byteLength / 4) * 4), usage: use | BU.COPY_DST }) : ME.buffer(d, a, use, label);
+      const vb = buf(mesh.verts, BU.VERTEX, "terrain hi vb"), ib = buf(mesh.index, BU.INDEX, "terrain hi ib");
       const H = {
-        n, fade, ready: false, tex, dims, ubuf, u, snaps: mesh.snaps, idx: mesh.index.BYTES_PER_ELEMENT === 2 ? "uint16" : "uint32",
-        vb: ME.buffer(d, mesh.verts, BU.VERTEX, "terrain hi vb"), ib: ME.buffer(d, mesh.index, BU.INDEX, "terrain hi ib"),
+        n, q, key, fade, ready: false, tex, dims, ubuf, u, snaps: mesh.snaps, idx: mesh.index.BYTES_PER_ELEMENT === 2 ? "uint16" : "uint32", vb, ib,
         g1: this.bg(this.plHi, 1, [tex.createView(), this.lin, { buffer: this.matBuf }, { buffer: ubuf }]),
-        up: { levels: [h.d1, h.d2], mip: 0, z: 0 }, upMs: 0, quads: mesh.quads, prev: null,
+        up: { bufs: st ? [[vb, mesh.verts], [ib, mesh.index]] : [], b: 0, off: 0, levels: [h.d1, h.d2], mip: 0, z: 0 }, upMs: 0, quads: mesh.quads, prev: null,
         MB: +((h.d1.byteLength + h.d2.byteLength + mesh.verts.byteLength + mesh.index.byteLength) / 1048576).toFixed(1),
       };
       // the one it replaces: drawn until H is up (one still going up never draws: dropped, its own prev kept)
@@ -15535,16 +16026,27 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
         else { old.prev = null; this.hiFree(old); }
       }
       if (H.prev) this.hiFadeOf(H.prev, fade);
-      his.set(n, H);
+      his.set(key, H);
       if (!o.staged) this.hiUpload(H, Infinity);
       this.hiSync();
       return H;
     }
-    // up to `bytes` of a region's density (its two levels, z layer by z layer, at least one layer) into its texture
+    // up to `bytes` of a region (64 KB at least): staged, its mesh first (vb then ib, in pieces), then its density
+    // (its two levels, z layer by z layer, at least one layer) into its texture
     hiUpload(H, bytes) {
       const U = H.up, d = this.dev, t0 = ME.now();
       let sent = 0;
-      while (U && U.mip < 2 && sent < bytes) {
+      while (U && U.b < U.bufs.length && sent < bytes) {
+        const [b, a] = U.bufs[U.b], len = a.byteLength;
+        if (U.off >= len) { U.b++; U.off = 0; continue; }
+        // writeBuffer takes a multiple of 4 bytes: the pieces before the last are, the last is padded
+        const n = Math.min(len - U.off, sent ? bytes - sent : Math.max(65536, bytes)), k = U.off + n >= len ? len - U.off : n & ~3;
+        if (!k) break;
+        const v = new Uint8Array(a.buffer, a.byteOffset + U.off, k);
+        if (k & 3) { const p = new Uint8Array((k + 3) & ~3); p.set(v); d.queue.writeBuffer(b, U.off, p); } else d.queue.writeBuffer(b, U.off, v);
+        sent += k; U.off += k;
+      }
+      while (U && U.b >= U.bufs.length && U.mip < 2 && sent < bytes) {
         const w = Math.max(1, H.dims[0] >> U.mip), h = Math.max(1, H.dims[1] >> U.mip), D = Math.max(1, H.dims[2] >> U.mip), L = w * h;
         const nz = Math.min(D - U.z, Math.max(1, Math.floor((bytes - sent) / L)));
         d.queue.writeTexture({ texture: H.tex, mipLevel: U.mip, origin: [0, 0, U.z] }, U.levels[U.mip], { offset: U.z * L, bytesPerRow: w, rowsPerImage: h }, [w, h, nz]);
@@ -15566,9 +16068,9 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       return sent;
     }
     hiFadeOf(H, f) { H.fade = f; H.u[8] = f; this.dev.queue.writeBuffer(H.ubuf, 32, H.u, 8, 1); }
-    // base region n's region to fade f (0..1)
-    hiFade(n, f) {
-      const H = this.his && this.his.get(n);
+    // the region (or quarter) of key to fade f (0..1)
+    hiFade(key, f) {
+      const H = this.his && this.his.get(key);
       f = Math.min(1, Math.max(0, f));
       if (!H || H.fade === f) return;
       this.hiFadeOf(H, f);
@@ -15576,14 +16078,14 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       this.hiSync();
     }
     hiFree(H) { for (const b of [H.tex, H.ubuf, H.vb, H.ib]) b.destroy(); if (H.prev) this.hiFree(H.prev); }
-    // base region n back to the base mesh (its region's resources go)
-    hiDrop(n) {
-      const H = this.his && this.his.get(n);
+    // the region (or quarter) of key back to the base mesh (its resources go)
+    hiDrop(key) {
+      const H = this.his && this.his.get(key);
       if (!H) return;
-      this.his.delete(n); this.hiFree(H); this.hiSync();
+      this.his.delete(key); this.hiFree(H); this.hiSync();
     }
     hiClear() {
-      if (this.his) for (const n of [...this.his.keys()]) this.hiDrop(n);
+      if (this.his) for (const k of [...this.his.keys()]) this.hiDrop(k);
       const U = this.hiUnder;
       if (U) { for (const b of [U.buf, U.rg, U.dummy]) b.destroy(); this.hiUnder = null; }
       this.hiState = null;
@@ -15595,26 +16097,41 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       const hs = this.hiState && this.hiState.length === R.length ? this.hiState.fill(0) : (this.hiState = new Uint8Array(R.length));
       let U = this.hiUnder, any = 0;
       if (U && U.mesh !== this.S.mesh) { for (const b of [U.buf, U.rg, U.dummy]) b.destroy(); U = this.hiUnder = null; }
+      // each base region's quarters' fades (a whole region's for all four)
+      const qf = new Map();
       for (const H of his.values()) {
         const f = H.ready || H.prev ? H.fade : 0;
-        hs[H.n] = f >= 1 ? 1 : f > 0 ? 2 : 0;
-        if (hs[H.n] === 2) {
+        let a = qf.get(H.n);
+        if (!a) qf.set(H.n, (a = [0, 0, 0, 0]));
+        if (H.q < 0) a.fill(f); else a[H.q] = f;
+      }
+      const ex = this.hiEx && this.hiEx.R === R ? this.hiEx.ex : (this.hiEx = { R, ex: ME.hiQuarters(R, this.S.mesh.rt) }).ex;
+      for (const [n, a] of qf) {
+        let all = true, some = false;
+        for (let q = 0; q < 4; q++) if (ex[4 * n + q]) { if (a[q] < 1) all = false; if (a[q] > 0) some = true; }
+        hs[n] = all ? 1 : some ? 2 : 0;
+        if (hs[n] === 2) {
           if (!U) U = this.hiUnderFor();
           if (!any) U.data.fill(0, 4);
-          U.data[4 + U.cell[H.n]] = f; any = 1;
+          for (let q = 0; q < 4; q++) if (ex[4 * n + q]) U.data[4 + U.cell[4 * n + q]] = a[q];
+          any = 1;
         }
       }
       if (U) { U.any = any; if (any) this.dev.queue.writeBuffer(U.buf, 0, U.data); }
     }
-    // the under pass's fade buffer (startTfade's layout: [O.x, O.y, regions per unit, columns], then a fade by cell,
-    // a base region's the cell its box's centre is in), its grid uniform and a carve with none
+    // the under pass's fade buffer (startTfade's layout: [O.x, O.y, cells per unit, columns], then a fade by cell, a
+    // cell a quarter of a base region: cell[4n + q] the one quarter q's centre is in, -1 for a quarter it hasn't), its
+    // grid uniform and a carve with none
     hiUnderFor() {
-      const d = this.dev, T = this.S.T, mesh = this.S.mesh, R = mesh.regions, rt = mesh.rt, per = T.VS / rt, cols = Math.ceil(T.NX / rt), rows = Math.ceil(T.NY / rt);
-      const data = new Float32Array(4 + cols * rows);
+      const d = this.dev, T = this.S.T, mesh = this.S.mesh, R = mesh.regions, h = mesh.rt / 2, per = T.VS / h, cols = Math.ceil(T.NX / h), rows = Math.ceil(T.NY / h);
+      const data = new Float32Array(4 + cols * rows), ex = ME.hiQuarters(R, mesh.rt), cell = new Int32Array(4 * R.length).fill(-1);
       data.set([T.O[0], T.O[1], per, cols]);
-      const cell = Int32Array.from(R, ({ box: b }) => {
-        const x = (b[0] + b[3]) * 0.5 / T.VS, y = (b[1] + b[4]) * 0.5 / T.VS;
-        return Math.min(rows - 1, Math.max(0, Math.floor(y * per))) * cols + Math.min(cols - 1, Math.max(0, Math.floor(x * per)));
+      R.forEach(({ box: b }, n) => {
+        for (let q = 0; q < 4; q++) if (ex[4 * n + q]) {
+          const x0 = q & 1 ? b[0] + h : b[0], x1 = q & 1 ? b[3] : Math.min(b[3], b[0] + h), y0 = q >> 1 ? b[1] + h : b[1], y1 = q >> 1 ? b[4] : Math.min(b[4], b[1] + h);
+          const x = (x0 + x1) * 0.5 / T.VS, y = (y0 + y1) * 0.5 / T.VS;
+          cell[4 * n + q] = Math.min(rows - 1, Math.max(0, Math.floor(y * per))) * cols + Math.min(cols - 1, Math.max(0, Math.floor(x * per)));
+        }
       });
       this.hiUnder = {
         mesh, data, cell, any: 0, g1: null, g1For: null,
@@ -22996,7 +23513,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.134.0", name: "Mossheart", commit: "5d2b2826" };
+  G.VERSION = { v: "0.136.0", name: "Mossheart", commit: "c68e2606" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -37802,6 +38319,13 @@ function MG_SFX(L) {
   const canvas = document.getElementById("cv"), result = document.getElementById("result");
   const report = (o) => { result.textContent = typeof o === "string" ? o : JSON.stringify(o, null, 1); };
   G.devFlag = (name, def = 0) => ME.qn(name, def);
+  // C128 (the engine's src/c128.js, W2): the terrain's regions in view at 128 when the view is close, on by default
+  // in every level and on every device (the user, 2026-11-11; a phone takes ME.C128.PHONE's smaller numbers).
+  // ?c128=0 turns it off. It needs the terrain by regions, so ?regions= is 1 by default too (before anything reads
+  // it: the bake, its cache keys, the terrain workers' QN); ?regions=0 turns both off. Not in the self-test or the
+  // benchmark, which measure one density
+  G.c128 = ME.qn("c128", ME.qn("selftest", 0) || ME.qn("bench", 0) ? 0 : 1) > 0;
+  if (G.c128 && !ME.params.has("regions")) ME.params.set("regions", "1");
   // the pool room the Heart Tree's grow bakes need, in bricks at hero density 64 (the boot's level-3 plants at 128 leave it)
   const HEART_ROOM64 = 30000;
   try {
@@ -38331,6 +38855,8 @@ function MG_SFX(L) {
     if (bot) setSpeed(ME.qn("speed", 6));
     // (a live getter: a new run replaces the game)
     ME.app = Object.defineProperties(Object.assign(app, { cam, hud, audio, bot }), { game: { get: () => game, enumerable: true } });
+    // (C128, above: ME.app.c128.stats(); off with a WARN when the terrain isn't by regions or has no workers to bake on)
+    if (G.c128) app.c128 = new ME.C128({ R, st, pal, phys, cam }).start();
     // title screen, pause menu and settings (view/menu.js)
     app.menu = G.Menu ? new G.Menu(app, { setSpeed, restart, saved, continueRun }) : null;
     // first-run tips (view/tutorial.js): not for ?menu=0, the bot, the self-test or the benchmark
