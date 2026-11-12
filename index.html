@@ -160,6 +160,18 @@ body { color: var(--ink); font: 600 calc(15px * var(--ts))/1.3 "Trebuchet MS", "
 #musicbtn:disabled { opacity: 0.6; cursor: default; }
 #fps { color: #fffd; font: calc(12px * var(--ts)) ui-monospace, Consolas, monospace; text-shadow: 0 0 4px #000; margin-right: 6px; pointer-events: none; }
 #vox.down { color: #ffc14d; font-weight: 700; } /* (the density came out under 40 or what was asked for) */
+/* the finer ground streaming in (hud.loadProg): a slim pill under the top-right buttons, gone once it is in */
+#loadp { position: fixed; right: calc(12px + var(--sr)); top: calc(58px + var(--st)); display: flex; align-items: center; gap: 6px; padding: 3px 8px;
+  border-radius: 999px; background: rgba(36, 28, 16, 0.72); color: #fff1c8; font: 700 calc(11px * var(--ts))/1 system-ui, sans-serif; letter-spacing: 0.02em;
+  text-shadow: 0 1px 1px #2a1e10; pointer-events: none; z-index: 5; }
+#loadp[hidden] { display: none; }
+#loadp .track { width: calc(64px * var(--ts)); height: 5px; border-radius: 3px; background: rgba(255, 241, 200, 0.18); overflow: hidden; }
+#loadp i { display: block; height: 100%; width: 0; border-radius: 3px; background: #e2b64c; transition: width 0.4s ease-out; }
+#loadp b { min-width: 3.2ch; text-align: right; font-variant-numeric: tabular-nums; }
+#loadp.fin i { animation: loadp-fin 1.2s ease-in-out infinite alternate; }
+@keyframes loadp-fin { from { opacity: 0.45; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { #loadp i { transition: none; } #loadp.fin i { animation: none; } }
+@media (max-width: 760px) { #loadp { right: calc(6px + var(--sr)); } }
 
 #almanac { position: fixed; right: calc(12px + var(--sr)); top: calc(72px + var(--st)); width: min(340px, calc(var(--vw) - 24px)); max-height: calc(var(--vh) - 460px); display: flex; flex-direction: column; align-items: flex-start;
   background: rgba(26, 23, 18, 0.78); border: 2px solid #8c6b42; border-radius: 12px; color: #ede6d1; padding: 4px 10px 6px; font-weight: 500; font-size: calc(13px * var(--ts)); }
@@ -1260,6 +1272,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     <button id="wave" title="the Almanac: what the next wave brings">Wave 0</button>
   </div>
   <div id="topright"><span id="fps"><span id="fpsn"></span> · <span id="vox"></span></span><div id="viewctl"><button id="skybtn" class="btn small" title="mood and weather">☁</button><button id="turnl" class="btn small" title="turn left">↺</button><button id="turnr" class="btn small" title="turn right">↻</button></div><button id="sound" class="btn small" title="sound (M)"><span class="lb">♪</span></button><button id="musicbtn" class="btn small" title="music style"><span class="lb">♫</span><small id="musicname">Ambient</small></button><button id="speed" class="btn small" title="speed (F)"><span class="lb">1x</span></button><button id="pausebtn" class="btn small" title="menu (Esc)">☰</button></div>
+  <div id="loadp" hidden><span>Ground detail</span><span class="track"><i></i></span><b>0%</b></div>
   <div id="giftbox"><div id="chal"></div><div id="boonbar"></div></div>
   <div id="almanac"><button id="almtog">Almanac ▸</button><div id="almbody"></div></div>
   <div id="sky" class="panel"><div class="skyrow"><b>Mood</b><div class="seg" id="moodseg"></div></div><div class="skyrow"><b>Weather</b><div class="seg" id="wxseg"></div></div></div>
@@ -6912,7 +6925,9 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
   // (with or without ?regions), none of them on the main thread, the coarse grid a tile row at a time; it throws
   // an error with .noWorkers where it would bake a region here. o.hold (W1, ME.hiBaker): quiet, the map up to its
   // regions (the lamps' heights, the workers started and checked as for the regions bake, with or without
-  // ?regions), then no region: it returns a baker that bakes a region at a time when asked (baker below)
+  // ?regions), then no region: it returns a baker that bakes a region at a time when asked (baker below).
+  // o.onRegion(done, N), a bake by regions: called with the regions laid so far, before each region and once all N
+  // are (the stream's progress, ME.stream.progress)
   ME.bakeTerrain = async function (st, pal, o = {}) {
     const RULES = !!o.rules, quiet = !!(o.serve || o.hold), progress = RULES || quiet || o.bg ? () => {} : ME.progress;
     const t0 = ME.now(), VS = o.vs || ME.VS, CT = ME.content || {}, G = gridOf(st, CT, RULES || quiet), F = G.frame, jar = F.type === "jar";
@@ -7826,6 +7841,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
         // worker's answer (late). fits: a record from mine too was forked before the regions taken since
         const mine = new Map();
         for (let r = 0; r < N; r++) {
+          if (o.onRegion) o.onRegion(r, N);
           progress("terrain region " + (r + 1) + "/" + N, 0.05 + 0.27 * (r / N)); await ME.tick();
           let m = null, stole = false;
           if (ready) for (let yielded = false; !mine.has(r); ) {
@@ -7849,6 +7865,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
           if (stole) late++;
           else if (ready && !own) fell++;
         }
+        if (o.onRegion) o.onRegion(N, N);
         if (pool) regions.workers = { n: pool.ws.length, ready, took, here: N - took, late, fell, checks: boxes.length, checkMs, lost: pool.why.slice() };
       } finally { if (pool && !held) pool.stop(); }
     }
@@ -10555,7 +10572,8 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
    the grass and the lights swap at the commit; the sim keeps the routes it made on the vs16 ground (the tiles'
    heights are the same at every density). ?stream=0 turns it off.
 
-   ME.stream.state: "idle" | "baking" | "ready" | "saving" | "done" | "failed". ME.stream.stats once it is over:
+   ME.stream.state: "idle" | "baking" | "ready" | "saving" | "done" | "failed"; ME.stream.progress() for a HUD
+   (below). ME.stream.stats once it is over:
    bakeMs, meshMs, grassMs and ms (start to ready), the page's longest frame gap (gapMax, and by phase: gapBy) and
    its long tasks (longtasks, longMax, and longMax by phase: bake, mesh, grass, commit), saveMs (the record's
    write, queued to written; saveErr when it failed: the swap goes on with no record) and, after the swap,
@@ -10625,7 +10643,7 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
   };
 
   const S = (ME.stream = {
-    state: "idle", vs: 0, T: null, mesh: null, grass: null, key: null, err: null, stats: null, saved: null, packed: false,
+    state: "idle", vs: 0, done: 0, total: 0, phase: null, T: null, mesh: null, grass: null, key: null, err: null, stats: null, saved: null, packed: false,
     // a stream to vs target is worth starting: not ?stream=0, above the boot's 16, a density that bakes by regions
     // (a multiple of 4, as ME.regionsOn), with terrain workers to bake on
     wanted(target = ME.VS) {
@@ -10637,20 +10655,20 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     async start(app, o = {}) {
       if (S.state === "baking") throw new Error("ME.stream: a stream is running");
       const { st, pal } = app, vs = o.vs || ME.VS, t0 = ME.now(), stats = { vs, from: app.T.VS };
-      Object.assign(S, { state: "baking", vs, T: null, mesh: null, grass: null, key: o.key || null, err: null, stats: null, saved: null, packed: !o.key, names: pal.names.length });
+      Object.assign(S, { state: "baking", vs, done: 0, total: 0, phase: "bake", T: null, mesh: null, grass: null, key: o.key || null, err: null, stats: null, saved: null, packed: !o.key, names: pal.names.length });
       const tickMs = ME.tickMs, quiet = ME.quiet, w = watch();
       ME.tickMs = o.tickMs || 6; ME.quiet = true;
       // the crossfade's pipelines compile while the bake runs (with none ready at the commit, the swap is whole)
       if (app.R && app.R.prepFade && ME.qn("streamfade", 400) > 0) app.R.prepFade().catch((e) => ME.log("WARN terrain stream: no crossfade:", e && e.message));
       try {
-        const T = await ME.bakeTerrain(st, pal, { vs, bg: true });
+        const T = await ME.bakeTerrain(st, pal, { vs, bg: true, onRegion: (d, n) => { S.done = d; S.total = n; } });
         stats.bakeMs = Math.round(ME.now() - t0);
         if (T.cdims.some((n, a) => n !== app.T.cdims[a])) throw new Error("another coarse grid (" + T.cdims + " for " + app.T.cdims + ")");
-        w.phase = "mesh";
+        w.phase = S.phase = "mesh";
         let t = ME.now();
         const mesh = await ME.greedyMesh(T);
         stats.meshMs = Math.round(ME.now() - t); stats.quads = mesh.quads;
-        w.phase = "grass"; await ME.tick();
+        w.phase = S.phase = "grass"; await ME.tick();
         t = ME.now();
         const grass = ME.bakeGrass(T, st, pal);
         stats.grassMs = Math.round(ME.now() - t); stats.blades = grass.count;
@@ -10660,11 +10678,24 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
         Object.assign(S, { state: "failed", err: e });
         ME.log("WARN terrain stream failed, the terrain stays at vs" + app.T.VS + ":", e && e.message);
       } finally {
-        ME.tickMs = tickMs; ME.quiet = quiet;
+        ME.tickMs = tickMs; ME.quiet = quiet; S.phase = null;
         S.stats = Object.assign(stats, w.stop(), { ms: Math.round(ME.now() - t0) });
       }
       if (S.state === "ready") ME.log("STREAM", Object.assign({ ready: true }, S.stats));
       return S.state === "ready";
+    },
+    // the stream's progress for a HUD, cheap enough for every frame: null before any stream (state "idle"), else
+    // { state, phase ("bake", "mesh" or "grass" while "baking", else null), done, total (the terrain's regions laid
+    // and their count: 0 of 0 until the bake reaches its regions, past the lamps' pre-pass), frac (done / total,
+    // 0..1: 1 from the mesh phase on, which still takes a few s) } and, with a C128 (ME.app.c128), hi: { on, ready,
+    // want } (its regions in view: C128's hiProgress)
+    progress() {
+      if (S.state === "idle") return null;
+      const total = S.total, done = Math.min(S.done, total);
+      const p = { state: S.state, phase: S.phase, done, total, frac: total ? done / total : 0 };
+      const c = ME.app && ME.app.c128;
+      if (c && c.hiProgress) p.hi = c.hiProgress();
+      return p;
     },
     // swaps the streamed terrain into app (R, sim, phys, critters, pal, T; app.T and app.mesh are set): true when
     // it did. Not ready: false. With a key, the first call queues the record's write and returns false (state
@@ -11043,8 +11074,21 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
       }
     }
 
+    // the regions in view at the second density, cheap enough for every frame (no allocation past the answer):
+    // { on, want (the regions in view while on, else 0), ready (those of them with every quarter drawn) }
+    hiProgress() {
+      const ex = this.ex, on = !!(this.on && !this.off && ex);
+      let ready = 0;
+      if (on) for (const n of this.view) {
+        let ok = true;
+        for (let q = 0; q < 4 && ok; q++) if (ex[4 * n + q]) { const rec = this.recs.get(4 * n + q); ok = !!(rec && rec.H && rec.H.ready); }
+        if (ok) ready++;
+      }
+      return { on, ready, want: on ? this.view.length : 0 };
+    }
+
     stats() {
-      const S = this.st, a = (v) => (v.length ? { avg: Math.round(v.reduce((x, y) => x + y, 0) / v.length), max: Math.max(...v) } : null);
+      const S = this.st, a =(v) => (v.length ? { avg: Math.round(v.reduce((x, y) => x + y, 0) / v.length), max: Math.max(...v) } : null);
       let ready = 0, cpu = 0, gpu = 0;
       const part = new Set(), full = new Set();
       for (const rec of this.recs.values()) {
@@ -23521,7 +23565,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.138.0", name: "Mossheart", commit: "45274267" };
+  G.VERSION = { v: "0.140.0", name: "Mossheart", commit: "3b5c3add" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -33120,6 +33164,46 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       const dpr = canvas.width / Math.max(1, canvas.clientWidth), scr = (p) => { const q = cam.toScreen(p, canvas.width, canvas.height); return [q[0] / dpr, q[1] / dpr]; };
       this.foeTags(E, scr);
       if (G.TowerFx) (this.fxRow ||= new G.TowerFx(this)).frame(cam, canvas); // (the plants' effect icons: effects.js)
+      this.loadProg();
+    }
+
+    // How much of the ground at the target density has arrived (the user: "show how much of assets are loaded at
+    // target 128 density"): a slim pill under the top-right buttons.
+    // - while the terrain stream bakes or saves (Engine's ME.stream.progress(), #746: { state, done, total, frac,
+    //   phase }): "Ground detail NN%" by the regions baked; "Finishing" once the bake is whole and meshing and grass
+    //   still run (phase "mesh" / "grass"); hidden in the lamp pre-pass (total 0)
+    // - then, and on a cache hit where the stream never runs, C128's 128 ground in view (hiProgress(): { on, ready,
+    //   want }): "128 detail NN%" until every region in view has all its quarters drawn
+    // - hidden otherwise, and without the APIs (an older engine).
+    // No work while hidden but a look once a second (a camera move can bring new 128 work); while shown, ~10 a
+    // second. The DOM is touched only when the label or the whole percent changes.
+    loadProg() {
+      const now = performance.now();
+      if (now < (this.lpNext || 0)) return;
+      const st = ME.stream, sp = st && typeof st.progress === "function" ? st.progress() : null;
+      let lab = "", pct = -1;
+      if (sp && (sp.state === "baking" || sp.state === "saving") && sp.total > 0) {
+        // the bake counts regions; meshing, grass and the record write after it have no count: "Finishing", no %
+        const fin = sp.state === "saving" || sp.phase === "mesh" || sp.phase === "grass";
+        pct = fin ? 100 : Math.floor(100 * (sp.frac != null ? sp.frac : sp.done / sp.total));
+        lab = fin ? "Finishing" : "Ground detail";
+      } else if (!sp || sp.state !== "baking") {
+        const c = ME.app && ME.app.c128, hi = (sp && sp.hi) || (c && typeof c.hiProgress === "function" ? c.hiProgress() : null);
+        if (hi && hi.on && hi.want > 0 && hi.ready < hi.want) { pct = Math.floor((100 * hi.ready) / hi.want); lab = "128 detail"; }
+      }
+      const on = pct >= 0;
+      if (on) pct = Math.max(0, Math.min(100, pct));
+      this.lpNext = now + (on ? 100 : 1000);
+      if (pct === this.lpPct && lab === this.lpLab) return;
+      this.lpPct = pct; this.lpLab = lab;
+      const el = this.lpEl || (this.lpEl = $("loadp"));
+      if (!el) return;
+      el.hidden = !on;
+      if (on) {
+        const fin = lab === "Finishing", b = el.querySelector("b");
+        el.classList.toggle("fin", fin);
+        el.querySelector("i").style.width = pct + "%"; b.hidden = fin; b.textContent = pct + "%"; el.querySelector("span").textContent = lab;
+      }
     }
     // The seed's card docked above the tray (game.css #inspector.docked; a placed plant's pops up beside it: popCard): folded, one row as tall as it needs; open,
     // it grows upward no higher than the top strip (its text scrolls, its buttons stay in view). Screen px in, the
