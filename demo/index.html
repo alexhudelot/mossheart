@@ -373,6 +373,14 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 .foetag { position: absolute; left: 0; top: 0; font: 800 12px/1 system-ui, sans-serif; color: #fff4d8; letter-spacing: 0.05em; white-space: nowrap;
   text-shadow: 0 0 2px #2a1e10, 0 0 2px #2a1e10, 0 1px 1px #2a1e10; will-change: transform; }
 .foetag.on { color: #ffd36a; font-size: 14px; }
+/* the plants' effect icons above them (effects.js): gold-framed buffs, red-framed nerfs, "+N" past three */
+.fxrow { position: absolute; left: 0; top: 0; display: flex; gap: 2px; align-items: center; pointer-events: none; will-change: transform; z-index: 3; }
+.fxi { display: grid; place-items: center; width: 17px; height: 17px; box-sizing: border-box; border-radius: 5px; color: #fff1c8;
+  background: rgba(36, 28, 16, 0.82); border: 1.5px solid #e2b64c; box-shadow: 0 1px 2px rgba(20, 12, 4, 0.6); font: 800 11px/1 system-ui, sans-serif; }
+.fxi svg { width: 12px; height: 12px; }
+.fxi.nerf { border-color: #e2563c; color: #ffb3a1; background: rgba(60, 16, 10, 0.85); }
+.fxmore { font: 800 11px/1 system-ui, sans-serif; color: #fff1c8; padding: 0 2px; text-shadow: 0 0 2px #2a1e10, 0 0 2px #2a1e10, 0 1px 1px #2a1e10; }
+@media (max-width: 760px) { .fxi { width: 19px; height: 19px; } .fxi svg { width: 14px; height: 14px; } .fxmore { font-size: 12px; } }
 #inspbody { font-weight: 500; font-size: calc(14.5px * var(--ts)); }
 #inspbody .dim { color: #6b7560; }
 #inspbody .lnk { font-weight: 800; color: #8a5a2a; }
@@ -23514,7 +23522,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.137.0", name: "Mossheart", commit: "c68e2606" };
+  G.VERSION = { v: "0.139.0", name: "Mossheart", commit: "45274267" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -31983,6 +31991,140 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
 })();
 
 </script>
+<script>/* src/view/effects.js */
+/* What each plant has active, at a glance (the user 2026-11-12: "little buff and nerf icons on towers"): a small row
+   of icons above every plant with an effect on it, in the inspector's names (its title= on each chip).
+   - buffs, gold-framed: Bloom Burst while it runs, the graft, the links (deepened first, "×2"), the placement zone,
+     a Nurse Stump beside it, the gifts that raise its kind or all plants, Ancient Grove on a max-level plant
+   - nerfs, red-framed: none lower a plant today; an entry with nerf: true sorts first and shows red
+   - at most SHOW chips, then "+N"
+   Pooled divs in #floats (as hud.foeTags); the rows' html is rebuilt only when an effect may have changed (the
+   events in DIRTY, and Bloom Burst starting or ending), and each frame only moves them (transform, set when the
+   rounded pixel changes). Shown in the build and wave phases. Settings "Effect icons" (G.effectIcons) or ?fx=0
+   turn them off. Icons: the HUD's own (links, gifts, plant icons); zones, Bloom Burst and grafts have
+   Art's G.EFFECT_ICONS (#731), the placeholders (PH) until it lands. */
+(function () {
+  const G = window.MG, D = G.Defs, S = G.state;
+  const SHOW = 3, LIFT = 0.28;
+  const ROMAN = ["", "I", "II", "III"];
+  const DIRTY = ["links", "mods", "rites", "phase", "act", "tower_upgraded", "tower_placed", "tower_sold", "tower_moved", "tower_grafted"];
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const svg = (body) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+  // placeholders (Art's list: zones x3, Bloom Burst, graft)
+  const PH = {
+    heartwood: svg('<path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/>'),
+    overlook: svg('<path d="M4 18l8-12 8 12"/><path d="M8 18h8"/>'),
+    dewbank: svg('<path d="M12 3c3 5 6 8 6 11a6 6 0 0 1-12 0c0-3 3-6 6-11z"/>'),
+    bloom: svg('<circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/>'),
+    graft: svg('<path d="M12 3l2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2z"/>'),
+    grove: svg('<path d="M12 21v-6"/><path d="M12 3l6 9H6z"/><path d="M12 8l5 7H7z"/>'),
+  };
+  // Art's icons (#731, G.EFFECT_ICONS in boons.js) when loaded, else the placeholders
+  const IC = (id) => (G.EFFECT_ICONS && G.EFFECT_ICONS[id]) || PH[id];
+  const ZONE_INK = { heartwood: "#ff9a6a", overlook: "#f6dd73", dewbank: "#7fd0ff" };
+  const FX_Q = window.ME.qn("fx", 1) !== 0, on = () => G.effectIcons !== false && FX_Q;
+
+  // a plant's effects, nerfs first: [{ icon, name, nerf, ink }] (exposed for the checks: G.TowerFx.list)
+  function list(game, t) {
+    const out = [], seen = new Set(), add = (e) => { if (!seen.has(e.name)) { seen.add(e.name); out.push(e); } };
+    const parts = t.twin ? [t, t.twin] : [t];
+    if (game.bloomT > 0) add({ icon: IC("bloom"), name: "Bloom Burst", ink: "#ffc252" });
+    if (t.graft) add({ icon: IC("graft"), name: t.graft.name || "Graft", ink: "#e7b6ff" });
+    const deep = [], plain = [];
+    for (const p of parts) for (const l of p.links || []) (p.deep && p.deep.has(l.link) ? deep : plain).push([l.link, p.deep && p.deep.has(l.link)]);
+    for (const [l, x2] of deep.concat(plain)) add({ icon: (G.linkIcon && G.linkIcon(l.id)) || "⟡", name: l.name + (x2 ? " ×2" : "") });
+    const z = t.zone;
+    if (z) add({ icon: IC(z.id) || IC("graft"), name: z.name, ink: ZONE_INK[z.id] || G.css(z.rgb, 1) });
+    if (!t.def.util) for (const u of game.towers) {
+      if (u.kind !== "stump" || u === t || Math.abs(t.cx - u.cx) > 1 || Math.abs(t.cy - u.cy) > 1) continue;
+      add({ icon: (G.PLANT_ICONS && G.PLANT_ICONS.stump) || "♣", name: "Nurse Stump" });
+      break;
+    }
+    const kinds = new Set(parts.map((p) => p.kind));
+    for (const id of new Set(S.boons)) {
+      const b = D.boon(id);
+      if (!b) continue;
+      const lv = Math.min(b.levels.length, S.boonLevel(id)), L = b.levels[lv - 1];
+      if (!L || !L.mods) continue;
+      let hit = false;
+      for (const k in L.mods) { if (k.endsWith("_all") || [...kinds].some((kd) => k.endsWith("_" + kd))) { hit = true; break; } }
+      if (hit) add({ icon: (G.boonIcon && G.boonIcon(id)) || (G.EFFECT_ICONS && G.EFFECT_ICONS.gift) || "❀", name: b.name + (b.levels.length > 1 ? " " + ROMAN[lv] : ""), nerf: !!b.nerf });
+    }
+    if (t.level >= D.MAX_LEVEL && S.mod("grove") > 0) add({ icon: IC("grove"), name: "Ancient Grove", ink: "#9fd36a" });
+    out.sort((a, b) => (b.nerf ? 1 : 0) - (a.nerf ? 1 : 0));
+    return out;
+  }
+  // a row's html: the first SHOW chips, then "+N" (its title names the rest)
+  function html(fx) {
+    if (!fx.length) return "";
+    const cut = fx.length > SHOW + 1 ? SHOW : fx.length;
+    let h = "";
+    for (let i = 0; i < cut; i++) {
+      const e = fx[i];
+      h += `<span class="fxi ${e.nerf ? "nerf" : "buff"}" title="${esc(e.name)}"${e.ink ? ` style="color:${e.ink}"` : ""}>${e.icon}</span>`;
+    }
+    if (cut < fx.length) h += `<span class="fxmore" title="${esc(fx.slice(cut).map((e) => e.name).join(", "))}">+${fx.length - cut}</span>`;
+    return h;
+  }
+
+  class TowerFx {
+    constructor(hud) {
+      this.hud = hud; this.rows = []; this.n = 0; this.dirty = true; this.bloom = false; this.on = on();
+      for (const ev of DIRTY) G.on(ev, () => { this.dirty = true; });
+      this.p = [0, 0, 0];
+    }
+    get game() { return this.hud.game; }
+    row(i) {
+      let r = this.rows[i];
+      if (!r) {
+        const el = document.createElement("div"); el.className = "fxrow"; el.style.display = "none";
+        document.getElementById("floats").appendChild(el);
+        r = this.rows[i] = { el, html: "", t: null, x: NaN, y: NaN, shown: false };
+      }
+      return r;
+    }
+    rebuild() {
+      this.dirty = false;
+      const g = this.game, live = this.on && (S.phase === G.Phase.BUILD || S.phase === G.Phase.WAVE);
+      let n = 0;
+      if (live) for (const t of g.towers) {
+        const h = html(list(g, t));
+        if (!h) continue;
+        const r = this.row(n++);
+        r.t = t;
+        if (r.html !== h) { r.html = h; r.el.innerHTML = h; }
+      }
+      for (let i = n; i < this.n; i++) { const r = this.rows[i]; r.t = null; if (r.shown) { r.shown = false; r.el.style.display = "none"; } }
+      this.n = n;
+    }
+    // each frame (hud.frame): cam and the canvas, to place the rows in CSS px
+    frame(cam, canvas) {
+      const g = this.game;
+      if (!g) return;
+      const b = g.bloomT > 0;
+      if (b !== this.bloom) { this.bloom = b; this.dirty = true; }
+      if (this.game !== this.lastGame) { this.lastGame = this.game; this.dirty = true; }
+      const want = on();
+      if (want !== this.on) { this.on = want; this.dirty = true; }
+      if (this.dirty) this.rebuild();
+      if (!this.n) return;
+      const W = canvas.width, H = canvas.height, dpr = W / Math.max(1, canvas.clientWidth);
+      const m = cam.matrices(W, H).vp, p = this.p;
+      for (let i = 0; i < this.n; i++) {
+        const r = this.rows[i], t = r.t;
+        p[0] = t.X; p[1] = t.Y; p[2] = t.VZ + t.body.towerH(t.kind, t.level) + LIFT;
+        const qx = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12], qy = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
+        const x = Math.round(((qx * 0.5 + 0.5) * W) / dpr), y = Math.round(((0.5 - qy * 0.5) * H) / dpr);
+        if (x !== r.x || y !== r.y) { r.x = x; r.y = y; r.el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`; }
+        if (!r.shown) { r.shown = true; r.el.style.display = ""; }
+      }
+    }
+  }
+  TowerFx.list = list; TowerFx.html = html; TowerFx.SHOW = SHOW;
+  G.TowerFx = TowerFx;
+})();
+
+</script>
 <script>/* src/view/endscreen.js */
 /* The end screens' content (#over when the Heart Tree falls, #won when the demo's valley is won), as plain data:
    hud.js draws it. No DOM here, so the rules run under node (test/node/endscreen.test.js).
@@ -32978,6 +33120,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       }
       const dpr = canvas.width / Math.max(1, canvas.clientWidth), scr = (p) => { const q = cam.toScreen(p, canvas.width, canvas.height); return [q[0] / dpr, q[1] / dpr]; };
       this.foeTags(E, scr);
+      if (G.TowerFx) (this.fxRow ||= new G.TowerFx(this)).frame(cam, canvas); // (the plants' effect icons: effects.js)
     }
     // The seed's card docked above the tray (game.css #inspector.docked; a placed plant's pops up beside it: popCard): folded, one row as tall as it needs; open,
     // it grows upward no higher than the top strip (its text scrolls, its buttons stay in view). Screen px in, the
@@ -34523,6 +34666,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   };
   const calmOS = !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
   const DEFAULTS = {
+    effects: true, // (the plants' effect icons above them: effects.js)
     numbers: true, // (combat numbers: HP beside the bars, damage rising off a hit; fx.js, hud.js foeTags)
     master: 0.7, music: 0.5, sfx: 0.7, ambience: 0.45, musicStyle: "mix",
     quality: "high", scale: "auto", look: "cosy", theme: "overgrown", fps: true, shake: true, vs: 64, vsPicked: false, top128: true, level: "momiji", motion: calmOS ? "reduced" : "full", text: 1, tips: true, hints: true, hintsSeen: [], weather: "normal", wxPicked: false, levelSky: true, glass: "auto", res: mobile ? PHONE_RES : "full", resPicked: false, ui: mobile ? PHONE_UI : 1, uiPicked: false,
@@ -34867,6 +35011,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       this.applyUi();
       if (G.Skin) G.Skin.use((ME.params.get("skin") || s.theme) === "paper" ? null : "overgrown"); // (?skin=paper|overgrown pins it, as a check or a screenshot wants)
       G.numbers = ME.params.has("numbers") ? ME.qn("numbers", 1) !== 0 : !!s.numbers; // (?numbers=0|1 pins it for a check)
+      G.effectIcons = !!s.effects; // (?fx=0 turns them off for a check: effects.js)
       if (a && a.mixer) {
         const bus = a.mixer.bus, set = (n, v) => { if (bus[n] && bus[n].gain) bus[n].gain.value = v * s.master; };
         set("Music", s.music); set("Sfx", s.sfx); set("Ambience", s.ambience);
@@ -34932,6 +35077,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         choice("tips", "First-run tips", [[true, "On"], [false, "Off"]]) + `<div class="note dim">A few tips on a fresh run: planting, the almanac, the first wave. They turn off when done.</div>` +
         choice("hints", "Game tips", [[true, "On"], [false, "Off"]]) + `<div class="note dim">A note by the HUD the first time a mechanic matters: why it works, what it pairs with. A tap hides it. <button class="btn tiny" data-a="resettips">Reset tips</button></div>` +
         choice("numbers", "Combat numbers", [[true, "On"], [false, "Off"]]) + `<div class="note dim">A hurt creature's health as a number beside its bar, and each hit's damage rising off it (fading in place with reduced motion).</div>` +
+        choice("effects", "Effect icons", [[true, "On"], [false, "Off"]]) + `<div class="note dim">Small icons above each plant for what it has active: links, gifts, its spot, a graft, Bloom Burst.</div>` +
         `<h3>Comfort</h3>` + choice("motion", "Motion", [["full", "Full"], ["reduced", "Reduced"]]) +
         `<div class="note dim">Reduced: no screen shake or lightning, softer flashes, lighter rain and snow.</div>` +
         choice("text", "Text size", [[1, "Normal"], [1.15, "Large"], [1.3, "Larger"]]) +
