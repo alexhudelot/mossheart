@@ -17722,7 +17722,10 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
    Looks only: the model never reads a game's rng. Its own stream is seeded from the run's seed with a salt
    (?wxseed= pins it, ?wxfront= pins a front), so a replay gets the same sky.
    The game's looks: ME.WX.use(looks, fallback), looks() returning { fronts (merged over FRONTS), climates
-   (replacing CLIMATES), acts (a living level's acts by level id: ME.Sky's host.acts), ... } or null,
+   (replacing CLIMATES), acts (a living level's acts by level id: ME.Sky's host.acts; an act's climate { weights,
+   calm, boss, rare }, or those fields on the act itself: ME.WX.actClimate, goes over its level's under Dynamic
+   once the front showing has run its waves: weights and rare merged, a 0 taking one out, calm and boss
+   replacing; ME.Sky hands it in with setAct), ... } or null,
    fallback the climate a level without one of its own takes (then CLIMATES.default). A page loads this file after the engine. */
 (function () {
   const ME = window.ME;
@@ -17773,6 +17776,18 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
   const fronts = () => { const lf = looks().fronts; if (lf !== frontsOf) { frontsOf = lf; frontsAll = lf ? Object.assign({}, FRONTS, lf) : FRONTS; } return frontsAll; };
   const climates = () => looks().climates || CLIMATES;
   const climate = (id) => { const c = climates(); return c[id] || c[fallback] || CLIMATES.default; };
+  // an act's climate over its level's (E4, the seasons): weights and rare merged over the level's (a weight or a
+  // factor of 0 takes one out), calm and boss replacing the level's when given
+  const overAct = (c, a) => !a ? c : {
+    weights: a.weights ? Object.assign({}, c.weights, a.weights) : c.weights,
+    calm: a.calm && a.calm.length ? a.calm : c.calm, boss: a.boss || c.boss,
+    rare: a.rare ? Object.assign({}, c.rare, a.rare) : c.rare,
+  };
+  // an act's climate: its climate { weights, calm, boss, rare } when it has one, else the act itself when it carries
+  // any of those four on it (Mossheart's looks put weights and calm straight on each act: #728), else null. The
+  // act object itself, not a copy, so setAct sees the same act as the same climate every frame
+  const actClimate = (a) => !a || typeof a !== "object" ? null : a.climate && typeof a.climate === "object" ? a.climate
+    : a.weights || a.calm || a.boss || a.rare ? a : null;
   const zero = () => Object.fromEntries(LAYERS.map((l) => [l, 0]));
   const clamp01 = (x) => Math.max(0, Math.min(1, x));
   // a small seeded stream (mulberry32), the weather's own
@@ -17830,10 +17845,22 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     constructor(seed) {
       this.reseed(seed);
       this.v = zero(); this.front = "clear"; this.left = 0; this.seen = new Set(); this.rareSeen = new Set();
+      this.act = null; // the run's act's climate (setAct), over the level's
       this.sun = 0; this.hurt = false; this.rainbow = 0; this.wasRain = 0; this.shower = 0;
     }
     // two streams: the front schedule's and the walk's, so the frames a run lasts never shift its fronts
     reseed(seed) { const s = ME.qn("wxseed", 0) || seed || 1; this.rng = stream(s ^ 0x77ea7e); this.wrng = stream(s ^ 0x3a1c5d); }
+    // the climate the run picks from: the level's, with its act's over it
+    clim(levelId) { return overAct(climate(levelId), this.act); }
+    // the run's act changes the climate (the act's { weights, calm, boss, rare }; null: none). The front showing
+    // keeps its waves (an act turn's season front, held through the act's first wave, is the game's: Mossheart's
+    // acts.js), then the build phase drifts to the act's calm and the next wave start picks from its weights.
+    // Draws nothing from the stream, and an act without a climate changes nothing (Corn Moon's fronts stay)
+    setAct(a) {
+      a = a && typeof a === "object" ? a : null;
+      if (a === this.act) return;
+      this.act = a;
+    }
     // a front's walk starts in the middle of its ranges
     enter(name) {
       const f = fronts()[name] || FRONTS.clear;
@@ -17841,17 +17868,18 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       for (const l of LAYERS) { const r = f[l]; this.v[l] = r ? (r[0] + r[1]) / 2 : this.v[l] * 0.5; }
     }
     // the next front under Dynamic (at a wave start): the climate's weights, never the same twice, unseen ones
-    // double, the heavy share by the wave, a rare one now and then
+    // double, the heavy share by the wave, a rare one now and then. A front weighing 0 is never picked (an act's 0
+    // takes it out): a heavy or light roll with none of its kind left over 0 picks from the rest
     next(wave, levelId) {
       const pin = ME.q("wxfront", ""), F = fronts();
       if (ME.safeKey(pin) && F[pin]) return pin; // (ME.safeKey: ?wxfront=constructor is no front)
-      const c = climate(levelId);
+      const c = this.clim(levelId);
       const rare = c.rare || {};
       for (const k in F) if (F[k].rare && !this.rareSeen.has(k) && k !== this.front && this.rng() < F[k].rare * (rare[k] ?? 1)) return k;
       const heavyShare = HEAVY0 + (HEAVY1 - HEAVY0) * clamp01((wave - 1) / (HEAVY_AT - 1));
       const heavy = this.rng() < heavyShare;
-      const pool = Object.keys(c.weights).filter((k) => F[k] && k !== this.front && !!F[k].heavy === heavy);
-      const list = pool.length ? pool : Object.keys(c.weights).filter((k) => F[k] && k !== this.front);
+      const pool = Object.keys(c.weights).filter((k) => F[k] && c.weights[k] > 0 && k !== this.front && !!F[k].heavy === heavy);
+      const list = pool.length ? pool : Object.keys(c.weights).filter((k) => F[k] && c.weights[k] > 0 && k !== this.front);
       const w = list.map((k) => c.weights[k] * (this.seen.has(k) ? 1 : 2));
       let r = this.rng() * w.reduce((a, b) => a + b, 0);
       for (let i = 0; i < list.length; i++) if ((r -= w[i]) < 0) return list[i];
@@ -17860,20 +17888,20 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     // a new run: its seed, its garden's calm front
     newRun(seed, levelId) {
       this.reseed(seed); this.seen.clear(); this.rareSeen.clear(); this.left = 0; this.sun = 0; this.hurt = false; this.rainbow = 0;
-      const c = climate(levelId), pin = ME.q("wxfront", "");
+      const c = this.clim(levelId), pin = ME.q("wxfront", "");
       this.enter(ME.safeKey(pin) && fronts()[pin] ? pin : c.calm[(this.rng() * c.calm.length) | 0]);
     }
     // a wave starts: a boss's front, or the next one when this one has run its waves
     waveStart(wave, levelId, boss) {
       this.sun = 0;
-      const c = climate(levelId);
+      const c = this.clim(levelId);
       if (boss && !ME.q("wxfront", "")) { this.enter(c.boss || "storm"); this.left = 0; return; }
       if (this.left > 0 && fronts()[this.front] && this.front !== c.boss) { this.left--; return; }
       this.enter(this.next(wave, levelId)); this.left = (this.rng() * 3) | 0; // one to three waves
     }
     // the build phase between waves drifts to a calm front once the last one has run out
     buildPhase(levelId) {
-      const c = climate(levelId);
+      const c = this.clim(levelId);
       if (this.left <= 0 && !c.calm.includes(this.front) && !ME.q("wxfront", "")) this.enter(c.calm[(this.rng() * c.calm.length) | 0]);
     }
     // every frame: the walk (steady: each layer held in the middle of its range)
@@ -17926,11 +17954,13 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
       const bad = broken(resolve(v, o), o);
       if (bad.length) { out.rules.broken++; if (!out.rules.first) out.rules.first = { v, o, bad }; }
     }
-    for (const id of Object.keys(climates())) { // (the loaded climates, the looks' when they have them)
+    // (an act with a climate: the same runs held in that act, out.acts["level/N"])
+    const sim = (id, act) => {
       let count = 0, heavy = 0, starts = 0, min = Infinity;
       const all = {};
       for (let r = 0; r < runs; r++) {
         const w = new Weather(1000 + r);
+        w.setAct(act);
         w.newRun(1000 + r, id);
         const seen = new Set([w.front]);
         for (let k = 1; k <= waves; k++) {
@@ -17941,13 +17971,19 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
         }
         count += seen.size; min = Math.min(min, seen.size);
       }
-      out.gardens[id] = { frontsPerRun: +(count / runs).toFixed(2), minFronts: min, heavyShare: +(heavy / starts).toFixed(3), waveFronts: all };
-    }
+      return { frontsPerRun: +(count / runs).toFixed(2), minFronts: min, heavyShare: +(heavy / starts).toFixed(3), waveFronts: all };
+    };
+    for (const id of Object.keys(climates())) out.gardens[id] = sim(id, null); // (the loaded climates, the looks' when they have them)
+    const acts = looks().acts || {};
+    for (const id of Object.keys(acts)) (acts[id] || []).forEach((a, i) => {
+      const c = actClimate(a);
+      if (c) (out.acts || (out.acts = {}))[id + "/" + (i + 1)] = sim(id, c);
+    });
     return out;
   };
 
   ME.Weather = Weather;
-  ME.WX = { LAYERS, FRONTS, CLIMATES, resolve, broken, fronts, climate, climates, looks, use, stream, zero, check, SUN, RAINBOW };
+  ME.WX = { LAYERS, FRONTS, CLIMATES, resolve, broken, fronts, climate, climates, actClimate, looks, use, stream, zero, check, SUN, RAINBOW };
 })();
 
 </script>
@@ -17981,8 +18017,11 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
                   (any other pick, or a ?mood= pin, keeps its own); set, light settings over the base; pal,
                   { <palette material>: "#rrggbb" or [r, g, b] (0-255) }, the colour each one is lit at
                   (R.setAct: a factor on its own, where the growth field has spread, R.setGrowth); grassH, the
-                  grass height (1); freeze, the water's ice (0 to 1). A new act blends over ACT_BLEND s (a new
-                  run or level snaps); ?act=N pins one (screenshots)
+                  grass height (1); freeze, the water's ice (0 to 1); climate, { weights, calm, boss, rare } over
+                  the level's climate under Dynamic (or those four on the act itself: ME.WX.actClimate; weather.js
+                  setAct: weights and rare merged, 0 takes one out; calm and boss replace). A new act blends over
+                  ACT_BLEND s (a new run or level snaps); its climate starts once the front showing has run its
+                  waves; ?act=N pins one (screenshots)
      setup(level, act)  the level's best sky, set again at each new run or level: { mood, look, weather,
                   strength, dynamic } (each optional; null or {} for none). It goes over the player's saved
                   panel picks and the settings' Light and Weather, never over the address's pins (?mood=,
@@ -18170,9 +18209,11 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
 
     // ------------------------------------------------------------------ the fronts
     // Dynamic: a new run (a new game or level) starts the model on its seed and the level's calm front; the
-    // build phase drifts back to a calm one once the last front has run its waves
+    // build phase drifts back to a calm one once the last front has run its waves. The run's act's climate (E4)
+    // goes over the level's before either, so a new act's next build phase and wave start pick from it
     follow(run = this.host.run()) {
       if (this.weather !== "dynamic") return;
+      this.model.setAct(this.actClimate(run));
       if (run.id !== this.run.id || run.level !== this.run.level) {
         this.run.id = run.id; this.run.level = run.level;
         this.model.newRun(this.host.seed() || 1, run.level);
@@ -18250,6 +18291,11 @@ fn turn(x: vec3f, k: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); r
     }
 
     // ------------------------------------------------------------------ the acts (host.acts)
+    // the run's act's climate ({ weights, calm, boss, rare } over the level's, weather.js setAct): ME.WX.actClimate
+    actClimate(run) {
+      const n = this.actPin || run.act | 0, list = n > 0 ? this.host.acts(run.level) : null, a = (list && list[n - 1]) || null;
+      return ME.WX.actClimate(a); // (a.climate, else weights, calm, boss, rare on the act itself)
+    }
     // this frame's mood and base with the run's act: the act's mood (if the player's pick lets it) and its set
     // over that mood's base, blended from what showed when the act changed (ACT_BLEND s, smoothstep; numbers
     // blend, the rest switch at once; a new run or level snaps); the renderer gets the tints, the grass height,
@@ -23586,7 +23632,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.147.0", name: "Mossheart", commit: "7c5493cb" };
+  G.VERSION = { v: "0.149.0", name: "Mossheart", commit: "17991dda" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
