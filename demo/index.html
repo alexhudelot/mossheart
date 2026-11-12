@@ -548,6 +548,24 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 .oversum .sd { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px 8px; }
 .oversum .sk { white-space: nowrap; }
 .oversum svg { width: 1.1em; height: 1.1em; vertical-align: -0.2em; margin-right: 3px; }
+/* the post-run card (Demo 1, view/leaderboard.js askCard): in the game over and win cards, or on its own (#ask)
+   after a run given up; three short questions, tap answers, Skip or Send */
+#ask { z-index: 5; padding: calc(16px + var(--st)) calc(16px + var(--sr)) calc(16px + var(--sb)) calc(16px + var(--sl)); }
+.ask { text-align: left; margin: 0 0 16px; padding: 10px 12px; border-radius: 12px; background: rgba(120, 150, 90, 0.12); }
+.ask .aq { margin: 6px 0 4px; font-size: calc(15px * var(--ts)); color: var(--moss); }
+.ask .aq small { opacity: 0.7; }
+.ask .arow { display: flex; flex-wrap: wrap; gap: 6px; }
+.ask .abtn, #won .ask .btn + .btn { margin: 0; padding: 6px 12px; min-height: 40px; font-size: calc(14px * var(--ts)); }
+.ask .abtn.on { background: #e3f0d6; box-shadow: inset 0 0 0 2px var(--moss); }
+.ask .leaf { width: 40px; height: 40px; padding: 4px; border: 0; background: none; color: #9a8f7a; cursor: pointer; }
+.ask .leaf svg { width: 100%; height: 100%; fill: currentColor; }
+.ask .leaf .vein { fill: none; stroke: rgba(0, 0, 0, 0.25); stroke-width: 1.2; }
+.ask .leaf.on { color: var(--moss); }
+.ask .aend { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.ask .amore { margin-right: auto; }
+.ask .asend:disabled { opacity: 0.5; }
+.ask .athanks { margin: 0; text-align: center; }
+.ask .atext { box-sizing: border-box; width: 100%; font: inherit; font-size: calc(15px * var(--ts)); color: #38452e; background: #fffaf0; border: 2px solid #cdbf98; border-radius: 10px; padding: 8px 10px; resize: vertical; user-select: text; -webkit-user-select: text; }
 /* the end screens' top (hud.js endScreen, view/endscreen.js): the wave big, the best (a new one in blossom), the
    run in one line, the tip and Try again, the next act's teaser ("???" until met), the highlights, the goals
    ahead; the full summary under Run details, closed. Plant anew / Keep going stay below the scroll, so always in
@@ -660,6 +678,8 @@ body.calm .ghosttag, body.calm #dew.short { animation: none; }
 /* a short notice at the top (menu.js: the crash guard's density step), through the load and a few seconds after */
 .toast { position: fixed; z-index: 40; top: calc(14px + var(--st, 0px)); left: 50%; transform: translateX(-50%); max-width: min(520px, calc(100vw - 32px)); padding: 10px 16px; border-radius: 10px; background: rgba(20, 22, 16, 0.92); color: #f6ecd2; border: 1px solid #b89c62; font: 500 calc(14px * var(--ts, 1))/1.35 "Trebuchet MS", system-ui, sans-serif; text-align: center; pointer-events: none; }
 .toast.fade { animation: toast 9s ease forwards; }
+.toast.runlognote { pointer-events: auto; animation: none; }
+.toast.runlognote .btn { margin-left: 4px; }
 @keyframes toast { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
 #lost { position: fixed; inset: 0; display: none; place-items: center; background: rgba(7, 8, 6, 0.9); z-index: 20; }
 #lost button { font: 600 calc(16px * var(--ts)) "Trebuchet MS", system-ui, sans-serif; padding: 12px 22px; border-radius: 10px; border: 1px solid #f6dca0; background: #1d2018; color: #e9e4cf; }
@@ -1287,8 +1307,9 @@ body[data-skin="overgrown"] .pz-el .lab { filter: brightness(1.6) saturate(1.1);
     <div id="trayrow"><div id="seeds"></div><button id="rites" class="btn" title="Rites: gathered every 3rd wave and with each boss; each works once"><span class="lb">✦</span><small>0/3</small></button><button id="wavebtn" class="btn pink"><span class="lb">Begin Wave 1</span></button></div>
   </div>
   <div id="boons" class="veil"><div class="col"><h2>The garden offers a gift</h2><div id="boonrow"></div><div id="boonbuy"><button id="reroll" class="btn"></button><button id="morepick" class="btn"></button></div></div></div>
-  <div id="over" class="veil dark"><div class="panel card"><h2>The Heart Tree sleeps</h2><div class="cscroll"><div id="overtop" class="eend"></div><details id="overdet" class="edet"><summary>Run details</summary><div id="oversum" class="oversum"></div></details><div id="overboard" class="lboard" style="display:none"></div></div><button id="again" class="btn pink">Plant anew</button></div></div>
-  <div id="won" class="veil dark"><div class="panel card"><h2>The grove is safe</h2><div class="cscroll"><div id="wontop" class="eend"></div><details id="wondet" class="edet"><summary>Run details</summary><div id="wonsum" class="oversum"></div></details></div><button id="wongo" class="btn pink">Keep going</button><button id="wonnew" class="btn">Plant anew</button></div></div>
+  <div id="over" class="veil dark"><div class="panel card"><h2>The Heart Tree sleeps</h2><div class="cscroll"><div id="overtop" class="eend"></div><div id="overask" style="display:none"></div><details id="overdet" class="edet"><summary>Run details</summary><div id="oversum" class="oversum"></div></details><div id="overboard" class="lboard" style="display:none"></div></div><button id="again" class="btn pink">Plant anew</button></div></div>
+  <div id="won" class="veil dark"><div class="panel card"><h2>The grove is safe</h2><div class="cscroll"><div id="wontop" class="eend"></div><div id="wonask" style="display:none"></div><details id="wondet" class="edet"><summary>Run details</summary><div id="wonsum" class="oversum"></div></details></div><button id="wongo" class="btn pink">Keep going</button><button id="wonnew" class="btn">Plant anew</button></div></div>
+  <div id="ask" class="veil dark"><div class="panel card"><h2>How was that run?</h2><div id="askbox"></div></div></div>
   <div class="help">drag pan · wheel zoom · Q/E turn · 1–5 seeds · space wave</div>
 </div>
 <div id="loading"><div class="box"><h1>Mossheart</h1><p>a cozy roguelike tower defence in a voxel bell jar</p><div id="track"><div id="bar"></div></div><div id="bartxt">loading</div></div></div>
@@ -23668,7 +23689,7 @@ function MA_DSP() {
    G.VERSION.label: "v0.9.0 · 89f8d05". */
 (function () {
   const G = (window.MG = window.MG || {});
-  G.VERSION = { v: "0.155.0", name: "Mossheart", commit: "292a8d5c" };
+  G.VERSION = { v: "0.157.0", name: "Mossheart", commit: "bcb06941" };
   G.VERSION.label = `v${G.VERSION.v} · ${G.VERSION.commit}`;
   // the corner label (?shot=1 leaves it out of screenshots)
   const show = () => {
@@ -23691,6 +23712,9 @@ function MA_DSP() {
      in a file of the Pages repo. Its GitHub token stays in the Vercel project: never put a token here.
    pages: with the proxy, the board file on GitHub Pages (the proxy's GITHUB_BOARD_REPO, served from main): the
      board is read from there, with no proxy call, and from the proxy while it is missing.
+   feedback (optional): true gives the post-run card a "Tell us more" box whose text goes to the proxy's
+     POST /api/feedback (its FEEDBACK_REPO and FEEDBACK_TOKEN set in Vercel first; unset there, the answers are lost);
+     an https URL instead makes "Tell us more" a link to that page (a form elsewhere); left out, neither.
    All left empty, the game has no leaderboard and plays as it always has. */
 (function () {
   const G = (window.MG = window.MG || {});
@@ -32760,6 +32784,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       G.Dismiss.add($("boons"), { veil: true, panel: $("boons").querySelector(".col"), hit: ".boon", dir: "any", tab: "Choose a gift" });
       G.Dismiss.add($("over"), { veil: true, panel: $("over").querySelector(".card"), dir: "any", tab: "The Heart Tree sleeps" });
       G.Dismiss.add($("won"), { veil: true, panel: $("won").querySelector(".card"), dir: "any", tab: "The grove is safe" });
+      G.Dismiss.add($("ask"), { veil: true, panel: $("ask").querySelector(".card"), dir: "any", tab: "How was that run?", close: () => { if (G.Leaderboard) G.Leaderboard.flushRun(); this.hideAsk(); } }); // (closed: skipped)
       if (G.lockedView()) for (const id of ["turnl", "turnr"]) $(id).style.display = "none";
       $("turnl").addEventListener("click", () => this.act.turn(-1));
       $("turnr").addEventListener("click", () => this.act.turn(1));
@@ -32845,7 +32870,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         this.arm(null); this.act.sell();
       });
       $("again").addEventListener("click", () => this.act.restart());
-      $("wongo").addEventListener("click", () => this.hideWon());
+      $("wongo").addEventListener("click", () => { if (G.Leaderboard) G.Leaderboard.flushRun(); this.hideWon(); }); // (an unanswered card: its line goes now)
       $("wonnew").addEventListener("click", () => this.act.restart());
       // (the gifts screen redraws on the game's boons_offered after each: main.js)
       $("reroll").addEventListener("click", () => this.game.reroll());
@@ -33094,8 +33119,9 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       };
       set("reroll", "↻ Draw again", g.rerollCost(), rb);
       set("morepick", "+1 gift", g.pickCost(), pb);    }
-    showGameOver(wave, best, prev) {
+    showGameOver(wave, best, prev, ask) {
       this.endScreen("over", { wave, best, prev }, false);
+      this.askIn($("overask"), ask);
       if (G.Leaderboard) G.Leaderboard.atGameOver($("overboard"), wave, this.game); // (the online board, when the build has one)
       $("over").classList.add("show");
     }
@@ -33147,11 +33173,17 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     hideGameOver() { $("over").classList.remove("show"); G.Dismiss.untab($("over")); this.hideWon(); }
     // Demo 1's win (G.DEMO: the grove kept safe through G.DEMO_WAVES waves, game.js "won"): the run's summary
     // over the gifts the wave just earned; Keep going closes it onto them, Plant anew starts a new run
-    showWon(wave) {
+    showWon(wave, ask) {
       this.endScreen("won", { wave, best: Math.max(S.best || 0, wave), prev: S.best || 0 }, true);
+      this.askIn($("wonask"), ask);
       $("won").classList.add("show");
     }
     hideWon() { $("won").classList.remove("show"); G.Dismiss.untab($("won")); }
+    // the post-run card (view/leaderboard.js, Demo 1) in a run's end panel, when its line is held for it (ask)
+    askIn(el, ask) { el.innerHTML = ""; el.style.display = ask ? "" : "none"; if (ask) G.Leaderboard.askCard(el); }
+    // after a run given up (wave 3 on): the card on its own, over the new run; it closes once sent or skipped
+    showAsk() { G.Leaderboard.askCard($("askbox"), () => setTimeout(() => this.hideAsk(), 1200)); $("ask").classList.add("show"); }
+    hideAsk() { $("ask").classList.remove("show"); G.Dismiss.untab($("ask")); }
 
     // ------------------------------------------------------------------ the card (#inspector)
     // One card for a plant, the seed in hand, a creature and a gift (docs/designs/2026-11-04-hud-cards.md):
@@ -33855,8 +33887,10 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
    placed, grown and sold, the boons in order, the waves skipped (a run off the board: 0 when none), the seed,
    density, mobile, the GPU's vendor): the device id goes with it only to be hashed there to a run tag, which
    is not the board's tag, so a line never leads to a nickname; no nickname is sent. Not from a page driven by a script (navigator.webdriver) or headless (the checks: their Edge
-   has no webdriver flag) unless ?runlog=1, nor with ?runlog=0; main.js leaves out the bot, self-test and
-   bench.
+   has no webdriver flag) unless ?runlog=1 (the line then says bot), nor with ?runlog=0 or Settings' run log
+   off (mossheart.runlog); main.js leaves out the bot, self-test and bench. Each line also has the device's run
+   number and the days since its first logged run, the seconds since the page opened (menus included), won (the
+   demo's last wave cleared), own (the device marked once with ?own=1) and from (an invite code, ?from=CODE).
    The device id (mossheart.device) is a random secret kept on the device; the board shows its tag, a short
    hash of it, so the player's own row is found without the id being readable. The nickname is remembered
    (mossheart.nickname), and so is the best this device has on the board per garden (mossheart.board). */
@@ -34100,10 +34134,31 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
   const MOBILE = !!(window.ME && ME.phone && ME.phone()); // (the engine's phone test; no engine in the leaderboard check)
   // (a living-map run, G.living: its acts on (the default, ?acts=0 off), tags its build " acts" so the one board tells them apart)
   const version = () => (G.VERSION ? `${G.VERSION.v} ${G.VERSION.commit}`.slice(0, G.living ? 27 : 32) + (G.living ? " acts" : "") : null);
+  // (Settings' run log switch sets mossheart.runlog to "off", menu.js: the same as ?runlog=0)
+  const RUNLOG_KEY = "mossheart.runlog", RUNS_KEY = "mossheart.runs", FIRST_KEY = "mossheart.firstrun", OWN_KEY = "mossheart.own", FROM_KEY = "mossheart.from";
+  const AUTO = !!navigator.webdriver || /Headless/.test(navigator.userAgent || ""); // (a script or a headless check)
   const logOff = () => {
     const q = new URLSearchParams(location.search).get("runlog");
-    return q === "0" || ((!!navigator.webdriver || /Headless/.test(navigator.userAgent || "")) && q !== "1");
+    return q === "0" || get(RUNLOG_KEY) === "off" || (AUTO && q !== "1");
   };
+  // sticky marks from the address, kept on the device: ?own=1 (the user's own device; ?own=0 clears it) and
+  // ?from=CODE (the invite that brought the player; the referrer is never read)
+  (() => {
+    const p = new URLSearchParams(location.search), own = p.get("own"), from = (p.get("from") || "").toLowerCase();
+    if (own === "1") put(OWN_KEY, "1");
+    else if (own === "0") { try { localStorage.removeItem(OWN_KEY); } catch (e) { /* storage blocked */ } }
+    if (/^[a-z0-9]{1,12}$/.test(from)) put(FROM_KEY, from);
+  })();
+  // this run's number on the device (1 for its first logged run), counted on its first line and kept on the
+  // game; and the whole days since the device's first logged run
+  const runNo = (game) => {
+    if (game.runNo) return game.runNo;
+    const n = Math.min(99999, (parseInt(get(RUNS_KEY), 10) || 0) + 1);
+    put(RUNS_KEY, String(n));
+    if (!(+get(FIRST_KEY) > 0)) put(FIRST_KEY, String(Date.now()));
+    return (game.runNo = n);
+  };
+  const days = () => { const f = +get(FIRST_KEY); return f > 0 ? Math.max(0, Math.min(9999, Math.floor((Date.now() - f) / 864e5))) : 0; };
   // one line per run: what it sent last is kept on the game, so a death or a quit goes once and closes the
   // run, and "alive" goes again only when the run went on (a later wave)
   const logRun = (game, end, opt = {}) => {
@@ -34126,13 +34181,94 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       towers: { placed: counts(st.planted, TOWERS, 9999), upgraded: counts(st.grownBy, TOWERS, 9999), sold: counts(st.soldBy, TOWERS, 9999) },
       boons: boonsOf(S.boons, 96), diedTo: end === "death" && ENEMIES.includes(st.lastLeak) ? st.lastLeak : null,
       skipped: int(st.skipped, 500),
+      runNo: runNo(game), days: days(), session: int(performance.now() / 1000, 604800), won: !!S.won,
+      own: get(OWN_KEY) === "1", from: /^[a-z0-9]{1,12}$/.test(get(FROM_KEY) || "") ? get(FROM_KEY) : null, bot: AUTO,
     };
     game.runLog = { end, wave };
-    const url = `${c.proxy}/api/run`, s = JSON.stringify(body);
+    const url = `${c.proxy}/api/run`;
+    flushRun(); // (a line still held for its card goes first, unanswered)
+    // (opt.hold: kept back for the post-run card, its answers ride on it: flushRun)
+    if (opt.hold) { held = { url, body }; return true; }
+    return sendLine(url, body, opt.beacon);
+  };
+  const sendLine = (url, body, beacon) => {
+    const s = JSON.stringify(body);
     // (leaving the page: a beacon, which outlives it; as text/plain, no preflight)
-    if (opt.beacon && navigator.sendBeacon) { try { if (navigator.sendBeacon(url, new Blob([s], { type: "text/plain;charset=UTF-8" }))) return true; } catch (e) { /* fall back to fetch */ } }
-    req(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: s, keepalive: !!opt.beacon });
+    if (beacon && navigator.sendBeacon) { try { if (navigator.sendBeacon(url, new Blob([s], { type: "text/plain;charset=UTF-8" }))) return true; } catch (e) { /* fall back to fetch */ } }
+    req(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: s, keepalive: !!beacon });
     return true;
+  };
+
+  // ------------------------------------------------------------------ the post-run card (Demo 1, #689)
+  // After a death, the demo's win, or a run given up after wave 3, at most once a day (mossheart.asked, the
+  // UTC day): would you play more (again), how was it in 1-5 leaves (fun), and what was hardest (hard,
+  // optional). The run's line is held until the card is sent or skipped (or the run moves on, or the page is
+  // left or hidden: then it goes unanswered), so the answers ride on it: one line, the proxy's 20 s limit kept.
+  // Only where the line would go at all (the proxy, the run log on); the answers are the board.js lists.
+  const ASK_KEY = "mossheart.asked", AGAIN = ["yes", "maybe", "no"];
+  const HARD = [["build", "Building"], ["enemies", "The creatures"], ["map", "The map"], ["controls", "The controls"], ["slow", "Too slow"], ["fast", "Too fast"], ["none", "Nothing"]];
+  let held = null; // ({ url, body }: the line the card waits on)
+  const today = () => new Date().toISOString().slice(0, 10);
+  const askable = () => { const c = cfg(); return !!(c && c.proxy) && !logOff() && get(ASK_KEY) !== today(); };
+  // the held line, sent now with the card's answers (ans: { again, fun, hard }, each optional); false if none was held
+  const flushRun = (ans, beacon) => {
+    if (logOff()) { held = null; return false; } // the run log turned off while the card was open: the held line is dropped
+    if (!held) return false;
+    const h = held; held = null;
+    if (ans) {
+      if (AGAIN.includes(ans.again)) h.body.again = ans.again;
+      if (ans.fun >= 1 && ans.fun <= 5) h.body.fun = ans.fun | 0;
+      if (HARD.some((x) => x[0] === ans.hard)) h.body.hard = ans.hard;
+    }
+    return sendLine(h.url, h.body, beacon);
+  };
+  // "Tell us more" (G.LEADERBOARD.feedback true): the free text to the proxy's POST /api/feedback, apart from the
+  // run line (never in it), with the held line's garden, wave, seed, runNo and version so the two join by run
+  // tag; the proxy scrubs email, phone and link shapes and keeps it in a private repo. Sent before flushRun.
+  const sendFeedback = (text) => {
+    const t = String(text || "").trim().slice(0, 1000), c = cfg();
+    if (!t || !held || !c || !c.proxy) return false;
+    const b = held.body;
+    return sendLine(`${c.proxy}/api/feedback`, { deviceId: b.deviceId, garden: b.garden, wave: b.wave, seed: b.seed, runNo: b.runNo, version: b.version, text: t });
+  };
+  const LEAF = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 13.5C2.5 6.5 7 2.5 13.5 2.5c0 6.5-4 11-11 11z"/><path class="vein" d="M2.5 13.5l7-7"/></svg>`;
+  // the card in el (emptied first); done() once it is sent or skipped
+  const askCard = (el, done) => {
+    put(ASK_KEY, today());
+    const fb = (G.LEADERBOARD || {}).feedback, form = fb === true, more = form ? "" : String(fb || "").trim(), ans = {};
+    el.innerHTML = `<div class="ask">
+      <p class="aq">Would you play more of this?</p>
+      <div class="arow" data-k="again">${AGAIN.map((v) => `<button class="btn abtn" data-v="${v}">${v[0].toUpperCase() + v.slice(1)}</button>`).join("")}</div>
+      <p class="aq">How was it?</p>
+      <div class="arow leaves" data-k="fun">${[1, 2, 3, 4, 5].map((v) => `<button class="leaf" data-v="${v}" aria-label="${v} of 5">${LEAF}</button>`).join("")}</div>
+      <p class="aq">What was hardest? <small>(optional)</small></p>
+      <div class="arow chips" data-k="hard">${HARD.map(([v, t]) => `<button class="btn abtn" data-v="${v}">${t}</button>`).join("")}</div>
+      ${form ? `<div class="amorebox" hidden><p class="aq">Tell us more <small>(optional; no email or links, they are taken out)</small></p><textarea class="atext" maxlength="1000" rows="3" aria-label="Tell us more"></textarea></div>` : ""}
+      <div class="aend">${form ? `<button class="btn abtn amore">Tell us more</button>` : /^https:\/\//.test(more) ? `<a class="amore" href="${esc(more)}" target="_blank" rel="noopener">Tell us more</a>` : ""}<button class="btn abtn askip">Skip</button><button class="btn abtn pink asend" disabled>Send</button></div>
+    </div>`;
+    const box = el.querySelector(".ask"), sendB = box.querySelector(".asend"), txt = box.querySelector(".atext");
+    const canSend = () => { sendB.disabled = !(ans.again || ans.fun || ans.hard || (txt && txt.value.trim())); };
+    if (form) {
+      box.querySelector("button.amore").addEventListener("click", (e) => { e.currentTarget.style.display = "none"; box.querySelector(".amorebox").hidden = false; txt.focus(); });
+      txt.addEventListener("input", canSend);
+      txt.addEventListener("keydown", (e) => e.stopPropagation()); // (typing is not the game's keys, as the nickname box)
+    }
+    const finish = (a) => {
+      if (a && txt) sendFeedback(txt.value); // (first: it reads the held line, which flushRun clears)
+      flushRun(a);
+      box.innerHTML = `<p class="athanks">${a ? "Thank you: it helps the garden grow." : "Skipped."}</p>`;
+      if (done) done();
+    };
+    box.querySelectorAll(".arow").forEach((row) => row.addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      const k = row.dataset.k, v = k === "fun" ? +b.dataset.v : b.dataset.v;
+      ans[k] = k === "hard" && ans.hard === v ? undefined : v; // (the optional one taps off again)
+      row.querySelectorAll("button").forEach((x) => x.classList.toggle("on", k === "fun" ? +x.dataset.v <= v : x.dataset.v === ans[k]));
+      canSend();
+    }));
+    sendB.addEventListener("click", () => finish(ans));
+    box.querySelector(".askip").addEventListener("click", () => finish(null));
   };
 
   // ------------------------------------------------------------------ the UI
@@ -34294,7 +34430,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     fill(el, key, BOARD_TOP);
   };
 
-  G.Leaderboard = { on: () => !!cfg(), submit, top, mine, atGameOver, board, logRun, nick, setNick, clean, bad, device, tag };
+  G.Leaderboard = { on: () => !!cfg(), submit, top, mine, atGameOver, board, logRun, logOff, RUNLOG_KEY, askable, askCard, flushRun, nick, setNick, clean, bad, device, tag };
 })();
 
 </script>
@@ -35062,6 +35198,11 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
     return s;
   };
   const save = (s) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* storage blocked */ } };
+  // (single keys outside the settings: the run log's switch and its first-visit notice)
+  const getKey = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const putKey = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* storage blocked */ } };
+  const removeKey = (k) => { try { localStorage.removeItem(k); } catch (e) { /* storage blocked */ } };
+  const RUNLOG_NOTE = "Mossheart counts runs anonymously (waves, plants, time, device type). No name, no account.";
 
   // Voxel densities a device may pick: every device, phones and small-memory machines included (the user,
   // 2026-10-24), the whole list up to Extreme (32), or the engine's ceiling where it is higher (ME.vsCeiling's
@@ -35182,6 +35323,17 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         const t = document.createElement("div");
         t.className = "toast fade"; t.id = "resettoast"; t.textContent = "Settings reset to the new defaults";
         document.body.appendChild(t); setTimeout(() => t.remove(), 9000);
+      }
+      // (the run log's notice, once on a device's first visit while the log is on: OK, or Turn off, which is
+      // Settings' Run log switch; leaderboard.js. docs/designs/2026-11-10-demo-1.md, "Consent")
+      const L = G.Leaderboard, NOTE_KEY = "mossheart.runlognote";
+      if (L && L.on() && !L.logOff() && !getKey(NOTE_KEY)) {
+        putKey(NOTE_KEY, "1");
+        const t = document.createElement("div");
+        t.className = "toast runlognote"; t.id = "runlognote"; t.setAttribute("role", "status");
+        t.innerHTML = `<span>${RUNLOG_NOTE}</span> <button class="btn tiny" data-n="ok">OK</button> <button class="btn tiny" data-n="off">Turn off</button>`;
+        t.addEventListener("click", (e) => { const b = e.target.closest("[data-n]"); if (!b) return; if (b.dataset.n === "off") putKey(L.RUNLOG_KEY, "off"); t.remove(); });
+        document.body.appendChild(t); setTimeout(() => t.remove(), 30000);
       }
       app.paused = false;
       const root = document.createElement("div");
@@ -35405,7 +35557,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       b.setAttribute("aria-label", b.title);
     }
     renderSettings() {
-      const s = Object.assign({}, this.s, { vs: Math.min(VS_MAX, this.s.vs), preset: presetOf(this.s) }), body = $("setbody"); // (the density as this device bakes it)
+      const L = G.Leaderboard, logKey = L && L.RUNLOG_KEY; // (the run log switch lives in its own key, not in this.s)
+      const s = Object.assign({}, this.s, { vs: Math.min(VS_MAX, this.s.vs), preset: presetOf(this.s), runlog: !(logKey && getKey(logKey) === "off") }), body = $("setbody"); // (the density as this device bakes it)
       const dprNow = +(this.app.dpr || 1).toFixed(2);
       const resNote = ME.params.has("dpr") ? `Pinned to ${dprNow}x by the page address (?dpr=).` : `Pixels drawn per screen pixel (now ${dprNow}x). Full is the screen's own, however fine. Lower runs faster and looks softer.${mobile ? " A phone starts at 2x: Full costs over twice the pixels for little to see." : ""}`;
       const slider = (k, label) => `<label class="row"><span>${label}</span><input type="range" min="0" max="1" step="0.05" value="${s[k]}" data-k="${k}"><em>${Math.round(s[k] * 100)}%</em></label>`;
@@ -35441,6 +35594,7 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
         choice("tips", "First-run tips", [[true, "On"], [false, "Off"]]) + `<div class="note dim">A few tips on a fresh run: planting, the almanac, the first wave. They turn off when done.</div>` +
         choice("hints", "Game tips", [[true, "On"], [false, "Off"]]) + `<div class="note dim">A note by the HUD the first time a mechanic matters: why it works, what it pairs with. A tap hides it. <button class="btn tiny" data-a="resettips">Reset tips</button></div>` +
         choice("numbers", "Combat numbers", [[true, "On"], [false, "Off"]]) + `<div class="note dim">A hurt creature's health as a number beside its bar, and each hit's damage rising off it (fading in place with reduced motion).</div>` +
+        (logKey && L.on() ? choice("runlog", "Run log", [[true, "On"], [false, "Off"]]) + `<div class="note dim">${RUNLOG_NOTE}</div>` : "") +
         choice("effects", "Effect icons", [[true, "On"], [false, "Off"]]) + `<div class="note dim">Small icons above each plant for what it has active: links, gifts, its spot, a graft, Bloom Burst.</div>` +
         `<h3>Comfort</h3>` + choice("motion", "Motion", [["full", "Full"], ["reduced", "Reduced"]]) +
         `<div class="note dim">Reduced: no screen shake or lightning, softer flashes, lighter rain and snow.</div>` +
@@ -35451,7 +35605,8 @@ fn hookWilt(xy: vec2f) -> f32 { if (u.user[0].x < 0.5) { return 0.0; } return fi
       body.querySelectorAll(".note.dim").forEach((el) => el.addEventListener("click", (e) => { if (!e.target.closest(".btn")) el.classList.toggle("open"); })); // (folded to a line on a tight screen, game.css)
       body.querySelectorAll(".seg button").forEach((el) => el.addEventListener("click", () => {
         const k = el.dataset.k, raw = el.dataset.v, v = raw === "true" ? true : raw === "false" ? false : k === "vs" || k === "text" || k === "ui" ? +raw : raw;
-        this.set(k, v); this.renderSettings();
+        if (k === "runlog") { if (v) removeKey(logKey); else putKey(logKey, "off"); } else this.set(k, v);
+        this.renderSettings();
       }));
       // (each heading's rows in a section, and the headings as tabs over them: on a phone one section shows at a
       // time, so it fits the screen without scrolling; on a desktop the tabs hide and the sections stack)
@@ -39198,8 +39353,8 @@ function MG_SFX(L) {
     // (a plant set or sold redraws them too: the counter warning and the almanac's warn chips read the garden)
     for (const ev of ["waves", "phase", "tower_placed", "tower_sold"]) G.on(ev, refreshWaves);
     G.on("boons_offered", (e) => hud.showBoons(e.boons, (b) => game.chooseBoon(b)));
-    G.on("game_over", (e) => { setSpeed(1); logRun("death"); hud.showGameOver(e.wave, e.best, e.prev); });
-    G.on("won", (e) => { setSpeed(1); hud.showWon(e.wave); }); // (Demo 1: G.DEMO only)
+    G.on("game_over", (e) => { setSpeed(1); hud.showGameOver(e.wave, e.best, e.prev, endRun("death")); });
+    G.on("won", (e) => { setSpeed(1); hud.showWon(e.wave, endRun("alive")); }); // (Demo 1: G.DEMO only; its line says won)
     // (the selected plant's card follows the dew; inside a frame's update, once at its end: step)
     let cardStale = false;
     G.on("dew", () => { if (!selected) return; if (hud.hold) cardStale = true; else hud.inspect(selected); });
@@ -39212,13 +39367,15 @@ function MG_SFX(L) {
     const newGame = (d) => {
       const next = new G.Game(level, G.body);
       if (d && !G.Save.fits(next, d)) { next.dispose(); return false; }
-      if (!d) logRun("quit"); // (the run given up, on the run log below)
+      let ask = false;
+      if (!d) { if (G.Leaderboard) G.Leaderboard.flushRun(); ask = endRun("quit", S.wave >= 3); } // (the run given up, on the run log below)
       game.dispose();
       deselect(); hud.clearSeed(); hud.hideGameOver(); document.getElementById("boons").classList.remove("show"); G.Dismiss.untab();
       pending = null; game = next; hud.game = game; if (audio) audio.setGame(game); if (bot) bot.game = game;
       if (d) G.Save.restore(game, d); else S.newRun((Date.now() ^ (Math.random() * 1e9)) >>> 0);
       scene.setGame(game);
       refreshWaves();
+      if (ask) hud.showAsk();
       return true;
     };
     const restart = () => newGame(null);
@@ -39231,9 +39388,13 @@ function MG_SFX(L) {
     const continueRun = () => { const d = saved(); if (d && newGame(d)) return true; G.Save.clear(); return false; };
     // the run log (the online board's, view/leaderboard.js): a run's end, death or quit, and how far it got
     // when the page is left or hidden (a beacon); not for the bot, the self-test or the benchmark
-    const logRun = (end, o) => { if (keepRuns && G.Leaderboard) G.Leaderboard.logRun(game, end, o); };
-    addEventListener("pagehide", () => logRun("alive", { beacon: true }));
-    addEventListener("visibilitychange", () => { if (document.hidden) logRun("alive", { beacon: true }); });
+    const logRun = (end, o) => !!(keepRuns && G.Leaderboard && G.Leaderboard.logRun(game, end, o));
+    // a run's end with the post-run card when it is due (may: false for a run given up before wave 3): true if
+    // its line is held for the card (view/leaderboard.js), so the caller shows it
+    const endRun = (end, may = true) => { const ask = !!(may && keepRuns && G.Leaderboard && G.Leaderboard.askable()); return logRun(end, { hold: ask }) && ask; };
+    const leave = () => { if (keepRuns && G.Leaderboard) G.Leaderboard.flushRun(null, true); logRun("alive", { beacon: true }); };
+    addEventListener("pagehide", leave);
+    addEventListener("visibilitychange", () => { if (document.hidden) leave(); });
 
     // ------------------------------------------------------------------ input: taps plant / inspect
     const toCanvas = (e) => { const r = canvas.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * canvas.width, ((e.clientY - r.top) / r.height) * canvas.height]; };
